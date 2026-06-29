@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>阶段 1 详细大纲 · Python 基础与 Agent 导向工程素养</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .module { margin-bottom: 2rem; }
+    .module-header {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      margin-bottom: 0.6rem;
+    }
+    .module-num {
+      width: 2rem;
+      height: 2rem;
+      background: var(--accent);
+      color: white;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+    .lesson-item {
+      display: flex;
+      align-items: baseline;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--border-light);
+      gap: 0.6rem;
+    }
+    .lesson-item:last-child { border-bottom: none; }
+    .lesson-num {
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      min-width: 2.5rem;
+      flex-shrink: 0;
+    }
+    .lesson-title { font-weight: 600; font-size: 0.95rem; }
+    .lesson-desc {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 0.1rem;
+      line-height: 1.5;
+    }
+    .exercise {
+      background: var(--accent-light);
+      border: 1px solid #FDE68A;
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.8rem;
+      margin-top: 0.4rem;
+      font-size: 0.82rem;
+      color: var(--fg-soft);
+    }
+    .exercise::before {
+      content: "🏋️ 练习：";
+      font-weight: 600;
+      color: var(--accent-bright);
+    }
+  </style>
+</head>
+<body>
+
+<h1>阶段 1 · Python 基础与 Agent 导向工程素养</h1>
+<p>从基础语法到 Agent 开发必备的工程技能，<strong>系统性夯实 Python 功底</strong>。</p>
+
+<div class="total-bar">
+  <span>📚 共 3 大部分 · 8 个模块 · 15 课</span>
+  <span>⏱ 预计 2-3 周完成</span>
+</div>
+
+<div class="tip">
+  <strong>为什么从基础开始？</strong><br>
+  Agent 开发看似只需要"调 API"，但实际上：<br>
+  · Dict/JSON 操作不熟练 → 处理 LLM 返回的复杂 JSON 会很痛苦<br>
+  · 装饰器理解不深 → Agent 框架源码看不懂，@tool/@chain 用不好<br>
+  · 类型提示不会写 → Pydantic Schema 定义不出来，Structured Output 用不了<br>
+  · 异步不会写 → LLM 并发调用直接卡死<br>
+  <strong>基础不牢，地动山摇。</strong>
+</div>
+
+<!-- ==================== Part A ==================== -->
+<div class="part-header">Part A · Python 基础快速复习</div>
+<p>你有基础，这部分快速查漏补缺。每课 20-30 分钟，重点看不熟悉的部分。</p>
+
+<!-- Module 1.1 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">1.1</div>
+    <h3 style="margin:0">环境搭建与 Agent 项目结构</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L01</span>
+      <div>
+        <div class="lesson-title"><a href="0004-L01-dev-environment-setup.html">开发环境搭建</a> <span class="badge-basic">基础</span></div>
+        <div class="lesson-desc">Python 安装与版本管理（pyenv）、包管理工具（uv）、VS Code 配置、虚拟环境（venv）、.env 环境变量管理</div>
+        <div class="exercise">创建 agent-hello 项目 — 按照生产级结构组织（schemas.py / tools.py / config.py / main.py），运行后打印项目结构图</div>
+      </div>
+    </div>
+    <div class="lesson-item">
+      <span class="lesson-num">L02</span>
+      <div>
+        <div class="lesson-title"><a href="0005-L02-python-runtime-and-modules.html">Python 运行机制与模块系统</a> <span class="badge-basic">基础</span></div>
+        <div class="lesson-desc">解释型语言特点、Python 执行流程、__name__ == "__main__"、模块与包、import 机制、相对导入 vs 绝对导入</div>
+        <div class="exercise">将 L01 的项目拆分为多个模块，练习 import 机制和包结构</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 1.2 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">1.2</div>
+    <h3 style="margin:0">基础语法与 Agent 数据模式</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L03</span>
+      <div>
+        <div class="lesson-title"><a href="0006-L03-variables-types-data-structures.html">变量、类型与数据结构</a> <span class="badge-basic">基础</span></div>
+        <div class="lesson-desc">变量命名、int/float/str/bool、可变与不可变类型（深入：内存模型、引用计数）、list/dict/tuple/set 操作、推导式、dict 深度操作（嵌套访问、defaultdict、ChainMap）</div>
+        <div class="exercise">解析 LLM 响应 — 给一段模拟的 LLM JSON 响应，用 dict 操作提取工具调用、解析参数、处理嵌套结构</div>
+      </div>
+    </div>
+    <div class="lesson-item">
+      <span class="lesson-num">L04</span>
+      <div>
+        <div class="lesson-title">流程控制、字符串与 Prompt 构造</div>
+        <div class="lesson-desc">if/elif/else、for/while 循环、match-case、字符串方法、f-string 高级用法（格式化、表达式、多行）、Prompt 模板模式（变量替换、条件拼接、上下文注入）</div>
+        <div class="exercise">构建 Prompt 模板引擎 — 用 f-string + 字典实现动态 Prompt 模板系统，支持变量替换和条件拼接</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Part B ==================== -->
+<div class="part-header">Part B · Python 进阶特性 <span class="badge-agent">Agent 开发核心</span></div>
+<p>这些是 Agent 开发的硬技能，必须掌握。</p>
+
+<!-- Module 2.1 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">2.1</div>
+    <h3 style="margin:0">函数、作用域与闭包</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L05</span>
+      <div>
+        <div class="lesson-title">函数定义与参数 <span class="badge-basic">基础</span></div>
+        <div class="lesson-desc">def 语法、位置参数/关键字参数/默认值、*args/**kwargs、参数解包、返回值与 return、函数签名设计</div>
+        <div class="exercise">设计一个 Agent 工具函数 — 接收搜索参数（query、max_results、filters），返回结构化结果，练习参数设计</div>
+      </div>
+    </div>
+    <div class="lesson-item">
+      <span class="lesson-num">L06</span>
+      <div>
+        <div class="lesson-title">作用域、闭包与 Lambda</div>
+        <div class="lesson-desc">LEGB 规则、global/nonlocal、闭包原理（面试常问）、lambda 匿名函数、sorted() 的 key 参数、高阶函数（map/filter/reduce/partial）</div>
+        <div class="exercise">用闭包实现一个 Agent 计数器 — 每次调用记录工具调用次数和耗时，练习闭包的实际应用</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 2.2 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">2.2</div>
+    <h3 style="margin:0">面向对象与 @dataclass</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L07</span>
+      <div>
+        <div class="lesson-title">类、对象与 @dataclass <span class="badge-agent">Agent 核心</span></div>
+        <div class="lesson-desc">class 语法、__init__、self、实例方法/类方法(@classmethod)/静态方法(@staticmethod)、@dataclass 语法、field()、frozen 不可变模型、与 Pydantic 的对比（面试题）</div>
+        <div class="exercise">用 @dataclass 定义 Agent 数据模型 — Message、ToolCall、AgentState，对比 Pydantic 实现，理解两者适用场景</div>
+      </div>
+    </div>
+    <div class="lesson-item">
+      <span class="lesson-num">L08</span>
+      <div>
+        <div class="lesson-title">继承、多态与 __call__</div>
+        <div class="lesson-desc">继承与 super()、多态、抽象基类(ABC)、__call__（可调用对象，Agent 工具的核心模式）、__repr__/__str__、组合优于继承原则</div>
+        <div class="exercise">实现一个可调用的 Agent 工具基类 — 用 ABC 定义 BaseTool，子类实现 __call__，支持自动收集工具描述</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 2.3 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">2.3</div>
+    <h3 style="margin:0">文件、JSON 与异常处理</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L09</span>
+      <div>
+        <div class="lesson-title">文件、JSON 与 Dict 深度操作</div>
+        <div class="lesson-desc">open() 与 with 语句、Pathlib 路径处理、JSON 序列化/反序列化、json vs orjson 性能对比、嵌套 dict 操作、LLM 响应解析模式（工具调用提取、流式 JSON 拼接）</div>
+        <div class="exercise">处理 LLM 流式响应 — 模拟 LLM 返回的 JSON Lines 流，逐行解析、拼接完整 JSON、处理错误格式和截断</div>
+      </div>
+    </div>
+    <div class="lesson-item">
+      <span class="lesson-num">L10</span>
+      <div>
+        <div class="lesson-title">异常处理与上下文管理器</div>
+        <div class="lesson-desc">try/except/else/finally、自定义异常（AgentError、ToolError）、异常链（raise from）、with 语句与 __enter__/__exit__、contextlib（@contextmanager、async 上下文管理器）</div>
+        <div class="exercise">实现一个 API 调用上下文管理器 — 自动处理超时、重试、资源清理，模拟 LLM API 调用场景</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 2.4 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">2.4</div>
+    <h3 style="margin:0">装饰器 — Agent 框架的基石</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L11</span>
+      <div>
+        <div class="lesson-title">装饰器 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-desc">函数装饰器原理（闭包+高阶函数）、带参数装饰器、类装饰器、functools.wraps、多层装饰器、Agent 框架中的 @tool/@chain/@agent 模式</div>
+        <div class="exercise">手写 @tool 装饰器 — 实现工具注册装饰器，自动收集函数名、参数 Schema（从 type hints 提取）、描述，构建工具注册表</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Part C ==================== -->
+<div class="part-header">Part C · Agent 导向工程技能</div>
+<p>每个知识点都关联 Agent 场景，学完就能用。</p>
+
+<!-- Module 3.1 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">3.1</div>
+    <h3 style="margin:0">生成器与 Streaming 模式</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L12</span>
+      <div>
+        <div class="lesson-title">生成器基础与 Agent Streaming</div>
+        <div class="lesson-desc">yield 工作原理、生成器表达式、send() 基础、迭代器协议、在 Agent 中的应用：LLM Streaming 响应处理、惰性数据处理、token-by-token 输出</div>
+        <div class="exercise">实现 LLM Streaming 模拟器 — 用生成器逐 token 输出响应，支持暂停/恢复，练习 Streaming 处理模式</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 3.2 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">3.2</div>
+    <h3 style="margin:0">类型提示与数据验证</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L13</span>
+      <div>
+        <div class="lesson-title">类型提示系统 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-desc">基本类型标注、Optional/Union/Literal、TypeVar/Generic（泛型在 Agent 状态管理中的应用）、Protocol（结构化子类型）、Callable 类型、mypy 类型检查</div>
+        <div class="exercise">为 Agent 设计类型系统 — 用 Generic 定义泛型 AgentState[T]，用 Protocol 定义 Tool 接口，用 Literal 约束模型名称</div>
+      </div>
+    </div>
+    <div class="lesson-item">
+      <span class="lesson-num">L14</span>
+      <div>
+        <div class="lesson-title">Pydantic 数据验证 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-desc">BaseModel、Field（默认值、描述、约束）、Validator、嵌套模型、序列化（model_dump/model_dump_json）、自定义类型、Agent Tool Schema 定义、JSON Schema 导出、dataclass vs Pydantic 对比（面试常问）</div>
+        <div class="exercise">为 3 个真实工具设计 Pydantic Schema — 搜索工具（SearchInput/SearchOutput）、文件读取工具、计算器工具，导出 JSON Schema 并验证</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 3.3 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">3.3</div>
+    <h3 style="margin:0">异步编程与并发</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L15</span>
+      <div>
+        <div class="lesson-title">async/await 与并发 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-desc">GIL 概念与对异步的影响（面试常问）、协程 vs 线程 vs 进程、async/await 语法、asyncio.run()、asyncio.gather（并发 LLM 调用）、Semaphore 限流、异步上下文管理器、事件循环工作原理</div>
+        <div class="exercise">并发 LLM 调用 — 用 asyncio.gather 并发调用 3 个 API，实现超时控制（asyncio.wait_for）、错误重试（指数退避）、结果聚合、Token 成本统计</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>学习建议</h2>
+<div class="tip">
+  <strong>Part A 快速过</strong>——你有基础，2 天内完成，重点查漏补缺。每课 20-30 分钟。<br>
+  <strong>Part B 是重点</strong>——装饰器、@dataclass、JSON 操作是 Agent 框架的底层，必须真正理解。每课 40-60 分钟。<br>
+  <strong>Part C 是核心</strong>——类型提示 + Pydantic + 异步编程，每个都对应 Agent 开发场景。每课 60+ 分钟，多写代码。<br><br>
+  <strong>练习方式：</strong>每课结束后完成实战练习。练习都是 Agent 开发中的真实场景，写完的代码后面课程会直接复用。
+</div>
+
+<div class="source">
+  <strong>推荐参考资料：</strong><br>
+  · <a href="https://docs.python.org/3/tutorial/" target="_blank">Python 官方教程</a> — 最权威的基础参考<br>
+  · <a href="https://realpython.com/" target="_blank">Real Python</a> — 高质量 Python 教程<br>
+  · <a href="https://docs.python.org/3/library/typing.html" target="_blank">Python typing 文档</a> — 类型提示参考<br>
+  · <a href="https://docs.pydantic.dev/" target="_blank">Pydantic 官方文档</a> — 数据验证框架<br>
+  · <a href="https://docs.python.org/3/library/asyncio.html" target="_blank">asyncio 文档</a> — 异步编程参考<br>
+  · <a href="https://medium.com/@f.sazanavets/the-most-important-python-features-for-ai-engineering-c3aaa12ea43c" target="_blank">最重要的 Python AI 工程特性</a> — 2026 实践指南
+</div>
+
+<div class="nav">
+  <a href="0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
+  <a href="0004-L01-dev-environment-setup.html">开始第一课：环境搭建 →</a>
+</div>
+
+<footer>
+  AI Agent 高级开发工程师课程 · 阶段 1 详细大纲 · 如有疑问，随时问我
+</footer>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+</body>
+</html>

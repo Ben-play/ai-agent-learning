@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L02 · Python 运行机制与模块系统</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<!-- 标题 -->
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>Python 运行机制与模块系统</h1>
+    <p class="subtitle">理解代码是怎么被"跑起来"的 — Agent 多模块项目的基石</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:13.3%"></div></div>
+  </div>
+</div>
+
+<!-- 课前引导 -->
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 项目通常由多个模块组成（schemas.py、tools.py、config.py、main.py）。如果不理解 Python 的模块加载机制，你迟早会遇到 <code>ImportError</code>、循环导入、模块找不到等问题。这些在 Agent 开发中尤其常见，因为框架代码本身就大量使用模块系统。</p>
+  </div>
+</div>
+
+<!-- 学习目标 -->
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>解释 Python 代码从源文件到执行的完整流程</li>
+      <li>正确使用 <code>__name__ == "__main__"</code> 模式</li>
+      <li>区分模块与包，理解 <code>__init__.py</code> 的作用</li>
+      <li>掌握 import 的查找顺序和两种导入方式</li>
+      <li>诊断并解决循环导入问题</li>
+      <li>用 <code>__all__</code> 控制包的公开接口</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 知识点 1 ==================== -->
+<div class="section">
+  <h2>1. Python 是怎么运行的</h2>
+
+  <p>很多人说"Python 是解释型语言"，但这不完全准确。Python 的执行分两步：</p>
+
+  <div class="card">
+    <strong>第一步：编译为字节码（Bytecode）</strong><br>
+    Python 解释器先把 <code>.py</code> 源代码编译为字节码（<code>.pyc</code> 文件），存放在 <code>__pycache__</code> 目录中。字节码是一种中间表示，不是机器码，但比源代码更接近执行层面。<br><br>
+    <strong>第二步：Python 虚拟机执行字节码</strong><br>
+    Python 虚拟机（PVM）逐条执行字节码指令。这才是真正的"解释执行"。
+  </div>
+
+  <pre><code># 你可以看到 Python 生成的字节码
+import dis
+
+def greet(name):
+    return f"Hello, {name}"
+
+dis.dis(grank)
+# 输出类似：
+#   0 LOAD_CONST     1 ('Hello, ')
+#   2 LOAD_FAST      0 (name)
+#   4 FORMAT_VALUE   0
+#   6 BUILD_STRING   2
+#   8 RETURN_VALUE</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>理解字节码不常直接用到，但当你调试 Agent 框架的奇怪行为时，知道 Python 先编译再执行这个事实，能帮你理解为什么某些语法错误在"运行前"就会被捕获（编译阶段），而另一些要到运行时才报错。</p>
+  </div>
+
+  <h3>Python 的执行入口</h3>
+  <p>当你运行 <code>python my_script.py</code> 时，Python 做了这些事：</p>
+  <ol>
+    <li>启动 Python 解释器</li>
+    <li>把 <code>my_script.py</code> 编译为字节码</li>
+    <li>设置特殊变量 <code>__name__</code> 为 <code>"__main__"</code></li>
+    <li>从上到下逐行执行代码</li>
+    <li>执行完毕，退出解释器</li>
+  </ol>
+</div>
+
+<!-- ==================== 知识点 2 ==================== -->
+<div class="section">
+  <h2>2. <code>__name__ == "__main__"</code></h2>
+
+  <p>这是 Python 中最常见也最容易困惑的模式。理解它只需要一个关键认知：</p>
+
+  <div class="card">
+    <strong>核心规则：</strong><br>
+    · 当一个文件被<strong>直接运行</strong>时，<code>__name__</code> 的值是 <code>"__main__"</code><br>
+    · 当一个文件被<strong>import</strong>时，<code>__name__</code> 的值是<strong>模块名</strong>（文件名去掉 .py）
+  </div>
+
+  <pre><code># calculator.py
+def add(a, b):
+    return a + b
+
+# 这段代码只在直接运行时执行，被 import 时不会执行
+if __name__ == "__main__":
+    print(f"2 + 3 = {add(2, 3)}")</code></pre>
+
+  <pre><code># 直接运行
+$ python calculator.py
+# 输出: 2 + 3 = 5
+# 因为 __name__ == "__main__"，所以 if 块内的代码执行了
+
+# 被 import
+$ python -c "from calculator import add; print(add(10, 20))"
+# 输出: 30
+# __name__ == "calculator"，if 块内的代码没有执行</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发中的实际用法：</strong>
+    <p>Agent 项目的 main.py 通常这样写：</p>
+    <pre><code># main.py
+from agent.core import Agent
+from agent.config import load_config
+
+def run():
+    config = load_config()
+    agent = Agent(config)
+    agent.run()
+
+if __name__ == "__main__":
+    run()</code></pre>
+    <p>这样做的好处：</p>
+    <ul>
+      <li>直接运行 <code>python main.py</code> 启动 Agent</li>
+      <li>其他模块可以 import main 中的函数而不会意外启动 Agent</li>
+      <li>测试时可以单独测试 run() 函数</li>
+    </ul>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      如果一个文件 <code>agent.py</code> 被 <code>import agent</code>，那么在这个文件中 <code>__name__</code> 的值是什么？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="correct">agent</button>
+      <button data-answer="wrong">__main__</button>
+      <button data-answer="wrong">agent.py</button>
+      <button data-answer="wrong">None</button>
+    </div>
+    <div class="quiz-explanation">
+      被 import 时，<code>__name__</code> 的值是模块名（文件名去掉 .py）。只有直接运行时才是 <code>"__main__"</code>。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 3 ==================== -->
+<div class="section">
+  <h2>3. 模块与包</h2>
+
+  <h3>模块（Module）</h3>
+  <p>一个 <code>.py</code> 文件就是一个模块。模块名就是文件名（去掉 <code>.py</code>）。</p>
+
+  <pre><code># tools.py          → 模块名是 "tools"
+# schemas.py        → 模块名是 "schemas"
+# agent/core.py     → 模块名是 "agent.core"</code></pre>
+
+  <h3>包（Package）</h3>
+  <p>一个包含 <code>__init__.py</code> 文件的目录就是一个包。包是用来组织模块的。</p>
+
+  <pre><code>my-agent/
+├── __init__.py          # 标记 my-agent 是一个包
+├── agent/
+│   ├── __init__.py      # 标记 agent 是一个包
+│   ├── core.py          # 模块: agent.core
+│   ├── tools.py         # 模块: agent.tools
+│   └── schemas.py       # 模块: agent.schemas
+└── main.py</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 Python 3.3+ 的变化：</strong>
+    <p>Python 3.3 引入了"命名空间包"，<code>__init__.py</code> 不再是必须的。但<strong>强烈建议始终创建它</strong>，因为：</p>
+    <ul>
+      <li>明确标识这是一个包</li>
+      <li>某些工具（如 pytest、mypy）依赖它</li>
+      <li>可以在其中控制包的公开接口</li>
+    </ul>
+  </div>
+
+  <h3><code>__init__.py</code> 的作用</h3>
+  <p><code>__init__.py</code> 不只是一个标记文件，它有三个实际用途：</p>
+
+  <pre><code># agent/__init__.py
+
+# 用途 1：定义包的公开接口
+from .core import Agent
+from .schemas import Message
+
+# 用途 2：控制 from package import * 的行为
+__all__ = ["Agent", "Message"]
+
+# 用途 3：包级别的初始化代码
+print("Agent package loaded")  # 只在首次 import 时执行</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Agent 框架通常在 <code>__init__.py</code> 中导出核心类，让用户可以这样导入：</p>
+    <pre><code>from agent import Agent  # 而不是 from agent.core import Agent</code></pre>
+    <p>这是 Python 包设计的标准模式。</p>
+  </div>
+
+  <h3><code>__all__</code> 控制公开接口</h3>
+  <pre><code># agent/__init__.py
+from .core import Agent
+from .schemas import Message
+from .internal import _debug  # 内部工具，不希望用户直接使用
+
+__all__ = ["Agent", "Message"]  # 只有这两个会被 from agent import * 导出</code></pre>
+
+  <pre><code># 用户代码
+from agent import *       # 只导入 Agent 和 Message，不导入 _debug
+from agent import _debug  # 显式导入仍然可以</code></pre>
+</div>
+
+<!-- ==================== 知识点 4 ==================== -->
+<div class="section">
+  <h2>4. import 机制</h2>
+
+  <h3>import 的查找顺序</h3>
+  <p>当你写 <code>import agent</code> 时，Python 按以下顺序查找：</p>
+
+  <ol>
+    <li><strong>sys.modules 缓存</strong> — 已经导入过的模块直接从缓存取</li>
+    <li><strong>内置模块</strong> — Python 内置模块（os、sys、json 等）</li>
+    <li><strong>sys.path</strong> — 一个路径列表，包含：
+      <ul>
+        <li>当前脚本所在目录</li>
+        <li>PYTHONPATH 环境变量指定的目录</li>
+        <li>标准库目录</li>
+        <li>site-packages（第三方包安装位置）</li>
+      </ul>
+    </li>
+  </ol>
+
+  <pre><code># 查看 Python 的模块搜索路径
+import sys
+print(sys.path)
+
+# 查看模块从哪里加载的
+import json
+print(json.__file__)  # /usr/lib/python3.12/json/__init__.py</code></pre>
+
+  <h3>虚拟环境对 sys.path 的影响</h3>
+  <p>激活虚拟环境后，<code>sys.path</code> 会改变，优先使用虚拟环境中的包：</p>
+
+  <pre><code># 未激活虚拟环境
+$ python -c "import sys; print(sys.path)"
+['', '/usr/lib/python3.12', ..., '/usr/lib/python3.12/site-packages']
+
+# 激活虚拟环境后
+$ source .venv/bin/activate
+$ python -c "import sys; print(sys.path)"
+['', '/home/user/.venv/lib/python3.12/site-packages', ...]</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Agent 项目通常有多个依赖（openai、langchain、pydantic 等）。如果不理解虚拟环境对 sys.path 的影响，你会遇到"明明安装了包但 import 报错"的问题。这在 Agent 开发中极其常见。</p>
+  </div>
+
+  <h3>两种 import 方式</h3>
+
+  <pre><code># 方式 1：导入整个模块
+import agent.core
+agent.core.run()
+
+# 方式 2：从模块中导入特定内容
+from agent.core import run
+run()</code></pre>
+
+  <div class="card">
+    <strong>最佳实践：</strong>
+    <ul>
+      <li>顶层用 <code>import</code>（如 <code>import agent.core</code>），保持命名空间清晰</li>
+      <li>函数内部用 <code>from ... import</code>（如 <code>from agent.tools import search</code>），减少代码冗余</li>
+      <li><strong>避免</strong> <code>from module import *</code> — 会污染命名空间，IDE 也无法追踪</li>
+    </ul>
+  </div>
+
+  <h3>相对导入 vs 绝对导入</h3>
+
+  <pre><code># 绝对导入（推荐）
+from agent.core import run
+from agent.schemas import Message
+
+# 相对导入（只在包内部使用）
+# 在 agent/tools.py 中：
+from .schemas import Message      # 当前包的 schemas 模块
+from ..config import load_config  # 上级包的 config 模块</code></pre>
+
+  <div class="card" style="border-left: 4px solid #DC2626;">
+    <strong>⚠️ 常见陷阱：</strong>
+    <p>相对导入只能在包内部使用，不能在直接运行的脚本中使用。如果你在 <code>main.py</code> 中写 <code>from .agent import run</code>，会报 <code>ImportError</code>。这就是为什么 main.py 通常用绝对导入。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      以下哪个是正确的相对导入？假设当前文件在 <code>agent/tools.py</code> 中。
+    </div>
+    <div class="quiz-options">
+      <button data-answer="correct">from .schemas import Message</button>
+      <button data-answer="wrong">from agent.schemas import Message</button>
+      <button data-answer="wrong">import .schemas</button>
+      <button data-answer="wrong">from ..schemas import Message</button>
+    </div>
+    <div class="quiz-explanation">
+      <code>.schemas</code> 表示当前包内的 schemas 模块。<code>from agent.schemas</code> 是绝对导入（虽然也能工作），<code>import .schemas</code> 是语法错误，<code>..schemas</code> 是上级包。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 5 ==================== -->
+<div class="section">
+  <h2>5. 循环导入：Agent 项目的大敌</h2>
+
+  <p>循环导入是 Agent 开发中最常见的模块问题之一。当模块 A 导入模块 B，而模块 B 又导入模块 A 时，就会发生循环导入。</p>
+
+  <pre><code># ❌ 循环导入示例
+# agent/core.py
+from agent.tools import search  # core 导入 tools
+
+# agent/tools.py
+from agent.core import Agent    # tools 又导入 core → 💥 ImportError</code></pre>
+
+  <h3>为什么会报错？</h3>
+  <p>Python 导入模块时，会先在 <code>sys.modules</code> 中标记该模块为"正在导入"。如果在导入过程中又遇到对同一个模块的导入，Python 会发现这个标记，从而抛出 <code>ImportError</code>。</p>
+
+  <h3>解决方案</h3>
+
+  <pre><code># 方案 1：延迟导入（最常用）
+# agent/tools.py
+def search(query: str):
+    from agent.core import Agent  # 在函数内部导入，而不是顶层
+    agent = Agent()
+    return agent.do_search(query)
+
+# 方案 2：提取公共模块
+# agent/types.py（新建）
+class SearchResult:
+    pass
+
+# agent/core.py
+from agent.types import SearchResult  # 从公共模块导入
+
+# agent/tools.py
+from agent.types import SearchResult  # 从公共模块导入
+
+# 方案 3：使用 TYPE_CHECKING（仅用于类型注解）
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agent.core import Agent  # 只在类型检查时导入，运行时不导入</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Agent 项目中，core.py 通常需要导入 tools（执行工具调用），而 tools 又需要导入 core 中的类型或配置。这是典型的循环导入场景。方案 1（延迟导入）是最实用的解决方案。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"如何诊断和解决 Python 循环导入？"</p>
+    <p>答：看 ImportError 的堆栈跟踪，找到两个互相导入的模块。解决方法：延迟导入、提取公共模块、或用 TYPE_CHECKING 条件导入。</p>
+  </div>
+</div>
+
+<!-- ==================== 知识点 6 ==================== -->
+<div class="section">
+  <h2>6. import 的性能考量</h2>
+
+  <p><code>__init__.py</code> 会在每次 import 时被执行。如果在里面放了大量代码，会拖慢启动速度。</p>
+
+  <pre><code># ❌ 不好的做法：在 __init__.py 中导入太多东西
+# agent/__init__.py
+from .core import Agent
+from .tools import search, calculator, weather, file_reader, ...
+from .schemas import Message, ToolCall, Response, ...
+from .utils import helper1, helper2, helper3, ...
+# 每次 import agent 都会加载所有这些模块
+
+# ✅ 好的做法：只导出核心类
+# agent/__init__.py
+from .core import Agent
+__all__ = ["Agent"]
+# 用户按需导入：from agent.tools import search</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"Python import 的性能优化有哪些方法？"</p>
+    <p>答：1）保持 __init__.py 轻量；2）使用延迟导入；3）避免循环导入；4）按需导入而不是一次性导入所有模块。</p>
+  </div>
+</div>
+
+<!-- ==================== 实战练习 ==================== -->
+<div class="section">
+  <h2>实战练习</h2>
+
+  <div class="card">
+    <h3>练习：构建多模块 Agent 项目</h3>
+    <p>在 L01 创建的项目基础上，把它拆分为多个模块，练习 import 机制。<strong>先自己做，再看答案。</strong></p>
+
+    <h4>任务清单</h4>
+    <ol>
+      <li>创建以下目录结构：
+        <pre><code>agent-hello/
+├── agent/
+│   ├── __init__.py
+│   ├── core.py        # 主逻辑
+│   ├── schemas.py     # 数据模型
+│   └── config.py      # 配置管理
+├── main.py
+└── tests/
+    └── test_core.py</code></pre>
+      </li>
+      <li>在 <code>schemas.py</code> 中定义一个 Message 类</li>
+      <li>在 <code>core.py</code> 中用绝对导入使用 Message</li>
+      <li>在 <code>__init__.py</code> 中导出 Agent 和 Message，定义 <code>__all__</code></li>
+      <li>在 <code>main.py</code> 中使用 <code>__name__ == "__main__"</code></li>
+      <li>运行并验证</li>
+    </ol>
+
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+
+      <h4>步骤 1：创建目录结构</h4>
+      <pre><code>mkdir -p agent-hello/agent agent-hello/tests
+touch agent-hello/agent/__init__.py
+touch agent-hello/tests/__init__.py</code></pre>
+
+      <h4>步骤 2：schemas.py</h4>
+      <pre><code># agent/schemas.py
+class Message:
+    def __init__(self, role: str, content: str):
+        self.role = role
+        self.content = content
+
+    def __repr__(self):
+        return f"Message(role='{self.role}', content='{self.content}')"</code></pre>
+
+      <h4>步骤 3：core.py</h4>
+      <pre><code># agent/core.py
+from agent.schemas import Message  # 绝对导入
+
+def create_response(user_input: str) -> Message:
+    return Message(role="assistant", content=f"你说的是：{user_input}")</code></pre>
+
+      <h4>步骤 4：__init__.py</h4>
+      <pre><code># agent/__init__.py
+from .core import create_response
+from .schemas import Message
+
+__all__ = ["create_response", "Message"]</code></pre>
+
+      <h4>步骤 5：main.py</h4>
+      <pre><code># main.py
+from agent.core import create_response
+
+def run():
+    msg = create_response("Hello Agent!")
+    print(msg)
+
+if __name__ == "__main__":
+    run()</code></pre>
+
+      <h4>步骤 6：运行验证</h4>
+      <pre><code>$ python main.py
+# 输出: Message(role='assistant', content='你说的是：Hello Agent!')</code></pre>
+
+      <h4>思考题</h4>
+      <ul>
+        <li>如果把 <code>from agent.schemas import Message</code> 改成 <code>from .schemas import Message</code>，在 core.py 中能工作吗？为什么？</li>
+        <li>如果在 <code>tests/test_core.py</code> 中导入 <code>agent.core</code>，Python 怎么找到它？</li>
+        <li>如果 <code>core.py</code> 和 <code>tools.py</code> 互相导入，会发生什么？怎么解决？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<!-- ==================== 知识图谱 ==================== -->
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>Python 执行流程
+├── .py 源代码
+│   └── 编译为字节码（.pyc，存在 __pycache__）
+└── PVM 逐条执行字节码
+
+__name__ 机制
+├── 直接运行 → __name__ == "__main__"
+└── 被 import → __name__ == "模块名"
+    └── 用途：保护直接运行的代码
+
+模块与包
+├── 模块 = 一个 .py 文件
+├── 包 = 包含 __init__.py 的目录
+│   ├── __init__.py：定义公开接口
+│   └── __all__：控制 from package import *
+└── 命名空间包（3.3+）：__init__.py 可选但推荐
+
+import 机制
+├── 查找顺序：sys.modules → 内置 → sys.path
+├── 绝对导入：from agent.core import run（推荐）
+├── 相对导入：from .core import run（包内使用）
+└── 虚拟环境改变 sys.path 优先级
+
+循环导入
+├── 原因：模块 A 导入 B，B 又导入 A
+├── 方案 1：延迟导入（函数内部 import）
+├── 方案 2：提取公共模块
+└── 方案 3：TYPE_CHECKING 条件导入</code></pre>
+  </div>
+</div>
+
+<!-- ==================== 面试常见问题 ==================== -->
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：Python 的执行流程是什么？</h3>
+    <p><strong>答：</strong>Python 先将源代码编译为字节码（.pyc），然后由 Python 虚拟机（PVM）逐条执行字节码。字节码缓存在 __pycache__ 目录中，下次运行时如果源文件没有修改，会直接加载缓存。</p>
+
+    <h3>Q2：<code>__name__ == "__main__"</code> 的作用是什么？</h3>
+    <p><strong>答：</strong>用于判断文件是被直接运行还是被 import。直接运行时 __name__ 是 "__main__"，被 import 时是模块名。常用于保护测试代码或启动代码，防止被 import 时意外执行。</p>
+
+    <h3>Q3：模块和包的区别？</h3>
+    <p><strong>答：</strong>模块是一个 .py 文件，包是包含 __init__.py 的目录。包用于组织多个模块，形成层次化的命名空间。Python 3.3+ 引入了命名空间包，__init__.py 不再是必须的，但仍然推荐使用。</p>
+
+    <h3>Q4：什么是循环导入？怎么解决？</h3>
+    <p><strong>答：</strong>当两个模块互相导入时发生。解决方法：1）延迟导入（在函数内部 import）；2）提取公共模块到第三个模块；3）使用 TYPE_CHECKING 条件导入（仅用于类型注解）。</p>
+
+    <h3>Q5：import 的查找顺序是什么？</h3>
+    <p><strong>答：</strong>1）sys.modules 缓存（已导入的模块）；2）内置模块；3）sys.path（当前目录、PYTHONPATH、标准库、site-packages）。虚拟环境会改变 sys.path 的优先级。</p>
+
+    <h3>Q6：<code>__all__</code> 的作用是什么？</h3>
+    <p><strong>答：</strong>定义包的公开接口，控制 <code>from package import *</code> 的行为。只有在 __all__ 列表中的名字才会被导出。显式导入（from package import name）不受影响。</p>
+  </div>
+</div>
+
+<!-- ==================== 参考资源 ==================== -->
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/tutorial/modules.html" target="_blank">Python 官方教程：模块</a> — 最权威的参考</li>
+      <li>· <a href="https://realpython.com/python-init-py/" target="_blank">Real Python: What Is __init__.py For?</a> — 深入讲解 __init__.py</li>
+      <li>· <a href="https://realpython.com/python-import/" target="_blank">Real Python: Python Import System</a> — 完整的 import 机制讲解</li>
+      <li>· <a href="https://stackoverflow.com/questions/1556387/circular-import-dependency-in-python" target="_blank">Stack Overflow: Circular Import Solutions</a> — 循环导入解决方案</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 总结 ==================== -->
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>Python 先编译为字节码，再由 PVM 执行</li>
+      <li><code>__name__ == "__main__"</code> 保护直接运行的代码</li>
+      <li>模块 = .py 文件，包 = 含 __init__.py 的目录</li>
+      <li>import 查找顺序：sys.modules → 内置 → sys.path</li>
+      <li>相对导入只能在包内部使用，main.py 用绝对导入</li>
+      <li>循环导入用延迟导入或提取公共模块解决</li>
+      <li><code>__all__</code> 控制包的公开接口</li>
+      <li>保持 __init__.py 轻量，避免拖慢启动速度</li>
+    </ul>
+  </div>
+</div>
+
+
+</main>
+
+<!-- 侧边目录 -->
+<aside class="toc" id="toc"></aside>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

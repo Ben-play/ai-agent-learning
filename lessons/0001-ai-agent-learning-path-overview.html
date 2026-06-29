@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Agent 高级开发工程师 · 学习路径总览</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+  <h1>AI Agent 高级开发工程师</h1>
+  <p>从 Python 基础到生产级多智能体系统，你的完整成长路线图</p>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <span class="hero-stat-num">11</span>
+      <span class="hero-stat-label">学习阶段</span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-num">100+</span>
+      <span class="hero-stat-label">课时</span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-num">18-24</span>
+      <span class="hero-stat-label">周完成</span>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-num">15+</span>
+      <span class="hero-stat-label">面试题覆盖</span>
+    </div>
+  </div>
+</div>
+
+<p>2024-2026 年，AI Agent 正在从"能聊天的机器人"进化为"能自主完成复杂任务的智能系统"。掌握 Agent 开发，意味着你能构建真正<strong>自主</strong>的智能系统。</p>
+
+<h2>学习路径</h2>
+<p style="font-size:0.9rem; color:var(--muted); margin-bottom:1rem;">点击每个阶段可展开/收起详细内容</p>
+
+<!-- Visual Roadmap -->
+<div class="roadmap">
+  <div class="roadmap-group">
+    <span class="roadmap-node"><span class="roadmap-node-num">1</span> Python</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">2</span> AI 知识</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">3</span> LLM API</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">4</span> Prompt</span>
+  </div>
+  <div class="roadmap-arrow" style="font-size:0.9rem;">↘</div>
+  <div class="roadmap-group">
+    <span class="roadmap-node"><span class="roadmap-node-num">5</span> Agent 核心</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">6</span> 框架入门</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">7</span> 数据 + RAG</span>
+  </div>
+  <div class="roadmap-arrow" style="font-size:0.9rem;">↘</div>
+  <div class="roadmap-group">
+    <span class="roadmap-node"><span class="roadmap-node-num">8</span> 工程实践</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">9</span> 高级能力</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">10</span> 生产框架</span>
+    <span class="roadmap-arrow">→</span>
+    <span class="roadmap-node"><span class="roadmap-node-num">11</span> 部署迭代</span>
+  </div>
+</div>
+
+<div class="phase-timeline">
+
+<!-- ============ 阶段 1 ============ -->
+<div class="phase" data-num="1">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>Python 基础与 Agent 导向工程素养</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">22 课</span>
+      <span class="phase-meta-item">2-3 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-python">Python</span>
+    <span class="tag tag-deploy">工程</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>Part A · Python 基础快速复习：</strong>环境搭建 + Agent 项目结构、模块系统、变量/类型/数据结构（Dict 深度操作）、流程控制 + Prompt 构造模式<br><br>
+      <strong>Part B · Python 进阶特性：</strong>函数与闭包、@dataclass（与 Pydantic 对比）、继承与 __call__、JSON/Dict 深度操作、异常处理与上下文管理器、装饰器（@tool/@chain 模式）<br><br>
+      <strong>Part C · Agent 导向工程技能：</strong><br>
+      · <strong>生成器与 Streaming</strong> — LLM 流式响应处理模式<br>
+      · <strong>类型提示系统</strong> — Generic/Protocol 在 Agent 中的应用<br>
+      · <strong>Pydantic 数据验证</strong> — Tool Schema 设计、JSON Schema 导出、dataclass vs Pydantic 对比<br>
+      · <strong>async/await 与并发</strong> — GIL 概念、事件循环、并发 LLM 调用、超时控制<br><br>
+      <strong>实战练习：</strong>每课都有 Agent 场景练习 — 解析 LLM 响应、构建 Prompt 模板引擎、手写 @tool 装饰器、设计 Pydantic Schema、并发 LLM 调用
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 2 ============ -->
+<div class="phase" data-num="2">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>AI 知识与模型选型</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">8 课</span>
+      <span class="phase-meta-item">1.5 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-llm">AI</span>
+    <span class="tag tag-interview">面试</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>Module 2.1 · LLM 本质与核心概念：</strong><br>
+      · <strong>LLM 是什么</strong> — 语言模型本质（概率预测）、Transformer 直觉（不写代码）、注意力机制的作用<br>
+      · <strong>Token 深度理解</strong> — Tokenization 原理、BPE 算法、中文 vs 英文 Token 差异、tiktoken 计数、Token 与成本关系<br>
+      · <strong>生成参数解密</strong> — Temperature（创造力控制）、Top-P（采样范围）、频率惩罚、不同任务的参数组合<br><br>
+      <strong>Module 2.2 · 模型能力、局限与选型：</strong><br>
+      · <strong>幻觉问题全解</strong> — 什么是幻觉、为什么发生、检测方法、缓解策略（RAG/CoT/Self-Consistency）<br>
+      · <strong>模型能力边界</strong> — 能做什么 vs 不能做什么、Base Model vs Instruction-Tuned Model<br>
+      · <strong>推理模型与 Extended Thinking</strong> — 标准模型 vs 推理模型、何时用哪个<br>
+      · <strong>2026 模型选型实战</strong> — GPT-5/Claude 4/Gemini 2.5/DeepSeek/Qwen 能力对比、选型决策框架<br><br>
+      <strong>Module 2.3 · Token 经济学：</strong>各主流模型价格对比、隐藏成本、成本计算公式、Token 预算制定<br><br>
+      <div class="interview-box">"LLM 工作原理" / "为什么中文消耗更多 Token" / "Temperature 0 vs 1" / "如何减少幻觉" / "推理模型是什么" / "如何选模型" / "如何优化成本" — 共 7+ 道高频题</div><br>
+      <strong>实战项目：</strong>用 API 对比不同模型 + 幻觉测试 + 成本计算，输出综合报告
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 3 ============ -->
+<div class="phase" data-num="3">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>LLM API 工程实践</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">10 课</span>
+      <span class="phase-meta-item">2.5 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-llm">API</span>
+    <span class="tag tag-interview">面试</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>Module 3.1 · API 基础：</strong>主流 API 快速上手（OpenAI/Anthropic/Google）、Streaming 流式输出<br><br>
+      <strong>Module 3.2 · 核心能力（Agent 必备）：</strong><br>
+      · <strong>Function Calling</strong> — 工具定义、模型调用工具流程、多工具选择<br>
+      · <strong>Structured Output</strong> — JSON mode、Pydantic 约束、输出验证与重试<br>
+      · <strong>多模态 API</strong> — 图片理解（Vision）、音频转录（Whisper）<br><br>
+      <strong>Module 3.3 · 工程实践（生产级）：</strong><br>
+      · <strong>Context Window 管理</strong> — 上下文压缩、滑动窗口、摘要记忆<br>
+      · <strong>错误处理与重试策略</strong> — 速率限制（429）、指数退避、重试预算<br>
+      · <strong>模型路由与 Fallback</strong> — 主备模型策略、AI Gateway 模式<br>
+      · <strong>LLM 可观测性基础</strong> — 调用日志、Token 用量追踪、成本告警<br><br>
+      <div class="interview-box">"Streaming 好处" / "Function Calling 原理" / "如何保证输出格式" / "Context Window 超限" / "如何处理速率限制" / "主模型挂了怎么办" / "如何监控 LLM 质量" — 共 8+ 道高频题</div><br>
+      <strong>实战项目：</strong>构建多模型 Agent 客户端 — 流式输出 + 工具调用 + 结构化输出 + 错误重试 + 模型 Fallback + 成本追踪
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 4 ============ -->
+<div class="phase" data-num="4">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>Prompt Engineering 与 Context Engineering 基础</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">6-8 课</span>
+      <span class="phase-meta-item">2 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-llm">Prompt</span>
+    <span class="tag tag-agent">Context</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>Prompt Engineering：</strong>System Prompt 设计、Few-shot Learning、Chain-of-Thought 推理、Structured Output 结构化输出、Prompt 模板化与复用、版本管理与 A/B 测试<br><br>
+      <strong>Context Engineering 基础（2026 核心技能）：</strong>什么是上下文工程（比 Prompt Engineering 更上层）、动态上下文组装思路、上下文压缩与摘要策略初探、RAG 检索结果作为上下文注入<br><br>
+      <strong>实战项目：</strong>设计一套 Prompt 模板系统 + 上下文组装管线，支持动态组装、版本管理和效果对比
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 5 ============ -->
+<div class="phase" data-num="5">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>Agent 核心架构：Loop、Harness 与工具设计</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">10-12 课</span>
+      <span class="phase-meta-item">3-4 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-agent">Agent</span>
+    <span class="tag tag-deploy">Harness</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>Agent Loop（核心执行循环）：</strong>Observe → Think → Act → Observe 循环、循环控制、错误恢复与重试策略<br><br>
+      <strong>Agent Harness（2026 主导架构）：</strong>Anthropic 发布 3 篇工程论文定义的新范式。"好模型 + 好 harness > 好模型 + 差 harness"：<br>
+      · <strong>棘轮效应（Ratchet）：</strong>每次 Agent 犯错，就加一条规则防止再犯<br>
+      · <strong>行为驱动设计：</strong>从"期望行为"反推 harness 组件<br>
+      · 生命周期管理、工具执行调度、完成标准、错误恢复<br><br>
+      <strong>Context Engineering 进阶：</strong>动态上下文组装、压缩/摘要策略、滑动窗口、记忆注入、Token 预算分配<br><br>
+      <strong>工具设计哲学（2026 关键技能）：</strong>Schema 设计、错误处理、粒度控制、工具组合、工具测试<br><br>
+      <strong>经典模式：</strong>ReAct、Plan-and-Execute、Reflexion<br><br>
+      <strong>记忆与 Human-in-the-Loop：</strong>短期/长期/工作记忆设计、Mem0、人工审批节点<br><br>
+      <strong>实战项目：</strong>从零实现一个完整的 Agent Harness — ReAct 模式 + 自定义工具 + Context Engineering + 记忆系统 + 人工审批
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 6 ============ -->
+<div class="phase" data-num="6">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>Agent 框架入门与 MCP 实战</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">5-6 课</span>
+      <span class="phase-meta-item">1-2 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-agent">框架</span>
+    <span class="tag tag-llm">MCP</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>轻量框架实战（选一个深入）：</strong><br>
+      · <strong>Pydantic AI</strong> — 类型安全的 Agent 框架，与 Pydantic 技能完美衔接<br>
+      · <strong>OpenAI Agents SDK</strong> — OpenAI 官方轻量框架，API 设计简洁<br><br>
+      <strong>MCP 基础实战：</strong>Server/Client/Transport/Tool/Resource 核心概念、使用现成 MCP Server 为 Agent 添加工具<br><br>
+      <strong>实战项目：</strong>用 Pydantic AI 或 OpenAI Agents SDK 构建完整 Agent — 集成 MCP 工具 + 多步骤推理 + 人工审批
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 7 ============ -->
+<div class="phase" data-num="7">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>数据基础与 RAG</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">10-12 课</span>
+      <span class="phase-meta-item">3-4 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-python">数据</span>
+    <span class="tag tag-rag">RAG</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>数据基础（精简版）：</strong>PostgreSQL + SQLAlchemy ORM、Redis 缓存、PDF/HTML/Markdown 解析、数据清洗与分块策略、httpx/Crawl4AI<br><br>
+      <strong>向量数据库：</strong>Embedding 原理与模型选型、Chroma/Pinecone/Weaviate/Milvus 实战、HNSW/IVF 索引、混合检索<br><br>
+      <strong>RAG 体系：</strong><br>
+      · RAG 基础：文档切分 → 向量化 → 检索 → 生成<br>
+      · 检索优化：HyDE、Multi-Query、Reranking<br>
+      · Agentic RAG（2026 核心）：Self-RAG、Corrective RAG、Adaptive RAG<br>
+      · GraphRAG：知识图谱 + 向量检索融合<br>
+      · RAG 评估：RAGAS 框架、Faithfulness/Relevance 指标<br><br>
+      <strong>实战项目：</strong>为阶段 6 的 Agent 添加 RAG 能力 — 文档管线 → 向量数据库 → 自主检索策略 → RAGAS 评估
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 8 ============ -->
+<div class="phase" data-num="8">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>Agent 工程实践：可观测性、评估、安全与成本</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">8-10 课</span>
+      <span class="phase-meta-item">2-3 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-agent">工程</span>
+    <span class="tag tag-deploy">生产级</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>可观测性（Observability）：</strong>LangSmith/Langfuse/Phoenix 链路追踪、结构化日志、告警机制<br><br>
+      <strong>评估体系（Evaluation）：</strong>LLM-as-Judge（2026 标准）、Agent 行为测试、回归测试、RAGAS/DeepEval、评估驱动开发<br><br>
+      <strong>安全基础（Security）：</strong>Prompt Injection 防御、工具权限模型、数据隐私、Guardrails 框架<br><br>
+      <strong>成本工程（Cost Engineering）：</strong>模型路由、语义缓存、Token 预算管理、成本监控<br><br>
+      <strong>实战项目：</strong>为你的 Agent 添加可观测性 + LLM-as-Judge 评估 + 安全防护 + 成本监控，实现成本降低 50%
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 9 ============ -->
+<div class="phase" data-num="9">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>高级 Agent 能力</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">5-6 课</span>
+      <span class="phase-meta-item">1-2 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-agent">高级</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>Extended Thinking：</strong>Claude 深度推理能力、思维链、思考预算管理<br><br>
+      <strong>Computer Use & Browser Agent：</strong>Claude Computer Use、Playwright MCP、GUI 自动化<br><br>
+      <strong>Agentic Coding（2026 爆发）：</strong>Claude Code/Codex/Gemini CLI 架构分析、Harness + Scaffolding 架构<br><br>
+      <strong>Long-running Agents：</strong>状态持久化、错误恢复、检查点机制<br><br>
+      <strong>实战项目：</strong>构建 Computer Use Agent 或 Agentic Coding Agent（选学）
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 10 ============ -->
+<div class="phase" data-num="10">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>生产级框架与多智能体系统</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">8-10 课</span>
+      <span class="phase-meta-item">2-3 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-agent">框架</span>
+    <span class="tag tag-llm">协议</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>生产级框架：</strong>LangGraph（状态机编排，图结构、条件分支、持久化检查点）、CrewAI（角色协作）<br><br>
+      <strong>MCP 深度实战：</strong>自定义 MCP Server 开发、安全模型、生产环境部署<br><br>
+      <strong>多智能体模式：</strong>Orchestrator-Worker、Hierarchical、Debate、Swarm<br><br>
+      <strong>Agent 协议概览：</strong>A2A（了解）、ACP/UCP/ANP（关注）<br><br>
+      <strong>Agent 产品架构分析（2026 案例教学）：</strong><br>
+      · <strong>OpenClaw</strong> — 协调型 Agent，Hub-and-spoke 架构，250K+ Stars<br>
+      · <strong>Hermes Agent</strong> — 自主型 Agent，四层记忆 + Learning Loop<br>
+      · 对比分析两种设计哲学，用 LangGraph + MCP 复现类似架构<br><br>
+      <strong>实战项目：</strong>用 LangGraph 构建多步骤多 Agent 工作流 + 分析 OpenClaw/Hermes 核心模块并重新实现
+    </div>
+  </div>
+</div>
+
+<!-- ============ 阶段 11 ============ -->
+<div class="phase" data-num="11">
+  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h3>生产部署与持续迭代</h3>
+    <div class="phase-meta">
+      <span class="phase-meta-item">6-8 课</span>
+      <span class="phase-meta-item">2 周</span>
+    </div>
+    <div class="phase-toggle">▼</div>
+  </div>
+  <div class="phase-tags">
+    <span class="tag tag-deploy">生产</span>
+    <span class="tag tag-agent">迭代</span>
+  </div>
+  <div class="phase-body">
+    <div class="card">
+      <strong>部署：</strong>FastAPI 服务化、Docker 容器化、Serverless、CI/CD、限流与容错、灰度发布<br><br>
+      <strong>生产安全加固：</strong>越狱攻击检测、合规性、审计日志<br><br>
+      <strong>Agent 迭代方法论（2026 核心循环）：</strong><br>
+      · 评估驱动开发 — 先定义"好"的标准，再优化 Agent<br>
+      · 棘轮迭代 — 每次故障加一条 harness 规则，只增不减<br>
+      · A/B 测试、数据飞轮、生产事故响应<br><br>
+      <strong>实战项目：</strong>部署到生产环境 + 配置监控告警 + 完成一轮完整迭代改进循环
+    </div>
+  </div>
+</div>
+
+</div><!-- end phase-timeline -->
+
+<h2>技术栈速览</h2>
+<table>
+  <tr><th>领域</th><th>主要工具</th></tr>
+  <tr><td>语言 & 工程</td><td>Python 3.11+, Git, ruff, mypy, pre-commit, uv</td></tr>
+  <tr><td>LLM API</td><td>OpenAI, Anthropic Claude, Google Gemini, tiktoken</td></tr>
+  <tr><td>AI Gateway</td><td>Portkey, LiteLLM — 统一 API、自动 Fallback、速率限制</td></tr>
+  <tr><td>Agent 框架（轻量）</td><td>Pydantic AI, OpenAI Agents SDK（阶段 6 快速上手）</td></tr>
+  <tr><td>Agent 框架（生产级）</td><td>LangGraph, CrewAI（阶段 10 深入）</td></tr>
+  <tr><td>Agent 产品案例</td><td>OpenClaw（协调型）, Hermes Agent（自主型）— 架构分析</td></tr>
+  <tr><td>Agent 协议</td><td>MCP (深度实战), A2A (了解), ACP/UCP/ANP (关注)</td></tr>
+  <tr><td>Agent 核心</td><td>Agent Loop, Agent Harness, Context Engineering, Ratchet, Extended Thinking</td></tr>
+  <tr><td>Agent 记忆</td><td>Mem0, LangChain Memory, 向量 DB 长期记忆</td></tr>
+  <tr><td>数据库</td><td>PostgreSQL, MySQL, Redis, SQLAlchemy</td></tr>
+  <tr><td>数据处理</td><td>PyMuPDF, BeautifulSoup, httpx, Crawl4AI</td></tr>
+  <tr><td>向量数据库</td><td>Chroma, Pinecone, Weaviate, Milvus</td></tr>
+  <tr><td>RAG</td><td>LlamaIndex, LangChain, Agentic RAG, GraphRAG, Reranking</td></tr>
+  <tr><td>评估</td><td>LLM-as-Judge, RAGAS, DeepEval, pytest, A/B 测试</td></tr>
+  <tr><td>可观测性</td><td>LangSmith, Langfuse, Phoenix, MLflow Agent Tracing</td></tr>
+  <tr><td>安全</td><td>Guardrails AI, NeMo Guardrails, Prompt Injection 防御, 沙箱</td></tr>
+  <tr><td>成本优化</td><td>模型路由, 语义缓存 (GPTCache), Token 预算管理</td></tr>
+  <tr><td>部署</td><td>FastAPI, Docker, Serverless, CI/CD</td></tr>
+</table>
+
+<h2>v6 变化日志</h2>
+<table>
+  <tr><th>版本</th><th>变化</th><th>说明</th></tr>
+  <tr><td rowspan="6"><strong>v6.0</strong></td><td><strong>AI + LLM + Prompt 前移</strong></td><td>紧接 Python，形成「Python → AI → LLM API → Prompt」一气呵成的工具链</td></tr>
+  <tr><td><strong>框架紧接核心架构</strong></td><td>新增 Phase 6（Agent 框架入门 + MCP），学完理论立即实战</td></tr>
+  <tr><td><strong>数据基础 + RAG 合并</strong></td><td>数据库、数据处理、向量DB、RAG 合并为 Phase 7</td></tr>
+  <tr><td><strong>框架分层</strong></td><td>Phase 6 轻量框架（快速上手），Phase 10 生产级框架（LangGraph）</td></tr>
+  <tr><td><strong>总数精简</strong></td><td>12 → 11 阶段，更紧凑</td></tr>
+  <tr><td><strong>6 周出 Agent</strong></td><td>Phase 1-6 完成后就能写出可运行的 Agent</td></tr>
+  <tr><td rowspan="2"><strong>v6.1</strong></td><td><strong>Phase 2 增强</strong></td><td>新增幻觉全解、推理模型、Token 经济学、模型选型决策框架。覆盖 7+ 道面试高频题</td></tr>
+  <tr><td><strong>Phase 3 增强</strong></td><td>新增错误重试、模型 Fallback、AI Gateway、可观测性基础。覆盖 8+ 道面试高频题</td></tr>
+  <tr><td><strong>v6.2</strong></td><td><strong>Phase 10 新增</strong></td><td>Agent 产品架构分析：OpenClaw（协调型）vs Hermes Agent（自主型）</td></tr>
+</table>
+
+<div class="tip">
+  <strong>v6 设计原则：</strong><br>
+  · <strong>面试导向 + 实战导向</strong> — Phase 2/3 覆盖 15+ 道 AI/LLM 面试高频题<br>
+  · <strong>先建 Agent，再加知识</strong> — 学完核心架构立即用框架实战，RAG 作为 Agent 能力扩展<br>
+  · <strong>框架分层学习</strong> — 轻量框架（Phase 6）→ 生产级框架（Phase 10）<br>
+  · <strong>6 周出 Agent</strong> — Phase 1-6 完成后就能写出可运行的 Agent<br>
+  · <strong>生产级思维</strong> — 从 Phase 3 开始就培养错误处理、成本控制、可观测性的工程习惯
+</div>
+
+<h2>当前阶段建议</h2>
+<p>建议从 <strong>阶段 1：Python 基础与 Agent 导向工程素养</strong> 开始。如果你已经有 Python 基础，告诉我你目前的水平，我会调整起点。</p>
+
+<div class="source">
+  <strong>推荐阅读：</strong><br>
+  · <a href="https://www.anthropic.com/research/building-effective-agents" target="_blank">Anthropic: Building Effective Agents</a> — Agent 设计模式权威指南<br>
+  · <a href="https://www.anthropic.com/engineering/claude-code-harness" target="_blank">Anthropic: Harness Engineering</a> — Harness 工程实践<br>
+  · <a href="https://lilianweng.github.io/posts/2023-06-23-agent/" target="_blank">Lilian Weng: LLM Powered Autonomous Agents</a> — Agent 技术全景综述<br>
+  · <a href="https://www.deeplearning.ai/short-courses/" target="_blank">DeepLearning.AI 短课程</a> — 系统学习 Agent 相关课程<br>
+  · <a href="https://modelcontextprotocol.io" target="_blank">MCP 官方文档</a> — 工具连接标准协议<br><br>
+  <strong>2026 技术参考：</strong><br>
+  · <a href="../reference/0001-glossary.html">术语表</a> — Agent 开发核心概念速查
+</div>
+
+<div class="nav">
+  <span></span>
+  <a href="0002-phase1-python-outline.html">下一课：Phase 1 Python 详细大纲 →</a>
+</div>
+
+<footer>
+  AI Agent 高级开发工程师课程 · 如有疑问，随时问我
+</footer>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+</body>
+</html>

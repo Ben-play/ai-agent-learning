@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Harness 架构参考 · 2026</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .layer { 
+      margin-bottom: 1.5rem; 
+      padding: 1rem; 
+      background: var(--bg); 
+      border-left: 4px solid var(--accent); 
+      border-radius: 4px;
+    }
+    .layer h3 { 
+      margin-top: 0; 
+      color: var(--accent); 
+    }
+    .comparison { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 1rem; 
+      margin: 1rem 0;
+    }
+    .comparison > div { 
+      padding: 1rem; 
+      background: var(--bg); 
+      border-radius: 4px;
+    }
+    .comparison h4 { 
+      margin-top: 0; 
+      color: var(--accent); 
+    }
+    @media (max-width: 600px) {
+      .comparison { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Agent Harness 架构参考</h1>
+<p>2026 年 Agent 开发的主流架构模式。Harness Engineering 正在取代 Prompt Engineering 成为核心技能。</p>
+
+<h2>什么是 Agent Harness？</h2>
+<p>Agent Harness 是围绕 LLM 的<strong>脚手架系统</strong>，决定 Agent 如何运行、何时停止、如何处理错误。它不是单个 Prompt，而是整个运行环境的设计。</p>
+
+<blockquote>
+  "A harness decides which context is loaded, which tools are available, what 'done' actually means, what checks must pass before progress is accepted."<br>
+  — <a href="https://www.linkedin.com/pulse/agent-harness-architecture-dominate-2026-bassel-haidar-sczfe">Agent Harness: The Architecture that will Dominate 2026</a>
+</blockquote>
+
+<h2>四层架构</h2>
+
+<div class="layer">
+  <h3>Layer 1: Agent Reasoning（推理层）</h3>
+  <p>LLM 的核心推理能力。包括：</p>
+  <ul>
+    <li>Chain-of-Thought 推理</li>
+    <li>Extended Thinking（深度推理）</li>
+    <li>规划和决策能力</li>
+    <li>自我反思和纠错</li>
+  </ul>
+</div>
+
+<div class="layer">
+  <h3>Layer 2: Context Engineering（上下文工程）</h3>
+  <p>决定 Agent 能"看到"什么信息。包括：</p>
+  <ul>
+    <li>上下文窗口管理（200K+ tokens）</li>
+    <li>动态上下文加载和卸载</li>
+    <li>记忆系统（短期/长期）</li>
+    <li>RAG 检索结果整合</li>
+    <li>工具调用结果缓存</li>
+  </ul>
+</div>
+
+<div class="layer">
+  <h3>Layer 3: Tooling（工具层）</h3>
+  <p>Agent 能"做"什么。包括：</p>
+  <ul>
+    <li>工具注册和发现（MCP 协议）</li>
+    <li>工具调用调度和并发控制</li>
+    <li>权限管理和安全沙箱</li>
+    <li>工具执行结果处理</li>
+  </ul>
+</div>
+
+<div class="layer">
+  <h3>Layer 4: Persistence（持久化层）</h3>
+  <p>Agent 的状态如何保存。包括：</p>
+  <ul>
+    <li>会话状态持久化</li>
+    <li>检查点和恢复</li>
+    <li>日志和可观测性</li>
+    <li>审计追踪</li>
+  </ul>
+</div>
+
+<h2>Prompt Engineering vs Harness Engineering</h2>
+
+<div class="comparison">
+  <div>
+    <h4>Prompt Engineering（旧范式）</h4>
+    <ul>
+      <li>关注单个 Prompt 的措辞</li>
+      <li>手动调优 few-shot 示例</li>
+      <li>静态的指令设计</li>
+      <li>适合单轮对话</li>
+      <li>2023-2025 主流</li>
+    </ul>
+  </div>
+  <div>
+    <h4>Harness Engineering（新范式）</h4>
+    <ul>
+      <li>关注整体运行环境设计</li>
+      <li>动态上下文管理</li>
+      <li>工具编排和错误处理</li>
+      <li>适合多轮 Agent 循环</li>
+      <li>2026 主流</li>
+    </ul>
+  </div>
+</div>
+
+<h2>关键设计原则</h2>
+
+<ol>
+  <li><strong>可观测性优先</strong>：每个决策都要可追踪、可调试</li>
+  <li><strong>优雅降级</strong>：工具失败时有备用方案</li>
+  <li><strong>上下文效率</strong>：只加载必要的上下文，避免窗口溢出</li>
+  <li><strong>安全边界</strong>：关键操作需要人工确认</li>
+  <li><strong>状态管理</strong>：支持中断恢复和长时运行</li>
+</ol>
+
+<h2>参考资源</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/html/2603.05344v1">arXiv:2603.05344 - Building AI Coding Agents: Scaffolding, Harness, Context Engineering</a>（2026-03）</li>
+  <li><a href="https://www.taskade.com/blog/agent-harness-explained">Taskade: What Is an AI Agent Harness?</a></li>
+  <li><a href="https://www.aimagicx.com/blog/harness-engineering-replacing-prompt-engineering-2026">Harness Engineering: Why the Way You Wrap AI Matters More Than Your Prompts</a></li>
+  <li><a href="https://www.langchain.com/state-of-agent-engineering">LangChain: State of Agent Engineering</a></li>
+</ul>
+
+<div class="nav">
+  <a href="../lessons/0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
+  <a href="0001-glossary.html">术语表 →</a>
+</div>
+
+<footer>
+  AI Agent 高级开发工程师课程 · Agent Harness 架构参考 · 2026-06-27 更新
+</footer>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/yemengyu/Junior-to-Senior/AI-Agent学习/code/phase1-python/part-a-basics)",
+      "Bash(mkdir -p /Users/yemengyu/Junior-to-Senior/AI-Agent学习/code/phase1-python/part-b-advanced)",
+      "Bash(mkdir -p /Users/yemengyu/Junior-to-Senior/AI-Agent学习/code/phase1-python/part-c-agent-core)",
+      "WebSearch",
+      "WebFetch(domain:openai.github.io)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -sL --max-time 10 \"https://raw.githubusercontent.com/openai/openai-agents-python/main/README.md\")",
+      "Bash(curl -sL --max-time 10 \"https://raw.githubusercontent.com/anthropics/claude-code/main/README.md\")"
+    ]
+  },
+  "enabledPlugins": {}
+}

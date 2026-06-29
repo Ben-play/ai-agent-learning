@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L03 · 变量、类型与数据结构</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<!-- 标题 -->
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>变量、类型与数据结构</h1>
+    <p class="subtitle">Python 数据层的核心 — Agent 处理一切信息的基础</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:20%"></div></div>
+  </div>
+</div>
+
+<!-- 课前引导 -->
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>LLM 返回的响应是嵌套 dict，Agent 配置是 dict，工具参数是 dict — 变量和数据结构是 Agent 开发的地基。如果 dict 操作不熟练，你写每一行 Agent 代码都会卡壳。而且可变默认参数陷阱、dict 嵌套访问这些坑，面试时一定会问。</p>
+  </div>
+</div>
+
+<!-- 学习目标 -->
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>理解 Python 变量的本质（引用 vs 值）</li>
+      <li>区分可变与不可变类型，解释其内存模型</li>
+      <li>熟练操作 list、dict、tuple、set 四大容器</li>
+      <li>使用推导式高效处理数据</li>
+      <li>掌握 dict 深度操作：嵌套访问、defaultdict、ChainMap、Counter</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 知识点 1 ==================== -->
+<div class="section">
+  <h2>1. 变量：标签，不是盒子</h2>
+
+  <p>很多初学者把变量想象成"盒子"，值装在盒子里。这是错的。</p>
+  <p>Python 变量是<strong>标签（引用）</strong>，贴在对象上：</p>
+
+  <pre><code>a = [1, 2, 3]
+b = a          # b 和 a 指向同一个列表对象
+b.append(4)
+print(a)       # [1, 2, 3, 4]  ← a 也变了！</code></pre>
+
+  <p>内存模型：</p>
+  <pre><code>a ──→ [1, 2, 3, 4] ←── b
+      （同一个对象）</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>LLM 返回的 response 对象经常被多个变量引用。如果你修改了一个引用的数据，其他引用也会受影响。这是 Agent 开发中常见的 bug 来源。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      下面代码的输出是什么？
+    </div>
+    <pre><code>x = [1, 2]
+y = x
+y = y + [3]
+print(x)</code></pre>
+    <div class="quiz-options">
+      <button data-answer="wrong">[1, 2, 3]</button>
+      <button data-answer="correct">[1, 2]</button>
+      <button data-answer="wrong">[3]</button>
+      <button data-answer="wrong">报错</button>
+    </div>
+    <div class="quiz-explanation">
+      <strong>y = y + [3]</strong> 创建了一个新列表对象，y 重新指向新对象。x 仍然指向原来的 [1, 2]。
+      <br>如果是 <code>y.append(3)</code>，那 x 就会变了。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 2 ==================== -->
+<div class="section">
+  <h2>2. 可变与不可变类型</h2>
+
+  <p>Python 的数据类型分为两大阵营：</p>
+
+  <table>
+    <tr>
+      <th>不可变（Immutable）</th>
+      <th>可变（Mutable）</th>
+    </tr>
+    <tr>
+      <td><code>int</code> <code>float</code> <code>str</code> <code>bool</code><br><code>tuple</code> <code>frozenset</code></td>
+      <td><code>list</code> <code>dict</code> <code>set</code></td>
+    </tr>
+    <tr>
+      <td>值不能修改，修改会创建新对象</td>
+      <td>值可以原地修改</td>
+    </tr>
+  </table>
+
+  <h3>不可变类型的"陷阱"</h3>
+  <pre><code>s = "hello"
+s[0] = "H"    # ❌ TypeError: 'str' 不支持 item assignment
+
+# 正确做法：创建新字符串
+s = "H" + s[1:]  # "Hello"</code></pre>
+
+  <h3>可变类型作为默认参数的陷阱</h3>
+  <pre><code>def add_item(item, lst=[]):    # ⚠️ 危险！
+    lst.append(item)
+    return lst
+
+print(add_item("a"))  # ["a"]
+print(add_item("b"))  # ["a", "b"]  ← 不是 ["b"]！</code></pre>
+
+  <p>原因：默认参数 <code>[]</code> 只在函数定义时创建一次，之后每次调用共享同一个列表对象。</p>
+
+  <pre><code># 正确做法
+def add_item(item, lst=None):
+    if lst is None:
+        lst = []
+    lst.append(item)
+    return lst</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Agent 的工具函数经常有默认参数。如果用了可变默认参数，会导致多次调用间状态串扰。这是 Agent 测试中最难发现的 bug 之一。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      下面哪个对象可以作为 dict 的 key？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="wrong">[1, 2, 3]</button>
+      <button data-answer="wrong">{"a": 1}</button>
+      <button data-answer="correct">(1, 2, 3)</button>
+      <button data-answer="wrong">{1, 2, 3}</button>
+    </div>
+    <div class="quiz-explanation">
+      dict 的 key 必须是 hashable 的，即不可变且可哈希。tuple 是不可变的，可以当 key。list、dict、set 都是可变的，不行。
+      注意：包含可变元素的 tuple（如 (1, [2, 3])）也不行。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 3 ==================== -->
+<div class="section">
+  <h2>3. 引用计数与垃圾回收</h2>
+
+  <p>Python 用引用计数管理内存。每个对象有一个计数器，记录有多少变量指向它：</p>
+
+  <pre><code>import sys
+
+a = [1, 2, 3]
+print(sys.getrefcount(a))  # 2（a 本身 + getrefcount 的参数）
+
+b = a
+print(sys.getrefcount(a))  # 3
+
+del b
+print(sys.getrefcount(a))  # 2</code></pre>
+
+  <p>当引用计数降为 0，对象被立即回收。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"Python 的垃圾回收机制是什么？"</p>
+    <p>答：主要靠引用计数，辅以分代回收处理循环引用。不可变对象（int/str）有缓存池优化。</p>
+  </div>
+</div>
+
+<!-- ==================== 知识点 4 ==================== -->
+<div class="section">
+  <h2>4. 四大容器：list / dict / tuple / set</h2>
+
+  <h3>list — 有序、可变、可重复</h3>
+  <pre><code># 创建
+tools = ["search", "calculator", "weather"]
+
+# 常用操作
+tools.append("file_reader")     # 末尾添加
+tools.insert(0, "planner")      # 指定位置插入
+tools.pop()                     # 移除末尾并返回
+tools.remove("calculator")      # 按值删除
+tools.sort()                    # 原地排序
+len(tools)                      # 长度
+
+# 切片（Agent 开发中用于截取对话历史）
+messages = ["msg1", "msg2", "msg3", "msg4", "msg5"]
+recent = messages[-3:]          # 最近 3 条消息
+except_last = messages[:-1]     # 除最后一条外的所有消息</code></pre>
+
+  <h3>dict — 键值对、有序（Python 3.7+）、可变</h3>
+  <pre><code># 创建（Agent 的核心数据结构）
+config = {
+    "model": "gpt-4",
+    "temperature": 0.7,
+    "max_tokens": 1000
+}
+
+# 访问
+config["model"]                 # "gpt-4"
+config.get("timeout", 30)      # 带默认值的安全访问
+
+# 修改
+config["temperature"] = 0.5     # 修改
+config["stream"] = True         # 新增
+
+# 遍历
+for key, value in config.items():
+    print(f"{key}: {value}")
+
+# 字典推导式
+tools = {"search": 10, "calc": 5, "weather": 8}
+limited = {k: min(v, 8) for k, v in tools.items()}
+# {"search": 8, "calc": 5, "weather": 8}</code></pre>
+
+  <h3>tuple — 有序、不可变、可重复</h3>
+  <pre><code># Agent 中用于不可变的配置
+POINT = (39.9, 116.4)           # 北京坐标
+API_VERSION = ("v1", "stable")
+
+# 解包
+x, y = POINT
+name, version = API_VERSION
+
+# tuple 的不可变性保护数据不被意外修改
+# 适合用作 dict 的 key
+locations = {
+    (39.9, 116.4): "北京",
+    (31.2, 121.5): "上海"
+}</code></pre>
+
+  <h3>set — 无序、不可重复</h3>
+  <pre><code># 去重（Agent 中用于去除重复工具调用）
+calls = ["search", "calc", "search", "weather", "calc"]
+unique_calls = set(calls)       # {"search", "calc", "weather"}
+
+# 集合运算
+allowed = {"search", "calc", "weather", "file"}
+requested = {"search", "hack", "weather"}
+blocked = requested - allowed   # {"hack"}
+approved = requested & allowed  # {"search", "weather"}</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Agent 系统中最常用的容器：</p>
+    <ul>
+      <li><strong>dict</strong>：配置、LLM 响应、工具参数 — 几乎无处不在</li>
+      <li><strong>list</strong>：对话历史、工具列表、批量结果</li>
+      <li><strong>tuple</strong>：不可变的元组数据（坐标、版本号）</li>
+      <li><strong>set</strong>：去重、权限检查、已处理记录</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 知识点 5 ==================== -->
+<div class="section">
+  <h2>5. 推导式：Python 的数据转换利器</h2>
+
+  <p>推导式是 Python 最强大的语法特性之一，Agent 开发中大量使用。</p>
+
+  <h3>列表推导式</h3>
+  <pre><code># 传统写法
+results = []
+for tool in tools:
+    if tool["enabled"]:
+        results.append(tool["name"])
+
+# 推导式（一行搞定）
+results = [tool["name"] for tool in tools if tool["enabled"]]
+
+# 带条件转换
+statuses = ["success", "error", "success", "pending"]
+icons = ["✅" if s == "success" else "❌" for s in statuses]
+# ["✅", "❌", "✅", "⏳"]</code></pre>
+
+  <h3>字典推导式</h3>
+  <pre><code># 从 LLM 响应中提取工具调用
+response = {
+    "tool_calls": [
+        {"name": "search", "args": {"q": "python"}},
+        {"name": "calc", "args": {"expr": "1+1"}}
+    ]
+}
+
+# 提取工具名和参数
+tool_map = {tc["name"]: tc["args"] for tc in response["tool_calls"]}
+# {"search": {"q": "python"}, "calc": {"expr": "1+1"}}</code></pre>
+
+  <h3>集合推导式</h3>
+  <pre><code># 提取所有唯一工具名
+all_calls = ["search", "calc", "search", "weather"]
+unique = {call for call in all_calls}
+# {"search", "calc", "weather"}</code></pre>
+
+  <h3>嵌套推导式（谨慎使用）</h3>
+  <pre><code># 扁平化嵌套列表
+nested = [[1, 2], [3, 4], [5, 6]]
+flat = [x for sublist in nested for x in sublist]
+# [1, 2, 3, 4, 5, 6]</code></pre>
+</div>
+
+<!-- ==================== 知识点 6 ==================== -->
+<div class="section">
+  <h2>6. dict 深度操作</h2>
+
+  <h3>嵌套访问：安全取值</h3>
+  <pre><code># LLM 响应通常有多层嵌套
+response = {
+    "choices": [{
+        "message": {
+            "tool_calls": [{
+                "function": {
+                    "name": "search",
+                    "arguments": '{"q": "python"}'
+                }
+            }]
+        }
+    }]
+}
+
+# ❌ 危险的写法（任何一层缺失就报错）
+name = response["choices"][0]["message"]["tool_calls"][0]["function"]["name"]
+
+# ✅ 安全的写法（封装为函数）
+def safe_get(d, *keys, default=None):
+    for key in keys:
+        if isinstance(d, dict):
+            d = d.get(key, default)
+        elif isinstance(d, list) and isinstance(key, int):
+            d = d[key] if 0 <= key < len(d) else default
+        else:
+            return default
+    return d
+
+name = safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "name")</code></pre>
+
+  <h3>defaultdict：自动创建默认值</h3>
+  <pre><code>from collections import defaultdict
+
+# 统计工具调用次数
+call_count = defaultdict(int)    # 默认值为 0
+calls = ["search", "calc", "search", "weather", "search"]
+for call in calls:
+    call_count[call] += 1
+# {"search": 3, "calc": 1, "weather": 1}
+
+# 按类型分组工具
+tools_by_type = defaultdict(list)  # 默认值为 []
+tools = [
+    {"name": "search", "type": "web"},
+    {"name": "calc", "type": "math"},
+    {"name": "weather", "type": "web"},
+]
+for tool in tools:
+    tools_by_type[tool["type"]].append(tool["name"])
+# {"web": ["search", "weather"], "math": ["calc"]}</code></pre>
+
+  <h3>ChainMap：合并多个字典</h3>
+  <pre><code>from collections import ChainMap
+
+# Agent 配置的优先级合并
+user_config = {"model": "gpt-4", "temperature": 0.9}
+project_config = {"model": "gpt-3.5", "max_tokens": 500}
+default_config = {"model": "gpt-3.5", "temperature": 0.7, "max_tokens": 1000}
+
+# user > project > default
+config = ChainMap(user_config, project_config, default_config)
+print(config["model"])        # "gpt-4"（user 优先）
+print(config["temperature"])  # 0.9（user 优先）
+print(config["max_tokens"])   # 500（project 优先）</code></pre>
+
+  <h3>其他常用 dict 方法</h3>
+  <pre><code># setdefault：获取值，不存在则设置默认值
+cache = {}
+result = cache.setdefault("key_123", compute_expensive())
+# 等价于：
+if "key_123" not in cache:
+    cache["key_123"] = compute_expensive()
+result = cache["key_123"]
+
+# update：合并字典
+base = {"model": "gpt-4", "temperature": 0.7}
+override = {"temperature": 0.9, "stream": True}
+base.update(override)  # {"model": "gpt-4", "temperature": 0.9, "stream": True}
+
+# dict | 运算符（Python 3.9+）
+merged = base | override  # 创建新字典，不修改原字典
+
+# Counter：计数器（Agent 中统计 token、工具调用）
+from collections import Counter
+words = ["hello", "world", "hello", "python", "hello"]
+word_count = Counter(words)
+print(word_count.most_common(2))  # [("hello", 3), ("world", 1)]</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>LLM 响应是嵌套 dict，Agent 配置有多层优先级，工具参数需要安全访问 — 这些都是 Agent 开发的日常。掌握 dict 深度操作是基本功。</p>
+  </div>
+</div>
+
+<!-- ==================== 知识点 7 ==================== -->
+<div class="section">
+  <h2>7. 类型转换与类型检查</h2>
+
+  <pre><code># 常用类型转换
+int("42")           # 42
+float("3.14")       # 3.14
+str(100)            # "100"
+list("hello")       # ["h", "e", "l", "l", "o"]
+dict([("a", 1), ("b", 2)])  # {"a": 1, "b": 2}
+
+# 类型检查
+isinstance(42, int)           # True
+isinstance("hi", str)         # True
+isinstance([1, 2], list)      # True
+isinstance({"a": 1}, dict)    # True
+
+# 检查多个类型
+isinstance(42, (int, float))  # True</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"isinstance 和 type 的区别？"</p>
+    <p>答：isinstance 支持继承关系检查（子类也返回 True），type 精确匹配类型。一般推荐用 isinstance。</p>
+  </div>
+</div>
+
+<!-- ==================== 实战练习 ==================== -->
+<div class="section">
+  <h2>实战练习</h2>
+
+  <div class="card">
+    <h3>练习：解析 LLM 响应</h3>
+    <p>给定一段模拟的 LLM JSON 响应，完成以下 5 个任务。<strong>先自己写，再看答案。</strong></p>
+
+    <pre><code># 模拟的 LLM 响应
+response = {
+    "id": "chatcmpl-abc123",
+    "object": "chat.completion",
+    "choices": [{
+        "index": 0,
+        "message": {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_001",
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "arguments": '{"query": "2026 AI agent", "max_results": 5}'
+                    }
+                },
+                {
+                    "id": "call_002",
+                    "type": "function",
+                    "function": {
+                        "name": "calculator",
+                        "arguments": '{"expression": "1500 * 0.8"}'
+                    }
+                }
+            ]
+        },
+        "finish_reason": "tool_calls"
+    }],
+    "usage": {"prompt_tokens": 120, "completion_tokens": 45, "total_tokens": 165}
+}</code></pre>
+
+    <h4>任务清单</h4>
+    <ol>
+      <li>提取 <code>response_id</code>、<code>finish_reason</code>、<code>total_tokens</code></li>
+      <li>提取所有工具调用，存为 list of dict（每个包含 call_id, name, arguments）</li>
+      <li>用推导式重写任务 2</li>
+      <li>用 defaultdict 统计工具调用次数</li>
+      <li>实现 safe_get() 函数，安全访问嵌套 dict</li>
+    </ol>
+
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+
+      <h4>任务 1：提取基本信息</h4>
+      <pre><code>response_id = response["id"]
+finish_reason = response["choices"][0]["finish_reason"]
+total_tokens = response["usage"]["total_tokens"]</code></pre>
+
+      <h4>任务 2：提取工具调用</h4>
+      <pre><code>import json
+
+tool_calls = response["choices"][0]["message"]["tool_calls"]
+parsed_calls = []
+for tc in tool_calls:
+    parsed_calls.append({
+        "call_id": tc["id"],
+        "name": tc["function"]["name"],
+        "arguments": json.loads(tc["function"]["arguments"])
+    })</code></pre>
+
+      <h4>任务 3：推导式版本</h4>
+      <pre><code>parsed_calls = [
+    {"call_id": tc["id"], "name": tc["function"]["name"],
+     "arguments": json.loads(tc["function"]["arguments"])}
+    for tc in tool_calls
+]</code></pre>
+
+      <h4>任务 4：统计调用次数</h4>
+      <pre><code>from collections import defaultdict
+
+call_count = defaultdict(int)
+for tc in tool_calls:
+    call_count[tc["function"]["name"]] += 1
+print(dict(call_count))</code></pre>
+
+      <h4>任务 5：safe_get 实现</h4>
+      <pre><code>def safe_get(d, *keys, default=None):
+    current = d
+    for key in keys:
+        if isinstance(d, dict):
+            d = d.get(key, default)
+        elif isinstance(d, list) and isinstance(key, int):
+            d = d[key] if 0 <= key < len(d) else default
+        else:
+            return default
+    return d
+
+# 测试
+print(safe_get(response, "choices", 0, "message", "content"))       # None
+print(safe_get(response, "choices", 99, "message", "content"))      # None</code></pre>
+    </details>
+  </div>
+</div>
+
+<!-- ==================== 知识图谱 ==================== -->
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>变量与类型
+├── 变量 = 引用（标签），不是值
+├── 不可变类型：int / float / str / bool / tuple
+│   └── 可以作为 dict 的 key
+├── 可变类型：list / dict / set
+│   └── 默认参数陷阱
+└── 引用计数 → 垃圾回收
+
+四大容器
+├── list：有序、可变、可重复
+│   └── 切片：messages[-3:]
+├── dict：键值对、有序（3.7+）
+│   ├── .get() 安全访问
+│   ├── .setdefault() 获取或设置默认值
+│   ├── .update() 合并字典
+│   └── dict | 运算符（3.9+）
+├── tuple：有序、不可变
+│   └── 解包：x, y = point
+└── set：无序、不可重复
+    └── 集合运算：- & |
+
+推导式
+├── 列表：[x for x in items if cond]
+├── 字典：{k: v for k, v in items}
+└── 集合：{x for x in items}
+
+collections 模块
+├── defaultdict → 自动默认值
+├── ChainMap → 多字典优先级合并
+└── Counter → 计数器（统计 token/工具调用）</code></pre>
+  </div>
+</div>
+
+<!-- ==================== 面试常见问题 ==================== -->
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：Python 可变类型和不可变类型的区别？</h3>
+    <p><strong>答：</strong>不可变类型（int/str/tuple）的值不能修改，修改会创建新对象。可变类型（list/dict/set）可以原地修改。不可变类型可以作为 dict 的 key，可变类型不行。</p>
+
+    <h3>Q2：Python dict 的底层实现是什么？</h3>
+    <p><strong>答：</strong>哈希表（Hash Table）。通过 key 的 hash 值定位存储位置，查找时间复杂度 O(1)。Python 3.7+ dict 保持插入顺序，是因为底层额外维护了一个链表。</p>
+
+    <h3>Q3：tuple 和 list 的区别？什么时候用 tuple？</h3>
+    <p><strong>答：</strong>tuple 不可变，list 可变。tuple 可以作为 dict 的 key，list 不行。tuple 比 list 更省内存。用 tuple 的场景：数据不应被修改时（坐标、RGB 颜色）、需要作为 dict key 时。</p>
+
+    <h3>Q4：defaultdict 和普通 dict 有什么区别？</h3>
+    <p><strong>答：</strong>defaultdict 在访问不存在的 key 时，会自动创建默认值（由构造参数指定），而不是抛出 KeyError。常用于计数和分组场景。</p>
+
+    <h3>Q5：什么是可变默认参数陷阱？怎么避免？</h3>
+    <p><strong>答：</strong>函数的默认参数如果是可变对象（如 list/dict），会在函数定义时创建一次，之后每次调用共享同一个对象。避免方法：用 None 作为默认值，在函数体内创建新对象。</p>
+
+    <h3>Q6：isinstance 和 type 的区别？</h3>
+    <p><strong>答：</strong>isinstance 支持继承关系检查（子类也返回 True），type 精确匹配类型。一般推荐用 isinstance，更符合多态设计。</p>
+  </div>
+</div>
+
+<!-- ==================== 参考资源 ==================== -->
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/library/stdtypes.html" target="_blank">Python 官方文档：内置类型</a> — 最权威的参考</li>
+      <li>· <a href="https://docs.python.org/3/library/collections.html" target="_blank">Python 官方文档：collections 模块</a> — defaultdict、Counter、ChainMap</li>
+      <li>· <a href="https://realpython.com/python-dicts/" target="_blank">Real Python: Dictionaries in Python</a> — 深入讲解 dict</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 总结 ==================== -->
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>Python 变量是引用（标签），不是值</li>
+      <li>不可变类型（str/tuple）可以当 dict key，可变类型不行</li>
+      <li>可变默认参数是经典陷阱，用 None 替代</li>
+      <li>四大容器各有适用场景，dict 是 Agent 开发的核心</li>
+      <li>推导式是 Python 的数据转换利器，一行顶十行</li>
+      <li>dict 深度操作（safe_get/defaultdict/ChainMap）是处理 LLM 响应的必备技能</li>
+    </ul>
+  </div>
+</div>
+
+
+</main>
+
+<!-- 侧边目录 -->
+<aside class="toc" id="toc"></aside>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

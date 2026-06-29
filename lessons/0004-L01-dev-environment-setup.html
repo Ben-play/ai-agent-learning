@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L01 · 开发环境搭建 — Python & 工具链</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .step {
+      margin: 1.5rem 0;
+      padding: 1.2rem 1.4rem;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.8rem;
+    }
+    .step-num {
+      width: 1.8rem;
+      height: 1.8rem;
+      background: var(--accent);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.82rem;
+      flex-shrink: 0;
+    }
+    .step-title { font-weight: 600; font-size: 1rem; }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li {
+      padding: 0.4rem 0;
+      padding-left: 1.8rem;
+      position: relative;
+    }
+    .checklist li::before {
+      content: "☐";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-size: 1.1rem;
+    }
+    .checklist li.done::before {
+      content: "☑";
+      color: var(--success);
+    }
+    .quiz-q { margin: 1.5rem 0; }
+    .quiz-q p { font-weight: 600; margin-bottom: 0.6rem; }
+    .quiz-option {
+      display: block;
+      padding: 0.7rem 1rem;
+      margin: 0.35rem 0;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--card-bg);
+      font-size: 0.92rem;
+    }
+    .quiz-option:hover { border-color: var(--accent); background: var(--accent-light); }
+    .quiz-option.correct { border-color: var(--success); background: #f0fdf4; }
+    .quiz-option.wrong { border-color: #dc2626; background: #fef2f2; }
+    .quiz-feedback {
+      margin-top: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      display: none;
+    }
+    .quiz-feedback.show { display: block; }
+    .quiz-feedback.pass { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .quiz-feedback.fail { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .task-box {
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      margin: 1rem 0;
+    }
+    .task-box::before {
+      content: "🎯 实战任务";
+      display: block;
+      font-weight: 700;
+      color: #92400e;
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="lesson-header">
+  <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+  <h1>开发环境搭建</h1>
+  <p class="subtitle">工欲善其事，必先利其器 — 搭建专业级 Python 开发环境</p>
+  <div class="lesson-progress"><div class="lesson-progress-fill" style="width:6.7%"></div></div>
+</div>
+
+<div class="tip">
+  <strong>你可能已经有部分环境了</strong>——没关系，按步骤检查，缺什么补什么。不需要全部重装。
+</div>
+
+<h2>本课目标</h2>
+<ul>
+  <li>✅ 确认 Python 3.11+ 已安装</li>
+  <li>✅ 配置 uv 包管理工具（比 pip 快 10-100 倍）</li>
+  <li>✅ 搭建 VS Code Python 开发环境</li>
+  <li>✅ 掌握虚拟环境的创建和使用</li>
+  <li>✅ 完成第一个实战小项目</li>
+</ul>
+
+<!-- Step 1 -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">1</div>
+    <div class="step-title">检查 & 安装 Python</div>
+  </div>
+
+  <p>打开终端（Mac: Terminal / Windows: PowerShell），运行：</p>
+  <pre><code>python3 --version</code></pre>
+
+  <p>应该看到类似 <code>Python 3.11.x</code> 或 <code>3.12.x</code> 的输出。</p>
+
+  <table>
+    <tr><th>结果</th><th>操作</th></tr>
+    <tr><td>3.11 或更高</td><td>✅ 跳到下一步</td></tr>
+    <tr><td>3.10 或更低</td><td>⬇️ 需要升级</td></tr>
+    <tr><td>command not found</td><td>⬇️ 需要安装</td></tr>
+  </table>
+
+  <p><strong>安装/升级 Python：</strong></p>
+  <pre><code># Mac（推荐用 Homebrew）
+brew install python@3.12
+
+# 或者用 pyenv 管理多版本（推荐）
+curl https://pyenv.run | bash
+pyenv install 3.12
+pyenv global 3.12
+
+# Windows
+# 从 https://www.python.org/downloads/ 下载安装
+# 安装时勾选 "Add Python to PATH"</code></pre>
+
+  <p>安装后重新检查版本：</p>
+  <pre><code>python3 --version
+# 应该输出 Python 3.11.x 或 3.12.x</code></pre>
+</div>
+
+<!-- Step 2 -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">2</div>
+    <div class="step-title">安装 uv 包管理工具</div>
+  </div>
+
+  <p><code>uv</code> 是 2024-2025 年 Python 生态最重要的工具之一，比 pip 快 10-100 倍。Agent 开发中你会频繁安装依赖，uv 能节省大量时间。</p>
+
+  <pre><code># Mac / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code></pre>
+
+  <p>验证安装：</p>
+  <pre><code>uv --version
+# 应该输出类似 uv 0.x.x</code></pre>
+
+  <p><strong>uv 常用命令速查：</strong></p>
+  <table>
+    <tr><th>命令</th><th>作用</th></tr>
+    <tr><td><code>uv init myproject</code></td><td>创建新项目</td></tr>
+    <tr><td><code>uv add requests</code></td><td>安装依赖</td></tr>
+    <tr><td><code>uv add --dev pytest</code></td><td>安装开发依赖</td></tr>
+    <tr><td><code>uv run python main.py</code></td><td>在虚拟环境中运行脚本</td></tr>
+    <tr><td><code>uv sync</code></td><td>同步所有依赖</td></tr>
+    <tr><td><code>uv pip list</code></td><td>查看已安装的包</td></tr>
+  </table>
+</div>
+
+<!-- Step 3 -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">3</div>
+    <div class="step-title">配置 VS Code</div>
+  </div>
+
+  <p>VS Code 是 Agent 开发最主流的编辑器。安装以下扩展：</p>
+
+  <pre><code># 用命令行安装扩展（如果已安装 VS Code CLI）
+code --install-extension ms-python.python
+code --install-extension ms-python.vscode-pylance
+code --install-extension charliermarsh.ruff
+code --install-extension ms-python.debugpy</code></pre>
+
+  <p>或者在 VS Code 中手动安装：</p>
+  <ol>
+    <li>打开 VS Code</li>
+    <li>按 <code>Cmd+Shift+X</code>（Mac）或 <code>Ctrl+Shift+X</code>（Windows）打开扩展面板</li>
+    <li>搜索并安装：
+      <ul>
+        <li><strong>Python</strong> (ms-python.python) — Python 语言支持</li>
+        <li><strong>Pylance</strong> (ms-python.vscode-pylance) — 智能提示和类型检查</li>
+        <li><strong>Ruff</strong> (charliermarsh.ruff) — 代码格式化和 lint</li>
+        <li><strong>Python Debugger</strong> (ms-python.debugpy) — 调试支持</li>
+      </ul>
+    </li>
+  </ol>
+
+  <p><strong>VS Code 快捷键速查（开发必备）：</strong></p>
+  <table>
+    <tr><th>操作</th><th>Mac</th><th>Windows</th></tr>
+    <tr><td>打开终端</td><td><code>Ctrl + `</code></td><td><code>Ctrl + `</code></td></tr>
+    <tr><td>运行 Python 文件</td><td>右键 → Run Python File</td><td>右键 → Run Python File</td></tr>
+    <tr><td>格式化代码</td><td><code>Shift + Option + F</code></td><td><code>Shift + Alt + F</code></td></tr>
+    <tr><td>打开命令面板</td><td><code>Cmd + Shift + P</code></td><td><code>Ctrl + Shift + P</code></td></tr>
+    <tr><td>快速打开文件</td><td><code>Cmd + P</code></td><td><code>Ctrl + P</code></td></tr>
+  </table>
+</div>
+
+<!-- Step 4 -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">4</div>
+    <div class="step-title">创建第一个项目 & 虚拟环境</div>
+  </div>
+
+  <p>虚拟环境让每个项目的依赖互相隔离，避免版本冲突。这是 Python 开发的<strong>基本纪律</strong>。</p>
+
+  <pre><code># 创建项目目录
+mkdir my-first-agent
+cd my-first-agent
+
+# 用 uv 初始化项目（自动创建虚拟环境）
+uv init
+
+# 你会看到这样的目录结构：
+# my-first-agent/
+# ├── .python-version    # Python 版本
+# ├── pyproject.toml     # 项目配置
+# ├── README.md
+# └── hello.py           # 示例文件</code></pre>
+
+  <p>查看 <code>pyproject.toml</code>：</p>
+  <pre><code>[project]
+name = "my-first-agent"
+version = "0.1.0"
+requires-python = ">=3.11"</code></pre>
+
+  <p>运行第一个脚本：</p>
+  <pre><code>uv run hello.py
+# 应该输出: Hello from my-first-agent!</code></pre>
+</div>
+
+<!-- Step 5 -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">5</div>
+    <div class="step-title">安装常用依赖</div>
+  </div>
+
+  <p>Agent 开发最常用的几个包，先装上：</p>
+
+  <pre><code># 核心依赖
+uv add httpx           # 异步 HTTP 客户端（调 LLM API 用）
+uv add pydantic        # 数据验证（Agent 工具定义用）
+uv add python-dotenv   # 环境变量管理（API key 存储用）
+
+# 开发依赖
+uv add --dev pytest    # 测试框架
+uv add --dev ruff      # 代码 lint 和格式化
+uv add --dev mypy      # 类型检查</code></pre>
+
+  <p>验证安装：</p>
+  <pre><code>uv pip list
+# 应该能看到 httpx, pydantic, pytest 等</code></pre>
+</div>
+
+<!-- Step 6 -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num">6</div>
+    <div class="step-title">配置环境变量（API Key）</div>
+  </div>
+
+  <p>LLM API 需要 API Key。我们用 <code>.env</code> 文件管理，<strong>永远不要把 key 写在代码里</strong>。</p>
+
+  <pre><code># 创建 .env 文件
+touch .env</code></pre>
+
+  <p>在 <code>.env</code> 中添加（后续课程会用到）：</p>
+  <pre><code># .env（不要提交到 Git！）
+OPENAI_API_KEY=sk-xxx
+ANTHROPIC_API_KEY=sk-ant-xxx</code></pre>
+
+  <p>在 <code>.gitignore</code> 中添加：</p>
+  <pre><code># .gitignore
+.env
+__pycache__/
+*.pyc
+.venv/</code></pre>
+
+  <p>在 Python 中使用：</p>
+  <pre><code>from dotenv import load_dotenv
+import os
+
+load_dotenv()  # 加载 .env 文件
+
+api_key = os.getenv("OPENAI_API_KEY")
+print(f"Key loaded: {api_key[:10]}...")  # 只打印前10位</code></pre>
+</div>
+
+<!-- Quiz -->
+<h2>自测练习</h2>
+
+<div class="quiz-q" id="q1">
+  <p>Q1: 虚拟环境的作用是什么？</p>
+  <span class="quiz-option" onclick="check('q1', this, false)">让 Python 运行更快</span>
+  <span class="quiz-option" onclick="check('q1', this, true)">隔离项目依赖，避免版本冲突</span>
+  <span class="quiz-option" onclick="check('q1', this, false)">自动生成 requirements.txt</span>
+  <span class="quiz-option" onclick="check('q1', this, false)">提供在线编程环境</span>
+  <div class="quiz-feedback" id="q1-fb"></div>
+</div>
+
+<div class="quiz-q" id="q2">
+  <p>Q2: 为什么 API Key 不能写在代码里？</p>
+  <span class="quiz-option" onclick="check('q2', this, false)">代码会变长</span>
+  <span class="quiz-option" onclick="check('q2', this, false)">Python 不支持</span>
+  <span class="quiz-option" onclick="check('q2', this, true)">提交到 Git 后别人能看到，造成安全风险</span>
+  <span class="quiz-option" onclick="check('q2', this, false)">会影响代码运行速度</span>
+  <div class="quiz-feedback" id="q2-fb"></div>
+</div>
+
+<div class="quiz-q" id="q3">
+  <p>Q3: <code>uv add --dev pytest</code> 中的 <code>--dev</code> 表示什么？</p>
+  <span class="quiz-option" onclick="check('q3', this, false)">安装开发版（不稳定版）</span>
+  <span class="quiz-option" onclick="check('q3', this, true)">仅在开发时使用，不会打包到生产环境</span>
+  <span class="quiz-option" onclick="check('q3', this, false)">需要开发者权限才能安装</span>
+  <span class="quiz-option" onclick="check('q3', this, false)">安装到系统 Python 而非虚拟环境</span>
+  <div class="quiz-feedback" id="q3-fb"></div>
+</div>
+
+<!-- Task -->
+<h2>实战任务</h2>
+
+<div class="task-box">
+  <strong>任务：搭建完整的 Agent 开发项目</strong>
+  <p>按照以下步骤，从零搭建一个可运行的项目：</p>
+  <ol>
+    <li>用 <code>uv init agent-hello</code> 创建项目</li>
+    <li>安装依赖：<code>uv add httpx pydantic python-dotenv</code></li>
+    <li>创建 <code>.env</code> 文件（先随便写个假的 key）</li>
+    <li>创建 <code>main.py</code>，写入以下代码：</li>
+  </ol>
+  <pre><code>"""我的第一个 Agent 项目骨架"""
+from dotenv import load_dotenv
+from pydantic import BaseModel
+import os
+
+# 加载环境变量
+load_dotenv()
+
+class Message(BaseModel):
+    """消息模型 - 后续 Agent 的基础数据结构"""
+    role: str
+    content: str
+
+def main():
+    # 验证环境
+    api_key = os.getenv("OPENAI_API_KEY", "not-set")
+    print(f"✅ 项目初始化成功！")
+    print(f"✅ API Key: {api_key[:10]}..." if len(api_key) > 10 else f"⚠️ API Key: {api_key}")
+
+    # 验证 Pydantic
+    msg = Message(role="user", content="Hello, Agent!")
+    print(f"✅ Pydantic 工作正常: {msg.model_dump()}")
+
+    # 验证类型提示
+    def greet(name: str) -> str:
+        return f"你好, {name}! 准备好学 Agent 了吗？"
+
+    print(f"✅ {greet('同学')}")
+
+if __name__ == "__main__":
+    main()</code></pre>
+  <ol start="5">
+    <li>运行：<code>uv run main.py</code></li>
+    <li>看到 3 个 ✅ 就算成功！</li>
+  </ol>
+</div>
+
+<h2>环境检查清单</h2>
+<ul class="checklist">
+  <li>Python 3.11+ 已安装</li>
+  <li>uv 包管理工具已安装</li>
+  <li>VS Code + Python 扩展已配置</li>
+  <li>能用 <code>uv init</code> 创建项目</li>
+  <li>能用 <code>uv add</code> 安装依赖</li>
+  <li>能用 <code>uv run</code> 运行脚本</li>
+  <li><code>.env</code> 文件能正常加载</li>
+  <li>实战任务完成（3 个 ✅）</li>
+</ul>
+
+<h2>小结</h2>
+<table>
+  <tr><th>工具</th><th>作用</th><th>为什么选它</th></tr>
+  <tr><td>Python 3.12</td><td>编程语言</td><td>最新稳定版，性能好</td></tr>
+  <tr><td>uv</td><td>包管理</td><td>比 pip 快 10-100 倍，2025 标准</td></tr>
+  <tr><td>VS Code</td><td>编辑器</td><td>生态最好，Python 支持最强</td></tr>
+  <tr><td>pydantic</td><td>数据验证</td><td>Agent 工具定义的核心</td></tr>
+  <tr><td>httpx</td><td>HTTP 客户端</td><td>异步支持，调 LLM API 用</td></tr>
+  <tr><td>.env</td><td>环境变量</td><td>安全管理 API Key</td></tr>
+</table>
+
+<div class="source">
+  <strong>延伸阅读：</strong><br>
+  · <a href="https://docs.astral.sh/uv/" target="_blank">uv 官方文档</a> — 包管理工具<br>
+  · <a href="https://code.visualstudio.com/docs/python/python-tutorial" target="_blank">VS Code Python 教程</a><br>
+  · <a href="https://docs.python.org/3/library/venv.html" target="_blank">Python 虚拟环境文档</a>
+</div>
+
+<div class="nav">
+  <a href="0002-phase1-python-outline.html">← 阶段 1 大纲</a>
+  <a href="0005-L02-python-runtime-and-modules.html">下一课：Python 运行机制与模块系统 →</a>
+</div>
+
+<footer>
+  AI Agent 高级开发工程师课程 · L01 开发环境搭建 · 如有疑问，随时问我
+</footer>
+
+<script>
+function check(qId, el, correct) {
+  const parent = document.getElementById(qId);
+  const options = parent.querySelectorAll('.quiz-option');
+  const fb = document.getElementById(qId + '-fb');
+  options.forEach(o => { o.classList.remove('correct', 'wrong'); o.style.pointerEvents = 'none'; });
+  if (correct) {
+    el.classList.add('correct');
+    fb.textContent = '✅ 正确！';
+    fb.className = 'quiz-feedback show pass';
+  } else {
+    el.classList.add('wrong');
+    options.forEach(o => { if (o.getAttribute('onclick').includes('true')) o.classList.add('correct'); });
+    fb.textContent = '❌ 不对，看看正确答案。';
+    fb.className = 'quiz-feedback show fail';
+  }
+}
+</script>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+</body>
+</html>

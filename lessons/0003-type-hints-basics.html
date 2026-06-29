@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L01 · 类型提示基础 — Type Hints</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .quiz-q { margin: 1.5rem 0; }
+    .quiz-q p { font-weight: 600; margin-bottom: 0.6rem; }
+    .quiz-option {
+      display: block;
+      padding: 0.7rem 1rem;
+      margin: 0.35rem 0;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--card-bg);
+      font-size: 0.92rem;
+    }
+    .quiz-option:hover { border-color: var(--accent); background: var(--accent-light); }
+    .quiz-option.correct { border-color: var(--success); background: #f0fdf4; }
+    .quiz-option.wrong { border-color: #dc2626; background: #fef2f2; }
+    .quiz-feedback {
+      margin-top: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      display: none;
+    }
+    .quiz-feedback.show { display: block; }
+    .quiz-feedback.pass { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .quiz-feedback.fail { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .code-compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    .code-compare > div { margin: 0; }
+    .code-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    @media (max-width: 640px) {
+      .code-compare { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>L01 · 类型提示基础</h1>
+<p>类型提示是 Python 进阶的第一步，也是 Pydantic、Function Calling、mypy 的基础。</p>
+
+<h2>为什么 Agent 开发必须学类型提示？</h2>
+<p>在 Agent 开发中，类型提示不是"可选的美化"，而是<strong>核心基础设施</strong>：</p>
+<ul>
+  <li><strong>Pydantic</strong> 依赖类型提示来验证数据 — 没有类型提示，Pydantic 无法工作</li>
+  <li><strong>LLM Function Calling</strong> 的参数 Schema 从类型提示自动生成</li>
+  <li><strong>mypy</strong> 能在运行前发现 bug — Agent 系统的 bug 调试成本极高</li>
+  <li><strong>IDE 智能提示</strong>让你写代码快 3 倍</li>
+</ul>
+
+<h2>基本语法</h2>
+<p>类型提示用 <code>:</code> 标注变量类型，用 <code>-></code> 标注函数返回值：</p>
+
+<pre><code># 变量类型提示
+name: str = "Alice"
+age: int = 25
+scores: list[float] = [9.5, 8.0, 7.5]
+
+# 函数类型提示
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+# 没有返回值用 None
+def log(message: str) -> None:
+    print(message)</code></pre>
+
+<h2>常用类型</h2>
+
+<table>
+  <tr><th>类型</th><th>用法</th><th>示例</th></tr>
+  <tr><td><code>int</code></td><td>整数</td><td><code>count: int = 0</code></td></tr>
+  <tr><td><code>float</code></td><td>浮点数</td><td><code>price: float = 9.99</code></td></tr>
+  <tr><td><code>str</code></td><td>字符串</td><td><code>name: str = "Alice"</code></td></tr>
+  <tr><td><code>bool</code></td><td>布尔值</td><td><code>active: bool = True</code></td></tr>
+  <tr><td><code>list[T]</code></td><td>列表</td><td><code>items: list[str] = ["a", "b"]</code></td></tr>
+  <tr><td><code>dict[K, V]</code></td><td>字典</td><td><code>config: dict[str, int] = {"x": 1}</code></td></tr>
+  <tr><td><code>tuple[T, ...]</code></td><td>元组</td><td><code>point: tuple[int, int] = (0, 0)</code></td></tr>
+  <tr><td><code>set[T]</code></td><td>集合</td><td><code>tags: set[str] = {"a", "b"}</code></td></tr>
+</table>
+
+<h2>Optional：可能为 None 的值</h2>
+<p>Agent 开发中非常常见——LLM 可能不返回某个字段，工具调用可能失败：</p>
+
+<pre><code>from typing import Optional
+
+# Optional[str] 等价于 str | None
+def find_user(user_id: int) -> Optional[str]:
+    if user_id == 1:
+        return "Alice"
+    return None  # 找不到用户
+
+# Python 3.10+ 可以用 str | None
+def find_user(user_id: int) -> str | None:
+    ...</code></pre>
+
+<div class="tip">
+  <strong>关键理解：</strong><code>Optional[str]</code> 不是"可选参数"的意思！它是 <code>str | None</code> 的简写，表示"这个值要么是字符串，要么是 None"。可选参数用默认值表示：<code>def f(name: str = "default")</code>。
+</div>
+
+<h2>Union：多种类型之一</h2>
+<p>当一个值可能是多种类型时使用：</p>
+
+<pre><code>from typing import Union
+
+# Union[str, int] 表示可以是 str 或 int
+def process(value: Union[str, int]) -> str:
+    return str(value)
+
+# Python 3.10+ 语法
+def process(value: str | int) -> str:
+    return str(value)</code></pre>
+
+<h2>集合类型的进阶标注</h2>
+
+<pre><code>from typing import Any
+
+# 列表元素类型
+messages: list[dict[str, Any]] = [
+    {"role": "user", "content": "hello"},
+    {"role": "assistant", "content": "hi"},
+]
+
+# 字典的键值类型
+scores: dict[str, float] = {"math": 95.0, "english": 88.5}
+
+# 嵌套类型
+matrix: list[list[int]] = [[1, 2], [3, 4]]
+config: dict[str, list[str]] = {"tags": ["ai", "agent"]}</code></pre>
+
+<h2>在 Agent 开发中的实际应用</h2>
+<p>看一个真实的 Agent 工具定义——类型提示让 LLM 知道每个参数的类型和含义：</p>
+
+<pre><code>from typing import Optional
+
+def search_web(
+    query: str,
+    max_results: int = 5,
+    language: Optional[str] = None,
+) -> list[dict[str, str]]:
+    """搜索网页并返回结果列表。
+
+    Args:
+        query: 搜索关键词
+        max_results: 最大返回结果数
+        language: 语言过滤，如 "zh"、"en"
+
+    Returns:
+        包含 title, url, snippet 的字典列表
+    """
+    # ... 实现搜索逻辑
+    return [{"title": "...", "url": "...", "snippet": "..."}]</code></pre>
+
+<p>这个函数的类型提示告诉 Agent 框架：</p>
+<ul>
+  <li><code>query</code> 是字符串（必填）</li>
+  <li><code>max_results</code> 是整数（默认 5）</li>
+  <li><code>language</code> 是可选字符串</li>
+  <li>返回值是字典列表</li>
+</ul>
+<p>Agent 框架（如 Pydantic AI、LangChain）会自动把这些类型提示转换为 LLM 的 Function Calling Schema。</p>
+
+<h2>自测练习</h2>
+
+<div class="quiz-q" id="q1">
+  <p>Q1: 下面哪个类型提示表示"可能是字符串，也可能是 None"？</p>
+  <span class="quiz-option" onclick="check('q1', this, true)">Optional[str]</span>
+  <span class="quiz-option" onclick="check('q1', this, false)">Optional[str, None]</span>
+  <span class="quiz-option" onclick="check('q1', this, false)">str | Optional</span>
+  <span class="quiz-option" onclick="check('q1', this, false)">str?</span>
+  <div class="quiz-feedback" id="q1-fb"></div>
+</div>
+
+<div class="quiz-q" id="q2">
+  <p>Q2: <code>list[dict[str, Any]]</code> 表示什么？</p>
+  <span class="quiz-option" onclick="check('q2', this, false)">一个字典，键是字符串，值是任意类型</span>
+  <span class="quiz-option" onclick="check('q2', this, true)">一个列表，每个元素是字典，键为字符串，值为任意类型</span>
+  <span class="quiz-option" onclick="check('q2', this, false)">一个字符串列表和一个任意字典</span>
+  <span class="quiz-option" onclick="check('q2', this, false)">一个列表，包含字符串和字典两种元素</span>
+  <div class="quiz-feedback" id="q2-fb"></div>
+</div>
+
+<div class="quiz-q" id="q3">
+  <p>Q3: Python 3.10+ 中，<code>Union[str, int, None]</code> 的简写是什么？</p>
+  <span class="quiz-option" onclick="check('q3', this, false)">str | int | Optional</span>
+  <span class="quiz-option" onclick="check('q3', this, false)">Optional[str, int]</span>
+  <span class="quiz-option" onclick="check('q3', this, true)">str | int | None</span>
+  <span class="quiz-option" onclick="check('q3', this, false)">str | int?</span>
+  <div class="quiz-feedback" id="q3-fb"></div>
+</div>
+
+<div class="quiz-q" id="q4">
+  <p>Q4: 下面哪个函数签名的类型提示是正确的？</p>
+  <span class="quiz-option" onclick="check('q4', this, false)">def add(a: int, b: int) -> int:</span>
+  <span class="quiz-option" onclick="check('q4', this, false)">def greet(name: str) -> None:</span>
+  <span class="quiz-option" onclick="check('q4', this, false)">def get_ids() -> list[int]:</span>
+  <span class="quiz-option" onclick="check('q4', this, true)">以上全部正确</span>
+  <div class="quiz-feedback" id="q4-fb"></div>
+</div>
+
+<h2>动手练习</h2>
+<div class="card">
+  <strong>练习：为 Agent 工具函数添加类型提示</strong>
+  <p>下面的函数缺少类型提示，请补全：</p>
+  <pre><code>def get_weather(city, unit="celsius", days=3):
+    """获取天气预报"""
+    forecasts = []
+    for i in range(days):
+        forecasts.append({
+            "day": i + 1,
+            "temp": 25 + i,
+            "unit": unit,
+        })
+    return forecasts</code></pre>
+  <p>要求：</p>
+  <ul>
+    <li>所有参数都要有类型提示</li>
+    <li>返回值要有类型提示</li>
+    <li>unit 只能是 "celsius" 或 "fahrenheit"（提示：用 Literal）</li>
+  </ul>
+  <details>
+    <summary style="cursor:pointer; color:var(--accent); font-weight:500;">点击查看参考答案</summary>
+    <pre style="margin-top:0.5rem"><code>from typing import Literal
+
+def get_weather(
+    city: str,
+    unit: Literal["celsius", "fahrenheit"] = "celsius",
+    days: int = 3,
+) -> list[dict[str, str | int]]:
+    """获取天气预报"""
+    forecasts: list[dict[str, str | int]] = []
+    for i in range(days):
+        forecasts.append({
+            "day": i + 1,
+            "temp": 25 + i,
+            "unit": unit,
+        })
+    return forecasts</code></pre>
+  </details>
+</div>
+
+<h2>小结</h2>
+<table>
+  <tr><th>概念</th><th>语法</th><th>Agent 开发中的用途</th></tr>
+  <tr><td>基本类型</td><td><code>x: int = 1</code></td><td>函数参数标注</td></tr>
+  <tr><td>集合类型</td><td><code>list[str]</code>, <code>dict[str, int]</code></td><td>工具返回值、消息列表</td></tr>
+  <tr><td>Optional</td><td><code>str | None</code></td><td>可空字段、可能失败的返回</td></tr>
+  <tr><td>Union</td><td><code>str | int</code></td><td>多态参数</td></tr>
+  <tr><td>Literal</td><td><code>Literal["a", "b"]</code></td><td>枚举参数、模型选择</td></tr>
+</table>
+
+<div class="source">
+  <strong>延伸阅读：</strong><br>
+  · <a href="https://docs.python.org/3/library/typing.html" target="_blank">Python 官方 typing 文档</a><br>
+  · <a href="https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html" target="_blank">mypy 类型提示速查表</a>
+</div>
+
+<div class="nav">
+  <a href="0002-phase1-python-outline.html">← 阶段 1 大纲</a>
+  <a href="0004-type-hints-advanced.html">下一课：类型提示进阶 →</a>
+</div>
+
+<footer>
+  AI Agent 高级开发工程师课程 · L01 类型提示基础 · 如有疑问，随时问我
+</footer>
+
+<script>
+function check(qId, el, correct) {
+  const parent = document.getElementById(qId);
+  const options = parent.querySelectorAll('.quiz-option');
+  const fb = document.getElementById(qId + '-fb');
+
+  // 先清除之前的选择
+  options.forEach(o => { o.classList.remove('correct', 'wrong'); o.style.pointerEvents = 'none'; });
+
+  if (correct) {
+    el.classList.add('correct');
+    fb.textContent = '✅ 正确！';
+    fb.className = 'quiz-feedback show pass';
+  } else {
+    el.classList.add('wrong');
+    // 高亮正确答案
+    options.forEach(o => {
+      if (o.getAttribute('onclick').includes('true')) o.classList.add('correct');
+    });
+    fb.textContent = '❌ 不对，看看正确答案。';
+    fb.className = 'quiz-feedback show fail';
+  }
+}
+</script>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+</body>
+</html>

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>术语表 · AI Agent 开发</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .term { margin-bottom: 1.2rem; }
+    .term dt {
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 1rem;
+    }
+    .term dd {
+      margin-left: 0;
+      color: var(--fg);
+      font-size: 0.92rem;
+    }
+  </style>
+</head>
+<body>
+
+<h1>AI Agent 开发术语表</h1>
+<p>本课程使用的统一术语定义。每课链接回此表，确保概念一致。</p>
+
+<h2>核心概念</h2>
+
+<dl class="term">
+  <dt>LLM（大语言模型）</dt>
+  <dd>Large Language Model。基于 Transformer 架构训练的大规模语言模型，如 GPT-4、Claude、Gemini。能理解和生成自然语言，是 Agent 的"大脑"。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Agent（智能体）</dt>
+  <dd>能自主感知环境、做出决策、执行行动的 AI 系统。核心循环：推理 → 行动 → 观察 → 记忆。不同于简单的 LLM 调用，Agent 有自主性和目标导向。</dd>
+</dl>
+
+<dl class="term">
+  <dt>RAG（检索增强生成）</dt>
+  <dd>Retrieval-Augmented Generation。先从外部知识库检索相关信息，再让 LLM 基于检索结果生成回答。解决 LLM 知识过时和幻觉问题。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Agentic RAG（智能体检索增强生成）</dt>
+  <dd>2026 年 RAG 的标准形态。Agent 控制整个检索过程，自主决定何时检索、检索什么、如何整合结果。结合 GraphRAG 实现知识图谱增强。传统 RAG 管道已过时。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Prompt Engineering（提示工程）</dt>
+  <dd>设计和优化 LLM 输入提示的技术。好的 Prompt 能显著提升 LLM 输出质量，是 Agent 开发的核心技能。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Function Calling（函数调用）</dt>
+  <dd>LLM 调用外部工具/API 的能力。模型根据用户请求，决定调用哪个函数、传什么参数。是 Agent "行动"能力的基础。</dd>
+</dl>
+
+<dl class="term">
+  <dt>MCP（模型上下文协议）</dt>
+  <dd>Model Context Protocol。Anthropic 推出的开放标准，定义 AI 模型如何连接外部工具和数据源。被称为"AI 的 USB-C"。Agent→工具的标准协议。与 A2A（Agent→Agent）和 ANP（Agent→开放网络）互补。</dd>
+</dl>
+
+<h2>架构模式</h2>
+
+<dl class="term">
+  <dt>ReAct</dt>
+  <dd>Reasoning + Acting。Agent 交替进行推理（思考下一步）和行动（调用工具），然后观察结果。最基础也最常用的 Agent 模式。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Plan-and-Execute</dt>
+  <dd>先规划后执行。Planner Agent 制定完整计划，Executor Agent 逐步执行。适合复杂多步骤任务。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Reflexion</dt>
+  <dd>自我反思。Agent 执行后回顾结果，分析错误，生成改进建议，用于下一轮尝试。提升 Agent 的自我纠错能力。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Multi-Agent（多智能体）</dt>
+  <dd>多个 Agent 协作完成任务。可以是平等协作、层级指挥、或专家分工模式。CrewAI、AutoGen 是典型框架。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Agent Loop（智能体循环）</dt>
+  <dd>Agent 的核心执行循环：Observe（观察环境）→ Think（推理决策）→ Act（执行行动）→ Observe（观察结果）。所有 Agent 框架的底层模式。循环有最大轮次限制和退出条件。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Agent Harness（编排层）</dt>
+  <dd>管理 Agent 生命周期的编排框架。2026 年主流架构，四层系统：Agent Reasoning、Context Engineering、Tooling、Persistence。负责工具执行调度、上下文窗口管理、错误恢复、结果聚合。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Context Engineering（上下文工程）</dt>
+  <dd>2026 年新兴学科，设计和优化 Agent 上下文的技术。决定哪些上下文加载、如何组织、何时更新。Harness Engineering 的核心组成部分。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Harness Engineering（编排工程）</dt>
+  <dd>2026 年正在取代 Prompt Engineering 的新范式。关注围绕 LLM 的整体脚手架设计，而非单个 Prompt 优化。包括上下文管理、工具编排、错误处理、持久化等。</dd>
+</dl>
+
+<dl class="term">
+  <dt>A2A（Agent-to-Agent 协议）</dt>
+  <dd>Google 推出的 Agent 间通信标准。MCP 连接 Agent 与工具，A2A 连接 Agent 与 Agent。实现不同框架构建的 Agent 之间的互操作。</dd>
+</dl>
+
+<dl class="term">
+  <dt>ACP（Agent Commerce Protocol）</dt>
+  <dd>IBM 和 Linux Foundation 推出的 Agent 商务协议。处理 Agent 间的开放交易：支付、履约、交易语义。与 A2A 互补——A2A 解决协调，ACP 解决商务。</dd>
+</dl>
+
+<dl class="term">
+  <dt>UCP（Universal Commerce Protocol）</dt>
+  <dd>Google 推出的通用商务协议。专门为 AI Agent 在 Google 商务生态中操作而设计。与 ACP 互补——ACP 是开放标准，UCP 是 Google 生态专用。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Ratchet（棘轮效应）</dt>
+  <dd>Harness Engineering 的核心习惯。每次 Agent 犯错，就加一条规则防止再犯。规则只增不减，直到模型能力提升使其多余。AGENTS.md 中每条规则都应追溯到一个具体失败。</dd>
+</dl>
+
+<dl class="term">
+  <dt>ANP（Agent Network Protocol）</dt>
+  <dd>Agent 网络协议，定义 Agent 在分布式网络中的发现和通信机制。2026 年 Agent 协议标准化的重要组成部分。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Extended Thinking（深度推理）</dt>
+  <dd>Claude 的深度推理能力。模型在回答前进行更长时间的内部推理，适合数学、编程、复杂分析等任务。通过 API 的 thinking 参数启用。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Computer Use（计算机操作）</dt>
+  <dd>Agent 操作计算机的能力——看屏幕、移动鼠标、点击按钮、输入文字。Claude 和 OpenAI 都提供了 Computer Use API。2025 年最热的 Agent 能力之一。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Agentic Coding（自主编程）</dt>
+  <dd>AI Agent 自主编写、运行、调试代码的范式。Claude Code、Cursor、Windsurf 等工具的底层模式。Agent 不只是补全代码，而是理解需求 → 规划 → 编码 → 测试 → 迭代。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Human-in-the-Loop（人在回路中）</dt>
+  <dd>Agent 执行过程中引入人工审批、确认或反馈的模式。关键操作前暂停等待人工确认，收集用户反馈用于改进。生产级 Agent 的必备安全机制。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Long-running Agent（长时间运行智能体）</dt>
+  <dd>能持续运行数小时甚至数天的 Agent，自主完成复杂的多步骤任务。2026 年趋势：从"一次性对话"到"持续工作"。需要强大的记忆系统、错误恢复和状态持久化。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Self-RAG（自反思检索增强生成）</dt>
+  <dd>Agent 在生成回答前自我评估是否需要检索，生成后自我评估检索结果是否相关、回答是否忠实。通过自我反思提升 RAG 质量。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Corrective RAG（纠错检索增强生成）</dt>
+  <dd>Agent 检测到检索结果不相关或不正确时，自动修正检索策略或转向其他知识源。提升 RAG 系统的鲁棒性。</dd>
+</dl>
+
+<dl class="term">
+  <dt>GraphRAG（图谱检索增强生成）</dt>
+  <dd>将知识图谱与向量检索结合的 RAG 方案。先构建实体关系图谱，再基于图谱结构进行检索。适合处理实体关系复杂的场景。Microsoft 开源了参考实现。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Adaptive RAG（自适应检索增强生成）</dt>
+  <dd>Agent 根据查询复杂度动态选择检索策略。简单问题直接用 LLM 回答，中等问题用单次检索，复杂问题用多轮检索或 Agentic RAG。优化成本和效果的平衡。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Agent Memory（智能体记忆系统）</dt>
+  <dd>Agent 的持久化信息存储系统，独立于上下文窗口。分为短期记忆（对话历史）、长期记忆（持久化存储）、工作记忆（当前任务上下文）、语义记忆（知识图谱）。Context Window 是 RAM，Memory 是 Storage。代表框架：Mem0。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Context Window Management（上下文窗口管理）</dt>
+  <dd>工程化管理 LLM 上下文窗口的技术。包括上下文压缩、滑动窗口、摘要记忆、优先级排序等策略。在有限的上下文窗口中放入最有价值的信息。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Scaffolding（脚手架）</dt>
+  <dd>在 Agentic Coding 中，指围绕 AI 编码 Agent 的支撑架构。包括文件系统访问、终端执行、测试运行、错误反馈等。Harness 的同义词，常用于编码 Agent 语境。</dd>
+</dl>
+
+<h2>数据库</h2>
+
+<dl class="term">
+  <dt>关系型数据库（RDBMS）</dt>
+  <dd>以表结构存储数据的数据库，如 PostgreSQL、MySQL。支持 SQL 查询、事务、外键关联。是大多数应用的数据基础。</dd>
+</dl>
+
+<dl class="term">
+  <dt>ORM（对象关系映射）</dt>
+  <dd>Object-Relational Mapping。用代码类和对象操作数据库，避免手写 SQL。Python 常用 SQLAlchemy、Tortoise ORM。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Redis</dt>
+  <dd>内存键值存储数据库，常用作缓存层。支持字符串、哈希、列表、集合等数据结构。读写速度极快（微秒级）。</dd>
+</dl>
+
+<dl class="term">
+  <dt>向量数据库</dt>
+  <dd>专门存储和检索高维向量的数据库。通过计算向量间的余弦相似度或欧氏距离来实现语义检索。Chroma、Pinecone、Weaviate、Milvus 是主流选择。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Embedding（向量嵌入）</dt>
+  <dd>将文本/图片等数据转换为高维数值向量的技术。语义相似的内容在向量空间中距离相近。是 RAG 和向量检索的基础。</dd>
+</dl>
+
+<dl class="term">
+  <dt>HNSW（分层可导航小世界图）</dt>
+  <dd>Hierarchical Navigable Small World。向量数据库最常用的近似最近邻索引算法，在速度和精度之间取得良好平衡。</dd>
+</dl>
+
+<dl class="term">
+  <dt>余弦相似度</dt>
+  <dd>Cosine Similarity。衡量两个向量方向相似性的指标，值域 [-1, 1]。向量数据库中最常用的相似度计算方式。</dd>
+</dl>
+
+<h2>LLM 技术</h2>
+
+<dl class="term">
+  <dt>Context Window（上下文窗口）</dt>
+  <dd>LLM 单次能处理的最大 Token 数量。GPT-4 Turbo: 128K，Claude 3.5: 200K。窗口大小限制了 Agent 的"工作记忆"。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Token</dt>
+  <dd>LLM 处理文本的最小单位。一个中文字约 1-2 个 Token，一个英文单词约 1 个 Token。API 按 Token 计费。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Streaming（流式输出）</dt>
+  <dd>LLM 逐字输出响应，而非等全部生成完毕再返回。提升用户体验，降低感知延迟。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Temperature（温度）</dt>
+  <dd>控制 LLM 输出随机性的参数。0 表示确定性输出，1 表示高随机性。Agent 开发中通常用较低温度保证可靠性。</dd>
+</dl>
+
+<h2>数据处理</h2>
+
+<dl class="term">
+  <dt>ETL（提取-转换-加载）</dt>
+  <dd>Extract-Transform-Load。数据处理的标准模式：从源提取数据 → 清洗转换 → 加载到目标存储。Agent 系统中用于构建知识库数据管线。</dd>
+</dl>
+
+<dl class="term">
+  <dt>文档切分（Chunking）</dt>
+  <dd>将长文档拆分为较小片段的技术。策略包括：固定大小切分、递归切分、语义切分。切分质量直接影响 RAG 检索效果。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Reranking（重排序）</dt>
+  <dd>对初步检索结果进行二次排序的技术。使用交叉编码器或 LLM 重新评估文档与查询的相关性，提升检索精度。</dd>
+</dl>
+
+<h2>测试与评估</h2>
+
+<dl class="term">
+  <dt>LLM Mock</dt>
+  <dd>在测试中模拟 LLM 调用的技术。通过录制回放或预设响应，避免测试时消耗真实 API 额度，保证测试结果确定性。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Prompt 回归测试</dt>
+  <dd>修改 Prompt 后，用固定测试用例验证输出是否退化。防止优化一个场景时破坏其他场景。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Eval（评估）</dt>
+  <dd>Evaluation。衡量 Agent/LLM 输出质量的系统化方法。包括自动评估（指标打分）和人工评估（众包标注）。</dd>
+</dl>
+
+<dl class="term">
+  <dt>LLM-as-Judge（LLM 作为评判者）</dt>
+  <dd>2026 年 Agent 评估的标准方法。用另一个 LLM 评估 Agent 输出质量，支持自定义评分维度（准确性、完整性、相关性等）。比传统指标更灵活，比人工评估更高效。DeepEval、RAGAS 等框架已内置支持。</dd>
+</dl>
+
+<dl class="term">
+  <dt>评估驱动开发（Eval-Driven Development）</dt>
+  <dd>先定义"好"的标准（评估用例和评分维度），再开发 Agent 的开发方法论。类似 TDD（测试驱动开发），确保每次改进都可衡量、可回归。2026 年 Agent 开发的最佳实践。</dd>
+</dl>
+
+<h2>工程优化</h2>
+
+<dl class="term">
+  <dt>语义缓存</dt>
+  <dd>Semantic Cache。将 LLM 请求的语义向量作为缓存 key，相似问题命中缓存直接返回结果，避免重复调用 LLM。显著降低成本和延迟。</dd>
+</dl>
+
+<dl class="term">
+  <dt>模型路由</dt>
+  <dd>Model Routing。根据任务复杂度动态选择不同模型。简单任务用小模型（便宜快速），复杂任务用大模型（准确但贵）。</dd>
+</dl>
+
+<dl class="term">
+  <dt>成本工程（Cost Engineering）</dt>
+  <dd>2026 年 Agent 开发的核心工程学科。Token 成本是架构约束而非事后优化。包括：模型路由（大小模型混合）、语义缓存（相似查询命中缓存）、Token 预算管理（每次调用的上限）、成本监控（每 Agent/每对话的成本追踪）。</dd>
+</dl>
+
+<dl class="term">
+  <dt>数据飞轮（Data Flywheel）</dt>
+  <dd>Agent 从生产数据中持续改进的循环。用户反馈 → 数据积累 → 评估发现改进点 → 改进 Agent → 部署 → 更多用户反馈。飞轮效应：数据越多，Agent 越好，用户越多，数据越多。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Prompt 压缩</dt>
+  <dd>Prompt Compression。减少 Prompt 中冗余信息的技术，降低 Token 用量。方法包括：摘要、选择性上下文、LLMLingua 等。</dd>
+</dl>
+
+<dl class="term">
+  <dt>可观测性</dt>
+  <dd>Observability。通过日志、指标、追踪三大支柱监控系统运行状态。Agent 系统需要追踪 LLM 调用链路、Token 用量、延迟等。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Prompt Injection（提示注入）</dt>
+  <dd>攻击者通过在输入中嵌入恶意指令，试图劫持 Agent 行为。是 Agent 安全的头号威胁，需要专门的防御策略。</dd>
+</dl>
+
+<dl class="term">
+  <dt>Guardrails（安全护栏）</dt>
+  <dd>限制 Agent 行为的安全机制。防止 Prompt Injection、敏感信息泄露、危险操作等。生产部署必备。</dd>
+</dl>
+
+<div class="nav">
+  <a href="../lessons/0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
+  <span>持续更新中...</span>
+</div>
+
+<footer>
+  AI Agent 高级开发工程师课程 · 术语表
+</footer>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/course-bar.js"></script>
+</body>
+</html>
