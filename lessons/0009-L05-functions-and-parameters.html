@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L05 · 函数定义与参数</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<!-- 标题 -->
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>函数定义与参数</h1>
+    <p class="subtitle">函数签名就是工具契约 — Agent 的每个工具，本质都是一个设计良好的函数</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:31%"></div></div>
+  </div>
+</div>
+
+<!-- 课前引导 -->
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 调用工具，本质是"按签名传参、拿返回值"。一个工具函数的<strong>参数怎么设计</strong>——哪些必填、哪些有默认、能不能只用关键字传——直接决定了它好不好用、LLM 会不会传错参。</p>
+    <p>更关键的是：到 L11 你会给函数加 <code>@tool</code> 装饰器、到 L14 会用 Pydantic 描述参数，那时框架会<strong>从函数签名自动生成工具 Schema</strong>。所以「把函数签名设计好」不是基本功而已，它就是 Agent 工具契约的源头。这一课你会亲手设计一个搜索工具函数。</p>
+  </div>
+</div>
+
+<!-- 学习目标 -->
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>区分位置参数、关键字参数、默认参数，并知道何时用哪种</li>
+      <li>用 <code>*</code> 和 <code>/</code> 强制"仅关键字"和"仅位置"参数，写出更安全的签名</li>
+      <li>用 <code>*args</code> / <code>**kwargs</code> 接收可变数量参数</li>
+      <li>用 <code>*</code> / <code>**</code> 在调用处解包列表和字典</li>
+      <li>设计一个类型清晰、参数合理的 Agent 工具函数</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 知识点 1 ==================== -->
+<div class="section">
+  <h2>1. 位置、关键字与默认参数</h2>
+
+  <p>函数参数有三种最基本的传法，Agent 工具函数天天用：</p>
+
+  <pre><code>def search(query, max_results=5, safe=True):
+    return (query, max_results, safe)
+
+search("ai agents")              # 位置传参：("ai agents", 5, True)
+search("ai agents", 10)          # 覆盖默认值：("ai agents", 10, True)
+search("ai agents", safe=False)  # 关键字传参（跳过中间的默认参数）</code></pre>
+
+  <ul>
+    <li><strong>位置参数</strong>：按顺序对号入座（<code>query</code>）</li>
+    <li><strong>默认参数</strong>：定义时给了默认值（<code>max_results=5</code>），调用可省略</li>
+    <li><strong>关键字参数</strong>：调用时写 <code>名字=值</code>，顺序无所谓，可读性最好</li>
+  </ul>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>工具函数的<strong>必填项用位置参数</strong>（如 <code>query</code>），<strong>可选项用默认参数</strong>（如 <code>max_results=5</code>）。这样 LLM 生成调用时，最少只需给一个 <code>query</code> 就能跑，降低出错率。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      <code>search("ai", safe=False)</code> 中 <code>max_results</code> 的值是？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="correct">仍是默认值 5</button>
+      <button data-answer="wrong">因缺参报错</button>
+      <button data-answer="wrong">被置为 None</button>
+      <button data-answer="wrong">取值为 False</button>
+    </div>
+    <div class="quiz-explanation">
+      跳过中间的默认参数、直接用关键字指定后面的参数，是完全合法的。<code>max_results</code> 没被传，就用默认值 <code>5</code>。这也是为什么"可选参数用关键字传"更清晰——不用为了传最后一个参数而把中间的都写全。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 2 ==================== -->
+<div class="section">
+  <h2>2. 仅关键字（*）与仅位置（/）</h2>
+
+  <p>这是写出<strong>健壮工具签名</strong>的关键技巧，很多人不知道，但面试和实战都很有用。</p>
+
+  <pre><code>def call_llm(prompt, /, *, model, temperature=0.7):
+    return (prompt, model, temperature)</code></pre>
+
+  <ul>
+    <li><code>/</code> <strong>之前</strong>的参数（<code>prompt</code>）：<strong>只能按位置传</strong>，不能写 <code>prompt=</code></li>
+    <li><code>*</code> <strong>之后</strong>的参数（<code>model</code>、<code>temperature</code>）：<strong>只能按关键字传</strong></li>
+  </ul>
+
+  <pre><code>call_llm("你好", model="claude")          # ✅ 正确
+call_llm("你好", model="claude", temperature=0.2)  # ✅ 正确
+
+call_llm("你好", "claude")                # ❌ TypeError：model 只能关键字传
+call_llm(prompt="你好", model="claude")   # ❌ TypeError：prompt 只能位置传</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"函数签名里的 <code>*</code> 和 <code>/</code> 有什么用？"</p>
+    <p>答：<code>*</code> 强制其后参数只能用关键字传，<code>/</code> 强制其前参数只能用位置传。好处是<strong>把接口约束写进签名</strong>：关键字强制让调用处更可读、也让你日后能安全地调整位置参数顺序而不破坏调用方。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      定义 <code>def f(a, *, b):</code>，哪个调用会报错？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="wrong">f(1, b=2) 正常运行</button>
+      <button data-answer="correct">f(1, 2) 抛出错误</button>
+      <button data-answer="wrong">f(a=1, b=2) 正常运行</button>
+      <button data-answer="wrong">f(1, b=9) 正常运行</button>
+    </div>
+    <div class="quiz-explanation">
+      <code>*</code> 之后的 <code>b</code> 是"仅关键字参数"，必须写成 <code>b=值</code>。<code>f(1, 2)</code> 试图把 <code>2</code> 按位置传给 <code>b</code>，触发 <code>TypeError</code>。其余三种都合法（<code>a</code> 既可位置也可关键字）。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 3 ==================== -->
+<div class="section">
+  <h2>3. *args 与 **kwargs：接收可变参数</h2>
+
+  <p>当你不确定会传进来多少个参数时，用 <code>*args</code>（收成元组）和 <code>**kwargs</code>（收成字典）：</p>
+
+  <pre><code>def log_call(name, *args, **kwargs):
+    return name, args, kwargs
+
+log_call("search", 1, 2, x=3)
+# ("search", (1, 2), {"x": 3})
+#           ↑ args      ↑ kwargs</code></pre>
+
+  <p>约定俗成叫 <code>args</code>/<code>kwargs</code>，但真正起作用的是 <code>*</code> 和 <code>**</code>。Agent 框架里常用 <code>**kwargs</code> 把额外配置透传给底层（比如把 <code>temperature</code>、<code>top_p</code> 一路传给 LLM 客户端）。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>装饰器（L11）几乎都写成 <code>def wrapper(*args, **kwargs)</code>——因为装饰器要能包装<strong>任意签名</strong>的函数，必须原样接收再转发所有参数。这一课的 <code>*args/**kwargs</code> 是理解装饰器的前置知识。</p>
+  </div>
+</div>
+
+<!-- ==================== 知识点 4 ==================== -->
+<div class="section">
+  <h2>4. 参数解包：把列表/字典摊开传进去</h2>
+
+  <p><code>*</code> 和 <code>**</code> 反过来用在<strong>调用处</strong>，就是"解包"——把容器摊开成一个个参数：</p>
+
+  <pre><code>def make_msg(role, content):
+    return {"role": role, "content": content}
+
+# ** 把字典解包成关键字参数
+data = {"role": "user", "content": "你好"}
+make_msg(**data)              # 等价于 make_msg(role="user", content="你好")
+
+# * 把列表解包成位置参数
+args = ["assistant", "好的"]
+make_msg(*args)               # 等价于 make_msg("assistant", "好的")</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>LLM 返回的工具调用参数通常是一个 dict（如 <code>{"query": "...", "max_results": 5}</code>）。有了 <code>**</code>，你可以直接 <code>tool(**llm_args)</code> 把它摊给工具函数，而不用手动一个个取字段。这是执行工具调用最常见的写法。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      已知 <code>d = {"role": "user", "content": "hi"}</code>，哪种写法把它摊给 <code>make_msg</code>？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="wrong">make_msg(d) 直接传入</button>
+      <button data-answer="correct">make_msg(**d) 解包字典</button>
+      <button data-answer="wrong">make_msg(*d) 解包字典</button>
+      <button data-answer="wrong">make_msg(&amp;d) 解包字典</button>
+    </div>
+    <div class="quiz-explanation">
+      <code>**d</code> 把字典解包成关键字参数（<code>role="user", content="hi"</code>）。注意 <code>*d</code> 解包的是字典的<strong>键</strong>（结果是 <code>make_msg("role", "content")</code>，语义错了）；直接 <code>make_msg(d)</code> 则是把整个字典当成第一个位置参数 <code>role</code>。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 5 ==================== -->
+<div class="section">
+  <h2>5. 返回值与两个陷阱</h2>
+
+  <h3>返回多个值（其实是元组）</h3>
+  <pre><code>def parse(resp):
+    return resp["name"], resp["args"]   # 逗号 = 打包成元组
+
+name, args = parse({"name": "search", "args": {"q": "x"}})   # 解包接收</code></pre>
+  <p>没有 <code>return</code>、或只写 <code>return</code>，函数返回 <code>None</code>。</p>
+
+  <h3>陷阱：可变默认参数（回顾 L03）</h3>
+  <pre><code>def bad(item, acc=[]):        # ⚠️ 默认的 [] 只创建一次，被多次调用共享
+    acc.append(item)
+    return acc
+
+bad("a")   # ["a"]
+bad("b")   # ["a", "b"]  ← 不是 ["b"]！
+
+# ✅ 正确写法：默认用 None，函数内再创建
+def good(item, acc=None):
+    if acc is None:
+        acc = []
+    acc.append(item)
+    return acc</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"为什么 Agent 工具函数尤其要警惕可变默认参数？"</p>
+    <p>答：工具可能被<strong>反复调用</strong>（Agent Loop 里一轮一轮跑）。如果默认参数是可变对象，状态会在多次调用间串起来，产生"上次的数据莫名出现在这次结果里"的诡异 bug，且极难复现。默认值一律用 <code>None</code> 兜。</p>
+  </div>
+</div>
+
+<!-- ==================== 知识点 6 ==================== -->
+<div class="section">
+  <h2>6. 给签名加类型：工具契约成形</h2>
+
+  <p>把类型注解加到参数和返回值上，签名就成了一份清晰的契约（类型细节在 L13/L14 深入）：</p>
+
+  <pre><code>def search_tool(
+    query: str,
+    max_results: int = 5,
+    *,
+    filters: dict | None = None,
+) -&gt; dict:
+    ...</code></pre>
+
+  <p>光看这一行签名，你（和 LLM、和 IDE、和框架）就知道：<code>query</code> 必填字符串、<code>max_results</code> 可选整数默认 5、<code>filters</code> 只能关键字传的可选字典、返回一个 dict。<strong>这正是工具 Schema 的雏形。</strong></p>
+</div>
+
+<!-- ==================== 知识图谱 ==================== -->
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>函数参数
+├── 位置参数 → 必填、按顺序（query）
+├── 默认参数 → 可选、有默认值（max_results=5）
+├── 关键字参数 → 名字=值，可读性好
+├── 仅位置 /  → / 之前只能位置传
+├── 仅关键字 * → * 之后只能关键字传
+├── *args   → 收成元组（可变数量位置参数）
+└── **kwargs → 收成字典（可变数量关键字参数）
+
+调用处解包
+├── *列表  → 摊成位置参数
+└── **字典 → 摊成关键字参数（tool(**llm_args)）
+
+返回值
+├── return a, b → 元组（解包接收）
+├── 无 return → None
+└── 陷阱：可变默认参数 → 用 None 兜（见 L03）
+
+类型注解签名 → 工具契约雏形（→ L11 @tool / L14 Pydantic）</code></pre>
+  </div>
+</div>
+
+<!-- ==================== 实战练习 ==================== -->
+<div class="section">
+  <h2>实战练习</h2>
+
+  <div class="card">
+    <h3>练习：设计一个 Agent 搜索工具函数</h3>
+    <p>设计一个搜索工具，接收搜索参数并返回结构化结果，重点练习<strong>参数设计</strong>。<strong>先自己写，再看答案。</strong></p>
+
+    <h4>任务清单</h4>
+    <ol>
+      <li>签名：<code>search_tool(query, max_results=5, *, filters=None)</code>，并加上类型注解</li>
+      <li><code>query</code> 必填；<code>filters</code> 设计成"仅关键字"参数（避免被误按位置传）</li>
+      <li><code>query</code> 为空（或全空格）时抛 <code>ValueError</code></li>
+      <li>把 <code>max_results</code> 夹到 <code>1~50</code> 之间（防止 LLM 传入夸张的值）</li>
+      <li><code>filters</code> 为 <code>None</code> 时用空字典兜（别用可变默认参数！）</li>
+      <li>返回一个 dict：包含 query、max_results、filters、results（模拟 max_results 条结果）</li>
+    </ol>
+
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+
+      <h4>参考实现</h4>
+      <pre><code>def search_tool(
+    query: str,
+    max_results: int = 5,
+    *,
+    filters: dict | None = None,
+) -&gt; dict:
+    if not query.strip():
+        raise ValueError("query 不能为空")
+
+    max_results = max(1, min(max_results, 50))   # 夹在 1~50
+    filters = filters or {}                       # None → {}，避开可变默认参数陷阱
+
+    return {
+        "query": query.strip(),
+        "max_results": max_results,
+        "filters": filters,
+        "results": [f"result {i} for {query.strip()}"
+                    for i in range(1, max_results + 1)],
+    }
+
+
+# 测试
+r = search_tool("  ai agents  ", 3, filters={"lang": "zh"})
+print(r["query"])        # ai agents  （首尾空格已清理）
+print(r["max_results"])  # 3
+print(len(r["results"])) # 3
+print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
+
+      <h4>为什么这样设计？</h4>
+      <ul>
+        <li><code>filters</code> 用 <code>*</code> 强制关键字传：调用处必须写 <code>filters=...</code>，语义清楚，也防止和 <code>max_results</code> 传混。</li>
+        <li>夹紧 <code>max_results</code>：LLM 可能生成 <code>max_results=100000</code>，工具自己要有防线。</li>
+        <li>返回结构化 dict 而不是纯文本：方便 Agent 后续解析（呼应 L03 的 dict 操作）。</li>
+      </ul>
+
+      <h4>思考题</h4>
+      <ul>
+        <li>如果要支持"多个关键词"，你会把 <code>query</code> 改成 <code>*queries</code> 吗？有什么利弊？</li>
+        <li>这个签名到 L14 会怎样变成一个 Pydantic 的 <code>SearchInput</code> 模型？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<!-- ==================== 面试常见问题 ==================== -->
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：*args 和 **kwargs 分别是什么？</h3>
+    <p><strong>答：</strong><code>*args</code> 把多余的<strong>位置参数</strong>收成元组，<code>**kwargs</code> 把多余的<strong>关键字参数</strong>收成字典。用于接收不定数量的参数，也是装饰器包装任意函数签名的标准写法。</p>
+
+    <h3>Q2：函数签名里的 * 和 / 各是什么作用？</h3>
+    <p><strong>答：</strong><code>*</code> 之后的参数只能按关键字传（keyword-only），<code>/</code> 之前的参数只能按位置传（positional-only）。作用是把接口约束写进签名，提升可读性、也让位置参数顺序可以安全演进。</p>
+
+    <h3>Q3：为什么默认参数不能用可变对象？</h3>
+    <p><strong>答：</strong>默认值在函数<strong>定义时只创建一次</strong>，之后所有调用共享同一个对象。用可变对象（list/dict）会导致跨调用状态串扰。正确做法是默认写 <code>None</code>，在函数体内创建新对象。</p>
+
+    <h3>Q4：调用处的 * 和 ** 是干嘛的？</h3>
+    <p><strong>答：</strong>解包。<code>*列表</code> 把序列摊成位置参数，<code>**字典</code> 把字典摊成关键字参数。执行 LLM 工具调用时常写 <code>tool(**llm_args)</code>，把参数字典直接摊给工具函数。</p>
+
+    <h3>Q5：Python 函数能返回多个值吗？</h3>
+    <p><strong>答：</strong>能，但本质是返回一个<strong>元组</strong>。<code>return a, b</code> 打包成 <code>(a, b)</code>，调用处用 <code>x, y = f()</code> 解包接收。没有 return 时返回 <code>None</code>。</p>
+  </div>
+</div>
+
+<!-- ==================== 参考资源 ==================== -->
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/tutorial/controlflow.html#defining-functions" target="_blank">Python 官方教程：定义函数</a> — 参数机制权威说明（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.python.org/3/tutorial/controlflow.html#special-parameters" target="_blank">Python 官方教程：特殊参数（* 与 /）</a> — 仅位置/仅关键字详解</li>
+      <li>· <a href="https://realpython.com/python-kwargs-and-args/" target="_blank">Real Python: *args and **kwargs</a> — 可变参数与解包全解</li>
+      <li>· <a href="0006-L03-variables-types-data-structures.html">L03 · 变量与数据结构</a> — 可变默认参数陷阱的来龙去脉</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 总结 ==================== -->
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>必填项用位置参数，可选项用默认参数，可读性用关键字参数</li>
+      <li><code>*</code> 强制仅关键字、<code>/</code> 强制仅位置——把约束写进签名</li>
+      <li><code>*args</code> 收元组、<code>**kwargs</code> 收字典；装饰器的标准写法</li>
+      <li>调用处 <code>*列表</code> / <code>**字典</code> 解包，<code>tool(**llm_args)</code> 是执行工具调用的常见写法</li>
+      <li><code>return a, b</code> 是元组；可变默认参数一律用 <code>None</code> 兜</li>
+      <li>带类型注解的函数签名，就是 Agent 工具契约的雏形（→ L11 / L14）</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<!-- 侧边目录 -->
+<aside class="toc" id="toc"></aside>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

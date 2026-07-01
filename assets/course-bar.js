@@ -14,6 +14,14 @@
     { file: '0004-L01-dev-environment-setup.html', title: '开发环境搭建', phase: '第一阶段' },
     { file: '0005-L02-python-runtime-and-modules.html', title: 'Python 运行机制与模块系统', phase: '第一阶段' },
     { file: '0006-L03-variables-types-data-structures.html', title: '变量、类型与数据结构', phase: '第一阶段' },
+    { file: '0008-L04-control-flow-and-prompt.html', title: '流程控制、字符串与 Prompt 构造', phase: '第一阶段' },
+    { file: '0009-L05-functions-and-parameters.html', title: '函数定义与参数', phase: '第一阶段' },
+    { file: '0010-L06-scope-closures-lambda.html', title: '作用域、闭包与 Lambda', phase: '第一阶段' },
+    { file: '0011-L07-classes-and-dataclass.html', title: '类、对象与 @dataclass', phase: '第一阶段' },
+    { file: '0012-L08-inheritance-and-call.html', title: '继承、多态与 __call__', phase: '第一阶段' },
+    { file: '0013-L09-files-json-dict.html', title: '文件、JSON 与 Dict 深度操作', phase: '第一阶段' },
+    { file: '0014-L10-exceptions-logging-context.html', title: '异常处理、日志与上下文管理器', phase: '第一阶段' },
+    { file: '0015-L11-decorators.html', title: '装饰器', phase: '第一阶段' },
   ];
 
   const COURSE = LESSONS.filter(l => l.phase);

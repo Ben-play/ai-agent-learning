@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L04 · 流程控制、字符串与 Prompt 构造</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<!-- 标题 -->
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>流程控制、字符串与 Prompt 构造</h1>
+    <p class="subtitle">把"决策逻辑"和"字符串拼接"练成肌肉记忆 — 因为 Prompt 就是字符串，Agent 的每一步都是分支</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:25%"></div></div>
+  </div>
+</div>
+
+<!-- 课前引导 -->
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 的本质是一个<strong>循环里的决策机器</strong>：根据 LLM 的输出决定下一步走哪个分支（调用工具？结束？重试？），再把上下文拼成新的 Prompt 喂回去。这一课的两件事——<strong>流程控制</strong>（怎么做决策）和<strong>字符串构造</strong>（怎么拼 Prompt）——就是 Agent Loop 的骨架。</p>
+    <p>尤其是 Prompt：它说到底就是一个字符串。能不能优雅地做<strong>变量替换、条件拼接、上下文注入</strong>，直接决定你的 Agent 代码是清爽还是一团浆糊。这一课你会亲手写一个 Prompt 模板引擎。</p>
+  </div>
+</div>
+
+<!-- 学习目标 -->
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>熟练使用 if/elif/else 和 for/while 控制 Agent 的决策与循环</li>
+      <li>用 match-case 优雅地分发 LLM 返回的不同动作（tool_call / text / end）</li>
+      <li>掌握 f-string 高级用法：表达式、格式化、<code>!r</code>、<code>=</code> 调试、多行</li>
+      <li>用常用字符串方法清洗和切分 LLM 文本</li>
+      <li>设计可复用的 Prompt 模板：变量替换 + 条件拼接 + 上下文注入</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 知识点 1 ==================== -->
+<div class="section">
+  <h2>1. 流程控制：Agent 的决策骨架</h2>
+
+  <p>条件与循环你大概率写过，这里只挑 <strong>Agent 场景里最常见的写法</strong>过一遍。</p>
+
+  <h3>if / elif / else — 根据 LLM 输出分支</h3>
+  <pre><code>finish_reason = "tool_calls"
+
+if finish_reason == "tool_calls":
+    action = "执行工具"
+elif finish_reason == "stop":
+    action = "返回最终答案"
+elif finish_reason == "length":
+    action = "上下文超限，需要压缩"
+else:
+    action = "未知状态，记录日志"</code></pre>
+
+  <h3>for / while — Agent Loop 的两种循环</h3>
+  <pre><code># for：遍历已知集合（比如多个工具调用）
+for call in tool_calls:
+    run_tool(call)
+
+# while：Agent 主循环，直到完成或到达步数上限
+step = 0
+MAX_STEPS = 10
+while not done and step &lt; MAX_STEPS:   # ← 一定要有上限，否则可能无限循环
+    response = llm(messages)
+    done = (response.finish_reason == "stop")
+    step += 1</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"Agent 的主循环为什么必须设最大步数？"</p>
+    <p>答：LLM 可能反复调用工具却始终不收敛（甚至两个工具互相触发），没有步数上限会导致无限循环、烧光 Token 和预算。<code>MAX_STEPS</code> 是最基本的安全阀。</p>
+  </div>
+
+  <h3>break / continue / for-else</h3>
+  <pre><code>for call in tool_calls:
+    if call["name"] == "forbidden_tool":
+        break          # 命中禁用工具，立刻跳出
+    if call["name"] == "noop":
+        continue       # 跳过这一个，继续下一个
+    run_tool(call)
+else:
+    # 循环正常结束（没被 break）才会执行
+    print("所有工具调用完成")</code></pre>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      下面循环结束后，<code>print</code> 会执行吗？
+    </div>
+    <pre><code>for x in [1, 2, 3]:
+    if x == 2:
+        break
+else:
+    print("done")</code></pre>
+    <div class="quiz-options">
+      <button data-answer="correct">不会，被 break 跳出</button>
+      <button data-answer="wrong">会的，循环结束执行</button>
+      <button data-answer="wrong">会的，每轮都执行</button>
+      <button data-answer="wrong">报错，语法不正确</button>
+    </div>
+    <div class="quiz-explanation">
+      <code>for-else</code> 的 <code>else</code> 只在循环<strong>正常结束（没有被 break）</strong>时执行。这里 <code>x == 2</code> 触发了 break，所以 else 不执行。这个特性常用于"找到就跳出、没找到才走 else"的搜索场景。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 2 ==================== -->
+<div class="section">
+  <h2>2. match-case：分发 LLM 的动作</h2>
+
+  <p><code>match-case</code> 是 Python 3.10+ 的结构化模式匹配。Agent 里特别适合<strong>分发 LLM 返回的不同动作类型</strong>，比一长串 if/elif 更清晰。</p>
+
+  <pre><code># LLM 返回的动作（简化）
+action = {"type": "tool_call", "name": "search", "args": {"q": "python"}}
+
+match action:
+    case {"type": "tool_call", "name": name, "args": args}:
+        result = run_tool(name, args)        # 解构出 name 和 args
+    case {"type": "text", "content": content}:
+        result = content
+    case {"type": "end"}:
+        result = None
+    case _:                                   # 兜底，相当于 else
+        raise ValueError(f"未知动作: {action}")</code></pre>
+
+  <p>关键能力：<strong>match 可以一边匹配结构、一边把字段解构出来</strong>（上面的 <code>name</code>、<code>args</code>、<code>content</code>），这是 if/elif 做不到的。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Agent Loop 的核心就是"拿到 LLM 输出 → 判断它想干什么 → 分发执行"。<code>match-case</code> 让这个分发逻辑既好读又好扩展，新增一种动作类型只要加一个 <code>case</code>。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      <code>match-case</code> 中的 <code>case _:</code> 作用是什么？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="wrong">匹配下划线字符串</button>
+      <button data-answer="correct">兜底，匹配所有情况</button>
+      <button data-answer="wrong">忽略本次匹配结果</button>
+      <button data-answer="wrong">声明一个临时变量</button>
+    </div>
+    <div class="quiz-explanation">
+      <code>_</code> 是通配模式，匹配任何前面没命中的情况，相当于 if/elif 里的 <code>else</code>。注意它<strong>不会绑定变量</strong>——只是"匹配但不关心值"。Agent 里常用它兜住未知的动作类型并报错。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 3 ==================== -->
+<div class="section">
+  <h2>3. f-string：拼 Prompt 的主力工具</h2>
+
+  <p>Prompt 就是字符串，而 f-string 是 Python 拼字符串最好用的方式。Agent 开发里你会写无数个 f-string，把这些高级用法练熟。</p>
+
+  <h3>基础：嵌入表达式</h3>
+  <pre><code>model = "claude-opus-4-8"
+n = 5
+prompt = f"用模型 {model} 搜索，返回 {n} 条结果"
+# 表达式也行（不只是变量）
+prompt = f"还能再搜 {MAX_RESULTS - n} 条"</code></pre>
+
+  <h3>格式化：对齐、精度、千分位</h3>
+  <pre><code>cost = 0.0123456
+print(f"成本：${cost:.4f}")        # 成本：$0.0123   （保留 4 位小数）
+
+tokens = 1234567
+print(f"用量：{tokens:,} tokens")   # 用量：1,234,567 tokens   （千分位）
+
+name = "search"
+print(f"{name:&gt;10}")               # "    search"   （右对齐占 10 格）</code></pre>
+
+  <h3>调试神器：<code>!r</code> 和 <code>=</code></h3>
+  <pre><code>text = "hi\n"
+
+print(f"{text}")     # 直接展开，看不出有换行
+print(f"{text!r}")   # 'hi\n'  ← !r 用 repr()，把转义字符显出来
+
+# = 同时打印"变量名和值"，调试 Agent 状态超好用
+step = 3
+print(f"{step=}")    # step=3</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>调 LLM 时经常遇到"Prompt 里混进了看不见的换行/空格"导致行为异常。<code>f"{prompt!r}"</code> 能立刻看出隐藏字符；<code>f"{var=}"</code> 则是排查 Agent 状态的最快方式，不用写一堆 <code>print("step:", step)</code>。</p>
+  </div>
+
+  <h3>多行 Prompt：三引号 + f-string</h3>
+  <pre><code>role = "搜索助手"
+tools = "search, calculator"
+
+system_prompt = f"""你是一个 {role}。
+
+可用工具：{tools}
+规则：
+- 必要时才调用工具
+- 用中文回答
+"""</code></pre>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      <code>f"{name!r}"</code> 里的 <code>!r</code> 表示什么？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把字符串反转输出</button>
+      <button data-answer="correct">用 repr 显示原始值</button>
+      <button data-answer="wrong">标记为原始字符串</button>
+      <button data-answer="wrong">把结果改成只读</button>
+    </div>
+    <div class="quiz-explanation">
+      <code>!r</code> 调用对象的 <code>repr()</code> 而不是 <code>str()</code>，会带引号并显示转义字符（如 <code>\n</code>、<code>\t</code>）。排查 Prompt 里的隐藏字符时极其有用。另两个转换：<code>!s</code>（str，默认）、<code>!a</code>（ascii）。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识点 4 ==================== -->
+<div class="section">
+  <h2>4. 字符串方法：清洗 LLM 文本</h2>
+
+  <p>LLM 返回的文本经常需要清洗、切分、判断。这些方法是日常基本功：</p>
+
+  <pre><code>raw = "  ```json\n{\"ok\": true}\n```  "
+
+raw.strip()                 # 去掉首尾空白
+raw.strip().removeprefix("```json").removesuffix("```")  # 去掉代码块包裹（3.9+）
+
+text = "search, calc , weather"
+[t.strip() for t in text.split(",")]   # ['search', 'calc', 'weather']  切分+去空格
+
+"TOOL_CALL".lower()         # "tool_call"   归一化
+"error" in response.lower() # 子串判断（先转小写更稳）
+"  ".join(["a", "b", "c"])  # "a  b  c"   用分隔符拼接
+
+resp = "Final Answer: 42"
+resp.startswith("Final")    # True
+resp.split(":", 1)[1].strip()  # "42"   按第一个冒号切一刀</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"<code>split(',')</code> 和 <code>split(',', 1)</code> 有什么区别？"</p>
+    <p>答：第二个参数 <code>maxsplit</code> 限制最多切几次。<code>split(":", 1)</code> 只在第一个冒号处切一刀，得到两段——解析 <code>"key: value: 含冒号的内容"</code> 这种字符串时非常关键。</p>
+  </div>
+</div>
+
+<!-- ==================== 知识点 5 ==================== -->
+<div class="section">
+  <h2>5. Prompt 构造模式（本课核心）</h2>
+
+  <p>把前面的零件组合起来，就是 Agent 开发里最高频的活：<strong>动态构造 Prompt</strong>。三种基本模式：</p>
+
+  <h3>模式一：变量替换</h3>
+  <pre><code>def build_prompt(question: str, context: str) -&gt; str:
+    return f"""根据下面的资料回答问题。
+
+资料：
+{context}
+
+问题：{question}
+"""</code></pre>
+
+  <h3>模式二：条件拼接（按需加入片段）</h3>
+  <pre><code>def build_system(role: str, tools: list[str], strict: bool) -&gt; str:
+    parts = [f"你是一个{role}。"]
+
+    if tools:                                    # 有工具才加这段
+        parts.append("可用工具：" + ", ".join(tools))
+    if strict:                                   # 严格模式才加约束
+        parts.append("只能基于资料回答，不要编造。")
+
+    return "\n".join(parts)                       # 用换行把片段拼起来
+
+print(build_system("搜索助手", ["search", "calc"], strict=True))</code></pre>
+  <p>关键技巧：<strong>把 Prompt 拆成片段列表，按条件 append，最后 <code>"\n".join()</code></strong>。这比写一长串嵌套 f-string 清爽得多。</p>
+
+  <h3>模式三：上下文注入（拼对话历史）</h3>
+  <pre><code>history = [
+    {"role": "user", "content": "北京天气？"},
+    {"role": "assistant", "content": "晴，25°C"},
+]
+
+# 把结构化历史渲染成文本上下文
+context = "\n".join(f"{m['role']}: {m['content']}" for m in history)
+prompt = f"对话历史：\n{context}\n\n请继续。"</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>这正是 Phase 4「Prompt Engineering」和 Phase 5「Context Engineering」的雏形。真实 Agent 框架里的 PromptTemplate、ChatPromptTemplate 内部就是这套逻辑。先用纯 Python 写明白，将来看框架源码就不懵。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q4">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      "条件拼接 Prompt" 推荐用哪种写法？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="wrong">多层嵌套三元表达式</button>
+      <button data-answer="correct">片段入列表再 join</button>
+      <button data-answer="wrong">字符串反复加号相连</button>
+      <button data-answer="wrong">全局变量逐段覆盖</button>
+    </div>
+    <div class="quiz-explanation">
+      把各片段按条件 <code>append</code> 进列表、最后 <code>"\n".join(parts)</code>，可读性和可维护性最好——加一个条件片段只要多一个 <code>if ... append</code>。反复用 <code>+=</code> 拼字符串或嵌套三元表达式都会让 Prompt 逻辑迅速失控。
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 知识图谱 ==================== -->
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>流程控制
+├── if / elif / else → 按 LLM 输出分支
+├── for / while → Agent Loop（while 必须有 MAX_STEPS）
+├── break / continue / for-else
+└── match-case（3.10+）→ 分发动作 + 解构字段
+
+字符串构造
+├── f-string
+│   ├── 嵌入表达式 {expr}
+│   ├── 格式化 {x:.4f} {n:,} {s:>10}
+│   ├── 调试 {x!r}（显转义） {x=}（名+值）
+│   └── 多行（三引号 f""" """）
+└── 字符串方法
+    ├── strip / removeprefix / removesuffix
+    ├── split(sep, maxsplit) / join
+    └── lower / startswith / in
+
+Prompt 构造模式（核心）
+├── 变量替换 → f-string 填空
+├── 条件拼接 → 片段列表 + join
+└── 上下文注入 → 渲染对话历史</code></pre>
+  </div>
+</div>
+
+<!-- ==================== 实战练习 ==================== -->
+<div class="section">
+  <h2>实战练习</h2>
+
+  <div class="card">
+    <h3>练习：构建一个 Prompt 模板引擎</h3>
+    <p>用 f-string + 字典实现一个动态 Prompt 模板系统，支持变量替换和条件拼接。<strong>先自己写，再看答案。</strong></p>
+
+    <pre><code># 目标：实现 render_prompt()，满足下面的调用
+result = render_prompt(
+    role="客服助手",
+    question="怎么退货？",
+    context="退货政策：7 天无理由。",   # 可能为空字符串
+    tools=["search_order", "create_ticket"],  # 可能为空列表
+    strict=True,
+)
+print(result)</code></pre>
+
+    <h4>任务清单</h4>
+    <ol>
+      <li>函数签名：<code>render_prompt(role, question, context="", tools=None, strict=False)</code></li>
+      <li>第一行固定是 <code>f"你是一个{role}。"</code></li>
+      <li>只有 <code>tools</code> 非空时，加一行 <code>"可用工具：xxx, yyy"</code></li>
+      <li>只有 <code>context</code> 非空时，加一段 <code>"参考资料：\n{context}"</code></li>
+      <li>只有 <code>strict=True</code> 时，加一行 <code>"只能基于资料回答，不要编造。"</code></li>
+      <li>最后固定加上 <code>f"问题：{question}"</code>，各片段用空行分隔</li>
+    </ol>
+
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+
+      <h4>参考实现</h4>
+      <pre><code>def render_prompt(role, question, context="", tools=None, strict=False):
+    tools = tools or []          # 防可变默认参数陷阱（见 L03）
+    parts = [f"你是一个{role}。"]
+
+    if tools:
+        parts.append("可用工具：" + ", ".join(tools))
+    if context:
+        parts.append(f"参考资料：\n{context}")
+    if strict:
+        parts.append("只能基于资料回答，不要编造。")
+
+    parts.append(f"问题：{question}")
+    return "\n\n".join(parts)     # 片段之间空一行
+
+
+result = render_prompt(
+    role="客服助手",
+    question="怎么退货？",
+    context="退货政策：7 天无理由。",
+    tools=["search_order", "create_ticket"],
+    strict=True,
+)
+print(result)</code></pre>
+
+      <h4>输出</h4>
+      <pre><code>你是一个客服助手。
+
+可用工具：search_order, create_ticket
+
+参考资料：
+退货政策：7 天无理由。
+
+只能基于资料回答，不要编造。
+
+问题：怎么退货？</code></pre>
+
+      <h4>思考题</h4>
+      <ul>
+        <li>如果 <code>tools</code> 默认写成 <code>tools=[]</code> 会有什么隐患？（回顾 L03 的可变默认参数陷阱）</li>
+        <li>如果要支持 few-shot 示例（一组 输入→输出 样例），你会怎么扩展这个函数？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<!-- ==================== 面试常见问题 ==================== -->
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：match-case 和一连串 if/elif 比，优势在哪？</h3>
+    <p><strong>答：</strong>match-case 能在匹配的同时<strong>解构</strong>数据（从 dict/对象里直接取出字段绑定到变量），还能匹配结构和类型，代码更声明式、更好扩展。纯做相等判断时两者差别不大，但分发"带结构的数据"（如 LLM 动作）时 match 明显更清晰。</p>
+
+    <h3>Q2：f-string 的 <code>!r</code>、<code>=</code> 各是干嘛的？</h3>
+    <p><strong>答：</strong><code>!r</code> 用 <code>repr()</code> 渲染，会显示引号和转义字符，适合排查隐藏字符；<code>{x=}</code> 同时输出变量名和值（<code>x=3</code>），是快速调试利器。两者在排查 Prompt 和 Agent 状态时很常用。</p>
+
+    <h3>Q3：为什么推荐"片段列表 + join"而不是用 + 拼接长字符串？</h3>
+    <p><strong>答：</strong>可读性和可维护性。条件拼接时，每个片段就是一个 <code>if ... append</code>，逻辑一目了然、容易增删；用 <code>+=</code> 反复拼接则容易漏空格/换行、难以维护。性能上，大量拼接时 <code>join</code> 也优于循环里反复 <code>+</code>。</p>
+
+    <h3>Q4：Agent 主循环为什么必须有终止条件？</h3>
+    <p><strong>答：</strong>LLM 可能始终不返回"结束"信号，或在工具间反复横跳，没有 <code>MAX_STEPS</code> 或超时就会无限循环、耗尽 Token 和成本。终止条件（步数上限 / 超时 / 显式 stop）是 Agent 最基本的安全设计。</p>
+
+    <h3>Q5：split(sep, maxsplit) 的 maxsplit 有什么用？</h3>
+    <p><strong>答：</strong>限制最多切分次数。解析形如 <code>"key: value 里也有: 冒号"</code> 的字符串时，<code>split(":", 1)</code> 只切第一刀，保证右半部分完整，避免把值里的分隔符也切碎。</p>
+  </div>
+</div>
+
+<!-- ==================== 参考资源 ==================== -->
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/tutorial/controlflow.html" target="_blank">Python 官方教程：流程控制</a> — if/for/while/match 权威说明（<strong>首选</strong>）</li>
+      <li>· <a href="https://realpython.com/python-f-strings/" target="_blank">Real Python: Python f-strings</a> — f-string 高级用法全解</li>
+      <li>· <a href="https://docs.python.org/3/library/stdtypes.html#string-methods" target="_blank">Python 官方文档：字符串方法</a> — strip/split/join 等完整列表</li>
+      <li>· <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering" target="_blank">Anthropic: Prompt Engineering</a> — 真实 Prompt 构造的进阶（Phase 4 预热）</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 总结 ==================== -->
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>Agent 是"循环里的决策机器"——流程控制就是它的骨架</li>
+      <li>while 主循环<strong>必须</strong>有终止条件（MAX_STEPS / 超时 / stop）</li>
+      <li>match-case 分发"带结构的动作"，能匹配+解构，比 if/elif 更清晰</li>
+      <li>f-string 高级用法：格式化、<code>!r</code> 显转义、<code>=</code> 调试、三引号多行</li>
+      <li>Prompt 就是字符串：变量替换 + 条件拼接（片段列表 join）+ 上下文注入</li>
+      <li>"片段列表 + join" 是动态构造 Prompt 的首选写法</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<!-- 侧边目录 -->
+<aside class="toc" id="toc"></aside>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

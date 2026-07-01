@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L07 · 类、对象与 @dataclass</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>类、对象与 @dataclass</h1>
+    <p class="subtitle">@dataclass 是 Agent 数据模型的起点 — Message、ToolCall、AgentState 都从这里来</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:44%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 系统里到处是"数据模型"：一条消息、一次工具调用、整个 Agent 的状态。用普通 dict 存这些数据，字段拼错了也不报错；用 <code>@dataclass</code>，字段清晰、自带比较和打印，代码立刻规整。</p>
+    <p>而且到 L14 你会用 <strong>Pydantic</strong> 做带校验的模型——<code>@dataclass</code> 是它的"前身"。搞清楚"什么时候用 dataclass、什么时候上 Pydantic"是高频面试题。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>写一个类，区分实例属性、类属性、self</li>
+      <li>区分实例方法 / <code>@classmethod</code> / <code>@staticmethod</code></li>
+      <li>用 <code>@dataclass</code> 快速定义数据模型</li>
+      <li>用 <code>field(default_factory=...)</code> 安全地给可变默认值</li>
+      <li>用 <code>frozen=True</code> 定义不可变模型，并说清 dataclass vs Pydantic</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 类的基础：属性与方法</h2>
+  <pre><code>class Agent:
+    default_model = "claude"          # 类属性：所有实例共享
+
+    def __init__(self, name):
+        self.name = name              # 实例属性：每个实例独有
+
+    def greet(self):                  # 实例方法：第一个参数永远是 self
+        return f"{self.name}@{self.default_model}"
+
+    @classmethod
+    def make_default(cls):            # 类方法：拿到类本身(cls)，常用作"工厂"
+        return cls("default")
+
+    @staticmethod
+    def is_valid(name):               # 静态方法：不碰 self/cls，就是个归属到类的工具函数
+        return bool(name)
+
+a = Agent("bot")
+print(a.greet())              # bot@claude
+print(Agent.make_default().name)   # default
+print(Agent.is_valid(""))    # False</code></pre>
+  <ul>
+    <li><strong>self</strong>：指向"当前这个实例"，实例方法必带</li>
+    <li><strong>@classmethod</strong>：第一个参数是类 <code>cls</code>，常用来写"另一种构造方式"（工厂方法）</li>
+    <li><strong>@staticmethod</strong>：既不要 self 也不要 cls，只是逻辑上归属这个类的函数</li>
+  </ul>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>@classmethod</code> 的第一个参数是什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">实例本身，即 self</button>
+      <button data-answer="correct">类本身，即 cls</button>
+      <button data-answer="wrong">不接收隐式首参</button>
+      <button data-answer="wrong">父类对象，即 sup</button>
+    </div>
+    <div class="quiz-explanation">类方法的第一个参数是<strong>类本身 <code>cls</code></strong>，所以能用 <code>cls(...)</code> 创建实例——这让它很适合写工厂方法（如 <code>from_dict</code>、<code>make_default</code>）。实例方法用 <code>self</code>，静态方法两者都不要。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. @dataclass：一行省掉一堆样板</h2>
+  <p>手写数据类要写 <code>__init__</code>、<code>__eq__</code>、<code>__repr__</code>…很啰嗦。<code>@dataclass</code> 自动帮你生成：</p>
+  <pre><code>from dataclasses import dataclass, field
+
+@dataclass
+class Message:
+    role: str
+    content: str
+    meta: dict = field(default_factory=dict)   # ⚠️ 可变默认值必须用 default_factory
+
+m1 = Message("user", "你好")
+m2 = Message("user", "你好")
+print(m1)          # Message(role='user', content='你好', meta={})  ← 自动 __repr__
+print(m1 == m2)    # True  ← 自动 __eq__（按字段比较）</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p><code>field(default_factory=dict)</code> 正是 L03/L05 讲的<strong>可变默认参数陷阱</strong>在 dataclass 里的正解——绝不能写 <code>meta: dict = {}</code>，那会让所有实例共享同一个 dict。这个坑面试常考。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. frozen 不可变模型</h2>
+  <p>加 <code>frozen=True</code>，实例就不可修改——适合表示"一旦产生就不该变"的数据，比如一次工具调用记录：</p>
+  <pre><code>@dataclass(frozen=True)
+class ToolCall:
+    name: str
+    args: dict
+
+tc = ToolCall("search", {"q": "python"})
+tc.name = "calc"     # ❌ FrozenInstanceError：不能改</code></pre>
+  <p>不可变的好处：可 hash（能进 set / 当 dict key）、线程安全、语义清晰。</p>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> dataclass 里给 <code>list</code>/<code>dict</code> 默认值，正确写法是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">直接写成 items = []</button>
+      <button data-answer="correct">default_factory=list</button>
+      <button data-answer="wrong">标注 items: list = None</button>
+      <button data-answer="wrong">在 __init__ 里手动赋值</button>
+    </div>
+    <div class="quiz-explanation">可变默认值必须写 <code>field(default_factory=list)</code>，让每个实例各拿一个新列表。直接 <code>= []</code> 会触发可变默认值共享的陷阱（dataclass 实际上会直接报错阻止你这么写）。这是 dataclass 版的"可变默认参数陷阱"。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. dataclass vs Pydantic（面试高频）</h2>
+  <div class="card">
+    <table>
+      <tr><th></th><th>@dataclass</th><th>Pydantic BaseModel</th></tr>
+      <tr><td>来源</td><td>标准库，零依赖</td><td>第三方库</td></tr>
+      <tr><td>数据校验</td><td><strong>不校验</strong>（类型注解只是提示）</td><td><strong>自动校验 + 类型转换</strong></td></tr>
+      <tr><td>用途</td><td>内部纯数据容器</td><td>外部输入/输出、Tool Schema</td></tr>
+      <tr><td>JSON Schema</td><td>不支持</td><td>一键导出（喂给 LLM）</td></tr>
+    </table>
+    <p style="margin-top:.6rem;"><strong>选择原则：</strong>内部传数据用 dataclass（轻、快）；一旦数据来自外部（用户、LLM、API）需要校验，或要生成工具 Schema，就用 Pydantic（L14 深入）。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>类基础
+├── 实例属性(self.x) vs 类属性(共享)
+├── 实例方法(self)
+├── @classmethod(cls) → 工厂方法
+└── @staticmethod → 归属类的工具函数
+
+@dataclass
+├── 自动 __init__ / __eq__ / __repr__
+├── field(default_factory=...) → 可变默认值正解
+└── frozen=True → 不可变、可 hash
+
+dataclass vs Pydantic
+├── dataclass：内部数据、不校验、零依赖
+└── Pydantic：外部输入、自动校验、导 JSON Schema（→ L14）</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：用 @dataclass 定义 Agent 数据模型</h3>
+    <p>为 Agent 定义三个核心数据模型，并思考它们和 Pydantic 的差异。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li><code>Message</code>：role、content，可选 meta（dict，默认空）</li>
+      <li><code>ToolCall</code>：name、args（dict）——设为 <strong>frozen</strong>（调用记录不可变）</li>
+      <li><code>AgentState</code>：messages（Message 列表，默认空）、step（int，默认 0）、done（bool，默认 False）</li>
+      <li>给 <code>AgentState</code> 加一个方法 <code>add(msg)</code> 追加消息并让 step + 1</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>from dataclasses import dataclass, field
+
+@dataclass
+class Message:
+    role: str
+    content: str
+    meta: dict = field(default_factory=dict)
+
+@dataclass(frozen=True)
+class ToolCall:
+    name: str
+    args: dict
+
+@dataclass
+class AgentState:
+    messages: list = field(default_factory=list)
+    step: int = 0
+    done: bool = False
+
+    def add(self, msg: Message):
+        self.messages.append(msg)
+        self.step += 1
+
+
+state = AgentState()
+state.add(Message("user", "北京天气？"))
+state.add(Message("assistant", "晴，25°C"))
+print(state.step)              # 2
+print(len(state.messages))     # 2
+print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q': '天气'})</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>如果 <code>Message.content</code> 传进来的是数字 <code>123</code>，dataclass 会报错吗？（答案：不会——它不校验类型。这就是为什么外部输入要用 Pydantic）</li>
+        <li>为什么 <code>ToolCall</code> 适合 frozen，而 <code>AgentState</code> 不适合？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：@dataclass 帮你自动生成了哪些方法？</h3>
+    <p><strong>答：</strong>主要是 <code>__init__</code>、<code>__repr__</code>、<code>__eq__</code>（按字段比较）；加 <code>frozen=True</code> 还会让实例可 hash。省掉大量样板代码。</p>
+    <h3>Q2：dataclass 和 Pydantic 有什么区别？怎么选？</h3>
+    <p><strong>答：</strong>dataclass 是标准库、<strong>不做校验</strong>，适合内部纯数据；Pydantic <strong>自动校验并转换类型</strong>、能导出 JSON Schema，适合外部输入/输出和工具 Schema。数据来自外部或需要 Schema 就用 Pydantic。</p>
+    <h3>Q3：dataclass 里怎么正确给列表/字典默认值？</h3>
+    <p><strong>答：</strong>用 <code>field(default_factory=list)</code>。直接写 <code>= []</code> 会因可变默认值共享而被 dataclass 直接报错。</p>
+    <h3>Q4：@classmethod 和 @staticmethod 区别？</h3>
+    <p><strong>答：</strong>classmethod 接收类 <code>cls</code>，能用来构造实例（工厂方法）；staticmethod 不接收 self/cls，只是逻辑上归属该类的普通函数。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/library/dataclasses.html" target="_blank">Python 官方：dataclasses</a> — 权威参考（<strong>首选</strong>）</li>
+      <li>· <a href="https://realpython.com/python-data-classes/" target="_blank">Real Python: Data Classes</a> — 深入讲解与实践</li>
+      <li>· <a href="https://docs.pydantic.dev/" target="_blank">Pydantic 文档</a> — L14 会用到，可先预览</li>
+      <li>· <a href="0006-L03-variables-types-data-structures.html">L03 · 变量与数据结构</a> — 可变默认值陷阱的根源</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>实例属性归各实例，类属性被共享；实例方法带 self</li>
+      <li>@classmethod 拿 cls（写工厂方法），@staticmethod 归属类的工具函数</li>
+      <li>@dataclass 自动生成 __init__/__eq__/__repr__，写数据模型神器</li>
+      <li>可变默认值用 <code>field(default_factory=...)</code>，别写 = []</li>
+      <li>frozen=True → 不可变、可 hash；适合工具调用记录这类数据</li>
+      <li>内部数据用 dataclass，外部输入/Schema 用 Pydantic（→ L14）</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

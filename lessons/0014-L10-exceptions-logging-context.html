@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L10 · 异常处理、日志与上下文管理器</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>异常处理、日志与上下文管理器</h1>
+    <p class="subtitle">Agent 会失败 — 优雅地处理错误、记录日志、管理资源，是生产级的分水岭</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:62%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 天生脆弱：LLM API 会超时、返回会格式错误、工具会抛异常、网络会抖动。<strong>怎么处理失败</strong>，是"能跑的 demo"和"能上线的系统"的分水岭。</p>
+    <p>三件生产级基本功：<strong>异常处理</strong>（分类捕获、别吞错）、<strong>logging</strong>（结构化日志，而非 print 调试）、<strong>上下文管理器</strong>（保证超时/清理/重试）。从第一天就养成，后面每一课都受益。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用 try/except/else/finally 精准处理错误</li>
+      <li>定义自定义异常，用 <code>raise ... from</code> 保留异常链</li>
+      <li>用 <code>logging</code> 记录结构化日志</li>
+      <li>写上下文管理器（<code>with</code>）保证资源清理</li>
+      <li>知道 <code>tenacity</code> 是重试的标准工具</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. try / except / else / finally</h2>
+  <pre><code>try:
+    result = call_llm(prompt)
+except TimeoutError:
+    result = None            # 针对性处理某类错误
+except (ConnectionError, OSError) as e:
+    result = None            # 一次处理多种错误
+else:
+    log_success(result)      # 没抛错才执行
+finally:
+    cleanup()                # 无论如何都执行（关连接、释放资源）</code></pre>
+  <ul>
+    <li><strong>按类型分开 except</strong>：超时、限流、格式错误各自处理，别用一个 <code>except Exception</code> 全吞</li>
+    <li><strong>else</strong>：try 没抛错时才走</li>
+    <li><strong>finally</strong>：一定执行，用于清理</li>
+  </ul>
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"为什么不推荐裸 <code>except:</code> 或 <code>except Exception: pass</code>？"</p>
+    <p>答：会"吞掉"所有错误（包括你没预料的 bug），让问题被掩盖、极难排查。应捕获<strong>具体异常类型</strong>并至少记录日志。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 自定义异常与异常链</h2>
+  <p>给 Agent 定义清晰的异常类型，出错时能精准分类；用 <code>raise ... from</code> 保留"原始原因"：</p>
+  <pre><code>class AgentError(Exception):
+    """所有 Agent 异常的基类"""
+
+class ToolError(AgentError):
+    """工具执行失败"""
+
+def run_tool(args):
+    try:
+        return int(args["value"])
+    except ValueError as e:
+        raise ToolError("参数解析失败") from e   # 保留底层原因
+
+# 捕获时能拿到原始异常
+try:
+    run_tool({"value": "abc"})
+except ToolError as e:
+    print(e)              # 参数解析失败
+    print(e.__cause__)    # invalid literal for int()...  ← 原始 ValueError</code></pre>
+  <p><code>from e</code> 让 traceback 同时显示"表层错误"和"根本原因"，排查时一目了然。</p>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>raise ToolError("x") from e</code> 里的 <code>from e</code> 作用是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">忽略掉原始异常</button>
+      <button data-answer="correct">保留原始异常链</button>
+      <button data-answer="wrong">把异常降级警告</button>
+      <button data-answer="wrong">重试引发的操作</button>
+    </div>
+    <div class="quiz-explanation"><code>from e</code> 建立<strong>异常链</strong>：新异常的 <code>__cause__</code> 指向原始异常，traceback 会显示"由……引起"。这样既能对外抛出语义清晰的自定义异常，又不丢失底层根因，排查快得多。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. logging：别再用 print 调试</h2>
+  <pre><code>import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("agent")
+
+logger.debug("详细调试信息")        # 开发时看
+logger.info("工具 search 调用成功")  # 正常事件
+logger.warning("重试第 2 次")        # 需要注意
+logger.error("LLM 调用失败", exc_info=True)  # 出错（带堆栈）</code></pre>
+  <p>为什么不用 print：logging 能<strong>分级</strong>（生产只输出 INFO 以上）、能<strong>带时间/模块名</strong>、能<strong>输出到文件/收集系统</strong>、能<strong>关掉</strong>。print 全靠手删，且没有结构。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>这是 Agent <strong>可观测性</strong>的第一层（Phase 8 会上 LangSmith/Langfuse 做全链路追踪，但根基是结构化日志）。调试一个"异步 + 多工具"的 Agent，靠 print 根本理不清；分级日志 + 时间戳才能还原发生了什么。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 上下文管理器：保证清理</h2>
+  <p><code>with</code> 背后是 <code>__enter__</code> / <code>__exit__</code>。你也能自己写，用来<strong>保证成对操作</strong>（开→关、进→出、计时开始→结束）：</p>
+  <pre><code>from contextlib import contextmanager
+import time
+
+@contextmanager
+def timed(label):
+    start = time.perf_counter()
+    print(f"[{label}] 开始")
+    try:
+        yield                        # yield 之前 = __enter__，之后 = __exit__
+    finally:
+        dur = time.perf_counter() - start
+        print(f"[{label}] 结束，耗时 {dur:.3f}s")   # 保证执行
+
+with timed("llm-call"):
+    do_work()
+# [llm-call] 开始
+# [llm-call] 结束，耗时 0.052s</code></pre>
+  <p>用 <code>@contextmanager</code> + <code>yield</code> 是写上下文管理器最简单的方式：<code>yield</code> 前是进入逻辑，<code>finally</code> 里是退出清理（无论是否异常都执行）。</p>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>@contextmanager</code> 函数里，<code>yield</code> 之后的代码相当于？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">进入 with 时执行</button>
+      <button data-answer="correct">退出 with 时清理</button>
+      <button data-answer="wrong">在 with 内被跳过</button>
+      <button data-answer="wrong">向 with 产出多值</button>
+    </div>
+    <div class="quiz-explanation">用 <code>@contextmanager</code> 时，<code>yield</code> <strong>之前</strong>的代码是进入（<code>__enter__</code>），<strong>之后</strong>的是退出清理（<code>__exit__</code>）。放在 <code>finally</code> 里能保证即使 with 块内抛异常也执行清理。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 重试：用 tenacity，别手写</h2>
+  <div class="card">
+    <p>LLM API 会因限流/网络临时失败，需要<strong>指数退避重试</strong>。原理你要懂，但生产别手写——用 <a href="https://tenacity.readthedocs.io/" target="_blank">tenacity</a>：</p>
+    <pre><code>from tenacity import retry, stop_after_attempt, wait_exponential
+
+@retry(stop=stop_after_attempt(3),
+       wait=wait_exponential(min=1, max=10))
+def call_llm(prompt):
+    return api.chat(prompt)    # 失败会自动重试：等 1s、2s、4s…，最多 3 次</code></pre>
+    <p>tenacity 还支持"只对特定异常重试""重试前记日志""到点抛出最后一次错误"——这些自己写又臭又长。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>异常处理
+├── try/except(按类型)/else/finally
+├── 别裸 except、别 except: pass（吞错）
+└── 自定义异常 + raise ... from e（保留异常链 __cause__）
+
+logging（可观测性第一层）
+├── 分级 debug/info/warning/error
+├── 带时间/模块名/堆栈(exc_info=True)
+└── 优于 print：可分级/可关/可收集
+
+上下文管理器 with
+├── __enter__ / __exit__
+├── @contextmanager + yield（前=进，后=清理）
+└── 保证清理/计时/关闭
+
+重试 → tenacity（指数退避，别手写）</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：实现一个 API 调用上下文管理器</h3>
+    <p>写一个上下文管理器，自动为 LLM API 调用计时、记日志、保证清理。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li>用 <code>@contextmanager</code> 写 <code>api_call(name)</code></li>
+      <li>进入时 <code>logger.info</code> 记录"开始调用 {name}"</li>
+      <li>退出时（finally）记录耗时；出错时 <code>logger.error</code> 记录并重新抛出</li>
+      <li>自定义异常 <code>APIError</code>，把底层异常用 <code>from</code> 链起来</li>
+      <li>（选做）叠加 tenacity 的 <code>@retry</code> 做 3 次指数退避</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>import time, logging
+from contextlib import contextmanager
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("agent")
+
+class APIError(Exception):
+    """LLM API 调用失败"""
+
+@contextmanager
+def api_call(name):
+    start = time.perf_counter()
+    logger.info(f"开始调用 {name}")
+    try:
+        yield
+    except Exception as e:
+        logger.error(f"{name} 调用失败: {e!r}")
+        raise APIError(f"{name} 失败") from e    # 保留原因
+    finally:
+        dur = time.perf_counter() - start
+        logger.info(f"{name} 结束，耗时 {dur:.3f}s")   # 一定执行
+
+# 正常
+with api_call("chat"):
+    time.sleep(0.01)
+
+# 出错
+try:
+    with api_call("embed"):
+        raise ConnectionError("timeout")
+except APIError as e:
+    print("捕获:", e, "| 根因:", e.__cause__)
+
+# —— 选做：加自动重试 ——
+# from tenacity import retry, stop_after_attempt, wait_exponential
+# @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
+# def call(): ...</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>为什么在 <code>except</code> 里 <code>logger.error</code> 后还要 <code>raise</code>？（记录 ≠ 处理——不重抛会把错误吞掉，调用方以为成功了）</li>
+        <li>耗时统计放在 <code>finally</code> 而不是 <code>else</code>，为什么？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：try/except/else/finally 各自什么时候执行？</h3>
+    <p><strong>答：</strong>try 放可能出错的代码；except 按类型捕获；else 在 try 没抛错时执行；finally 无论如何都执行（用于清理）。</p>
+    <h3>Q2：为什么不要用 <code>except Exception: pass</code>？</h3>
+    <p><strong>答：</strong>它会吞掉所有异常（包括意料外的 bug），让问题被掩盖、无法排查。应捕获具体异常类型并至少记录日志。</p>
+    <h3>Q3：logging 相比 print 有什么优势？</h3>
+    <p><strong>答：</strong>可分级（生产只输出 INFO+）、带时间/模块名、可输出到文件或日志系统、可统一开关。print 无结构、需手删，不适合生产。</p>
+    <h3>Q4：上下文管理器（with）解决什么？怎么自己实现？</h3>
+    <p><strong>答：</strong>保证"成对操作"的收尾一定执行（关文件/连接、释放锁、计时）。实现方式：类里写 <code>__enter__</code>/<code>__exit__</code>，或用 <code>@contextmanager</code> + <code>yield</code>（前进后清理）。</p>
+    <h3>Q5：LLM API 调用的重试该怎么做？</h3>
+    <p><strong>答：</strong>对临时性错误（限流 429、超时）做指数退避重试。原理要懂，工程上用 <code>tenacity</code>（<code>stop_after_attempt</code> + <code>wait_exponential</code>），别手写。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/tutorial/errors.html" target="_blank">Python 官方：错误与异常</a> — 权威参考（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.python.org/3/howto/logging.html" target="_blank">Python 官方：Logging HOWTO</a> — 日志实践</li>
+      <li>· <a href="https://docs.python.org/3/library/contextlib.html" target="_blank">Python 官方：contextlib</a> — 上下文管理器工具</li>
+      <li>· <a href="https://tenacity.readthedocs.io/" target="_blank">tenacity</a> — 重试库</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>按类型 except，别裸 except、别 <code>except Exception: pass</code> 吞错</li>
+      <li>自定义异常 + <code>raise ... from e</code> 保留根因（__cause__）</li>
+      <li>用 logging 分级记录，替代 print —— 可观测性的第一层</li>
+      <li>上下文管理器（with / @contextmanager+yield）保证清理一定执行</li>
+      <li>记录错误后要重抛，别让调用方误以为成功</li>
+      <li>重试用 tenacity 做指数退避，别手写</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

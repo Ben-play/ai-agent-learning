@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L09 · 文件、JSON 与 Dict 深度操作</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>文件、JSON 与 Dict 深度操作</h1>
+    <p class="subtitle">LLM 说的是 JSON — 读写文件、解析流式响应，是 Agent 的日常 I/O</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:56%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>LLM 的输入输出、工具调用参数、配置文件、缓存——全是 JSON。Agent 每一步都在做 JSON 的<strong>序列化（对象→字符串）</strong>和<strong>反序列化（字符串→对象）</strong>。</p>
+    <p>而流式响应（streaming）返回的是<strong>一行一个 JSON</strong>的数据流（JSON Lines），要能逐行解析、拼接、还要扛住坏行和截断。这是处理真实 LLM 输出的硬技能。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用 <code>with open()</code> 安全读写文件</li>
+      <li>用 <code>pathlib</code> 优雅地处理路径</li>
+      <li>熟练 <code>json.dumps</code> / <code>json.loads</code> 及常用参数</li>
+      <li>逐行解析 JSON Lines 流式响应，并容错</li>
+      <li>知道 orjson 何时能提速</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 文件读写：永远用 with</h2>
+  <pre><code>from pathlib import Path
+
+# 写
+with open("config.json", "w", encoding="utf-8") as f:
+    f.write('{"model": "claude"}')
+# with 块结束自动关闭文件，即使中途出错也保证关闭
+
+# 读
+with open("config.json", "r", encoding="utf-8") as f:
+    text = f.read()
+
+# pathlib：更现代的路径处理
+p = Path("data") / "logs" / "run.json"   # 用 / 拼路径，跨平台
+p.parent.mkdir(parents=True, exist_ok=True)   # 确保目录存在
+p.write_text('{"ok": true}', encoding="utf-8")   # 一行读写
+print(p.read_text(encoding="utf-8"))</code></pre>
+  <p>要点：<strong>永远用 <code>with</code></strong>（自动关闭）、<strong>永远指定 <code>encoding="utf-8"</code></strong>（避免中文乱码），路径用 <code>pathlib</code> 而非字符串拼接。</p>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 用 <code>with open(...)</code> 读文件，最大的好处是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">读取速度会更快</button>
+      <button data-answer="correct">自动关闭文件句柄</button>
+      <button data-answer="wrong">自动转换编码格式</button>
+      <button data-answer="wrong">能读更大的文件</button>
+    </div>
+    <div class="quiz-explanation"><code>with</code>（上下文管理器，L10 详讲）保证代码块结束时<strong>自动关闭文件</strong>——即使中途抛异常也会关。不关文件会泄露句柄。速度和编码不是它解决的问题。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. JSON 序列化与反序列化</h2>
+  <pre><code>import json
+
+obj = {"name": "search", "args": {"q": "python"}, "ok": True}
+
+# 序列化：对象 → 字符串
+s = json.dumps(obj, ensure_ascii=False, indent=2)
+# ensure_ascii=False → 中文正常显示（不转成 \uXXXX）
+# indent=2 → 美化缩进（存文件时好读）
+
+# 反序列化：字符串 → 对象
+back = json.loads(s)
+print(back == obj)    # True
+
+# 直接读写文件
+with open("c.json", "w", encoding="utf-8") as f:
+    json.dump(obj, f, ensure_ascii=False)   # dump 写文件（没有 s）
+with open("c.json", "r", encoding="utf-8") as f:
+    data = json.load(f)                       # load 读文件</code></pre>
+  <p>记忆法：带 <code>s</code> 的（dump<strong>s</strong>/load<strong>s</strong>）操作<strong>字符串</strong>；不带 s 的（dump/load）直接操作<strong>文件</strong>。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"<code>json.dumps</code> 的中文变成 <code>\uXXXX</code> 怎么办？"</p>
+    <p>答：加 <code>ensure_ascii=False</code>。它默认为 True 会把非 ASCII 转义；关掉后中文原样输出（记得文件用 utf-8 编码）。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 解析流式响应（JSON Lines）</h2>
+  <p>LLM 流式输出通常是<strong>一行一个 JSON 对象</strong>。要逐行解析、拼接内容，还得扛住空行/坏行/截断：</p>
+  <pre><code>import json
+
+# 模拟流：每行一个事件，中间可能有空行或坏行
+stream = '{"tok":"Hel"}\n{"tok":"lo"}\n\n{坏行}\n{"done":true}\n'
+
+tokens = []
+done = False
+for line in stream.splitlines():
+    line = line.strip()
+    if not line:
+        continue                       # 跳过空行
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:
+        continue                       # 坏行跳过，别让整个流崩掉
+    if "tok" in event:
+        tokens.append(event["tok"])
+    if event.get("done"):
+        done = True
+
+print("".join(tokens), done)   # Hello True</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>这是处理真实 LLM streaming 的核心骨架（结合 L04 的字符串方法 + 后面 L12 的生成器）。关键是<strong>容错</strong>：网络流可能有半行、心跳空行、格式异常——健壮的解析必须"坏行跳过、继续处理"，而不是一异常就全挂。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 解析流式 JSON 行时，遇到一个格式坏行应该？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">立刻抛错停止流</button>
+      <button data-answer="correct">跳过它继续解析</button>
+      <button data-answer="wrong">把它当纯文本存</button>
+      <button data-answer="wrong">重启整个连接流</button>
+    </div>
+    <div class="quiz-explanation">流式场景里坏行/半行很常见（心跳、截断、编码抖动）。健壮做法是 <code>try/except json.JSONDecodeError</code> 后 <strong>跳过该行、继续</strong>，避免一个坏行让整段响应作废。生产 Agent 的解析必须容错。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. json vs orjson（性能）</h2>
+  <div class="card">
+    <p>标准库 <code>json</code> 足够日常使用。当你要序列化<strong>大量或超大 JSON</strong>（如批处理、日志管线）时，第三方 <a href="https://github.com/ijl/orjson" target="_blank">orjson</a> 快得多（常见快 <strong>3–10 倍</strong>），且原生支持 datetime、dataclass 等。</p>
+    <pre><code># 用法几乎一样，但 orjson 返回 bytes
+import orjson
+data = orjson.loads(b'{"ok": true}')
+raw = orjson.dumps({"ok": True})   # b'{"ok":true}'</code></pre>
+    <p>原则：先用标准库 <code>json</code>；确认序列化是性能瓶颈时，再换 orjson。别过早优化。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>文件 I/O
+├── with open(..., encoding="utf-8") → 自动关闭 + 防乱码
+└── pathlib：Path("a")/"b"、mkdir、read_text/write_text
+
+JSON
+├── dumps/loads → 操作字符串（带 s）
+├── dump/load → 操作文件（不带 s）
+├── ensure_ascii=False → 中文原样
+└── indent=2 → 美化
+
+流式解析（JSON Lines）
+├── splitlines() 逐行 + strip()
+├── 空行跳过、坏行 try/except 跳过（容错！）
+└── 拼接 tok、检测 done
+
+json vs orjson → 大量序列化时 orjson 快 3–10x</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：解析 LLM 流式响应</h3>
+    <p>模拟 LLM 返回的 JSON Lines 流，逐行解析、拼接完整内容、统计用量，并容错。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li>输入是多行字符串，每行可能是：<code>{"type":"token","text":"..."}</code>、<code>{"type":"usage","tokens":N}</code>、<code>{"type":"done"}</code>，也可能有空行/坏行</li>
+      <li>逐行解析，拼接所有 token 的 text 成完整回答</li>
+      <li>累加 usage 的 tokens</li>
+      <li>坏行/空行跳过、不崩溃</li>
+      <li>返回 <code>{"text": 完整回答, "total_tokens": N, "done": bool}</code></li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>import json
+
+def parse_stream(stream: str) -&gt; dict:
+    parts = []
+    total_tokens = 0
+    done = False
+
+    for line in stream.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue                       # 容错：坏行跳过
+
+        kind = ev.get("type")
+        if kind == "token":
+            parts.append(ev.get("text", ""))
+        elif kind == "usage":
+            total_tokens += ev.get("tokens", 0)
+        elif kind == "done":
+            done = True
+
+    return {"text": "".join(parts), "total_tokens": total_tokens, "done": done}
+
+
+stream = (
+    '{"type":"token","text":"你好"}\n'
+    '{"type":"token","text":"，世界"}\n'
+    '\n'                                   # 空行
+    '{oops bad line}\n'                    # 坏行
+    '{"type":"usage","tokens":42}\n'
+    '{"type":"done"}\n'
+)
+print(parse_stream(stream))
+# {'text': '你好，世界', 'total_tokens': 42, 'done': True}</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>如果最后一行被网络截断成半个 JSON（如 <code>{"type":"tok</code>），你的代码会崩吗？（不会——被 except 跳过）</li>
+        <li>真实 SSE 流每行前面还有 <code>data: </code> 前缀，你会怎么先剥掉它？（提示：L04 的 removeprefix）</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：json.dump 和 json.dumps 区别？</h3>
+    <p><strong>答：</strong>带 s 的 <code>dumps</code>/<code>loads</code> 在<strong>字符串</strong>和对象之间转换；不带 s 的 <code>dump</code>/<code>load</code> 直接读写<strong>文件对象</strong>。</p>
+    <h3>Q2：为什么读写文件推荐用 with？</h3>
+    <p><strong>答：</strong><code>with</code> 是上下文管理器，块结束时自动关闭文件（即使异常也关），避免句柄泄露。比手动 <code>f.close()</code> 更安全。</p>
+    <h3>Q3：解析 LLM 流式响应要注意什么？</h3>
+    <p><strong>答：</strong>逐行解析、容错——空行跳过、坏行/半行用 <code>try/except JSONDecodeError</code> 跳过，避免单行错误让整段响应作废；同时拼接内容、检测结束标志。</p>
+    <h3>Q4：什么时候用 orjson 而不是标准库 json？</h3>
+    <p><strong>答：</strong>当 JSON 序列化成为性能瓶颈（大量或超大数据、高频调用）时。orjson 通常快数倍，并原生支持 datetime/dataclass。日常仍可用标准库。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/library/json.html" target="_blank">Python 官方：json 模块</a> — 权威参考（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.python.org/3/library/pathlib.html" target="_blank">Python 官方：pathlib</a> — 现代路径处理</li>
+      <li>· <a href="https://github.com/ijl/orjson" target="_blank">orjson</a> — 高性能 JSON 库</li>
+      <li>· <a href="https://jsonlines.org/" target="_blank">JSON Lines 规范</a> — 流式 JSON 格式</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>永远用 <code>with open(..., encoding="utf-8")</code>，路径用 pathlib</li>
+      <li>dump<strong>s</strong>/load<strong>s</strong> 操作字符串；dump/load 操作文件</li>
+      <li><code>ensure_ascii=False</code> 让中文原样输出</li>
+      <li>流式解析 = 逐行 + strip + 空行/坏行容错跳过 + 拼接</li>
+      <li>健壮的 LLM 响应解析绝不能因一个坏行整段崩溃</li>
+      <li>大量序列化才考虑 orjson，别过早优化</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

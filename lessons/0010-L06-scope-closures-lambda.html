@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L06 · 作用域、闭包与 Lambda</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>作用域、闭包与 Lambda</h1>
+    <p class="subtitle">闭包是"带记忆的函数" — Agent 里的计数器、限流器、装饰器都靠它</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:37%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>装饰器（L11）、限流器、状态计数器——这些 Agent 里天天用的东西，底层都是<strong>闭包</strong>：一个函数"记住"了它出生时的环境变量。理解闭包，你才看得懂 <code>@tool</code> 是怎么工作的。</p>
+    <p>而 lambda + 高阶函数（map/filter/sorted 的 key），是处理 LLM 返回的列表数据的利器——排序工具、过滤结果、聚合成本，一行搞定。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用 LEGB 规则判断一个变量到底指向谁</li>
+      <li>解释闭包的原理，并用它保存状态（面试常问）</li>
+      <li>正确使用 <code>global</code> / <code>nonlocal</code></li>
+      <li>用 lambda + <code>sorted(key=)</code> 排序结构化数据</li>
+      <li>用 map / filter / reduce / partial 做数据变换</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. LEGB：变量到底指向谁</h2>
+  <p>Python 查找一个名字时，按 <strong>L → E → G → B</strong> 的顺序找：</p>
+  <ul>
+    <li><strong>L</strong>ocal 局部（当前函数内）</li>
+    <li><strong>E</strong>nclosing 外层函数（闭包所在层）</li>
+    <li><strong>G</strong>lobal 模块全局</li>
+    <li><strong>B</strong>uilt-in 内置（<code>len</code>、<code>print</code>…）</li>
+  </ul>
+  <pre><code>x = "global"
+
+def outer():
+    x = "enclosing"
+    def inner():
+        # 这里读 x：Local 没有 → 找 Enclosing → "enclosing"
+        return x
+    return inner()
+
+print(outer())   # enclosing</code></pre>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> LEGB 中，函数优先在哪一层找变量？</div>
+    <div class="quiz-options">
+      <button data-answer="correct">Local 局部作用域</button>
+      <button data-answer="wrong">Global 全局作用域</button>
+      <button data-answer="wrong">Builtin 内置作用域</button>
+      <button data-answer="wrong">Enclosing 外层函数</button>
+    </div>
+    <div class="quiz-explanation">查找顺序是 L→E→G→B：<strong>先看自己函数内部（Local）</strong>，找不到才逐层往外。理解这个顺序，才能预测变量到底取到哪个值，也才能理解闭包为什么能"看见"外层变量。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 闭包：带记忆的函数</h2>
+  <p>当内层函数<strong>引用了外层函数的变量</strong>，并被返回出去，它就"记住"了那些变量——这就是闭包。修改外层变量要用 <code>nonlocal</code>：</p>
+  <pre><code>def make_counter():
+    calls = 0
+    total_ms = 0
+    def record(ms):
+        nonlocal calls, total_ms      # 声明：改的是外层的变量，不是新建局部
+        calls += 1
+        total_ms += ms
+        return {"calls": calls, "total_ms": total_ms}
+    return record
+
+counter = make_counter()
+counter(10)
+print(counter(20))   # {'calls': 2, 'total_ms': 30}  ← 状态被记住了</code></pre>
+  <p>没有 <code>nonlocal</code>，<code>calls += 1</code> 会被当成"新建一个局部 calls"，报 <code>UnboundLocalError</code>。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>闭包是"不用类也能保存状态"的轻量方案。Agent 里的<strong>工具调用计数器、令牌桶限流器、重试计数</strong>都能用闭包实现。更重要的是——<strong>装饰器（L11）本质就是返回闭包</strong>，理解这里，L11 会非常顺。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"什么是闭包？<code>global</code> 和 <code>nonlocal</code> 区别？"</p>
+    <p>答：闭包是记住了外层作用域变量的函数。<code>global</code> 声明修改的是<strong>模块全局</strong>变量；<code>nonlocal</code> 声明修改的是<strong>外层函数（enclosing）</strong>的变量。不写声明时，函数内赋值会新建局部变量。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. Lambda + 高阶函数：处理列表数据</h2>
+  <p>lambda 是"一次性的小函数"，最常配 <code>sorted</code> / <code>map</code> / <code>filter</code> 用来处理 LLM 返回的列表：</p>
+  <pre><code>tools = [
+    {"name": "search", "cost": 10},
+    {"name": "calc", "cost": 3},
+    {"name": "weather", "cost": 8},
+]
+
+# 按成本排序（key 决定"按什么排"）
+cheapest = sorted(tools, key=lambda t: t["cost"])[0]
+print(cheapest["name"])          # calc
+
+# map：提取所有工具名
+names = list(map(lambda t: t["name"], tools))     # ['search','calc','weather']
+
+# filter：留下便宜的工具
+cheap = list(filter(lambda t: t["cost"] < 9, tools))   # calc, weather
+
+# reduce：聚合总成本
+from functools import reduce
+total = reduce(lambda acc, t: acc + t["cost"], tools, 0)   # 21
+
+# partial：固定住某个参数，生成新函数
+from functools import partial
+def call(model, prompt): return f"{model}: {prompt}"
+call_claude = partial(call, "claude")
+print(call_claude("你好"))       # claude: 你好</code></pre>
+  <p>提示：能用推导式（L03）就用推导式，可读性更好；<code>map/filter</code> 在配合现成函数、或链式场景时更简洁。</p>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>sorted(data, key=lambda x: x["cost"])</code> 里 key 的作用是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">过滤掉不合格元素</button>
+      <button data-answer="correct">指定按什么排序</button>
+      <button data-answer="wrong">限定返回结果数量</button>
+      <button data-answer="wrong">去除列表重复元素</button>
+    </div>
+    <div class="quiz-explanation"><code>key</code> 是一个"取排序依据"的函数，对每个元素调用它、按返回值排序。这里按 <code>x["cost"]</code> 排。<code>key</code> 不改变元素本身，只决定排序顺序——处理 LLM 返回的字典列表时极其常用。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>作用域 LEGB
+├── Local → 当前函数
+├── Enclosing → 外层函数（闭包层）
+├── Global → 模块全局（global 声明可改）
+└── Builtin → 内置
+
+闭包 = 记住外层变量的函数
+├── nonlocal → 改 enclosing 变量
+├── 用途：计数器 / 限流 / 重试状态
+└── 装饰器的底层（→ L11）
+
+lambda + 高阶函数
+├── sorted(key=lambda ...) → 排序依据
+├── map / filter → 变换 / 筛选
+├── reduce → 聚合
+└── partial → 固定参数生成新函数</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：用闭包实现一个 Agent 计数器</h3>
+    <p>实现一个记录工具调用的计数器：每次调用记录"调用次数"和"累计耗时"。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li>写 <code>make_tracker()</code>，返回一个内部函数 <code>record(tool_name, ms)</code></li>
+      <li>用闭包保存：总调用次数、累计耗时、每个工具各自的调用次数</li>
+      <li><code>record</code> 返回当前统计快照（dict）</li>
+      <li>关键：用 <code>nonlocal</code> 修改外层计数</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>from collections import defaultdict
+
+def make_tracker():
+    calls = 0
+    total_ms = 0
+    per_tool = defaultdict(int)      # 每个工具的次数
+
+    def record(tool_name, ms):
+        nonlocal calls, total_ms
+        calls += 1
+        total_ms += ms
+        per_tool[tool_name] += 1     # dict 是可变对象，不用 nonlocal 也能改内容
+        return {
+            "calls": calls,
+            "total_ms": total_ms,
+            "per_tool": dict(per_tool),
+        }
+    return record
+
+
+track = make_tracker()
+track("search", 120)
+print(track("search", 80))
+print(track("calc", 15))
+# {'calls': 2, 'total_ms': 200, 'per_tool': {'search': 2}}
+# {'calls': 3, 'total_ms': 215, 'per_tool': {'search': 2, 'calc': 1}}</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>为什么 <code>per_tool</code>（dict）不需要 <code>nonlocal</code>，而 <code>calls</code>（int）需要？（提示：可变 vs 不可变，回顾 L03）</li>
+        <li>如果两个地方各 <code>make_tracker()</code> 一次，它们的计数会互相影响吗？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：什么是闭包？举个实际用途。</h3>
+    <p><strong>答：</strong>闭包是"记住了定义时外层作用域变量"的函数。用途：不建类就保存状态（计数器、限流器）、以及装饰器的实现基础。</p>
+    <h3>Q2：global 和 nonlocal 有什么区别？</h3>
+    <p><strong>答：</strong><code>global</code> 让函数内的赋值作用到<strong>模块全局</strong>变量；<code>nonlocal</code> 作用到<strong>外层函数</strong>的变量。都用于"我要改的是外面那个，别新建局部"。</p>
+    <h3>Q3：为什么闭包里 <code>count += 1</code> 不加 nonlocal 会报错？</h3>
+    <p><strong>答：</strong>因为对变量赋值会让 Python 把它当成局部变量，而 <code>+=</code> 需要先读取它——读一个"还没赋值的局部变量"就抛 <code>UnboundLocalError</code>。加 <code>nonlocal</code> 表明改的是外层变量。</p>
+    <h3>Q4：map/filter 和列表推导式怎么选？</h3>
+    <p><strong>答：</strong>多数情况推导式可读性更好、更 Pythonic。<code>map/filter</code> 在直接复用现成函数（如 <code>map(str, xs)</code>）或需要惰性求值时更简洁。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://realpython.com/python-scope-legb-rule/" target="_blank">Real Python: Python Scope & the LEGB Rule</a> — 作用域权威讲解（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.python.org/3/reference/executionmodel.html#naming-and-binding" target="_blank">Python 官方：命名与绑定</a> — 作用域规则原文</li>
+      <li>· <a href="https://docs.python.org/3/library/functools.html" target="_blank">Python 官方：functools</a> — reduce / partial</li>
+      <li>· <a href="0009-L05-functions-and-parameters.html">L05 · 函数定义与参数</a> — 闭包依赖的函数基础</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>变量查找按 LEGB：Local → Enclosing → Global → Builtin</li>
+      <li>闭包 = 记住外层变量的函数，是"轻量状态保存"和装饰器的基础</li>
+      <li>改外层变量：<code>global</code>（全局）/ <code>nonlocal</code>（外层函数）</li>
+      <li>可变对象（dict/list）改内容不需要 nonlocal，重新赋值才需要</li>
+      <li>lambda + sorted(key=) / map / filter / reduce / partial 处理列表数据</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

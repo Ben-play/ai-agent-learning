@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L08 · 继承、多态与 __call__</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>继承、多态与 __call__</h1>
+    <p class="subtitle">__call__ 让对象"像函数一样被调用" — 这正是 Agent 工具的核心模式</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:50%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 框架里的"工具"几乎都是一个<strong>可调用对象</strong>：它既是对象（能带状态、能自我描述 name/schema），又能像函数一样 <code>tool(query="...")</code> 调用——秘密就是 <code>__call__</code>。</p>
+    <p>再配合<strong>抽象基类（ABC）</strong>定义"所有工具都得实现 run"，和<strong>多态</strong>让 Agent 用统一方式调用不同工具——这三者组合，就是各大框架 <code>BaseTool</code> 的设计骨架。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用继承和 <code>super()</code> 复用父类逻辑</li>
+      <li>理解多态：同一接口、不同实现</li>
+      <li>用 ABC + <code>@abstractmethod</code> 强制子类实现方法</li>
+      <li>用 <code>__call__</code> 让对象可被调用</li>
+      <li>用 <code>__repr__</code> 让对象打印时清晰可读</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 继承与 super()</h2>
+  <pre><code>class Tool:
+    def __init__(self, name):
+        self.name = name
+    def describe(self):
+        return f"工具：{self.name}"
+
+class SearchTool(Tool):
+    def __init__(self, name, engine):
+        super().__init__(name)      # 调用父类的 __init__，复用它的逻辑
+        self.engine = engine
+    def describe(self):
+        base = super().describe()   # 也能复用父类方法再扩展
+        return f"{base}（引擎：{self.engine}）"
+
+t = SearchTool("search", "bing")
+print(t.describe())    # 工具：search（引擎：bing）</code></pre>
+  <p><code>super()</code> 让子类"站在父类肩上"——不重复父类代码，只补充或改写差异部分。</p>
+</div>
+
+<div class="section">
+  <h2>2. 抽象基类 ABC：定义契约</h2>
+  <p>有时你想规定"凡是工具，必须实现 <code>run</code> 方法"，否则不许实例化。用 <code>ABC</code> + <code>@abstractmethod</code>：</p>
+  <pre><code>from abc import ABC, abstractmethod
+
+class BaseTool(ABC):
+    name: str = "base"
+
+    @abstractmethod
+    def run(self, **kwargs) -> dict:
+        ...                          # 只声明契约，不实现
+
+class SearchTool(BaseTool):
+    name = "search"
+    def run(self, query, max_results=5):
+        return {"q": query, "n": max_results}
+
+BaseTool()          # ❌ TypeError：有未实现的抽象方法，不能实例化
+SearchTool().run(query="ai")   # ✅ {'q': 'ai', 'n': 5}</code></pre>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 一个含 <code>@abstractmethod</code> 的 ABC，直接实例化会怎样？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">创建一个空对象</button>
+      <button data-answer="correct">抛出 TypeError</button>
+      <button data-answer="wrong">触发 RuntimeError</button>
+      <button data-answer="wrong">静默返回 None</button>
+    </div>
+    <div class="quiz-explanation">含未实现抽象方法的抽象类<strong>不能被实例化</strong>，会抛 <code>TypeError</code>。只有实现了所有抽象方法的子类才能实例化。这正是"强制所有工具都实现 run"的机制——把契约写进代码。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. __call__：让对象像函数</h2>
+  <p>给类定义 <code>__call__</code>，它的实例就能"被调用"。这让工具既是对象、又能 <code>tool(...)</code>：</p>
+  <pre><code>from abc import ABC, abstractmethod
+
+class BaseTool(ABC):
+    name: str = "base"
+
+    @abstractmethod
+    def run(self, **kwargs) -> dict: ...
+
+    def __call__(self, **kwargs) -> dict:   # 对象()  →  实际执行 run
+        return self.run(**kwargs)
+
+    def __repr__(self):
+        return f"&lt;Tool {self.name}&gt;"
+
+class SearchTool(BaseTool):
+    name = "search"
+    def run(self, query, max_results=5):
+        return {"q": query, "n": max_results}
+
+tool = SearchTool()
+print(tool(query="ai"))    # {'q': 'ai', 'n': 5}   ← 像函数一样调用！
+print(tool)                # &lt;Tool search&gt;         ← __repr__ 生效</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>这就是 Agent 执行工具的标准姿势：Agent 拿到 LLM 给的参数字典 <code>args</code>，直接 <code>tool(**args)</code> 调用（呼应 L05 的解包）。工具作为对象还能携带 <code>name</code>、参数 schema、权限等元信息——纯函数做不到这些。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 定义了 <code>__call__</code> 的类，它的实例 <code>obj</code> 能做什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">能被当字典索引</button>
+      <button data-answer="correct">能像函数一样调用</button>
+      <button data-answer="wrong">能自动变成迭代器</button>
+      <button data-answer="wrong">能直接做加法运算</button>
+    </div>
+    <div class="quiz-explanation"><code>__call__</code> 让实例可被"调用"——<code>obj(...)</code> 会触发 <code>obj.__call__(...)</code>。这是"可调用对象"，让工具兼具对象的状态/元信息与函数的调用方式，是 Agent 工具设计的核心模式。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 多态 & 组合优于继承</h2>
+  <p><strong>多态</strong>：不同工具都实现了 <code>__call__</code>，Agent 就能用<strong>同一种方式</strong>调用它们，不用关心具体是哪个类（下面是示意，完整可运行版见本课练习）：</p>
+  <pre><code># 示意：tools 里可以是任意实现了 __call__ 的工具，args 为 LLM 给的参数
+tools = [SearchTool(), CalcTool()]
+for tool in tools:
+    result = tool(**args)      # 同一接口，各自的实现 —— 这就是多态</code></pre>
+  <p><strong>组合优于继承</strong>：能用"把对象装进另一个对象"解决的，就别用深继承。比如 Agent <strong>持有</strong>一组工具（组合），而不是去<strong>继承</strong>工具。继承层级太深会让代码难懂难改。</p>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>继承
+├── super().__init__() → 复用父类
+└── 子类可扩展/改写父类方法
+
+ABC 抽象基类
+├── @abstractmethod → 声明契约
+└── 含抽象方法 → 不能实例化（强制子类实现）
+
+__call__ → 对象可像函数调用
+├── tool(**args) 触发 run（呼应 L05 解包）
+└── 工具 = 对象(带 name/schema) + 可调用
+
+多态 → 同接口不同实现（统一调用工具）
+组合优于继承 → Agent 持有工具，而非继承工具</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：实现一个可调用的 Agent 工具基类</h3>
+    <p>用 ABC 定义 <code>BaseTool</code>，子类通过实现 <code>run</code> 得到一个可调用、可自我描述的工具。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li><code>BaseTool(ABC)</code>：类属性 <code>name</code>、<code>description</code>；抽象方法 <code>run(**kwargs) -&gt; dict</code></li>
+      <li>实现 <code>__call__</code>：转发到 <code>run</code></li>
+      <li>实现 <code>__repr__</code>：形如 <code>&lt;Tool search: 搜索网页&gt;</code></li>
+      <li>实现 <code>SearchTool</code> 和 <code>CalcTool</code> 两个子类</li>
+      <li>把它们放进列表，用统一循环 <code>tool(**args)</code> 调用（体会多态）</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>from abc import ABC, abstractmethod
+
+class BaseTool(ABC):
+    name: str = "base"
+    description: str = ""
+
+    @abstractmethod
+    def run(self, **kwargs) -> dict:
+        ...
+
+    def __call__(self, **kwargs) -> dict:
+        return self.run(**kwargs)
+
+    def __repr__(self):
+        return f"&lt;Tool {self.name}: {self.description}&gt;"
+
+class SearchTool(BaseTool):
+    name = "search"
+    description = "搜索网页"
+    def run(self, query, max_results=5):
+        return {"tool": self.name, "query": query, "n": max_results}
+
+class CalcTool(BaseTool):
+    name = "calc"
+    description = "计算表达式"
+    def run(self, expression):
+        return {"tool": self.name, "result": eval(expression)}   # 教学用；生产别用 eval
+
+tools = {t.name: t for t in [SearchTool(), CalcTool()]}
+
+# 模拟 Agent 执行：LLM 给出工具名 + 参数
+calls = [
+    {"name": "search", "args": {"query": "ai agents"}},
+    {"name": "calc", "args": {"expression": "1500 * 0.8"}},
+]
+for call in calls:
+    tool = tools[call["name"]]
+    print(repr(tool), "→", tool(**call["args"]))   # 统一方式调用不同工具（多态）</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>如果新增一个 <code>WeatherTool</code>，Agent 的调用循环需要改吗？（不需要——这就是多态+统一接口的威力）</li>
+        <li>为什么用"Agent 持有工具字典"（组合）比"Agent 继承各种工具"更好？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：__call__ 有什么用？举个场景。</h3>
+    <p><strong>答：</strong>让实例可以像函数一样被调用（<code>obj()</code>）。典型场景是 Agent 工具：对象携带 name/schema 等元信息，又能 <code>tool(**args)</code> 直接执行，兼得对象与函数的优点。</p>
+    <h3>Q2：抽象基类（ABC）解决什么问题？</h3>
+    <p><strong>答：</strong>定义"契约"——用 <code>@abstractmethod</code> 强制所有子类实现指定方法，否则不能实例化。用来统一一组类的接口，比如所有工具都必须有 <code>run</code>。</p>
+    <h3>Q3：什么是多态？在 Agent 里怎么体现？</h3>
+    <p><strong>答：</strong>同一接口、不同实现。Agent 用同一句 <code>tool(**args)</code> 调用任意工具，不关心具体类型——新增工具也不用改调用代码。</p>
+    <h3>Q4："组合优于继承"是什么意思？</h3>
+    <p><strong>答：</strong>优先用"对象持有其他对象"来复用功能，而非建立深层继承树。继承耦合强、层级深了难维护；组合更灵活。Agent 持有工具集合就是组合。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/reference/datamodel.html#object.__call__" target="_blank">Python 官方：__call__</a> — 可调用对象（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.python.org/3/library/abc.html" target="_blank">Python 官方：abc 模块</a> — 抽象基类</li>
+      <li>· <a href="https://realpython.com/inheritance-composition-python/" target="_blank">Real Python: Inheritance & Composition</a> — 继承 vs 组合</li>
+      <li>· <a href="0009-L05-functions-and-parameters.html">L05 · 函数与参数</a> — <code>tool(**args)</code> 解包的来源</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li><code>super()</code> 复用父类逻辑，子类只写差异</li>
+      <li>ABC + @abstractmethod 定义契约，强制子类实现，否则不能实例化</li>
+      <li><code>__call__</code> 让对象像函数被调用 —— Agent 工具的核心模式</li>
+      <li><code>__repr__</code> 让对象打印清晰，便于调试</li>
+      <li>多态 = 同接口不同实现，Agent 用统一方式调用所有工具</li>
+      <li>组合优于继承：Agent 持有工具，而非继承工具</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

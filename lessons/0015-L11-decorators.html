@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L11 · 装饰器 — Agent 框架的基石</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>装饰器 — Agent 框架的基石</h1>
+    <p class="subtitle">@tool、@chain、@agent 都是装饰器 — 看懂它，你就看懂了半个框架源码</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:69%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>翻开任何 Agent 框架，满眼都是 <code>@tool</code>、<code>@chain</code>、<code>@agent</code>、<code>@retry</code>——它们全是<strong>装饰器</strong>。装饰器让你"给函数加一层包装"而不改函数本身：加日志、加重试、加计时、把普通函数注册成工具。</p>
+    <p>本课是 Part B 的收官，也是<strong>闭包（L06）的实战出口</strong>：装饰器 = 返回闭包的高阶函数。学完你会亲手写一个 <code>@tool</code>，从函数签名自动生成工具 Schema——这正是框架在幕后做的事。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>解释装饰器的本质（闭包 + 高阶函数）</li>
+      <li>写基础装饰器，并用 <code>functools.wraps</code> 保留元信息</li>
+      <li>写带参数的装饰器（三层结构）</li>
+      <li>理解多层装饰器的叠放顺序</li>
+      <li>手写一个 <code>@tool</code>，从类型注解提取参数 Schema</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 装饰器的本质</h2>
+  <p>装饰器就是一个"接收函数、返回新函数"的函数。<code>@deco</code> 只是 <code>fn = deco(fn)</code> 的语法糖：</p>
+  <pre><code>import functools
+
+def timed(fn):
+    @functools.wraps(fn)              # 保留原函数的名字/文档（关键！）
+    def wrapper(*args, **kwargs):     # 用 *args/**kwargs 接住任意签名（呼应 L05）
+        import time
+        start = time.perf_counter()
+        result = fn(*args, **kwargs)  # 调用原函数
+        dur = time.perf_counter() - start
+        print(f"{fn.__name__} 耗时 {dur:.4f}s")
+        return result
+    return wrapper                    # 返回的 wrapper 是个闭包（记住了 fn）
+
+@timed
+def search(query):
+    return f"结果: {query}"
+
+# 等价于 search = timed(search)
+search("ai")                # search 耗时 0.0000s
+print(search.__name__)      # search  ← 因为用了 wraps，否则会变成 'wrapper'</code></pre>
+  <p><strong>三个要点：</strong>① <code>wrapper</code> 是闭包（记住了外层的 <code>fn</code>）；② 用 <code>*args/**kwargs</code> 才能包装任意函数；③ 一定加 <code>@functools.wraps(fn)</code>，否则被装饰函数的 <code>__name__</code>、<code>__doc__</code> 会被 wrapper 覆盖。</p>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>@deco</code> 写在 <code>def f</code> 上方，等价于什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把 deco(f()) 的结果赋回</button>
+      <button data-answer="correct">f = deco(f) 重新赋值</button>
+      <button data-answer="wrong">deco 和 f 并列定义</button>
+      <button data-answer="wrong">在 f 内部调用 deco</button>
+    </div>
+    <div class="quiz-explanation"><code>@deco</code> 是语法糖，等价于把 <code>f</code> 传给 <code>deco</code>、再把返回值赋回 <code>f</code>——即 <code>f = deco(f)</code>。之后你调用的 <code>f</code> 其实是装饰器返回的新函数（通常是个闭包 wrapper）。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 带参数的装饰器（三层）</h2>
+  <p>想写 <code>@retry(times=3)</code> 这种"能传参"的装饰器，需要<strong>多一层</strong>：最外层收参数，返回一个真正的装饰器：</p>
+  <pre><code>import functools
+
+def retry(times):                     # ① 收装饰器参数
+    def deco(fn):                     # ② 真正的装饰器（收函数）
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs): # ③ 包装逻辑
+            err = None
+            for _ in range(times):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    err = e
+            raise err
+        return wrapper
+    return deco
+
+@retry(times=3)                       # 先调用 retry(3) 得到 deco，再用 deco 装饰
+def flaky():
+    ...</code></pre>
+  <p>记忆：<strong>不带参数的装饰器两层，带参数的三层。</strong>多出来的最外层就是用来"接收装饰器自己的参数"。</p>
+</div>
+
+<div class="section">
+  <h2>3. 多层装饰器的顺序</h2>
+  <pre><code>@timed        # 后执行（外层）
+@retry(times=3)   # 先执行（内层，离函数近）
+def call():
+    ...
+
+# 等价于：call = timed(retry(times=3)(call))
+# 装饰：自下而上包裹；调用：自上而下进入</code></pre>
+  <p>规则：<strong>离函数最近的装饰器最先"套"上去</strong>（内层），最上面的最后套（最外层）。运行时，请求从最外层往里穿过每一层。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"为什么装饰器里几乎总要写 <code>@functools.wraps(fn)</code>？"</p>
+    <p>答：不写的话，被装饰函数的 <code>__name__</code>、<code>__doc__</code>、签名等会被内层 <code>wrapper</code> 覆盖，导致调试、文档、以及"靠反射读函数信息"的框架（比如从函数生成工具 Schema）全部失灵。<code>wraps</code> 把这些元信息复制回来。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. @tool：从函数生成工具 Schema</h2>
+  <p>这是装饰器在 Agent 里最经典的用法——把普通函数<strong>注册成工具</strong>，并<strong>读取它的类型注解自动生成参数 Schema</strong>（喂给 LLM）：</p>
+  <pre><code>import functools, inspect
+
+REGISTRY = {}
+
+def tool(fn):
+    sig = inspect.signature(fn)                  # 读函数签名（L05 的签名在这里被"消费"）
+    params = {}
+    for pname, p in sig.parameters.items():
+        params[pname] = {
+            "type": getattr(p.annotation, "__name__", "any"),
+            "required": p.default is inspect.Parameter.empty,
+        }
+    REGISTRY[fn.__name__] = {
+        "name": fn.__name__,
+        "doc": (fn.__doc__ or "").strip(),
+        "params": params,
+    }
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+    return wrapper
+
+@tool
+def web_search(query: str, max_results: int = 5) -> dict:
+    "搜索网页并返回结果"
+    return {"query": query, "n": max_results}
+
+print(REGISTRY["web_search"])
+# {'name': 'web_search', 'doc': '搜索网页并返回结果',
+#  'params': {'query': {'type': 'str', 'required': True},
+#             'max_results': {'type': 'int', 'required': False}}}</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>这就是 LangChain 的 <code>@tool</code>、Pydantic AI 的工具注册在幕后做的事：<strong>装饰器读取你的函数签名（L05）+ 类型注解（L13）+ docstring，自动生成 LLM 能理解的工具描述</strong>。到 L14 用 Pydantic 后，这个 Schema 会更严谨（带校验、可导出标准 JSON Schema）。Part B 到这里闭环了。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>@tool</code> 装饰器靠什么读出函数的参数信息？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">调用 dir() 反射列出全部</button>
+      <button data-answer="correct">用 inspect 读函数签名</button>
+      <button data-answer="wrong">解析函数的源代码文本</button>
+      <button data-answer="wrong">运行函数观察其返回值</button>
+    </div>
+    <div class="quiz-explanation">用 <code>inspect.signature(fn)</code> 读取函数的参数名、类型注解、默认值——这是"反射"。装饰器据此自动生成工具 Schema，无需你手写。这也是为什么 L05 强调"函数签名就是工具契约"、以及为什么装饰器必须用 <code>functools.wraps</code> 保住元信息。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>装饰器本质
+├── @deco 等价 f = deco(f)（语法糖）
+├── 返回闭包 wrapper（记住 fn，← L06）
+├── wrapper(*args, **kwargs) 接任意签名（← L05）
+└── @functools.wraps(fn) 保留 __name__/__doc__/签名（必写）
+
+带参数装饰器 → 三层（外层收参数）
+多层装饰器 → 离函数近的先套；调用自外向内
+
+@tool（Agent 经典用法）
+├── inspect.signature 读签名（反射）
+├── 类型注解 → 参数 type（← L13）
+├── docstring → 工具描述
+└── 生成 Schema 喂 LLM（→ L14 Pydantic 更严谨）</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：手写 @tool 装饰器</h3>
+    <p>实现一个工具注册装饰器，自动收集函数名、参数 Schema（从 type hints 提取）、描述，构建工具注册表。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li><code>tool</code> 装饰器：用 <code>inspect.signature</code> 读参数</li>
+      <li>每个参数记录：类型名（从注解）、是否必填（有无默认值）、默认值</li>
+      <li>从 docstring 取工具描述</li>
+      <li>存进全局 <code>REGISTRY</code>（工具名 → 描述+schema）</li>
+      <li>用 <code>functools.wraps</code>，保证被装饰函数仍可正常调用</li>
+      <li>加一个 <code>get_schemas()</code> 返回所有工具的 schema 列表（模拟"喂给 LLM 的工具清单"）</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>import functools, inspect
+
+REGISTRY = {}
+
+def tool(fn):
+    sig = inspect.signature(fn)
+    params = {}
+    for name, p in sig.parameters.items():
+        ann = p.annotation
+        has_default = p.default is not inspect.Parameter.empty
+        params[name] = {
+            "type": getattr(ann, "__name__", "any"),
+            "required": not has_default,
+            "default": None if not has_default else p.default,
+        }
+    REGISTRY[fn.__name__] = {
+        "name": fn.__name__,
+        "description": (fn.__doc__ or "").strip(),
+        "parameters": params,
+    }
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+    return wrapper
+
+def get_schemas():
+    return list(REGISTRY.values())
+
+
+@tool
+def web_search(query: str, max_results: int = 5) -> dict:
+    "搜索网页，返回若干条结果"
+    return {"query": query, "n": max_results}
+
+@tool
+def calculator(expression: str) -> float:
+    "计算一个数学表达式"
+    return eval(expression)     # 教学用；生产别用 eval
+
+# 被装饰后照常调用
+print(web_search("ai agents"))          # {'query': 'ai agents', 'n': 5}
+print(web_search.__name__)              # web_search（wraps 生效）
+
+# 模拟"喂给 LLM 的工具清单"
+import json
+print(json.dumps(get_schemas(), ensure_ascii=False, indent=2))</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>为什么去掉 <code>@functools.wraps</code> 后，很多框架会读不到工具的真实名字？</li>
+        <li>到 L14，如果用 Pydantic 的模型来描述参数，这个 Schema 会多出什么能力？（提示：校验 + 标准 JSON Schema 导出）</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：装饰器的本质是什么？</h3>
+    <p><strong>答：</strong>一个"接收函数、返回新函数"的高阶函数，返回值通常是记住了原函数的闭包。<code>@deco</code> 等价于 <code>f = deco(f)</code>，用来在不改原函数的前提下增强它。</p>
+    <h3>Q2：为什么装饰器要用 functools.wraps？</h3>
+    <p><strong>答：</strong>否则内层 wrapper 会覆盖原函数的 <code>__name__</code>/<code>__doc__</code>/签名，破坏调试、文档和依赖反射的框架（如从函数生成工具 Schema）。wraps 把元信息复制回来。</p>
+    <h3>Q3：带参数的装饰器和不带参数的结构差别？</h3>
+    <p><strong>答：</strong>不带参数两层（装饰器 → wrapper）；带参数三层（收参数 → 装饰器 → wrapper），最外层负责接收装饰器自己的参数。</p>
+    <h3>Q4：<code>@a @b def f</code> 的执行顺序？</h3>
+    <p><strong>答：</strong>等价 <code>f = a(b(f))</code>。装饰时离函数近的 <code>b</code> 先套上（内层），<code>a</code> 后套（外层）；调用时从外层 <code>a</code> 往里穿过。</p>
+    <h3>Q5：装饰器 wrapper 为什么常写成 <code>(*args, **kwargs)</code>？</h3>
+    <p><strong>答：</strong>为了能包装<strong>任意签名</strong>的函数——原样接收所有位置/关键字参数再转发给原函数，不限制被装饰函数长什么样。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://realpython.com/primer-on-python-decorators/" target="_blank">Real Python: Primer on Decorators</a> — 装饰器最佳入门（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.python.org/3/library/functools.html#functools.wraps" target="_blank">Python 官方：functools.wraps</a> — 保留元信息</li>
+      <li>· <a href="https://docs.python.org/3/library/inspect.html#inspect.signature" target="_blank">Python 官方：inspect.signature</a> — 读函数签名</li>
+      <li>· <a href="0010-L06-scope-closures-lambda.html">L06 · 闭包</a> — 装饰器的底层机制</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>装饰器 = 接收函数、返回新函数的高阶函数（<code>@deco</code> 即 <code>f=deco(f)</code>）</li>
+      <li>wrapper 是闭包（L06）、用 <code>*args/**kwargs</code> 接任意签名（L05）</li>
+      <li>永远加 <code>@functools.wraps(fn)</code> 保留元信息</li>
+      <li>带参数的装饰器是三层结构</li>
+      <li>多层装饰器：离函数近的先套，调用自外向内</li>
+      <li><code>@tool</code> 用 inspect 读签名 + 类型注解自动生成工具 Schema —— 框架的核心套路</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    🎉 <strong>恭喜！你已完成 Part B（Python 进阶特性）。</strong> 从函数、闭包、类、异常到装饰器，你已经掌握了看懂 Agent 框架源码所需的全部语言机制。接下来 <strong>Part C</strong> 会把这些拧成 Agent 工程技能：生成器/Streaming、类型提示、Pydantic、httpx、异步并发。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>
