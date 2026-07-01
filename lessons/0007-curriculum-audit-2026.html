@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>大纲审核报告 · 资深 Agent 工程师视角（2026·v7 建议）</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    /* 本页专用：审核报告的小工具样式，复用全局变量 */
+    .verdict { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.75rem; margin:1.25rem 0; }
+    .verdict .card { margin:0; text-align:center; }
+    .verdict .big { font-size:1.6rem; font-weight:700; display:block; }
+    .sev { display:inline-block; font-size:.72rem; font-weight:700; padding:.1rem .5rem; border-radius:99px; vertical-align:middle; }
+    .sev-p0 { background:#fde2e1; color:#a11; }
+    .sev-p1 { background:#fef0d6; color:#8a5a00; }
+    .sev-p2 { background:#e3eefd; color:#1452a3; }
+    .legend { font-size:.85rem; color:var(--muted); margin:.25rem 0 1rem; }
+    .keep { color:#1a7f37; font-weight:600; }
+    .gap  { color:#a11; font-weight:600; }
+    table td, table th { vertical-align:top; }
+    .small { font-size:.85rem; color:var(--muted); }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>大纲审核报告</h1>
+  <p>以资深 AI Agent 工程师视角，对照 2026 年最新技术、面试与岗位需求，给出 v7 优化建议</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><span class="hero-stat-num">11</span><span class="hero-stat-label">现有阶段</span></div>
+    <div class="hero-stat"><span class="hero-stat-num">7</span><span class="hero-stat-label">关键改项</span></div>
+    <div class="hero-stat"><span class="hero-stat-num">0</span><span class="hero-stat-label">失真案例</span></div>
+    <div class="hero-stat"><span class="hero-stat-num">B+</span><span class="hero-stat-label">总体评级</span></div>
+  </div>
+</div>
+
+<p>这份审核覆盖了 <code>MISSION.md</code>、<code>README.md</code>、<code>RESOURCES.md</code> 与学习路径总览（<a href="0001-ai-agent-learning-path-overview.html">0001</a>）的全部 11 个阶段。结论先行：<strong>课程骨架成熟、顺序合理、面试导向明确，是一份高于平均水准的自学大纲。</strong>真正要动的不是结构，而是补齐几个「实战必考却缺位」的模块，以及修掉一处会误导学习者的失真内容。</p>
+
+<div class="verdict">
+  <div class="card"><span class="big keep">扎实</span>Python → AI → API → Prompt 工具链顺序、6 周出 Agent 的设计</div>
+  <div class="card"><span class="big">待补</span>工具工程 / 系统设计 / 原生缓存 / Agentic 评估</div>
+  <div class="card"><span class="big keep">已核实</span>Phase 10 案例 OpenClaw / Hermes 真实存在</div>
+</div>
+
+<div class="info">
+  <strong>✅ 更正声明（2026-06-30，已重新联网核实）：</strong>本报告<u>第一版曾误判</u> Phase 10 的 <strong>OpenClaw</strong> 与 <strong>Hermes Agent</strong> 为「虚构案例」。经用户提醒后用 GitHub 官方 API 重新核实，<strong>两者均真实且热门</strong>，原结论错误，特此撤回并致歉：
+  <ul>
+    <li><strong>OpenClaw</strong>（<a href="https://github.com/openclaw/openclaw" target="_blank">openclaw/openclaw</a>）— TypeScript，<strong>381k★ / 79.8k forks</strong>，2025-11 创建、仍活跃。README 自述为<strong>本地优先的 Gateway 控制平面 + 多 Agent 路由（hub-and-spoke）</strong>，与大纲「协调型 Agent」描述<u>吻合</u>（Star 数实际更高）。生态含 <code>clawhub</code>（技能注册表）、<code>OpenClaw-RL</code> 等。</li>
+    <li><strong>Hermes Agent</strong>（<a href="https://github.com/NousResearch/hermes-agent" target="_blank">NousResearch/hermes-agent</a>）— <strong>205k★</strong>，标语「The agent that grows with you」（即<strong>自我进化 / Learning Loop</strong>），与大纲「自主型」描述<u>吻合</u>。生态含 <code>hermes-agent-self-evolution</code>、中文实战指南《橙皮书》等。</li>
+  </ul>
+  <strong>误判根因（值得记进审核清单）：</strong>第一轮用的 <code>WebSearch</code> 返回了「模型声称无法搜索」的降级响应，我错误地把「<u>搜不到</u>」当成了「<u>不存在</u>」的证据，还推翻了一个本来报对了 381k★ 的子代理。这恰好是本报告自己强调的反面教材 —— <strong>「搜不到 ≠ 不存在」，强声明必须用权威源（如 GitHub API）当场验证。</strong>
+</div>
+
+<h2>评级总览：11 个阶段逐项体检</h2>
+<p class="legend">
+  <span class="sev sev-p0">P0</span> 必改/会误导
+  <span class="sev sev-p1">P1</span> 应补/明显缺口
+  <span class="sev sev-p2">P2</span> 可增强/锦上添花
+</p>
+
+<table>
+  <tr><th>阶段</th><th>体检结论</th><th>建议</th></tr>
+  <tr>
+    <td><strong>1 · Python 基础</strong></td>
+    <td><span class="keep">保持</span>。Agent 导向（@tool 装饰器、Streaming 生成器、Pydantic Schema）切入点很对，零基础友好。</td>
+    <td><span class="sev sev-p2">P2</span> 补一节 <strong>Git / 版本控制</strong>（JD 高频、目前几乎缺失）。</td>
+  </tr>
+  <tr>
+    <td><strong>2 · AI 知识与选型</strong></td>
+    <td><span class="keep">扎实</span>。Token 经济学、幻觉、推理模型都在点上。</td>
+    <td><span class="sev sev-p1">P1</span> 模型清单别写死版本号（易过时），改成「<strong>选型决策框架</strong> + 课程时点最新」；补「上下文窗口 vs 长期记忆」一题。</td>
+  </tr>
+  <tr>
+    <td><strong>3 · LLM API 工程</strong></td>
+    <td><span class="keep">很好</span>。重试/Fallback/AI Gateway/可观测性基础齐全。</td>
+    <td><span class="sev sev-p0">P0</span> 紧随其后<strong>新增「工具工程与 Function Calling」专章</strong>（见下）。<span class="sev sev-p1">P1</span> 成本一节把<strong>原生 Prompt Caching</strong> 提到第一杠杆。</td>
+  </tr>
+  <tr>
+    <td><strong>4 · Prompt / Context</strong></td>
+    <td><span class="keep">保持</span>。已包含 Context Engineering 基础，方向正确。</td>
+    <td><span class="sev sev-p2">P2</span> 标注「Context Engineering 术语仍在演化」，避免包装成已固化标准。</td>
+  </tr>
+  <tr>
+    <td><strong>5 · Agent 核心架构</strong></td>
+    <td><span class="keep">强</span>。Agent Loop + Harness + ReAct/Reflexion + 工具设计哲学，是全大纲含金量最高的一段。</td>
+    <td><span class="sev sev-p2">P2</span> Harness/Ratchet 引用 Anthropic 工程博客原文，强调是「工程实践」而非「行业标准术语」。</td>
+  </tr>
+  <tr>
+    <td><strong>6 · 框架入门 + MCP</strong></td>
+    <td><span class="keep">好</span>。轻量框架（Pydantic AI / OpenAI Agents SDK）先上手的思路对。</td>
+    <td><span class="sev sev-p1">P1</span> 把 <strong>MCP 从「前沿」升级为「必修基础设施」</strong>；补一节「<strong>框架选型与 tradeoff</strong>」（面试常问 LangGraph vs CrewAI vs SDK 何时用）。</td>
+  </tr>
+  <tr>
+    <td><strong>7 · 数据 + RAG</strong></td>
+    <td><span class="keep">扎实</span>，已含 Agentic RAG / GraphRAG / RAGAS。</td>
+    <td><span class="sev sev-p2">P2</span> 把 Agentic RAG（Self-RAG / Corrective / Adaptive）从「列举」做成「<strong>动手实现 + 何时用</strong>」。</td>
+  </tr>
+  <tr>
+    <td><strong>8 · 工程实践</strong></td>
+    <td><span class="gap">缺口</span>。可观测性偏「只讲 LangSmith」，评估不成体系，<strong>无系统设计</strong>。</td>
+    <td><span class="sev sev-p1">P1</span> 评估升级为 <strong>Agentic Metrics</strong>（Tool Correctness / Plan Quality / Step Efficiency）+ promptfoo/Braintrust/DeepEval + 公开基准；可观测性讲<strong>生态 + OpenTelemetry GenAI 标准</strong>。<span class="sev sev-p1">P1</span> <strong>新增「LLM/Agent 系统设计」</strong>模块。</td>
+  </tr>
+  <tr>
+    <td><strong>9 · 高级能力</strong></td>
+    <td><span class="keep">方向对</span>。Extended Thinking / Computer Use / Agentic Coding 都是热点。</td>
+    <td><span class="sev sev-p2">P2</span> Computer Use 补 <strong>browser-use</strong>（开源、模型无关）；Agentic Coding 用 <strong>OpenHands / Claude Code</strong> 作真实案例。</td>
+  </tr>
+  <tr>
+    <td><strong>10 · 生产框架 + 多 Agent</strong></td>
+    <td><span class="keep">必修</span>。LangGraph/CrewAI/多 Agent 模式没问题；<strong>案例 OpenClaw / Hermes 已核实为真实热门项目</strong>（非虚构）。</td>
+    <td><span class="sev sev-p2">P2</span> 案例可<strong>保留</strong>，但建议链接到真实仓库、引用 README 原文，并补一个<strong>编码类</strong>真实案例（OpenHands / SWE-agent）做对照；AutoGen 降为历史、提示后继 MS Agent Framework；ANP/AGNTCY 标注「生态未定，关注即可」。</td>
+  </tr>
+  <tr>
+    <td><strong>11 · 部署与迭代</strong></td>
+    <td><span class="gap">偏薄</span>。只有 FastAPI+Docker+Serverless；安全深度不足。</td>
+    <td><span class="sev sev-p1">P1</span> 补<strong>云托管 Agent 服务</strong>（Bedrock AgentCore / Vertex AI Agent Engine / Azure AI Foundry Agent Service）+ Temporal；安全补<strong>间接注入 / 过度代理 / MCP 权限 / 人在环审批</strong>。工程习惯<strong>前移</strong>到 Phase 3 起。</td>
+  </tr>
+</table>
+
+<h2>Top 7 改项（按优先级）</h2>
+
+<div class="card">
+  <p><span class="sev sev-p0">P0</span> <strong>① 新增「工具工程与 Function Calling」</strong>（Phase 3 后，2 课）— 所有厂商 API 的 Agent 基础、面试必考、手撕高频，是当前最大的实战缺口。<br>
+  <span class="small">Tool Schema（Pydantic / JSON Schema / strict mode）→ 完整 Function Calling 循环（多轮 / 并行 / 参数校验失败处理 / 流式中解析）。</span></p>
+
+  <p><span class="sev sev-p2">P2</span> <strong>② 巩固 Phase 10 案例（已核实为真实）</strong> — OpenClaw / Hermes 无需替换，但建议链接真实仓库、引用 README 原文，并加一个<strong>编码类</strong>真实案例做对照。<br>
+  <span class="small">候选对照：OpenHands、SWE-agent、Claude Code —— 让「协调型 vs 自主型 vs 编码型」三类各有真实样本。</span></p>
+
+  <p><span class="sev sev-p1">P1</span> <strong>③ 成本工程重排优先级</strong> — 原生 Prompt Caching（零改动、输入成本最高降 ~90%）＞ 模型路由（LiteLLM）＞ 提示压缩（LLMLingua）＞ 蒸馏 ＞ Batch API。<br>
+  <span class="small">关键是「<strong>静态前缀 + 动态后缀</strong>」的缓存键设计 —— 系统提示/工具定义在前，用户查询在后。</span></p>
+
+  <p><span class="sev sev-p1">P1</span> <strong>④ 新增「LLM / Agent 系统设计」模块</strong>（并入 Phase 8 或独立）— 2026 面试的 system-design 主战场。<br>
+  <span class="small">设计 RAG 系统 / 多 Agent 客服 / LLM 网关 / 长时运行 Agent / Agent 评估框架。</span></p>
+
+  <p><span class="sev sev-p1">P1</span> <strong>⑤ 评估升级为「评估驱动开发 + Agentic Metrics」</strong> — 不止 answer relevance，要测 Tool Correctness / Plan Quality / Step Efficiency / 过度代理。<br>
+  <span class="small">工具：promptfoo（CI/CD + 红队）、Braintrust、DeepEval、RAGAS；基准：SWE-bench Verified、τ-bench、GAIA。</span></p>
+
+  <p><span class="sev sev-p1">P1</span> <strong>⑥ 部署 + 安全补强</strong> — 部署补云托管 Agent 服务与 Temporal；安全补间接 Prompt Injection、过度代理（excessive agency）、MCP 工具权限链、人在环审批。<br>
+  <span class="small">OWASP LLM Top 10 仍以现行版为准；MCP 既是能力也是攻击面。</span></p>
+
+  <p><span class="sev sev-p2">P2</span> <strong>⑦ 工程化硬技能渗透</strong> — Git（Phase 1 补）、系统化测试（pytest + Mock LLM）、可观测性/容器化习惯从 Phase 3 起渗透，而非全堆到 Phase 11。</p>
+</div>
+
+<h2>建议的 v7 结构（最小改动版）</h2>
+<p>不动现有 11 阶段的主干，只做「<strong>2 个新增 + 5 处增强</strong>」：</p>
+<table>
+  <tr><th>动作</th><th>位置</th><th>内容</th></tr>
+  <tr><td><span class="keep">＋新增</span></td><td>Phase 3 与 4 之间</td><td><strong>工具工程与 Function Calling</strong>（2 课）</td></tr>
+  <tr><td><span class="keep">＋新增</span></td><td>Phase 8 内或其后</td><td><strong>LLM / Agent 系统设计</strong>（2 课，含 5 道经典 system-design）</td></tr>
+  <tr><td>↑增强</td><td>Phase 3</td><td>成本工程优先级重排（原生缓存优先）</td></tr>
+  <tr><td>↑增强</td><td>Phase 8</td><td>Agentic 评估 + 可观测性生态 + OTEL GenAI</td></tr>
+  <tr><td>↑增强</td><td>Phase 9</td><td>browser-use / OpenHands 真实案例</td></tr>
+  <tr><td>↑增强</td><td>Phase 10</td><td>案例链真实仓库 + 补编码类对照 + AutoGen 降级 + 协议去噪</td></tr>
+  <tr><td>↑增强</td><td>Phase 11</td><td>云托管部署 + 安全深度</td></tr>
+</table>
+
+<div class="interview-box">
+  <strong>本轮补齐后能多答的高频面试题（节选）：</strong><br>
+  · 「设计一个好的 Tool Schema 要注意什么？并行 Function Call 怎么处理？」<br>
+  · 「RAG vs Agentic RAG 区别，什么时候用 Corrective RAG？」<br>
+  · 「一个 RAG Agent 每月 $10k，如何在保质量前提下砍到 $5k？」<br>
+  · 「设计一个多 Agent 客服系统 / LLM 网关，怎么做容错与成本控制？」<br>
+  · 「怎么评估 Agent 好坏？Tool Correctness 和 answer relevance 有何不同？」<br>
+  · 「什么是间接 Prompt Injection / 过度代理？MCP 工具权限怎么隔离？」
+</div>
+
+<div class="info">
+  <strong>关于本次调研的可信度（资深视角的自我约束，已被这次打脸验证）：</strong> 联网搜索里出现了一些<strong>高度精确但一度无法二次证实</strong>的内容（模型版本号、Star 数、arXiv 编号）。第一版报告我对其「过度怀疑」，把 OpenClaw / Hermes 误判为虚构 —— 而真相是<strong>我用的搜索通道当时降级了</strong>。教训有两条，都应写进课程审核清单：<strong>① 强声明要用权威源（GitHub API / 官网）当场验证；② 「搜不到」只代表「没搜到」，不能反推「不存在」。</strong>本页其余结论（Function Calling 缺口、系统设计、原生缓存、Agentic 评估等）均为独立推理，不受此次更正影响。
+</div>
+
+<div class="source">
+  <strong>主要参考来源（高信任）：</strong><br>
+  · <a href="https://www.anthropic.com/research/building-effective-agents" target="_blank">Anthropic: Building Effective Agents</a> — Agent 五大模式权威定义<br>
+  · <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol 官方</a> — MCP 现已成事实标准<br>
+  · <a href="https://www.langchain.com/state-of-agent-engineering" target="_blank">LangChain: State of Agent Engineering</a> — 1300+ 从业者调研<br>
+  · <a href="https://github.com/openclaw/openclaw" target="_blank">OpenClaw</a>（381k★）/ <a href="https://github.com/NousResearch/hermes-agent" target="_blank">Hermes Agent</a>（205k★）— 大纲 Phase 10 案例，已核实真实<br>
+  · <a href="https://github.com/All-Hands-AI/OpenHands" target="_blank">OpenHands</a> — 真实可考的开源编码 Agent（建议作为编码类对照案例）<br>
+  · <a href="https://github.com/princeton-nlp/SWE-bench" target="_blank">SWE-bench</a> / <a href="https://github.com/promptfoo/promptfoo" target="_blank">promptfoo</a> / <a href="https://github.com/confident-ai/deepeval" target="_blank">DeepEval</a> — 评估基准与工具<br>
+  · <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a> — 模型路由 / AI Gateway<br>
+  · <a href="https://github.com/browser-use/browser-use" target="_blank">browser-use</a> — 模型无关的浏览器 Agent<br>
+  · <a href="https://github.com/open-telemetry/semantic-conventions" target="_blank">OpenTelemetry Semantic Conventions（GenAI）</a> — 可观测性标准化方向<br><br>
+  <strong>下一步：</strong>这是审核报告，不是改完的大纲。<u>告诉我从哪一项开始动手</u>（最建议先做 P0 的 <strong>Function Calling 新章</strong>，或 P1 的 <strong>系统设计 / 原生缓存</strong>）。如对任一结论有疑问，随时追问 —— 我可以把来源逐条打开给你看。
+</div>
+
+<div class="nav">
+  <a href="0001-ai-agent-learning-path-overview.html">← 返回：学习路径总览</a>
+  <span class="small">审核记录见 learning-records/0007</span>
+</div>
+
+<footer>
+  AI Agent 高级开发工程师课程 · 大纲审核（2026·v7 建议）· 如有疑问，随时问我
+</footer>
+
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+</body>
+</html>

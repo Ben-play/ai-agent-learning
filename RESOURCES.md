@@ -27,6 +27,14 @@
   超快的 Python linter 和 formatter。Use for: 代码质量工具链。
 - [mypy 文档](https://mypy.readthedocs.io/)
   Python 静态类型检查器。Use for: 类型安全保证。
+- [httpx 文档](https://www.python-httpx.org/)
+  现代 HTTP 客户端，原生支持同步与异步、HTTP/2、流式响应。Use for: Agent 调用 LLM/工具 API 的传输层（Phase 1 L15）。
+- [tenacity 文档](https://tenacity.readthedocs.io/)
+  通用重试库，支持指数退避、条件重试、超时。Use for: LLM API 调用的重试策略（别手写轮子）。
+- [Python logging 官方文档](https://docs.python.org/3/library/logging.html)
+  标准库结构化日志。Use for: 生产 Agent 的日志与可观测性基础（替代 print 调试）。
+- [Python asyncio 官方文档](https://docs.python.org/3/library/asyncio.html)
+  标准库异步框架（事件循环、gather、超时、Semaphore）。Use for: 并发 LLM 调用、事件循环理解（Phase 1 L16）。
 
 ### LLM 原理与 API
 - [3Blue1Brown: Neural Networks / Transformers](https://www.youtube.com/c/3blue1brown)
@@ -228,6 +236,68 @@
 - [LangGraph vs CrewAI vs OpenAI Agents: Ship Test (techsy.io)](https://techsy.io/en/blog/langgraph-vs-crewai-vs-openai-agents-sdk)
   2026 年 6 月框架实测对比。Use for: 框架实际使用体验对比。
 
+### v7 新增（2026 实战补强 · 资深审核）
+
+#### 工具工程 / Function Calling
+- [OpenAI: Function Calling Guide](https://platform.openai.com/docs/guides/function-calling)
+  Tool 定义、strict mode、并行调用、多轮循环最佳实践。Use for: 工具工程实战（Phase 3.4）。**面试必考**。
+- [Anthropic: Tool Use (Function Calling)](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
+  Claude 工具调用规范，含工具定义与结果回填。Use for: 对照不同厂商的工具调用差异。
+
+#### 成本工程（原生缓存优先）
+- [OpenAI: Prompt Caching](https://platform.openai.com/docs/guides/prompt-caching)
+  自动前缀缓存，≥1024 token 生效，输入成本最高降 ~90%。Use for: 2026 降本第一杠杆。
+- [Anthropic: Prompt Caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
+  `cache_control` 原生支持，5min / 1h 保留策略。Use for: 「静态前缀 + 动态后缀」缓存键设计。
+- [LiteLLM](https://github.com/BerriAI/litellm)
+  100+ 提供商统一接口 + Fallback + 成本追踪 + 虚拟密钥。Use for: AI Gateway / 模型路由（替代手写路由）。
+
+#### Agent 评估（Agentic Metrics + 基准）
+- [promptfoo](https://github.com/promptfoo/promptfoo)
+  评估 + CI/CD + 红队，已被 OpenAI 收购。Use for: 把评估接进流水线。
+- [Braintrust](https://www.braintrust.dev/)
+  端到端 Evals / Datasets / Experiments 平台。Use for: 数据集驱动的迭代评估。
+- [SWE-bench](https://github.com/princeton-nlp/SWE-bench)
+  真实软件工程任务基准，含 Verified 子集（500 题）。Use for: 编码类 Agent 评估。
+- [τ-bench (tau-bench)](https://github.com/sierra-research/tau-bench)
+  工具-用户交互场景的 Agent 基准。Use for: 评估多轮工具调用可靠性。
+- [GAIA Benchmark](https://huggingface.co/datasets/gaia-benchmark/GAIA)
+  通用助理能力基准。Use for: 通用 Agent 能力评估。
+
+#### 可观测性标准化
+- [OpenTelemetry: Semantic Conventions for GenAI](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+  `gen_ai.*` span 语义约定（模型、token、工具调用）。Use for: 厂商无关的标准化追踪方向。
+- [OpenLLMetry (Traceloop)](https://github.com/traceloop/openllmetry)
+  基于 OTEL，自动接入 LangChain/CrewAI/LlamaIndex/OpenAI Agents。Use for: 一行接入标准化追踪。
+- [Helicone](https://www.helicone.ai/)
+  100+ 提供商代理、成本路由、HQL 查询。Use for: 成本可视化 + 网关式可观测性。
+
+#### 云托管 Agent 服务 / 持久执行（生产部署）
+- [AWS Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)
+  托管 Agent 运行时（含 action groups、knowledge base）。Use for: 免运维生产部署。
+- [Google Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview)
+  Vertex 上的 Agent 编排与托管。Use for: GCP 生态生产部署。
+- [Azure AI Foundry Agent Service](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/)
+  托管 Agent + 知识库 + 控制平面 + AI Red Teaming。Use for: Azure 生态生产部署 + 安全测试。
+- [Temporal](https://github.com/temporalio/temporal)
+  开源持久执行引擎，长流程自动重试 / 检查点。Use for: 长时运行 / 有状态 Agent 工作流。
+
+#### Agent 安全（深度）
+- [LLMLingua / LLMLingua-2](https://github.com/microsoft/LLMLingua)
+  提示压缩 + 抵御 jailbreak（微软）。Use for: 固定提示词的被动安全 + 降本。
+- [Simon Willison: Prompt injection（持续更新）](https://simonwillison.net/tags/prompt-injection/)
+  间接注入 / 工具滥用的最新实例与防御讨论。Use for: 跟踪真实攻击模式。
+
+#### 真实开源 Agent 案例（已用 GitHub API 核实 · 替换早期失真案例）
+- [OpenClaw](https://github.com/openclaw/openclaw)
+  协调型 Agent，本地优先 Gateway 控制平面 + 多 Agent 路由（hub-and-spoke），TypeScript，~381K★。Use for: 「协调型」架构剖析。
+- [Hermes Agent (NousResearch)](https://github.com/NousResearch/hermes-agent)
+  自主型 Agent，"grows with you"（自我进化 / Learning Loop），~205K★。Use for: 「自主型」架构剖析。
+- [OpenHands](https://github.com/All-Hands-AI/OpenHands)
+  开源编码 Agent，可读到完整 Agent 循环与工具调度源码。Use for: 「编码型」架构剖析 + Agentic Coding。
+- [SWE-agent (Princeton)](https://github.com/princeton-nlp/SWE-agent)
+  解决 GitHub issue 的软件工程 Agent。Use for: 编码 Agent 设计参考。
+
 ## Wisdom（社区）
 
 - [r/LangChain](https://reddit.com/r/LangChain)
@@ -242,7 +312,6 @@
 ## Gaps（待补充）
 
 - 国内大模型 Agent 开发资源（通义千问、文心一言等）
-- Agent 安全与防护（prompt injection defense）进阶资料
+- ACP (Agent Communication Protocol) 和 ANP (Agent Network Protocol) 的落地情况 —— **注意：ANP/AGNTCY 等协议 2026 年生态仍未定型，部分早期资料夸大其重要性；学习时以 MCP（已成事实标准）+ A2A（了解）为主，其余协议「关注即可」，不要投入过多。**
 - 生产级 Agent 监控与运维最佳实践（SRE 视角）
-- ACP (Agent Communication Protocol) 和 ANP (Agent Network Protocol) 详细教程
-- Extended Thinking 和 Computer Use 的实战教程
+- Extended Thinking 和 Computer Use 的更多实战教程（browser-use 已补入 RESOURCES）
