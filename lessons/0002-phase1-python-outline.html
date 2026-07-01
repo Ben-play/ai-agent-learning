@@ -71,7 +71,7 @@
 <p>从基础语法到 Agent 开发必备的工程技能，<strong>系统性夯实 Python 功底</strong>。</p>
 
 <div class="total-bar">
-  <span>📚 共 3 大部分 · 8 个模块 · 15 课</span>
+  <span>📚 共 3 大部分 · 10 个模块 · 16 课</span>
   <span>⏱ 预计 2-3 周完成</span>
 </div>
 
@@ -133,7 +133,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L04</span>
       <div>
-        <div class="lesson-title">流程控制、字符串与 Prompt 构造</div>
+        <div class="lesson-title"><a href="0008-L04-control-flow-and-prompt.html">流程控制、字符串与 Prompt 构造</a></div>
         <div class="lesson-desc">if/elif/else、for/while 循环、match-case、字符串方法、f-string 高级用法（格式化、表达式、多行）、Prompt 模板模式（变量替换、条件拼接、上下文注入）</div>
         <div class="exercise">构建 Prompt 模板引擎 — 用 f-string + 字典实现动态 Prompt 模板系统，支持变量替换和条件拼接</div>
       </div>
@@ -155,7 +155,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L05</span>
       <div>
-        <div class="lesson-title">函数定义与参数 <span class="badge-basic">基础</span></div>
+        <div class="lesson-title"><a href="0009-L05-functions-and-parameters.html">函数定义与参数</a> <span class="badge-basic">基础</span></div>
         <div class="lesson-desc">def 语法、位置参数/关键字参数/默认值、*args/**kwargs、参数解包、返回值与 return、函数签名设计</div>
         <div class="exercise">设计一个 Agent 工具函数 — 接收搜索参数（query、max_results、filters），返回结构化结果，练习参数设计</div>
       </div>
@@ -163,7 +163,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L06</span>
       <div>
-        <div class="lesson-title">作用域、闭包与 Lambda</div>
+        <div class="lesson-title"><a href="0010-L06-scope-closures-lambda.html">作用域、闭包与 Lambda</a></div>
         <div class="lesson-desc">LEGB 规则、global/nonlocal、闭包原理（面试常问）、lambda 匿名函数、sorted() 的 key 参数、高阶函数（map/filter/reduce/partial）</div>
         <div class="exercise">用闭包实现一个 Agent 计数器 — 每次调用记录工具调用次数和耗时，练习闭包的实际应用</div>
       </div>
@@ -181,7 +181,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L07</span>
       <div>
-        <div class="lesson-title">类、对象与 @dataclass <span class="badge-agent">Agent 核心</span></div>
+        <div class="lesson-title"><a href="0011-L07-classes-and-dataclass.html">类、对象与 @dataclass</a> <span class="badge-agent">Agent 核心</span></div>
         <div class="lesson-desc">class 语法、__init__、self、实例方法/类方法(@classmethod)/静态方法(@staticmethod)、@dataclass 语法、field()、frozen 不可变模型、与 Pydantic 的对比（面试题）</div>
         <div class="exercise">用 @dataclass 定义 Agent 数据模型 — Message、ToolCall、AgentState，对比 Pydantic 实现，理解两者适用场景</div>
       </div>
@@ -189,7 +189,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L08</span>
       <div>
-        <div class="lesson-title">继承、多态与 __call__</div>
+        <div class="lesson-title"><a href="0012-L08-inheritance-and-call.html">继承、多态与 __call__</a></div>
         <div class="lesson-desc">继承与 super()、多态、抽象基类(ABC)、__call__（可调用对象，Agent 工具的核心模式）、__repr__/__str__、组合优于继承原则</div>
         <div class="exercise">实现一个可调用的 Agent 工具基类 — 用 ABC 定义 BaseTool，子类实现 __call__，支持自动收集工具描述</div>
       </div>
@@ -201,13 +201,13 @@
 <div class="module">
   <div class="module-header">
     <div class="module-num">2.3</div>
-    <h3 style="margin:0">文件、JSON 与异常处理</h3>
+    <h3 style="margin:0">文件、JSON、异常与日志</h3>
   </div>
   <div class="card">
     <div class="lesson-item">
       <span class="lesson-num">L09</span>
       <div>
-        <div class="lesson-title">文件、JSON 与 Dict 深度操作</div>
+        <div class="lesson-title"><a href="0013-L09-files-json-dict.html">文件、JSON 与 Dict 深度操作</a></div>
         <div class="lesson-desc">open() 与 with 语句、Pathlib 路径处理、JSON 序列化/反序列化、json vs orjson 性能对比、嵌套 dict 操作、LLM 响应解析模式（工具调用提取、流式 JSON 拼接）</div>
         <div class="exercise">处理 LLM 流式响应 — 模拟 LLM 返回的 JSON Lines 流，逐行解析、拼接完整 JSON、处理错误格式和截断</div>
       </div>
@@ -215,9 +215,9 @@
     <div class="lesson-item">
       <span class="lesson-num">L10</span>
       <div>
-        <div class="lesson-title">异常处理与上下文管理器</div>
-        <div class="lesson-desc">try/except/else/finally、自定义异常（AgentError、ToolError）、异常链（raise from）、with 语句与 __enter__/__exit__、contextlib（@contextmanager、async 上下文管理器）</div>
-        <div class="exercise">实现一个 API 调用上下文管理器 — 自动处理超时、重试、资源清理，模拟 LLM API 调用场景</div>
+        <div class="lesson-title"><a href="0014-L10-exceptions-logging-context.html">异常处理、日志与上下文管理器</a></div>
+        <div class="lesson-desc">try/except/else/finally、自定义异常（AgentError、ToolError）、异常链（raise from）、with 语句与 __enter__/__exit__、contextlib（@contextmanager、async 上下文管理器）；<strong>logging 结构化日志</strong>（logger/level/handler/格式化，生产 Agent 从第一天就该用，而非 print 调试）；<strong>tenacity</strong> —— 重试/指数退避的标准库（别重复造轮子）</div>
+        <div class="exercise">实现一个 API 调用上下文管理器 — 自动处理超时、用 tenacity 做重试、用 logging 记录每次调用与失败原因、退出时清理资源，模拟 LLM API 调用场景</div>
       </div>
     </div>
   </div>
@@ -233,7 +233,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L11</span>
       <div>
-        <div class="lesson-title">装饰器 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-title"><a href="0015-L11-decorators.html">装饰器</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">函数装饰器原理（闭包+高阶函数）、带参数装饰器、类装饰器、functools.wraps、多层装饰器、Agent 框架中的 @tool/@chain/@agent 模式</div>
         <div class="exercise">手写 @tool 装饰器 — 实现工具注册装饰器，自动收集函数名、参数 Schema（从 type hints 提取）、描述，构建工具注册表</div>
       </div>
@@ -274,8 +274,8 @@
       <span class="lesson-num">L13</span>
       <div>
         <div class="lesson-title">类型提示系统 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">基本类型标注、Optional/Union/Literal、TypeVar/Generic（泛型在 Agent 状态管理中的应用）、Protocol（结构化子类型）、Callable 类型、mypy 类型检查</div>
-        <div class="exercise">为 Agent 设计类型系统 — 用 Generic 定义泛型 AgentState[T]，用 Protocol 定义 Tool 接口，用 Literal 约束模型名称</div>
+        <div class="lesson-desc">基本类型标注、Optional/Union/Literal（约束模型名/角色等枚举值）、Callable 类型、类型别名、mypy 静态检查。<em>※ Generic/TypeVar/Protocol 等泛型与结构化子类型属进阶，放到 Phase 5（Agent 状态管理）需要时再深讲，本课不展开，避免一次塞太多。</em></div>
+        <div class="exercise">为 Agent 数据加类型 — 用 Optional/Union 标注可能缺失的字段，用 Literal 约束 model 名称与 role，跑 mypy 检查并修正报错</div>
       </div>
     </div>
     <div class="lesson-item">
@@ -293,15 +293,33 @@
 <div class="module">
   <div class="module-header">
     <div class="module-num">3.3</div>
-    <h3 style="margin:0">异步编程与并发</h3>
+    <h3 style="margin:0">网络请求与 HTTP <span class="badge-agent">Agent 核心</span></h3>
   </div>
   <div class="card">
     <div class="lesson-item">
       <span class="lesson-num">L15</span>
       <div>
+        <div class="lesson-title">用 httpx 发起 HTTP 请求</div>
+        <div class="lesson-desc">HTTP 基础（方法、状态码、headers、JSON body、超时）、httpx 同步与异步客户端（Client/AsyncClient）、为什么 Agent 时代选 httpx 而非 requests（原生 async）、鉴权头与 API Key、错误分类（4xx/5xx/超时）、SSE 流式响应读取（LLM streaming 的传输层本质）</div>
+        <div class="exercise">手写一个迷你 LLM 客户端 — 用 httpx 调用一个真实 HTTP API（带 headers + JSON body + 超时），解析响应、按状态码分类处理错误，再用 AsyncClient 改写为异步版本</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 3.4 -->
+<div class="module">
+  <div class="module-header">
+    <div class="module-num">3.4</div>
+    <h3 style="margin:0">异步编程与并发</h3>
+  </div>
+  <div class="card">
+    <div class="lesson-item">
+      <span class="lesson-num">L16</span>
+      <div>
         <div class="lesson-title">async/await 与并发 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">GIL 概念与对异步的影响（面试常问）、协程 vs 线程 vs 进程、async/await 语法、asyncio.run()、asyncio.gather（并发 LLM 调用）、Semaphore 限流、异步上下文管理器、事件循环工作原理</div>
-        <div class="exercise">并发 LLM 调用 — 用 asyncio.gather 并发调用 3 个 API，实现超时控制（asyncio.wait_for）、错误重试（指数退避）、结果聚合、Token 成本统计</div>
+        <div class="lesson-desc">GIL 概念与对异步的影响（面试常问）、协程 vs 线程 vs 进程、async/await 语法、asyncio.run()、asyncio.gather（并发 LLM 调用）、Semaphore 限流、异步上下文管理器、事件循环工作原理（衔接 L15 的 httpx.AsyncClient）</div>
+        <div class="exercise">并发 LLM 调用 — 用 httpx.AsyncClient + asyncio.gather 并发调用 3 个 API，实现超时控制（asyncio.wait_for）、用 tenacity 做指数退避重试、结果聚合、Token 成本统计</div>
       </div>
     </div>
   </div>
@@ -311,7 +329,7 @@
 <div class="tip">
   <strong>Part A 快速过</strong>——你有基础，2 天内完成，重点查漏补缺。每课 20-30 分钟。<br>
   <strong>Part B 是重点</strong>——装饰器、@dataclass、JSON 操作是 Agent 框架的底层，必须真正理解。每课 40-60 分钟。<br>
-  <strong>Part C 是核心</strong>——类型提示 + Pydantic + 异步编程，每个都对应 Agent 开发场景。每课 60+ 分钟，多写代码。<br><br>
+  <strong>Part C 是核心</strong>——生成器/Streaming、类型提示、Pydantic、<strong>httpx 网络请求</strong>、异步并发，每个都直接对应 Agent 开发场景。其中 httpx + 异步是「发起并发 LLM 调用」的地基，务必动手写。每课 60+ 分钟,多写代码。<br><br>
   <strong>练习方式：</strong>每课结束后完成实战练习。练习都是 Agent 开发中的真实场景，写完的代码后面课程会直接复用。
 </div>
 
@@ -336,6 +354,7 @@
 
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 </body>
 </html>
