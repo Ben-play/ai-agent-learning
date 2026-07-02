@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L17 · LLM 本质与生成参数</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
+    <h1>LLM 本质与生成参数</h1>
+    <p class="subtitle">LLM 只是在"猜下一个词"——但怎么猜，你能调</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:12%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>你接下来所有的 Agent 代码，本质都是在调一个"下一个 Token 预测器"。不理解它<strong>怎么预测</strong>、<strong>凭什么有时候胡说、有时候很稳</strong>，你就只能靠玄学调参。</p>
+    <p>这一课把 LLM 的工作原理讲到"够用就好"的程度（不写 Transformer 代码），然后聚焦你每天都会设的三个旋钮——<code>temperature</code>、<code>top_p</code>、惩罚项。设对了，同一个模型能从"废话生成器"变成"可靠工具"。这是 Phase 2 的开篇，也是面试必问的第一组概念。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用一句话说清 LLM 的本质：<strong>基于概率的下一个 Token 预测</strong></li>
+      <li>直觉理解"注意力"在做什么（不涉及数学）</li>
+      <li>讲清 <code>temperature</code> 如何缩放概率分布、<code>top_p</code> 如何裁剪候选集</li>
+      <li>区分 <code>frequency_penalty</code> 与 <code>presence_penalty</code></li>
+      <li>为不同任务（抽取 / 创作 / 代码）选对参数组合</li>
+      <li>说清一个反直觉事实：<strong>temperature=0 也不保证完全可复现</strong></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. LLM 的本质：一台下一个 Token 预测机</h2>
+  <div class="card">
+    <p>抛开所有神秘感，一个大语言模型做的事只有一件：<strong>给定前面的一串 Token，预测下一个 Token 的概率分布</strong>。</p>
+    <p>比如输入 <code>"今天天气真"</code>，模型会输出一张概率表：</p>
+    <pre><code>好   → 0.62
+不错 → 0.19
+热   → 0.08
+糟   → 0.04
+...（词表里每个 Token 都有一个概率）</code></pre>
+    <p>然后按某种策略从这张表里<strong>挑一个</strong>，把它接到输入后面，再重复这个过程——一个 Token 一个 Token 地"续写"。这就是"生成"。<strong>怎么挑</strong>，就是本课后半段的生成参数在控制的事。</p>
+    <p style="margin-top:.5rem;font-size:.92rem;">关键推论：LLM 没有"事实数据库"，它只是在预测"看起来最该接下去的词"。这正是<a href="0023-L19-hallucination.html">幻觉（L19）</a>的根源——统计上合理 ≠ 事实正确。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> LLM 生成文本的本质是什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">检索最匹配的答案</button>
+      <button data-answer="correct">预测下个词概率</button>
+      <button data-answer="wrong">套用固定的模板</button>
+      <button data-answer="wrong">推理出唯一真值</button>
+    </div>
+    <div class="quiz-explanation">LLM 的核心是<strong>基于概率的下一个 Token 预测</strong>：给定上文，输出整个词表的概率分布，再按采样策略挑一个接上去。它不检索数据库、也不保证真值——"统计上合理"不等于"事实正确"，这就是幻觉的根源。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 注意力：模型怎么知道"该看哪几个词"</h2>
+  <div class="card">
+    <p>预测下一个 Token 时，上文里不是每个词都同样重要。<strong>注意力机制（Attention）</strong>让模型在预测时，动态地给上文中的每个 Token 分配"关注权重"——相关的词权重高，无关的词权重低。</p>
+    <p>一个直觉例子：</p>
+    <pre><code>"小明把书放在桌子上，然后他坐下来读 ___"</code></pre>
+    <p>要预测这个空，模型需要"注意"到前面的 <code>书</code>（读什么）和 <code>小明/他</code>（谁在读），而不是 <code>桌子</code>。注意力就是让"他"这个词能<strong>回头连接</strong>到"小明"、让"读"连接到"书"的机制。</p>
+    <p>Transformer 架构（2017 年论文《Attention Is All You Need》）就是把注意力堆叠很多层。<strong>你不需要会推导它</strong>——只需记住：注意力 = 模型在每一步动态决定"上文里哪些 Token 现在最相关"。想建立可视化直觉，<a href="https://www.youtube.com/watch?v=wjZofJX0v4M" target="_blank">3Blue1Brown 的 Transformer 视频</a>是最好的入门。</p>
+  </div>
+  <div class="tip">
+    面试常问"注意力是什么"。合格回答不是背公式，而是：<strong>一种让模型在预测每个 Token 时，按相关性给上文各 Token 加权的机制，从而捕捉长距离依赖（如代词指代）</strong>。
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. Temperature：给概率分布"加热"或"降温"</h2>
+  <div class="card">
+    <p>回到第 1 节那张概率表。<strong>Temperature（温度）</strong>在采样前对这张表做缩放：</p>
+    <ul>
+      <li><strong>低温（→0）</strong>：让高概率 Token 更突出、低概率的被压得更低。分布变"尖"，模型几乎总挑最可能的那个 → <strong>稳定、保守、可预测</strong>。</li>
+      <li><strong>高温（→1 甚至更高）</strong>：把差距拉平，低概率 Token 也有机会被选中。分布变"平"，输出更<strong>多样、有创造力、也更容易跑偏</strong>。</li>
+    </ul>
+    <p>直觉记法：<strong>温度高 = 脑洞大，温度低 = 循规蹈矩</strong>。数学上，temperature 是在 softmax 前对 logits 除以 T——T 越小，分布越集中（<code>T=0</code> 是特例，实现上直接退化为取概率最高的那个 Token，即"贪心/argmax"，这正是第 6 节要用到的）（详见 <a href="https://huggingface.co/blog/mlabonne/decoding-strategies" target="_blank">Hugging Face: Decoding Strategies</a>）。</p>
+    <table>
+      <thead><tr><th>任务</th><th>建议 temperature</th><th>为什么</th></tr></thead>
+      <tbody>
+        <tr><td>抽取信息 / 分类 / 函数调用</td><td>0 ~ 0.3</td><td>要确定、可复现，不要惊喜</td></tr>
+        <tr><td>问答 / 摘要 / 改写</td><td>0.3 ~ 0.7</td><td>准确为主，略有灵活</td></tr>
+        <tr><td>创意写作 / 头脑风暴</td><td>0.7 ~ 1.0+</td><td>要多样性和新鲜感</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 要让 Agent 抽取字段结果稳定，temperature 应该？</div>
+    <div class="quiz-options">
+      <button data-answer="correct">调低，接近于零</button>
+      <button data-answer="wrong">调高，接近于一</button>
+      <button data-answer="wrong">保持默认不用管</button>
+      <button data-answer="wrong">随机取值最灵活</button>
+    </div>
+    <div class="quiz-explanation">抽取 / 分类 / 函数调用要的是<strong>确定和可复现</strong>，应把 temperature 调到 0~0.3。温度越低，分布越尖、越倾向选最高概率 Token，输出越稳定。高温带来的多样性在这类任务里只会添乱。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. Top-P：只从"最可能的一小撮"里采样</h2>
+  <div class="card">
+    <p><strong>Top-P（核采样 / nucleus sampling）</strong>换一个思路裁剪候选：把 Token 按概率从高到低累加，<strong>只保留累计概率达到 P 的那一小撮</strong>，其余全部丢弃，再在这撮里采样。</p>
+    <pre><code>top_p = 0.9 的含义：
+按概率排序累加，取到累计 90% 为止的那批 Token，
+剩下 10% 概率的"长尾低概率词"直接排除。</code></pre>
+    <p>它的好处是<strong>自适应</strong>：模型很确定时（一个 Token 就占 95%），候选集自动变小；模型不确定时（概率分散），候选集自动变大。这比固定取前 K 个（top-k）更聪明——出处见 <a href="https://huggingface.co/blog/how-to-generate" target="_blank">Hugging Face: How to generate text</a>。</p>
+    <p style="margin-top:.5rem;"><strong>temperature vs top_p 怎么配？</strong>官方与社区普遍建议：<strong>两个只重点调一个</strong>，另一个留默认。同时把两个都往极端调，行为会很难预测。常见做法是固定 <code>top_p=1</code> 只调 temperature，或反之。</p>
+  </div>
+  <div class="tip">
+    ⚠️ 陷阱题：<strong>"temperature 和 top_p 有什么区别？"</strong> — temperature 是<strong>缩放</strong>整个分布的形状（改变每个 Token 被选中的相对概率）；top_p 是<strong>裁剪</strong>候选集（先砍掉长尾，再采样）。一个改"概率"，一个改"能选谁"。
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 两个惩罚项：治重复啰嗦</h2>
+  <div class="card">
+    <p>模型有时会车轱辘话来回说。两个惩罚项通过<strong>调低已出现 Token 的 logit</strong> 来抑制重复（参考 <a href="https://www.promptingguide.ai/introduction/settings" target="_blank">Prompt Engineering Guide: LLM Settings</a>）：</p>
+    <ul>
+      <li><strong><code>frequency_penalty</code>（频率惩罚）</strong>：按 Token <strong>出现的次数</strong>成比例惩罚——出现越多，越难再出现。治"同一个词反复刷屏"。</li>
+      <li><strong><code>presence_penalty</code>（存在惩罚）</strong>：只要 Token <strong>出现过一次</strong>就施加固定惩罚，与次数无关。鼓励模型<strong>换新话题、引入新词</strong>。</li>
+    </ul>
+    <p>范围通常是 <code>-2.0 ~ 2.0</code>，默认 <code>0</code>。区别一句话：<strong>frequency 看"出现几次"（按量），presence 看"有没有出现"（按 0/1）</strong>。日常大多数任务保持默认 0 即可，只有明显重复时才小幅上调。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>frequency_penalty</code> 与 <code>presence_penalty</code> 的核心区别是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">一个加分一个减分</button>
+      <button data-answer="correct">按次数还是按有无</button>
+      <button data-answer="wrong">只作用于中文词</button>
+      <button data-answer="wrong">分别控制长度速度</button>
+    </div>
+    <div class="quiz-explanation">两者都惩罚已出现的 Token，区别在<strong>缩放方式</strong>：frequency_penalty 按出现<strong>次数</strong>成比例（越频繁越重罚），presence_penalty 只看<strong>出现过没有</strong>（0/1 固定罚）。前者治刷屏式重复，后者鼓励引入新内容。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 反直觉真相：temperature=0 ≠ 完全可复现</h2>
+  <div class="card">
+    <p>很多人以为"temperature 设 0，模型就每次输出一模一样"。<strong>不对。</strong> temperature=0 让模型<strong>总是挑最高概率的 Token（贪心解码）</strong>，逻辑上确实该确定——但实践中<strong>仍可能有细微差异</strong>。原因：</p>
+    <ul>
+      <li><strong>浮点数不满足结合律</strong>：<code>(a+b)+c ≠ a+(b+c)</code>。GPU 上并行归约的加法顺序会变，导致 logits 有极小抖动，偶尔翻转"谁是第一名"。</li>
+      <li><strong>批处理 / 硬件差异</strong>：同一请求在不同 batch 大小、不同 GPU、不同推理引擎版本下，数值路径不同。</li>
+    </ul>
+    <p>这不是玄学，是被 <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference" target="_blank">Thinking Machines Lab</a> 和 <a href="https://github.com/vllm-project/vllm/discussions/17166" target="_blank">vLLM 维护者</a>系统分析过的工程现实。<strong>面试加分点</strong>：当被问"怎么让 LLM 输出可复现"，正确回答是"temperature=0 + 固定 seed（<em>部分 API 才支持 seed，如 OpenAI；Anthropic 无此参数</em>）能<strong>大幅提高</strong>一致性，但因浮点非结合性与硬件差异，<strong>无法 100% 保证</strong>"。</p>
+  </div>
+  <div class="tip">
+    这条对 Agent 工程很实际：<strong>不要把关键逻辑建立在"LLM 输出逐字节稳定"的假设上</strong>。要稳，就用结构化输出 + 校验（后面 <a href="0018-L14-pydantic.html">Pydantic</a> 那套），而不是指望采样完全确定。
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：生成参数</h2>
+  <div class="card">
+    <pre><code>【本质】LLM = 下一个 Token 概率预测器；生成 = 反复"预测→采样→接上"
+
+【temperature 温度】缩放分布形状
+  ├── →0  分布变尖，几乎总选最可能 → 稳定/抽取/函数调用
+  └── →1+ 分布变平，长尾也可能中选 → 创意/多样
+
+【top_p 核采样】裁剪候选集
+  └── 按概率累加取到 P%，砍掉长尾再采样；自适应候选大小
+  ★ temperature 与 top_p 只重点调一个，另一个留默认
+
+【frequency_penalty】按"出现次数"罚 → 治刷屏重复
+【presence_penalty】 按"出现有无"罚 → 鼓励换新话题
+  └── 范围 -2~2，默认 0，大多数任务不用动
+
+【反直觉】temperature=0 ≠ 100% 可复现
+  └── 浮点非结合(a+b)+c≠a+(b+c) + 硬件/批次差异
+      要稳 → 结构化输出 + 校验，别赌采样确定
+
+【任务 → 参数】
+  抽取/分类/工具调用 → temp 0~0.3
+  问答/摘要/改写      → temp 0.3~0.7
+  创意/头脑风暴       → temp 0.7~1.0+</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://huggingface.co/blog/how-to-generate" target="_blank"><strong>Hugging Face: How to generate text — decoding methods</strong></a></p>
+    <p>用真实例子 + 可视化讲清 greedy / beam / top-k / top-p 各种解码策略，是理解生成参数"底层到底在干什么"的最佳一手材料。配套 <a href="https://huggingface.co/blog/mlabonne/decoding-strategies" target="_blank">Decoding Strategies in LLMs</a> 有代码可跑。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0022-L18-tokenization.html">下一课 L18 · Token 与 Tokenization</a> — 概率表里的"Token"到底是什么</li>
+      <li>· <a href="0023-L19-hallucination.html">L19 · 幻觉全解</a> — "概率预测"为什么必然带来幻觉</li>
+      <li>· <a href="0018-L14-pydantic.html">L14 · Pydantic</a> — 采样不确定时，用结构化校验兜底</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>LLM 的本质是<strong>基于概率的下一个 Token 预测</strong>，生成就是"预测→采样→接上"的循环</li>
+      <li><strong>注意力</strong>让模型按相关性给上文各 Token 加权，捕捉长距离依赖</li>
+      <li><strong>temperature</strong> 缩放分布形状（低=稳、高=野）；<strong>top_p</strong> 裁剪候选集（自适应）；两者只重点调一个</li>
+      <li><strong>frequency_penalty</strong> 按次数罚、<strong>presence_penalty</strong> 按有无罚，治重复</li>
+      <li>按任务选参数：抽取用低温，创作用高温</li>
+      <li><strong>temperature=0 也不保证逐字节可复现</strong>——浮点非结合性 + 硬件差异；要稳靠结构化校验</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    有任何不清楚的——温度和 top_p 到底怎么配、某个任务该设多少、为什么你的输出总变——<strong>随时问我</strong>，我是你的老师。下一课我们拆开"Token"这个词，看看模型眼里的文本到底长什么样。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L18 · Token 与 Tokenization 深入</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
+    <h1>Token 与 Tokenization 深入</h1>
+    <p class="subtitle">模型眼里没有"字"，只有 Token——而 Token 直接等于钱</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:25%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>上一课说 LLM 在"预测下一个 Token"。那 <strong>Token 到底是什么</strong>？它不是字、不是词、也不完全是字母。搞不清这点，你会在三个地方栽跟头：<strong>算错成本、爆掉上下文窗口、误判中英文谁更省钱</strong>。</p>
+    <p>这一课我们用真实的 <code>tiktoken</code> 计数（不是拍脑袋），拆开"Token"这个黑箱，并当场推翻一个流传很广的错误说法——"中文一定比英文费 Token"。学完你能<strong>在发请求前就estimate成本、看懂账单</strong>。这是所有 Token 经济学（<a href="0027-L23-token-economics.html">L23</a>）的地基。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清 Token 是<strong>子词单元（subword）</strong>，不是字/词/字母</li>
+      <li>用直觉解释 BPE（字节对编码）怎么把文本切成 Token</li>
+      <li>用 <code>tiktoken</code> 在发请求前<strong>精确计数</strong> Token</li>
+      <li>解释"中文更费 Token"<strong>取决于分词器</strong>，并用数据证明</li>
+      <li>把 Token 数换算成 API 成本，做预算估算</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. Token 不是字，是"子词"</h2>
+  <div class="card">
+    <p>LLM 不直接读字符，而是先把文本切成 <strong>Token</strong>——介于"字母"和"单词"之间的<strong>子词片段</strong>。常见规律（英文）：一个常用词往往是 1 个 Token，生僻词/长词会被拆成几个。</p>
+    <p>用 OpenAI 的 <code>cl100k_base</code> 分词器实测：</p>
+    <pre><code>"languages" → 1 个 token: ['languages']
+"learning"  → 1 个 token: ['learning']
+"语言"       → 2 个 token: ['语', '言']
+"学习"       → 3 个 token: ['学', '�', '�']   ← 注意这里！</code></pre>
+    <p>看到没：英文常用词整个是 1 个 Token；而中文的"学习"被切成了 <strong>3 个</strong>片段，其中两个还是乱码似的 <code>�</code>——那是<strong>字节碎片</strong>（下一节解释）。这说明 <strong>Token 边界和人类的"字词"直觉完全不一样</strong>。经验法则："英文约 4 字符≈1 token、约 0.75 词≈1 token"，但这只是<strong>启发式，不是保证</strong>（见 <a href="https://www.thepromptindex.com/what-are-llm-tokens-2026.html" target="_blank">The Prompt Index: LLM Tokens 2026</a>）。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> LLM 里的一个 Token 最准确的描述是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">永远是一个单词</button>
+      <button data-answer="wrong">永远是一个字符</button>
+      <button data-answer="correct">一个子词的片段</button>
+      <button data-answer="wrong">一个句子的成分</button>
+    </div>
+    <div class="quiz-explanation">Token 是<strong>子词单元（subword）</strong>：常用词可能是 1 个 Token，长词/生僻词/非拉丁文字会被拆成多个片段（甚至字节碎片）。它既不等于单词，也不等于字符——这就是为什么必须用分词器实际计数，不能靠数字数。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. BPE：Token 是怎么被"合并"出来的</h2>
+  <div class="card">
+    <p>现代 LLM 几乎都用 <strong>BPE（Byte Pair Encoding，字节对编码）</strong>切词。它的思路出奇简单（原是 1994 年的数据压缩算法）：</p>
+    <ol>
+      <li>从最小单位（字节 / 字符）开始；</li>
+      <li>统计语料里<strong>相邻出现最频繁的一对</strong>，把它<strong>合并</strong>成一个新符号；</li>
+      <li>重复几万次，高频组合（如 <code>ing</code>、<code>tion</code>、常用词）就变成了单个 Token。</li>
+    </ol>
+    <p>切新文本时，BPE <strong>按当初学到的合并规则、同样的顺序"回放"一遍</strong>，把文本拼成 Token（出处：<a href="https://outcomeschool.com/blog/bpe-in-llms" target="_blank">Byte Pair Encoding in LLMs</a>）。</p>
+    <p><strong>关键：byte-level BPE。</strong>为保证任何字符都能编码，现代分词器从 <strong>256 个字节</strong>起步，而不是从字符起步。英文字母本身就是单字节、且高频，所以早早被合并成整词；而一个常用汉字是 <strong>3 个 UTF-8 字节</strong>（少数生僻字为 4 字节），如果这个字在训练语料里不够高频、没被完整合并，就会<strong>回退（byte fallback）成多个字节 Token</strong>——这就是上一节 <code>"学习"→['学','�','�']</code> 里那两个 <code>�</code> 的来历（参考 <a href="https://digitalorientalist.com/2025/02/04/to-merge-or-not-to-merge-the-pitfalls-of-chinese-tokenization-in-general-purpose-llms" target="_blank">The Pitfalls of Chinese Tokenization</a>）。</p>
+  </div>
+  <div class="tip">
+    一句话记住 BPE：<strong>从字节开始，反复把"最常一起出现的一对"合并成新 Token</strong>。语料里越高频的组合，越可能是一个完整 Token；越罕见，越会被拆碎。
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 用 tiktoken 精确计数（发请求前就算好）</h2>
+  <div class="card">
+    <p>猜 Token 数会算错成本。<a href="https://github.com/openai/tiktoken" target="_blank"><code>tiktoken</code></a> 是 OpenAI 官方分词器，能在<strong>本地、发请求前</strong>精确计数：</p>
+    <pre><code>pip install tiktoken   # 或 uv pip install tiktoken
+
+import tiktoken
+
+# 按编码名取（cl100k_base=GPT-4 系；o200k_base=GPT-4o/较新系）
+enc = tiktoken.get_encoding("o200k_base")
+
+text = "我喜欢学习语言。"
+tokens = enc.encode(text)
+print(len(tokens))          # → 5
+print(tokens)               # 底层是一串整数 id
+print([enc.decode([t]) for t in tokens])  # 还原每个 token 的样子
+
+# 也可以按模型名自动选编码：
+# enc = tiktoken.encoding_for_model("gpt-4o")</code></pre>
+    <p>官方示例见 <a href="https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken" target="_blank">OpenAI Cookbook: How to count tokens with tiktoken</a>。<strong>注意</strong>：这只数纯文本 Token；真实 API 账单里还会加上聊天格式的固定开销（role、分隔符等），以及 Anthropic/Google 有各自的分词器——数值会略有出入。<code>tiktoken</code> 的价值是<strong>estimate和相对比较</strong>，够用了。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于用 <code>tiktoken</code> 计数，正确的说法是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">必须联网才能算</button>
+      <button data-answer="correct">发请求前本地算</button>
+      <button data-answer="wrong">对所有厂商精确</button>
+      <button data-answer="wrong">只能数英文字符</button>
+    </div>
+    <div class="quiz-explanation"><code>tiktoken</code> 在<strong>本地、发请求前</strong>就能算 Token，用于成本estimate。但它是 OpenAI 的分词器——对 Anthropic/Google 只是近似；且真实账单还含聊天格式开销。它的价值在于"发请求前估算 + 相对比较"，不是逐 token 对齐账单。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. "中文更费 Token"？——取决于分词器（用数据说话）</h2>
+  <div class="card">
+    <p>你可能听过"中文比英文费 Token、所以更贵"。<strong>这个说法过时且不准确</strong>——它<strong>严重取决于用哪个分词器</strong>。同一句中文，我用两个编码实测：</p>
+    <table>
+      <thead><tr><th>文本</th><th>字符数</th><th>cl100k_base<br>(GPT-4)</th><th>o200k_base<br>(GPT-4o/较新)</th></tr></thead>
+      <tbody>
+        <tr><td>EN: "I love learning languages."</td><td>26</td><td>5</td><td>5</td></tr>
+        <tr><td>中: "我喜欢学习语言。"</td><td>8</td><td><strong>11</strong></td><td><strong>5</strong></td></tr>
+        <tr><td>中: "人工智能正在改变世界。"</td><td>11</td><td><strong>12</strong></td><td><strong>6</strong></td></tr>
+      </tbody>
+    </table>
+    <p>看这组对比的冲击力：同一句"我喜欢学习语言。"在旧的 <code>cl100k</code> 分词器下要 <strong>11 个 Token</strong>，换到 <code>o200k</code>（GPT-4o 系）<strong>只要 5 个</strong>——和那句英文一样多！<strong>"中文贵一倍"的说法，主要是旧分词器的产物</strong>；新分词器扩充了中文词表、把常见中文组合合并成了单个 Token，差距被大幅抹平。</p>
+    <p>这也有实证研究支持：有 arXiv 论文专门"辟谣"（<a href="https://arxiv.org/html/2604.14210v1" target="_blank">Chinese Language Is Not More Efficient Than English in Vibe Coding</a>，一项初步研究），指出 Token 效率是<strong>分词器词表分配</strong>的结果，而非语言本身的固有属性。<strong>正确姿势：别记结论，去 <code>tiktoken</code> 实测你要用的那个模型</strong>。</p>
+  </div>
+  <div class="tip">
+    ⚠️ 面试高频陷阱：<strong>"为什么中文消耗更多 Token？"</strong> 满分回答不是"因为中文复杂"，而是：<strong>"取决于分词器——旧的如 cl100k 对中文按字节回退、切得碎；新的如 o200k 扩了中文词表、差距已很小。Token 效率是词表设计问题，不是语言问题。"</strong>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. Token = 钱：成本换算</h2>
+  <div class="card">
+    <p>API 按 Token 收费，且<strong>输入和输出分开定价，输出通常是输入的 3~5 倍</strong>（<a href="https://redis.io/blog/llm-token-optimization-speed-up-apps" target="_blank">Redis: LLM Token Optimization</a>）。基本公式：</p>
+    <pre><code>成本 = (输入Token数 × 输入单价 + 输出Token数 × 输出单价) / 1,000,000
+
+例：一句 5-token 的中文输入，假设输入价 $3 / 百万 token：
+    5 × 3 / 1,000,000 = $0.000015
+（单次微不足道，但 Agent 一次任务可能调几十次 LLM、
+  每次带上长 system prompt + 历史，累积起来就是真金白银）</code></pre>
+    <p>三个"钱包警报"：</p>
+    <ul>
+      <li><strong>上下文会累加</strong>：多轮对话里，历史每轮都作为输入重发，Token 随轮数线性增长。</li>
+      <li><strong>system prompt 每次都算钱</strong>：你那段很长的角色设定，每次请求都计入输入 Token。</li>
+      <li><strong>爆窗口 = 报错或截断</strong>：超过模型上下文窗口上限，请求会失败或丢信息。</li>
+    </ul>
+    <p>怎么系统性降本（Prompt Caching、Model Routing、压缩历史）是 <a href="0027-L23-token-economics.html">L23 · Token 经济学</a>的主题。这一课你只需<strong>会数、会换算</strong>。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于 API 的输入与输出 Token 定价，通常是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">输入比输出更贵</button>
+      <button data-answer="correct">输出比输入更贵</button>
+      <button data-answer="wrong">两者价格总相同</button>
+      <button data-answer="wrong">输出完全不收费</button>
+    </div>
+    <div class="quiz-explanation">主流 API <strong>输出 Token 通常是输入的 3~5 倍价</strong>（生成比读取更耗算力）。所以省钱既要压输入（长 system prompt、累积历史用缓存/压缩），也要控输出（别让模型啰嗦）。算成本时务必<strong>输入、输出分开算</strong>。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：Token 与计数</h2>
+  <div class="card">
+    <pre><code>【Token 是什么】子词片段(subword)，不是字/词/字母
+  英文常用词≈1 token；长词/中文/生僻会被拆多段
+
+【BPE】从 256 字节起，反复合并"最高频的一对"→ 新 token
+  byte-level：中文字=3 UTF-8 字节，不够高频就 byte fallback 成碎片
+
+【tiktoken 计数】本地、发请求前
+  enc = tiktoken.get_encoding("o200k_base")  # 或 cl100k_base
+  len(enc.encode(text))          # token 数
+  仅 OpenAI 精确；Anthropic/Google 近似；账单另加格式开销
+
+【"中文更费 token"？】取决于分词器！(实测)
+  "我喜欢学习语言。"  cl100k=11  →  o200k=5
+  结论是词表设计的产物，不是语言固有 → 去实测别背结论
+
+【成本换算】输出通常 3~5× 输入
+  成本 = (in×in价 + out×out价) / 1e6
+  警报：历史累加 / system prompt 每次都算 / 爆窗口报错
+
+【经验值】英文 ~4 字符≈1 token、~0.75 词≈1 token（仅启发式）</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken" target="_blank"><strong>OpenAI Cookbook: How to count tokens with tiktoken</strong></a></p>
+    <p>官方、可直接跑的计数教程，含不同编码对比、聊天消息 Token 计算。配合 <a href="https://outcomeschool.com/blog/bpe-in-llms" target="_blank">Byte Pair Encoding in LLMs</a> 理解"合并规则"底层原理。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0021-L17-llm-essence-and-parameters.html">上一课 L17 · LLM 本质与生成参数</a> — "预测下一个 Token"里的 Token 就是这个</li>
+      <li>· <a href="0027-L23-token-economics.html">L23 · Token 经济学</a> — 系统性降本：Caching / Routing / 压缩</li>
+      <li>· <a href="0016-L12-generators-streaming.html">L12 · 生成器与 Streaming</a> — Token 逐个流式返回的机制</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>Token 是<strong>子词片段</strong>，不是字/词/字母；必须用分词器实际数，不能靠数字数</li>
+      <li><strong>BPE</strong> 从字节起步，反复合并最高频的一对；byte-level 下中文可能回退成字节碎片</li>
+      <li><code>tiktoken</code> 能<strong>本地、发请求前</strong>精确计数（OpenAI 精确，他厂近似）</li>
+      <li>"中文更费 Token"<strong>取决于分词器</strong>——同句中文 cl100k 要 11、o200k 只要 5</li>
+      <li>成本 = 输入输出<strong>分开</strong>算，输出通常 3~5× 输入；历史与 system prompt 会累加计费</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    想动手？装上 <code>tiktoken</code>，把你自己的 system prompt 丢进去数一数，再换 <code>cl100k</code> / <code>o200k</code> 对比——你会对"钱花在哪"有全新体感。有疑问随时问我。下一课起我们进入模型的<strong>能力与局限</strong>：先从人人都踩过的坑——<a href="0023-L19-hallucination.html">幻觉</a>开始。</p>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

@@ -593,6 +593,10 @@ blockquote {
   background: var(--interview-bg);
   color: var(--interview);
 }
+.badge-llm {
+  background: var(--llm-bg);
+  color: var(--llm-fg);
+}
 
 /* ============================================
    Components: Tip / Info / Warning

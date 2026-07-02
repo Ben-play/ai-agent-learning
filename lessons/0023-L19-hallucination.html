@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L19 · 幻觉全解</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
+    <h1>幻觉全解</h1>
+    <p class="subtitle">幻觉不是"数据脏"，而是评估机制在<strong>奖励瞎猜</strong>——这是校准问题</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:37%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>几乎每个用过 LLM 的人都被<strong>幻觉</strong>坑过：模型一本正经地编造了一个不存在的 API、一篇没写过的论文、一段查无此人的引用。多数教程把原因归为"训练数据有噪声"——<strong>这个解释是错的，或者说远远不够</strong>。</p>
+    <p>2025 年 OpenAI 研究者的论文《Why Language Models Hallucinate》给出了更深的答案：幻觉本质是一个 <strong>校准 / 评估激励问题</strong>。训练和基准测试<strong>奖励"猜"、惩罚"说不知道"</strong>——一个诚实弃权的模型得分反而更低。于是模型学会了"宁可自信地编，也不空着"。对通用模型来说，幻觉是<strong>统计上的必然</strong>，不是可以清零的 bug。学完这课，你能说清幻觉<strong>为什么无法根除</strong>、怎么<strong>检测</strong>、怎么<strong>缓解</strong>——这是 Agent 可靠性的地基（<a href="https://arxiv.org/abs/2509.04664" target="_blank">arXiv 2509.04664</a>）。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>准确定义幻觉：<strong>流畅、自信、但事实错误或无依据</strong>的生成</li>
+      <li>用<strong>校准视角</strong>解释幻觉根源——评估在奖励瞎猜，而非仅"数据脏"</li>
+      <li>掌握 4 种检测手段：Self-Consistency、LLM-as-judge、要出处、置信度信号</li>
+      <li>掌握 4 种缓解策略：RAG、CoT、Self-Consistency、允许弃权</li>
+      <li>说清为什么在 <strong>Agent</strong> 里幻觉会<strong>级联放大</strong>，以及为何只能缓解不能根除</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 什么是幻觉</h2>
+  <div class="card">
+    <p><strong>幻觉（Hallucination）</strong>：模型生成了<strong>流畅、自信、语法完美，但事实上错误或没有任何依据</strong>的内容。注意关键词是"自信"——幻觉不是模型"结巴"或"报错"，恰恰相反，它<strong>看起来和正确答案一模一样</strong>，这才是它危险的地方。</p>
+    <p>回想 <a href="0021-L17-llm-essence-and-parameters.html">L17</a> 讲的本质：LLM 在做<strong>概率预测</strong>——预测"下一个 Token 最可能是什么"。它优化的目标是<strong>"统计上像人话"</strong>，而不是<strong>"事实上正确"</strong>。这两者经常一致，但<strong>并不等价</strong>：</p>
+    <pre><code>问："某某人的生日是哪天？"（模型训练里没见过这个冷门人物）
+
+模型内部逻辑（简化）：
+  "……的生日是"之后，语料里最常跟一个具体日期
+  → 生成一个"看起来很合理"的日期，如 "1987 年 3 月 12 日"
+  → 语法完美、格式正确、语气自信
+  → 但它是编的（statistically plausible ≠ factually correct）</code></pre>
+    <p>典型幻觉形态：<strong>编造事实</strong>（不存在的人/事/数据）、<strong>虚构引用</strong>（假论文、假 URL、假 API 函数名）、<strong>逻辑自洽的错误</strong>（推理链条通顺但前提是假的）。记住这句话：<strong>"统计上合理"不等于"事实正确"——幻觉就活在这条缝里。</strong></p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 对"幻觉"最准确的描述是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">模型报错或崩溃退出</button>
+      <button data-answer="wrong">模型回答含糊、语无伦次</button>
+      <button data-answer="correct">流畅自信但事实错误</button>
+      <button data-answer="wrong">模型拒绝回答该问题</button>
+    </div>
+    <div class="quiz-explanation">幻觉最危险之处在于它<strong>看起来完全正确</strong>：语法完美、语气自信，但内容是编造或无依据的。它不是报错、不是含糊、更不是拒答——恰恰相反，它和真答案难以区分。根源是 LLM 优化"统计上像人话"而非"事实正确"（见 <a href="0021-L17-llm-essence-and-parameters.html">L17</a> 概率预测本质）。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 为什么发生（校准视角）</h2>
+  <div class="card">
+    <p>这是本课的<strong>核心</strong>。多数人以为幻觉是"训练数据脏"造成的——数据确实有影响，但 OpenAI 2025 年的论文《<a href="https://arxiv.org/abs/2509.04664" target="_blank">Why Language Models Hallucinate</a>》（官方博客：<a href="https://openai.com/index/why-language-models-hallucinate/" target="_blank">openai.com</a>）指出了更根本的原因：<strong>幻觉是校准 / 评估激励问题，是通用模型统计上的必然。</strong></p>
+    <p>论文拆成两层：</p>
+    <ol>
+      <li><strong>预训练本身就会产生错误率。</strong>即便训练数据完全干净，"预测下一个 Token"这种统计学习也<strong>无法对每个事实都学到 100% 准确</strong>——罕见事实（只出现一两次的生日、编号）在统计上就是学不准，这是<strong>统计学习的固有误差</strong>，不是工程 bug。</li>
+      <li><strong>更关键：评估和 RLHF 在"奖励瞎猜"。</strong>几乎所有基准测试都用<strong>"答对得分、答错 0 分、弃权也 0 分"</strong>的方式打分。在这种规则下，一个<strong>诚实说"我不知道"的模型，得分反而不如一个瞎猜的模型</strong>——因为猜还有概率蒙对，弃权则铁定 0 分。于是训练过程<strong>系统性地激励模型"宁可自信地编，也不空着"</strong>。</li>
+    </ol>
+    <p>一个精准的类比：<strong>考试蒙答案</strong>。选择题不倒扣分时，空着一定 0 分，蒙一个还有 25% 蒙对——理性考生当然全都蒙。LLM 就是那个"理性考生"，只不过它蒙出来的是流畅自信的假话。<strong>问题不在模型"想骗你"，而在我们用错误的计分规则把它训练成了这样。</strong></p>
+    <div class="tip">
+      💡 一句话记牢这篇论文：<strong>幻觉不是"数据脏"，是"评估在奖励瞎猜、惩罚弃权"。</strong>要少幻觉，除了改进模型，更要改进<strong>打分规则</strong>——让"我不知道"能得分。这也解释了为什么幻觉<strong>无法根除</strong>：只要目标是"通用地回答一切"，统计必然性就在。
+    </div>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 按《Why Language Models Hallucinate》(2025)，幻觉最根本的原因是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">训练数据里的噪声太多</button>
+      <button data-answer="correct">评估在奖励猜、罚弃权</button>
+      <button data-answer="wrong">模型的参数量还不够大</button>
+      <button data-answer="wrong">上下文窗口的长度不足</button>
+    </div>
+    <div class="quiz-explanation">论文《Why Language Models Hallucinate》指出：幻觉本质是<strong>校准/评估激励问题</strong>。基准测试"答对得分、弃权 0 分"，使得瞎猜的期望分高于诚实弃权，于是模型被训练成"宁可编也不空着"。数据噪声、参数量、窗口长度都不是根因——这也是为什么<strong>加数据、加参数都无法根除幻觉</strong>（<a href="https://arxiv.org/abs/2509.04664" target="_blank">arXiv 2509.04664</a>）。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 检测方法：怎么知道它在编</h2>
+  <div class="card">
+    <p>既然幻觉看起来和真答案一样，就需要<strong>主动检测</strong>手段。四种实用方法（参考 <a href="https://mbrenndoerfer.com/writing/hallucination-mitigation" target="_blank">Hallucination Mitigation Techniques</a>）：</p>
+    <table>
+      <thead><tr><th>方法</th><th>怎么做</th><th>信号</th></tr></thead>
+      <tbody>
+        <tr><td><strong>① Self-Consistency</strong></td><td>同一问题<strong>多次采样</strong>（用适中温度，如 0.5~0.7）</td><td>答案<strong>互相矛盾</strong> = 高幻觉风险；高度一致 = 较可信</td></tr>
+        <tr><td><strong>② LLM-as-judge</strong></td><td>用<strong>另一个模型</strong>核查这条回答是否有依据</td><td>裁判模型判"无依据/矛盾" = 疑似幻觉</td></tr>
+        <tr><td><strong>③ 要出处并验证</strong></td><td>要求模型<strong>给出引用来源</strong>，再去核实链接/文档真实存在</td><td>出处<strong>打不开/查无此文</strong> = 编的</td></tr>
+        <tr><td><strong>④ 置信度信号</strong></td><td>看模型输出的<strong>不确定性</strong>（logprobs 较客观；<strong>自陈置信度不可靠</strong>——幻觉本就"自信"）</td><td>低置信 / 模糊措辞 = 需人工复核</td></tr>
+      </tbody>
+    </table>
+    <p><strong>①Self-Consistency 的直觉最漂亮</strong>：如果模型<strong>真的知道</strong>答案，多次采样会稳定地给同一个；如果它在<strong>瞎编</strong>，每次编的都不一样。<strong>答案的"不稳定"本身就是幻觉的指纹</strong>。这既是检测手段，也是下一节的缓解手段。</p>
+  </div>
+  <div class="tip">
+    ⚙️ 工程落地：③"要出处并验证"最适合做成<strong>自动化管线</strong>——让模型输出必须带 URL/文档 ID，再用程序去检索库里是否真有这条依据，查无则拦截。这天然通向下一节的 <strong>RAG</strong>。
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 缓解策略：目标是"缓解"不是"消除"</h2>
+  <div class="card">
+    <p>先立场：<strong>幻觉无法根除（见第 2 节的统计必然性），我们的目标是 mitigate（缓解）而不是 eliminate（消除）。</strong>任何号称"彻底解决幻觉"的说法都可以直接判定为不专业。四种主流缓解手段：</p>
+    <ol>
+      <li><strong>RAG（检索增强生成）——工程上最有效的一招。</strong>先从可信文档库检索相关内容，把<strong>真实资料塞进上下文</strong>，让模型"照着材料答"而不是"凭记忆编"。把开放式的"你知道吗"变成有依据的"根据这段材料"，幻觉大幅下降。RAG 是 <a href="0024-L20-reasoning-models.html">后续</a>整个 Agent 知识层的核心，本课先建立直觉。</li>
+      <li><strong>CoT（Chain-of-Thought，思维链）。</strong>让模型<strong>分步推理</strong>再给结论，而不是一步跳到答案。把大跳跃拆成小步骤，能减少"跳步式"的逻辑错误——这也是 <a href="0024-L20-reasoning-models.html">L20 推理模型</a>的主题。</li>
+      <li><strong>Self-Consistency（多采样投票）。</strong>同一问题采样多次，<strong>取多数一致的答案</strong>。矛盾的少数派往往是幻觉，被投票机制过滤掉。</li>
+      <li><strong>提示词允许"我不知道" + 要求引用。</strong>直接在 prompt 里写明"<strong>不确定就说不知道、不要编</strong>"、"每条结论必须给出处"。这等于在推理阶段<strong>手动纠正第 2 节那个"惩罚弃权"的错误激励</strong>——给弃权重新"发分"。</li>
+    </ol>
+    <p>参考实践清单：<a href="https://mbrenndoerfer.com/writing/hallucination-mitigation" target="_blank">Hallucination Mitigation Techniques</a>。记住组合拳心法：<strong>RAG 给依据、CoT 减跳步、Self-Consistency 投票、允许弃权兜底——四招叠加，但都不能清零。</strong></p>
+  </div>
+  <div class="tip">
+    🎤 <strong>面试高频 · 必背题：「如何减少幻觉？」</strong><br>
+    满分回答要覆盖 5 点：<strong>① RAG</strong> 给模型真实文档作依据（最有效）；<strong>② CoT</strong> 分步推理减少跳步错误；<strong>③ Self-Consistency</strong> 多次采样投票取一致；<strong>④ 允许弃权</strong>——提示词里让模型"不确定就说不知道 / 要求引用来源"；<strong>⑤ 承认无法根除</strong>——幻觉是校准问题的统计必然，只能 mitigate 不能 eliminate。<strong>能主动说出第⑤点，面试官会认为你真读过原理，而不只是背 buzzword。</strong>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于缓解幻觉，下面哪种说法是对的？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">用 RAG 可以彻底消除幻觉</button>
+      <button data-answer="correct">只能缓解，无法完全根除</button>
+      <button data-answer="wrong">调大参数量即可根除</button>
+      <button data-answer="wrong">关掉采样随机性能根除</button>
+    </div>
+    <div class="quiz-explanation">幻觉源于<strong>校准/统计必然性</strong>（第 2 节），RAG、CoT、Self-Consistency、允许弃权都能显著<strong>缓解（mitigate）</strong>，但都<strong>无法消除（eliminate）</strong>。声称"彻底解决幻觉"的方案一律不可信。工程上正确的目标是把幻觉率压到<strong>可接受</strong>并配上检测兜底，而不是追求归零。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. Agent 关联：幻觉会级联放大</h2>
+  <div class="card">
+    <p>为什么幻觉对 <strong>Agent</strong> 是"核心问题"而不只是"一个缺点"？因为 Agent 不是把模型输出直接给人看——它会<strong>基于这段输出去调用工具、做决策、触发下一步</strong>。一个幻觉会像多米诺骨牌一样<strong>级联放大</strong>：</p>
+    <pre><code>普通聊天：幻觉 → 人看到假答案 → （人可能识别）→ 到此为止
+
+Agent：  幻觉 → Agent 当成事实 → 调用了错误的工具 / 传了错误参数
+              → 拿到错误结果 → 又基于错误结果继续推理
+              → 再调用下一个工具 → 错误层层叠加、越走越偏
+              → 最终产出一个"每一步都很自信"的错误结果</code></pre>
+    <p>差别在于：聊天里幻觉<strong>止于人眼</strong>；Agent 里幻觉<strong>会被自动执行并喂给下一步</strong>，没有人当场把关。所以 <strong>幻觉治理（检测 + 缓解）是 Agent 可靠性的核心</strong>——本课学的 RAG、Self-Consistency、要出处、允许弃权，之后都会作为 Agent 的"护栏"反复出现。</p>
+  </div>
+
+  <details>
+    <summary><strong>🧪 Agent 场景练习：</strong>为一个"客服 Agent"设计幻觉检测方案（先自己想，再展开看参考答案）</summary>
+    <div class="card" style="margin-top:0.8rem;">
+      <p><strong>题目：</strong>你在做一个电商<strong>客服 Agent</strong>，它会回答"退货政策""订单状态""某商品是否支持某功能"等问题。已经出现过它<strong>编造退货天数</strong>、<strong>编造不存在的功能</strong>的事故。请设计一套方案，<strong>在回答发给用户前</strong>尽量拦下幻觉。</p>
+      <p><strong>参考答案（组合拳）：</strong></p>
+      <ul>
+        <li><strong>RAG 作地基</strong>：所有政策/商品/订单信息只允许从<strong>官方知识库和数据库</strong>检索，回答必须"照材料说"，禁止凭记忆答——从源头砍掉大部分幻觉。</li>
+        <li><strong>强制出处 + 程序验证</strong>：要求模型每条结论都附<strong>知识库文档 ID</strong>；发送前用程序核对该 ID 真实存在且内容支持这句话，<strong>查无依据就拦截</strong>（对应检测法③）。</li>
+        <li><strong>关键问题上 Self-Consistency</strong>：对"退货天数""是否支持某功能"这类<strong>高风险事实</strong>，多次采样；答案不一致就<strong>不直接回复，转人工或反问澄清</strong>（对应检测法①）。</li>
+        <li><strong>允许并鼓励弃权</strong>：prompt 明确"<strong>知识库里没有就说'我帮您转人工'，绝不能编</strong>"——把"弃权"变成体面且被鼓励的选项（对应缓解④）。</li>
+        <li><strong>LLM-as-judge 兜底</strong>：发送前用另一个模型快速核查"这条回答是否被引用材料支持"，不通过则拦截（对应检测法②）。</li>
+        <li><strong>诚实边界</strong>：承认无法 100% 拦净，因此对<strong>涉及金额/承诺</strong>的高危回答设人工复核，把残余幻觉的<strong>影响</strong>降到可接受。</li>
+      </ul>
+      <p>看出来了吗——这套方案就是把本课第 3、4 节的检测与缓解手段，<strong>按风险分层组装</strong>成一条 Agent 护栏管线。</p>
+    </div>
+  </details>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：幻觉全解</h2>
+  <div class="card">
+    <pre><code>【是什么】流畅、自信、但事实错误/无依据的生成
+  危险点：看起来和正确答案一模一样（不是报错、不是含糊）
+  根：统计上合理 ≠ 事实正确（L17 概率预测本质）
+
+【为什么（校准视角）· 核心】
+  ① 预训练本身有错误率下界（罕见事实统计上学不准）
+  ② 关键：评估/RLHF"答对得分、弃权也 0 分"→ 奖励瞎猜、惩罚弃权
+  类比：不倒扣分的选择题 → 理性考生全都蒙
+  → 通用模型的统计必然，无法根除  (arXiv 2509.04664)
+
+【检测】① Self-Consistency：多采样，答案不一致=高风险
+       ② LLM-as-judge：另一个模型核查
+       ③ 要出处并验证：出处打不开=编的
+       ④ 置信度信号：低置信→人工复核
+
+【缓解】mitigate ≠ eliminate（不能清零！）
+  ① RAG   给真实文档作依据（工程最有效）
+  ② CoT   分步推理减少跳步错误
+  ③ Self-Consistency 多采样投票取一致
+  ④ 允许"我不知道" + 要求引用（给弃权重新发分）
+
+【Agent 关联】幻觉→自动调用工具/决策→错误级联放大
+  聊天止于人眼；Agent 会自动执行并喂给下一步
+  → 幻觉治理 = Agent 可靠性核心
+
+【面试杀手题「如何减少幻觉？」】
+  RAG + CoT + Self-Consistency + 允许弃权 + 承认无法根除</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://arxiv.org/abs/2509.04664" target="_blank"><strong>Why Language Models Hallucinate (OpenAI, 2025) — arXiv 2509.04664</strong></a></p>
+    <p>本课的思想源头。它把幻觉从"数据问题"重新框定为<strong>校准 / 评估激励问题</strong>：证明预训练存在错误率下界，且基准测试"奖励猜、惩罚弃权"系统性地制造了自信的假话。配合官方博客解读 <a href="https://openai.com/index/why-language-models-hallucinate/" target="_blank">Why language models hallucinate</a> 更易读。缓解实践可参考 <a href="https://mbrenndoerfer.com/writing/hallucination-mitigation" target="_blank">Hallucination Mitigation Techniques</a>。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0022-L18-tokenization.html">上一课 · Token 与 Tokenization</a> — 模型眼里只有 Token</li>
+      <li>· <a href="0024-L20-reasoning-models.html">下一课 · 推理模型与 Extended Thinking</a> — CoT 如何进一步压幻觉</li>
+      <li>· <a href="0021-L17-llm-essence-and-parameters.html">L17 · "概率预测"本质是幻觉根源</a> — 统计合理≠事实正确</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>幻觉 = <strong>流畅、自信、但事实错误/无依据</strong>的生成；危险在于它和真答案难以区分</li>
+      <li><strong>校准视角（核心）</strong>：不是"数据脏"，而是评估"奖励猜、惩罚弃权"——统计必然，无法根除</li>
+      <li><strong>检测</strong>：Self-Consistency（多采样不一致）、LLM-as-judge、要出处验证、置信度信号</li>
+      <li><strong>缓解</strong>：RAG（最有效）+ CoT + Self-Consistency + 允许弃权；目标是 mitigate 不是 eliminate</li>
+      <li><strong>Agent</strong> 里幻觉会被自动执行并<strong>级联放大</strong>，所以幻觉治理是可靠性的核心</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    想加深理解？把第 2 节那个"不倒扣分的选择题"类比讲给别人听——能讲清楚，你就真懂了校准视角。对哪一步还有疑问（比如"RAG 具体怎么接进 Agent""Self-Consistency 采样几次合适"），<strong>随时问我</strong>，我是你的老师。下一课我们进入 <a href="0024-L20-reasoning-models.html">推理模型与 Extended Thinking</a>，看 CoT 如何被"内置"成模型能力。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

@@ -120,13 +120,15 @@
       · <strong>Token 深度理解</strong> — Tokenization 原理、BPE 算法、中文 vs 英文 Token 差异、tiktoken 计数、Token 与成本关系<br>
       · <strong>生成参数解密</strong> — Temperature（创造力控制）、Top-P（采样范围）、频率惩罚、不同任务的参数组合<br><br>
       <strong>Module 2.2 · 模型能力、局限与选型：</strong><br>
-      · <strong>幻觉问题全解</strong> — 什么是幻觉、为什么发生、检测方法、缓解策略（RAG/CoT/Self-Consistency）<br>
+      · <strong>幻觉问题全解</strong> — 什么是幻觉、<strong>为什么发生（校准视角：训练/评估激励"猜"而非"弃权"，见 OpenAI/arXiv《Why Language Models Hallucinate》）</strong>、检测方法、缓解策略（RAG/CoT/Self-Consistency）<br>
       · <strong>模型能力边界</strong> — 能做什么 vs 不能做什么、Base Model vs Instruction-Tuned Model<br>
       · <strong>推理模型与 Extended Thinking</strong> — 标准模型 vs 推理模型、何时用哪个<br>
-      · <strong>2026 模型选型实战</strong> — 主流模型族（OpenAI / Anthropic Claude / Google Gemini / DeepSeek / Qwen / xAI Grok）能力对比与<strong>选型决策框架</strong>。<em>注：具体版本号迭代极快，学习时以各厂商当时最新版为准，重点掌握「怎么选」而非记死某个版本。</em><br><br>
-      <strong>Module 2.3 · Token 经济学：</strong>各主流模型价格对比、隐藏成本、成本计算公式、Token 预算制定<br><br>
-      <div class="interview-box">"LLM 工作原理" / "为什么中文消耗更多 Token" / "Temperature 0 vs 1" / "如何减少幻觉" / "推理模型是什么" / "如何选模型" / "如何优化成本" — 共 7+ 道高频题</div><br>
-      <strong>实战项目：</strong>用 API 对比不同模型 + 幻觉测试 + 成本计算，输出综合报告
+      · <strong>看懂 Benchmark</strong> — MMLU-Pro（广度知识）/ GPQA（专家推理）/ SWE-bench（真实工程）/ ARC-AGI（抽象推理）各测什么、榜单为何会失真（污染/过拟合），学会用 benchmark 佐证选型而非迷信单一分数<br>
+      · <strong>2026 模型选型实战</strong> — 主流模型族（OpenAI / Anthropic Claude / Google Gemini / DeepSeek / Qwen / xAI Grok）能力对比、开源 vs 闭源权衡（自托管成本拐点）、与<strong>选型决策框架</strong>。<em>注：具体版本号迭代极快，学习时以各厂商当时最新版为准，重点掌握「怎么选」而非记死某个版本。</em><br><br>
+      <strong>Module 2.3 · Token 经济学：</strong>各主流模型价格对比（输出通常 3–5× 输入）、隐藏成本、成本计算公式、Token 预算制定；<strong>两大降本杠杆——Prompt Caching（缓存读 ~0.1×、写 ~1.25×，官方文档实锤）与 Model Routing（便宜模型兜底、贵模型只接难题）</strong>，真实案例降本 59–70%<br><br>
+      <div class="interview-box">"LLM 工作原理" / "为什么中文消耗更多 Token" / "Temperature 0 vs 1" / "为什么会幻觉（校准视角）" / "推理模型是什么、何时用" / "MMLU/SWE-bench 各测什么" / "如何选模型" / "Prompt Caching 与 Routing 如何降本" — 共 9+ 道高频题</div><br>
+      <strong>实战项目：</strong>用 API 对比不同模型 + 幻觉测试 + 成本计算（含 Prompt Caching 前后对比），输出综合报告<br><br>
+      <a href="0029-phase2-ai-knowledge-outline.html" style="font-weight:600;">📋 查看 Phase 2 详细大纲（L17–L24）→</a>
     </div>
   </div>
 </div>
@@ -186,7 +188,7 @@
   <div class="phase-body">
     <div class="card">
       <strong>Prompt Engineering：</strong>System Prompt 设计、Few-shot Learning、Chain-of-Thought 推理、Structured Output 结构化输出、Prompt 模板化与复用、版本管理与 A/B 测试<br><br>
-      <strong>Context Engineering 基础（2026 核心技能）：</strong>什么是上下文工程（比 Prompt Engineering 更上层）、动态上下文组装思路、上下文压缩与摘要策略初探、RAG 检索结果作为上下文注入<br><br>
+      <strong>Context Engineering 基础（2026 核心技能 · 对齐 Anthropic 官方术语）：</strong>什么是上下文工程（Prompt Engineering 的自然延伸，管理推理时的<strong>全部</strong> token 而非只有提示词）、<strong>context rot</strong>（token 越多召回越差）与 <strong>attention budget</strong>（注意力预算有限）、"right altitude" 系统提示、动态上下文组装、RAG 检索结果作为上下文注入<br><br>
       <strong>实战项目：</strong>设计一套 Prompt 模板系统 + 上下文组装管线，支持动态组装、版本管理和效果对比
     </div>
   </div>
@@ -213,7 +215,7 @@
       · <strong>棘轮效应（Ratchet）：</strong>每次 Agent 犯错，就加一条规则防止再犯<br>
       · <strong>行为驱动设计：</strong>从"期望行为"反推 harness 组件<br>
       · 生命周期管理、工具执行调度、完成标准、错误恢复<br><br>
-      <strong>Context Engineering 进阶：</strong>动态上下文组装、压缩/摘要策略、滑动窗口、记忆注入、Token 预算分配<br><br>
+      <strong>Context Engineering 进阶（Anthropic 官方长任务技法）：</strong><strong>compaction</strong>（接近上限时压缩对话、带摘要重启）、<strong>structured note-taking / agentic memory</strong>（上下文外持久化笔记，用时再拉回）、<strong>sub-agent 架构</strong>（子代理用干净窗口探索、只回 1–2k token 精炼摘要）、<strong>just-in-time 检索 / progressive disclosure</strong>（存轻量标识符、运行时按需加载 vs 预取）、滑动窗口、Token 预算分配<br><br>
       <strong>工具设计哲学（2026 关键技能）：</strong>Schema 设计、错误处理、粒度控制、工具组合、工具测试<br><br>
       <strong>经典模式：</strong>ReAct、Plan-and-Execute、Reflexion<br><br>
       <strong>记忆与 Human-in-the-Loop：</strong>短期/长期/工作记忆设计、Mem0、人工审批节点<br><br>

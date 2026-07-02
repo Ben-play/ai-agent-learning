@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L23 · Token 经济学与降本</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
+    <h1>Token 经济学与降本杠杆</h1>
+    <p class="subtitle">同一个 Agent，账单可以差 3~5 倍——差在你会不会用两根杠杆</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:87%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p><a href="0022-L18-tokenization.html">L18</a> 教了你怎么<strong>数 Token、算成本</strong>。这一课回答下一个问题：<strong>怎么把这笔成本压下去。</strong></p>
+    <p>这不是可选项。Agent 和单次 chat 有本质区别——一次任务里 LLM 被<strong>反复调用</strong>，每次都拖着长 system prompt 和越滚越长的历史。同一个功能，不会优化的人月账单可能是会优化的人的 <strong>3~5 倍</strong>。好消息是：<strong>最大的两根杠杆</strong>——<strong>Prompt Caching（提示缓存）</strong>和 <strong>Model Routing（模型路由）</strong>，官方文档和真实案例都能落到 <strong>50%~90%</strong> 的降幅（其余如压缩历史、控输出、批处理是补充）。学完你能给一个 Agent<strong>制定 token 预算、并把成本砍一半以上</strong>。这是从"能跑"到"生产级"的必修课。</p></p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清 Agent 场景里成本<strong>从哪来、为什么被放大</strong></li>
+      <li>用 <strong>Prompt Caching</strong> 把重复的静态前缀降到约 0.1× 价格（省约 90%）</li>
+      <li>设计「<strong>静态前缀 + 动态后缀</strong>」的缓存友好结构</li>
+      <li>用 <strong>Model Routing</strong> 让便宜模型兜底、贵模型只接难活</li>
+      <li>给一个 Agent<strong>制定 token 预算</strong>并估算月成本</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 快速回顾：成本公式（细节看 L18）</h2>
+  <div class="card">
+    <p>一句话把 <a href="0022-L18-tokenization.html">L18</a> 的结论捡回来。API 按 Token 收费，输入和输出<strong>分开定价</strong>，输出通常是输入的 <strong>3~5 倍</strong>：</p>
+    <pre><code>成本 = (输入Token数 × 输入单价 + 输出Token数 × 输出单价) / 1,000,000
+
+例：输入 2200 token、输出 300 token，输入 $3/M、输出 $12/M
+    (2200×3 + 300×12) / 1e6 = $0.0102  ← 单次
+
+单次不起眼，但 Agent 一天调 10 万次，就是 ~$1000/天。</code></pre>
+    <p>这课不重复整节 L18，只做一件事：<strong>把公式里的每一项往下压</strong>。想复习"怎么数 Token、中英文谁更省"，回 <a href="0022-L18-tokenization.html">L18</a>。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 隐藏成本：Agent 的钱到底花在哪</h2>
+  <div class="card">
+    <p>为什么强调 Agent 的 token 消耗<strong>远大于</strong>单次 chat？因为有四个"放大器"，每一个都让<strong>输入 Token</strong>膨胀（<a href="https://redis.io/blog/llm-token-optimization-speed-up-apps" target="_blank">Redis: LLM Token Optimization</a>）：</p>
+    <table>
+      <thead><tr><th>放大器</th><th>为什么费钱</th></tr></thead>
+      <tbody>
+        <tr><td><strong>① 多轮历史每轮重发</strong></td><td>API 是无状态的，每轮都要把<strong>全部历史</strong>当输入重新送一遍，输入量随轮数线性增长</td></tr>
+        <tr><td><strong>② 长 system prompt</strong></td><td>那段角色设定 + 工具说明 + 少样本示例，<strong>每一次请求都完整计费</strong>，一个字不少</td></tr>
+        <tr><td><strong>③ 工具调用循环</strong></td><td>一次任务 = 多次往返 LLM（想→调工具→读结果→再想）。每次往返都带上完整上下文</td></tr>
+        <tr><td><strong>④ 检索长文档</strong></td><td>RAG / 长文档塞进上下文，动辄几千 token，且往往<strong>反复出现</strong>在多轮里</td></tr>
+      </tbody>
+    </table>
+    <p>看出规律没有：<strong>费钱的几乎都是"重复的、静态的输入"</strong>——长 system prompt 每次都在、检索的文档反复出现、历史一遍遍重发。这正好是下一节第一根杠杆的靶心。</p>
+  </div>
+  <div class="tip">
+    直觉校准：一个带 2000-token system prompt 的客服 Agent，如果每天 10 万次请求，光那段<strong>一字不改的 system prompt</strong> 每天就烧掉约 <strong>$600</strong>（按 $3/M 算）——而它的内容每次都一模一样。这就是缓存的用武之地。
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 杠杆一：Prompt Caching（第一降本杠杆）</h2>
+  <div class="card">
+    <p><strong>原理：</strong>把<strong>静态的、重复的前缀</strong>（长 system prompt、固定的少样本示例、反复出现的文档）缓存起来。后续请求只要前缀<strong>逐字节命中</strong>缓存，这部分就<strong>大幅降价</strong>——你不再为"每次都一样的内容"付全价。</p>
+    <p>各家的数量级（以官方文档为准，这里用"约"）：</p>
+    <table>
+      <thead><tr><th>厂商</th><th>缓存读（命中）</th><th>缓存写（首次）</th><th>TTL</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Anthropic</strong></td><td>约 <strong>0.1×</strong> 输入价<br>（省约 90%）</td><td>约 <strong>1.25×</strong><br>（首次略贵）</td><td>默认约 5 分钟；另有 1 小时选项（写约 2×）</td></tr>
+        <tr><td><strong>OpenAI</strong></td><td>命中约省 <strong>50%~90%</strong>（视模型代次，较新模型可达 ~90%）</td><td>自动，无额外写入费</td><td>自动前缀缓存</td></tr>
+      </tbody>
+    </table>
+    <p>数据出处：<a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。Anthropic 首次<strong>写入</strong>略贵（约 1.25×），所以缓存的经济学是：<strong>同一前缀被读得越多越划算</strong>——一次性任务别缓存，反复命中的 Agent 场景才是甜点。</p>
+
+    <p><strong>关键设计原则</strong>：把 prompt 拆成「<strong>静态前缀（可缓存）+ 动态后缀（每次变）</strong>」，<strong>静态部分放最前面</strong>。因为缓存是<strong>前缀匹配</strong>——前缀里任何一个字节变了，后面全部失效。所以千万别把时间戳、用户 ID、随机数塞进 system prompt 开头：</p>
+    <pre><code>【缓存键设计：静态前缀 + 动态后缀】
+
+┌─ 静态前缀（放前面，打缓存标记）──────────────┐
+│  · 角色设定 / 行为准则          ← 一字不改      │  ← 命中缓存
+│  · 工具定义（按名字排序，别乱序）              │     约 0.1×
+│  · 固定的少样本示例 / 长文档                    │
+└──────────────────────────────────────────────┘
+┌─ 动态后缀（放后面，不缓存）────────────────────┐
+│  · 本轮用户问题                                │  ← 全价
+│  · 当前时间戳 / 请求 ID / 检索到的新片段        │     但很短
+└──────────────────────────────────────────────┘
+
+⚠️ 反例：system prompt 开头写 "当前时间：{now}"
+   → 前缀每次都变 → 缓存永远不命中 → 白交钱</code></pre>
+    <p>真实案例把这条原则落地后，报道的降幅在 <strong>59%~70%</strong>（<a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery: How We Cut LLM Cost with Prompt Caching</a>）。对 Agent 来说，长 system prompt + 固定工具集天然就是巨大的静态前缀，缓存几乎是"免费的午餐"。</p>
+  </div>
+  <div class="tip">
+    验证缓存是否真的命中：看 API 返回的 <code>usage</code>——若 <code>cache_read</code> 类字段一直是 0，说明有"静默失效因子"（多半是前缀里混进了时间戳 / 随机 ID / 没排序的 JSON）。<strong>缓存不命中不报错，只是悄悄多收钱</strong>，所以必须主动核对。
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 想让 Prompt Caching 真正省钱，prompt 该怎么组织？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把当前时间戳写进 system prompt 的最开头</button>
+      <button data-answer="correct">静态前缀放前面，动态内容放后面</button>
+      <button data-answer="wrong">每次都给 system prompt 换一种新措辞</button>
+      <button data-answer="wrong">把本轮用户问题放到工具定义的前面</button>
+    </div>
+    <div class="quiz-explanation">缓存是<strong>前缀匹配</strong>：前缀里任何一个字节变了，后面全部失效。所以要把<strong>静态、每次都一样的内容</strong>（角色设定、固定工具、少样本示例）放最前面并打缓存标记，把<strong>动态内容</strong>（用户问题、时间戳、检索片段）放后面。反例——在开头写"当前时间：{now}"或每次换措辞——会让前缀每次都变，缓存永远不命中，白交钱。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 杠杆二：Model Routing（模型路由）</h2>
+  <div class="card">
+    <p><strong>原理：不是所有请求都值得用最贵的模型。</strong>让<strong>便宜、快的小模型兜底处理简单请求</strong>，把<strong>贵、强的大模型只留给难请求</strong>。按难度分类、动态路由。</p>
+    <pre><code>请求进来 → 判断难度
+   ├─ 简单（分类 / 提取 / 闲聊 / 格式化） → 便宜快模型 兜底
+   ├─ 中等（一般问答 / 总结）             → 中档模型
+   └─ 困难（多步推理 / 复杂 Agent 规划）   → 顶级模型 只接这类
+
+思路：先用便宜模型试；不确定 / 判为难，再升级到贵模型。</code></pre>
+    <p>为什么有效：小模型的单价往往是大模型的<strong>几分之一到几十分之一</strong>，而生产流量里<strong>大部分请求其实很简单</strong>。把这部分从大模型挪走，账单立刻塌方——真实报道的降幅在 <strong>40%~85%</strong>（<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry: LLM Routing — Cost/Quality-Aware Model Selection</a>）。</p>
+    <p><strong>工程落地：</strong>用一个 <strong>gateway</strong>（如 <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a>，见课程 RESOURCES）统一路由，业务代码不用管背后是哪个模型，换模型 / 调路由策略只改配置。这直接连回两条已学的原则：</p>
+    <ul>
+      <li>👉 <a href="0024-L20-reasoning-models.html">L20</a>：推理模型（思考更多）<strong>更贵更慢</strong>——别对"翻译一句话""判断正负面"这种简单活开推理，纯属烧钱。</li>
+      <li>👉 <a href="0026-L22-benchmarks-and-selection.html">L22</a>：选型不是"永远选最强"，而是<strong>按任务难度匹配</strong>。路由就是把"选型"从一次性决策变成<strong>每请求的动态决策</strong>。</li>
+    </ul>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> Model Routing 降本的核心思路是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把每一个请求都换成最强最贵的大模型</button>
+      <button data-answer="correct">便宜模型兜底，难请求才交给贵模型</button>
+      <button data-answer="wrong">把所有请求统一改成流式返回来省钱</button>
+      <button data-answer="wrong">把每次的输出长度都强行压到最短</button>
+    </div>
+    <div class="quiz-explanation">路由的关键是<strong>按难度分流</strong>：生产流量里大部分请求很简单，用便宜快的小模型兜底，只把真正困难的请求升级到贵模型。因为小模型单价常是大模型的几分之一，这一分流就能砍掉 40%~85% 成本。它和"选型"（<a href="0026-L22-benchmarks-and-selection.html">L22</a>）一脉相承，只是把选择从一次性变成每请求的动态决策。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 其他杠杆（简述）</h2>
+  <div class="card">
+    <p>两根主杠杆之外，还有几个"顺手就能拧"的旋钮：</p>
+    <table>
+      <thead><tr><th>杠杆</th><th>怎么省</th></tr></thead>
+      <tbody>
+        <tr><td><strong>压缩历史 / 对话（compaction）</strong></td><td>多轮太长时，<strong>只保留摘要而非全文</strong>回传，砍掉①号放大器。深入见 <strong>Phase 5</strong>（Agent 上下文工程）</td></tr>
+        <tr><td><strong>控制输出长度</strong></td><td>输出是输入的 3~5 倍价，最贵。设 <code>max_tokens</code>、在 prompt 里明确"简洁作答 / 只返回 JSON"，别让模型啰嗦</td></tr>
+        <tr><td><strong>批处理（Batch API）</strong></td><td>非实时任务（离线分类、批量总结）走批处理，通常约省 <strong>50%</strong>，代价是延迟（结果稍后返回）</td></tr>
+      </tbody>
+    </table>
+    <p>这些是补充，不是替代。<strong>先上缓存和路由</strong>（收益最大、几乎无副作用），再按场景补这几个。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 给 Agent 制定 Token 预算</h2>
+  <div class="card">
+    <p>"降本"落地前先要"知本"。给一个 Agent 制定预算的四步思路：</p>
+    <pre><code>① 估算单次任务 token 量
+     = system prompt + 历史 + 检索文档 + 输出
+     （别忘 Agent 一次任务可能往返 LLM 多次，要乘往返数）
+② 乘调用频次
+     × 每天 / 每月请求数
+③ 对照单价，得出未优化月成本（这是"上限"）
+④ 用缓存 + 路由压下来
+     静态前缀 → 缓存（约 0.1× / 约 0.5×）
+     简单请求 → 路由到便宜模型
+     → 得出优化后成本，与上限对比看省了多少</code></pre>
+    <p>为什么先算再优化：不算预算，你既不知道<strong>钱花在哪一项</strong>（是历史太长？还是 system prompt 太肥？），也无法判断优化<strong>值不值</strong>。把它当成 Agent 上线前的"体检"。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于 Anthropic 的 Prompt Caching，下面哪个说法对？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">缓存命中后被缓存的那部分内容就完全免费了</button>
+      <button data-answer="correct">缓存读约 0.1× 价，即省约九成</button>
+      <button data-answer="wrong">缓存对每次都变化的动态后缀最有效果</button>
+      <button data-answer="wrong">首次写入缓存比一次正常请求还要便宜</button>
+    </div>
+    <div class="quiz-explanation">Anthropic 缓存<strong>读</strong>约 <strong>0.1×</strong> 输入价（省约 90%，不是全免），首次<strong>写入</strong>反而略贵（约 1.25×）。缓存对<strong>静态、重复的前缀</strong>最有效——动态后缀每次都变、无法命中。所以设计上要把静态部分放前面、打缓存标记，让它被反复命中。具体倍数以官方文档为准。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>7. 成本估算练习：把两根杠杆算给你看</h2>
+  <div class="card">
+    <p>动手最能建立体感。给你一个具体场景，先自己算，再展开对答案。</p>
+    <pre><code>【场景】客服 Agent
+  · system prompt：2000 token，固定不变
+  · 每次用户问题：约 200 token
+  · 每次回答：约 300 token
+  · 每天请求数：10 万次
+  · 单价：输入 $3/M，输出 $12/M
+
+问：
+  ① 不加缓存，日成本是多少？
+  ② Prompt Caching 能省下哪部分？大致省多少？</code></pre>
+    <details>
+      <summary>点我看算法与答案</summary>
+      <p><strong>① 不加缓存的日成本</strong></p>
+      <pre><code>每次输入 = system 2000 + 问题 200 = 2200 token
+每次输出 = 300 token
+
+日输入成本 = 100,000 × 2200 × $3 / 1e6 = $660
+日输出成本 = 100,000 ×  300 × $12 / 1e6 = $360
+─────────────────────────────────────────────
+日总成本  = $660 + $360 = $1020 / 天</code></pre>
+
+      <p><strong>② Prompt Caching 能省哪部分</strong></p>
+      <p>那 <strong>2000 token 的 system prompt 是静态前缀</strong>，每次一字不改——正是缓存的靶心。问题（200）和输出（300）每次都变，不动。</p>
+      <pre><code>静态前缀原价 = 100,000 × 2000 × $3 / 1e6      = $600 / 天
+命中缓存后   = $600 × 0.1（约 0.1×）           = $60  / 天
+                                    省下 ≈ $540 / 天
+
+加缓存后日总成本：
+  缓存前缀 $60 + 动态输入 $60 + 输出 $360 = $480 / 天
+
+────────────────────────────────────────────────
+$1020 → $480，账单砍掉约 53%
+其中光"静态前缀"这一项就从 $600 降到 $60（省约 90%）</code></pre>
+      <p><strong>体会两点：</strong>(a) 缓存只作用于<strong>静态前缀</strong>，动态部分（问题+输出共 $420）它管不着——所以要尽量把内容往静态前缀里归；(b) system prompt 越大、请求越频繁，缓存收益越夸张。这里再叠一层<strong>路由</strong>（把简单问答分给便宜模型），$480 还能继续往下走。</p>
+    </details>
+  </div>
+
+  <div class="tip">
+    💼 面试高频：<strong>"如何优化 LLM 成本？"</strong> 满分答法按性价比排序：<strong>① Prompt Caching</strong>——缓存静态前缀，命中省约 90%（Anthropic）/约 50%~90%（OpenAI，视模型代次）；<strong>② Model Routing</strong>——便宜模型兜底、贵模型只接难请求；<strong>③ 压缩历史</strong>（只留摘要）；<strong>④ 控输出</strong>（max_tokens + 要求简洁）；<strong>⑤ 批处理</strong>（非实时约省 50%）。一句话点题原则：<strong>"原生缓存优先"</strong>——先把静态前缀缓存吃干净，再谈其他。
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：Token 经济学与降本</h2>
+  <div class="card">
+    <pre><code>【成本公式】(in×in价 + out×out价) / 1e6；输出通常 3~5× 输入（细节→L18）
+
+【钱从哪来·Agent 放大器】几乎都是"重复的静态输入"
+  ① 历史每轮重发  ② 长 system prompt 每次都算
+  ③ 工具循环多次往返  ④ 检索长文档反复出现
+
+【杠杆一·Prompt Caching】缓存静态前缀（第一杠杆）
+  Anthropic：读约 0.1×(省~90%)，写约 1.25×，默认~5min / 可选 1h
+  OpenAI：命中约省 50%~90%（视模型代次）
+  设计：静态前缀(放前+打标) + 动态后缀(放后)
+  ⚠️ 前缀混入时间戳/随机ID → 永不命中；查 usage 里 cache_read
+
+【杠杆二·Model Routing】便宜模型兜底，贵模型只接难请求
+  按难度分流；gateway(LiteLLM)统一路由；报道降 40~85%
+  连回 L20(推理贵,别用于简单活) / L22(按难度选型)
+
+【其他】压缩历史(留摘要,→Phase5) / 控输出(max_tokens+简洁) / 批处理(~省50%)
+
+【Token 预算】估单次量 × 频次 × 单价 = 上限 → 缓存+路由压下来
+
+【面试】Caching + Routing + 压历史 + 控输出 + 批处理；原则"原生缓存优先"</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank"><strong>Anthropic: Prompt Caching</strong></a></p>
+    <p>官方文档，讲清缓存读/写倍数、TTL、以及"前缀匹配 + 缓存断点"的机制——这是第一降本杠杆的权威依据。配合 <a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry: LLM Routing</a> 理解第二杠杆，以及 <a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery 的真实降本案例</a> 看落地效果。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0026-L22-benchmarks-and-selection.html">上一课 · 选型</a> — 路由的基础：按任务难度匹配模型</li>
+      <li>· <a href="0028-L24-phase2-capstone.html">下一课 · Phase 2 综合实战</a> — 把选型 + 降本用到真实项目</li>
+      <li>· <a href="0022-L18-tokenization.html">L18 · Token 计数与成本公式</a> — 本课的地基：怎么数、怎么算</li>
+      <li>· <a href="0024-L20-reasoning-models.html">L20 · 推理模型的成本权衡</a> — 为什么"别对简单任务用推理"</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>成本 = 输入输出<strong>分开</strong>算，输出通常 3~5× 输入；Agent 因多轮/长 prompt/工具循环，token 消耗<strong>远超</strong>单次 chat</li>
+      <li>费钱的几乎都是<strong>重复的静态输入</strong>——这正是两根杠杆的靶心</li>
+      <li><strong>杠杆一 Prompt Caching</strong>：缓存静态前缀，Anthropic 读约 0.1×（省约 90%）、OpenAI 约省 50%~90%（视模型代次）；设计成「静态前缀 + 动态后缀」，静态放前面</li>
+      <li><strong>杠杆二 Model Routing</strong>：便宜模型兜底、贵模型只接难请求，报道降 40~85%；连回 L20/L22</li>
+      <li>先<strong>制定 token 预算</strong>（估单次×频次×单价 = 上限），再用缓存+路由压下来；从 Phase 3 起养成"<strong>原生缓存优先 + 路由</strong>"的习惯</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    想动手？拿你自己的一个 Agent 场景，套第 6 节的四步算一遍预算：先估未优化的月成本，再把最大的那个静态前缀标出来、假设加缓存后按约 0.1× 重算——你会立刻看到"钱花在哪、省在哪"。算完有任何拿不准的地方（比如某个厂商的确切倍数、路由阈值怎么定），随时问我或你的老师。下一课我们把这两阶段学的<strong>选型 + 降本</strong>一起用到 <a href="0028-L24-phase2-capstone.html">Phase 2 综合实战</a>里。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

@@ -45,6 +45,12 @@
   Claude API 使用指南，包含 tool use、streaming、vision 等。Use for: Claude API 开发。
 - [OpenAI API 文档](https://platform.openai.com/docs)
   GPT API 使用指南，函数调用、structured output 等。Use for: OpenAI API 开发。
+- [Why Language Models Hallucinate（arXiv 2509.04664）](https://arxiv.org/abs/2509.04664)
+  OpenAI 2025 论文一手源（[博客版](https://openai.com/index/why-language-models-hallucinate/)）。核心论点：幻觉是**校准/评估激励**问题——训练与评分奖励「猜」而非「弃权」，故为通用模型的数学必然，而非单纯数据噪声。**Phase 2.2 幻觉「为什么」首选一手来源，2026 面试高频**。
+- [OpenAI: Reasoning best practices](https://developers.openai.com/api/docs/guides/reasoning-best-practices)
+  官方决策规则：速度+成本+任务明确 → 标准模型；准确+可靠+难任务 → 推理模型。Use for: Phase 2.2 推理模型 vs 标准「何时用哪个」。
+- [Claude Models Overview](https://docs.anthropic.com/en/docs/about-claude/models/overview) · [Pricing](https://docs.anthropic.com/en/docs/about-claude/pricing)
+  厂商一手的模型能力矩阵与逐 token 价格（避开 SEO 榜单的失真版本号）。Use for: Phase 2.2/2.3 选型与 Token 经济学的**可核实**锚点；版本号以此为准、不写死。
 
 ### Prompt Engineering
 - [Anthropic Prompt Engineering 指南](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering)
@@ -145,6 +151,8 @@
   2026 年文章，论证 Harness Engineering 取代 Prompt Engineering 的趋势。
 - [LangChain: State of Agent Engineering](https://www.langchain.com/state-of-agent-engineering)
   1300+ 专业人士调研，揭示 AI Agent 工程现状和趋势。
+- [Anthropic: Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+  Anthropic 官方一手文（2025 末）。固化 2026 面试高频术语：context rot、attention budget、compaction、structured note-taking（agentic memory）、sub-agent 架构、just-in-time / progressive-disclosure 检索。**Phase 4/5 Context Engineering 首选一手来源**。
 
 ### MCP & A2A 协议（2026 标准化）
 - [Google: Developer's Guide to AI Agent Protocols](https://developers.googleblog.com/developers-guide-to-ai-agent-protocols/)
