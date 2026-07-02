@@ -255,7 +255,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L12</span>
       <div>
-        <div class="lesson-title">生成器基础与 Agent Streaming</div>
+        <div class="lesson-title"><a href="0016-L12-generators-streaming.html">生成器基础与 Agent Streaming</a></div>
         <div class="lesson-desc">yield 工作原理、生成器表达式、send() 基础、迭代器协议、在 Agent 中的应用：LLM Streaming 响应处理、惰性数据处理、token-by-token 输出</div>
         <div class="exercise">实现 LLM Streaming 模拟器 — 用生成器逐 token 输出响应，支持暂停/恢复，练习 Streaming 处理模式</div>
       </div>
@@ -273,7 +273,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L13</span>
       <div>
-        <div class="lesson-title">类型提示系统 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-title"><a href="0017-L13-type-hints.html">类型提示系统</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">基本类型标注、Optional/Union/Literal（约束模型名/角色等枚举值）、Callable 类型、类型别名、mypy 静态检查。<em>※ Generic/TypeVar/Protocol 等泛型与结构化子类型属进阶，放到 Phase 5（Agent 状态管理）需要时再深讲，本课不展开，避免一次塞太多。</em></div>
         <div class="exercise">为 Agent 数据加类型 — 用 Optional/Union 标注可能缺失的字段，用 Literal 约束 model 名称与 role，跑 mypy 检查并修正报错</div>
       </div>
@@ -281,7 +281,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L14</span>
       <div>
-        <div class="lesson-title">Pydantic 数据验证 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-title"><a href="0018-L14-pydantic.html">Pydantic 数据验证</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">BaseModel、Field（默认值、描述、约束）、Validator、嵌套模型、序列化（model_dump/model_dump_json）、自定义类型、Agent Tool Schema 定义、JSON Schema 导出、dataclass vs Pydantic 对比（面试常问）</div>
         <div class="exercise">为 3 个真实工具设计 Pydantic Schema — 搜索工具（SearchInput/SearchOutput）、文件读取工具、计算器工具，导出 JSON Schema 并验证</div>
       </div>
@@ -299,7 +299,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L15</span>
       <div>
-        <div class="lesson-title">用 httpx 发起 HTTP 请求</div>
+        <div class="lesson-title"><a href="0019-L15-httpx.html">用 httpx 发起 HTTP 请求</a></div>
         <div class="lesson-desc">HTTP 基础（方法、状态码、headers、JSON body、超时）、httpx 同步与异步客户端（Client/AsyncClient）、为什么 Agent 时代选 httpx 而非 requests（原生 async）、鉴权头与 API Key、错误分类（4xx/5xx/超时）、SSE 流式响应读取（LLM streaming 的传输层本质）</div>
         <div class="exercise">手写一个迷你 LLM 客户端 — 用 httpx 调用一个真实 HTTP API（带 headers + JSON body + 超时），解析响应、按状态码分类处理错误，再用 AsyncClient 改写为异步版本</div>
       </div>
@@ -317,7 +317,7 @@
     <div class="lesson-item">
       <span class="lesson-num">L16</span>
       <div>
-        <div class="lesson-title">async/await 与并发 <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-title"><a href="0020-L16-async-concurrency.html">async/await 与并发</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">GIL 概念与对异步的影响（面试常问）、协程 vs 线程 vs 进程、async/await 语法、asyncio.run()、asyncio.gather（并发 LLM 调用）、Semaphore 限流、异步上下文管理器、事件循环工作原理（衔接 L15 的 httpx.AsyncClient）</div>
         <div class="exercise">并发 LLM 调用 — 用 httpx.AsyncClient + asyncio.gather 并发调用 3 个 API，实现超时控制（asyncio.wait_for）、用 tenacity 做指数退避重试、结果聚合、Token 成本统计</div>
       </div>

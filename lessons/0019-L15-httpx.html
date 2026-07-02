@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L15 · 用 httpx 发起 HTTP 请求</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>用 httpx 发起 HTTP 请求</h1>
+    <p class="subtitle">每一次 LLM 调用、每个联网工具，本质都是一个 HTTP 请求</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:94%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>你调 OpenAI/Anthropic 的 SDK，底层就是在发 HTTP 请求：带上 API Key 的 header、JSON 请求体、处理状态码、读回 JSON。你写的每个"联网工具"（搜索、查天气、调内部 API）也一样。<strong>HTTP 是 Agent 的传输层地基。</strong></p>
+    <p>2026 年首选的 Python HTTP 客户端是 <strong>httpx</strong>——因为它同时支持同步和<strong>异步</strong>（下一课并发调用要用），API 和老牌的 requests 几乎一样。</p>
+    <p style="font-size:.9rem;color:var(--muted);">※ 本课代码需先安装 httpx：<code>uv add httpx</code>（或 <code>pip install httpx</code>）。httpx 也是 OpenAI/Anthropic 官方 SDK 内部使用的客户端。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>理解 HTTP 请求的组成：方法、URL、headers、body、状态码</li>
+      <li>用 httpx 发 GET/POST，带 headers 和 JSON body</li>
+      <li>按状态码分类处理错误（4xx/5xx/超时）</li>
+      <li>用 <code>AsyncClient</code> 写异步请求</li>
+      <li>了解 SSE 流式响应怎么读（LLM streaming 的传输层）</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. HTTP 请求的组成</h2>
+  <div class="card">
+    <p>一次请求就是这几样：</p>
+    <ul>
+      <li><strong>方法</strong>：GET（取数据）、POST（提交数据）为主</li>
+      <li><strong>URL</strong>：请求哪个地址</li>
+      <li><strong>Headers</strong>：元信息，如 <code>Authorization: Bearer &lt;key&gt;</code>（鉴权）、<code>Content-Type: application/json</code></li>
+      <li><strong>Body</strong>：请求体，调 LLM 时是一段 JSON（prompt、参数）</li>
+    </ul>
+    <p>响应回来则有：<strong>状态码</strong>（200 成功 / 4xx 你错了 / 5xx 服务端错了）、响应 <strong>headers</strong>、响应 <strong>body</strong>（通常是 JSON）。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. httpx 基础：GET / POST</h2>
+  <pre><code>import httpx
+
+# 简单 GET
+r = httpx.get("https://api.example.com/status", timeout=10)
+print(r.status_code)       # 200
+print(r.json())            # 自动把响应体解析成 dict
+
+# POST：带鉴权 header + JSON body（模拟调 LLM）
+resp = httpx.post(
+    "https://api.example.com/v1/chat",
+    headers={"Authorization": "Bearer sk-xxx"},
+    json={"model": "claude", "messages": [{"role": "user", "content": "你好"}]},
+    timeout=30,
+)
+data = resp.json()</code></pre>
+
+  <p><strong>复用连接：</strong>要发多个请求时，用 <code>Client()</code> 复用底层连接（更快），并集中配置 base_url / headers / timeout：</p>
+  <pre><code>with httpx.Client(
+    base_url="https://api.example.com",
+    headers={"Authorization": "Bearer sk-xxx"},
+    timeout=30,
+) as client:
+    a = client.post("/v1/chat", json={"messages": [...]})
+    b = client.post("/v1/chat", json={"messages": [...]})   # 复用连接
+# with 结束自动关闭（呼应 L10 的上下文管理器）</code></pre>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 调 LLM 时，API Key 通常放在请求的哪部分？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">放进 URL 查询参数里</button>
+      <button data-answer="correct">放在请求 Headers</button>
+      <button data-answer="wrong">写在响应体里</button>
+      <button data-answer="wrong">编进状态码字段</button>
+    </div>
+    <div class="quiz-explanation">API Key 通常放在请求头 <code>Authorization: Bearer &lt;key&gt;</code>。放进 URL 会被日志/浏览器历史记录泄露，不安全。Headers 携带鉴权与元信息（Content-Type 等），Body 携带实际数据。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 按状态码处理错误</h2>
+  <pre><code>import httpx
+
+try:
+    r = httpx.post(url, json=payload, timeout=30)
+    r.raise_for_status()             # 4xx/5xx 会抛 HTTPStatusError
+    data = r.json()
+except httpx.TimeoutException:
+    ...                              # 超时：可重试（配合 L10 的 tenacity）
+except httpx.HTTPStatusError as e:
+    code = e.response.status_code
+    if code == 429:
+        ...                          # 限流：退避后重试
+    elif 500 &lt;= code &lt; 600:
+        ...                          # 服务端错误：可重试
+    else:
+        ...                          # 4xx 客户端错误(如 401 鉴权失败)：别重试，是你的问题
+except httpx.RequestError:
+    ...                              # 连接层错误(DNS、断网)</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Agent 调 LLM 的可靠性全在这里：<strong>429（限流）和 5xx（服务端）该退避重试，4xx（如 401/400，你自己的问题）不该重试</strong>。这决定了你的 Agent 是"偶尔抽风就崩"还是"扛得住网络抖动"。重试逻辑用 L10 的 tenacity 包一层最省事。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. AsyncClient：异步请求</h2>
+  <p>httpx 的杀手锏是原生异步——把 <code>Client</code> 换成 <code>AsyncClient</code>，请求前加 <code>await</code>。这是下一课"并发调用多个 LLM"的基础：</p>
+  <pre><code>import httpx, asyncio
+
+async def call(prompt):
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(url, json={"prompt": prompt})   # await 非阻塞
+        return r.json()
+
+# 单个
+asyncio.run(call("你好"))</code></pre>
+  <p>同步版会"一个请求干等着"；异步版在等网络时能去干别的——所以能同时发很多请求（L16 详解）。</p>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 收到状态码 429，Agent 通常应该怎么做？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">立刻放弃并报错</button>
+      <button data-answer="correct">退避后重试请求</button>
+      <button data-answer="wrong">换个参数再发</button>
+      <button data-answer="wrong">忽略并继续跑</button>
+    </div>
+    <div class="quiz-explanation">429 = Too Many Requests（限流），是<strong>临时性</strong>的，正确做法是等一会儿（指数退避）再重试。相对地，4xx 里的 400/401 是你自己请求有问题（参数错/鉴权失败），重试没用，应直接修。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. SSE 流式响应（了解）</h2>
+  <p>LLM 的流式输出走的是 <strong>SSE（Server-Sent Events）</strong>：响应不是一次性返回，而是持续推送多行 <code>data: {...}</code>。用 httpx 的流式接口逐行读：</p>
+  <pre><code>import json, httpx
+
+with httpx.stream("POST", url, json={"stream": True}, timeout=None) as r:
+    for line in r.iter_lines():
+        if line.startswith("data: "):
+            chunk = line.removeprefix("data: ")     # 剥掉前缀(呼应 L04)
+            if chunk == "[DONE]":
+                break
+            event = json.loads(chunk)               # 逐块解析(呼应 L09)
+            # 取出增量 token 显示...</code></pre>
+  <p>看出来了吗——这正好把前面学的串起来：<strong>生成器思维（L12）+ 字符串处理（L04）+ 流式 JSON 解析（L09）+ HTTP 传输（本课）</strong>。</p>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>HTTP 请求组成
+├── 方法(GET/POST) + URL
+├── Headers → Authorization: Bearer key(鉴权) / Content-Type
+├── Body → JSON(prompt+参数)
+└── 响应：状态码 + headers + body(JSON)
+
+httpx（pip install httpx）
+├── get/post(headers=, json=, timeout=)
+├── Client(base_url, headers, timeout) → 复用连接(with 自动关)
+├── r.status_code / r.json() / r.raise_for_status()
+├── 错误：TimeoutException / HTTPStatusError / RequestError
+└── AsyncClient + await → 异步(→ L16 并发)
+
+状态码策略
+├── 2xx 成功
+├── 429 限流 / 5xx 服务端 → 退避重试(tenacity)
+└── 4xx(400/401) 你的问题 → 别重试
+
+SSE 流式 → iter_lines + removeprefix("data: ") + json.loads</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：用 httpx 写一个迷你 LLM 客户端</h3>
+    <p>封装一个健壮的 LLM 调用函数，同步 + 异步两版。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li><code>chat(prompt)</code>：用 <code>Client</code>，带 Authorization header + JSON body，返回解析后的回答</li>
+      <li>用 <code>raise_for_status</code>，并把 429/5xx 与 4xx 分开处理（自定义 <code>LLMError</code>）</li>
+      <li>超时设 30s，超时抛可重试的错误</li>
+      <li>写异步版 <code>achat(prompt)</code>（<code>AsyncClient</code> + <code>await</code>）</li>
+      <li>（选做）给 <code>chat</code> 叠加 L10 的 tenacity <code>@retry</code></li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>import httpx
+
+BASE = "https://api.example.com"
+HEADERS = {"Authorization": "Bearer sk-xxx"}
+
+class LLMError(Exception):
+    def __init__(self, msg, retryable: bool):
+        super().__init__(msg)
+        self.retryable = retryable      # 调用方据此决定要不要重试
+
+def _parse(r: httpx.Response) -&gt; str:
+    try:
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        code = e.response.status_code
+        retryable = code == 429 or 500 &lt;= code &lt; 600
+        raise LLMError(f"HTTP {code}", retryable) from e
+    return r.json()["choices"][0]["message"]["content"]
+
+def chat(prompt: str) -&gt; str:
+    payload = {"model": "claude", "messages": [{"role": "user", "content": prompt}]}
+    try:
+        with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30) as client:
+            r = client.post("/v1/chat", json=payload)
+    except httpx.TimeoutException as e:
+        raise LLMError("timeout", retryable=True) from e
+    return _parse(r)
+
+async def achat(prompt: str) -&gt; str:
+    payload = {"model": "claude", "messages": [{"role": "user", "content": prompt}]}
+    async with httpx.AsyncClient(base_url=BASE, headers=HEADERS, timeout=30) as client:
+        r = await client.post("/v1/chat", json=payload)
+    return _parse(r)
+
+# —— 选做：自动重试（只重试 retryable 的）——
+# from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+# @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8),
+#        retry=retry_if_exception(lambda e: isinstance(e, LLMError) and e.retryable))
+# def chat_with_retry(prompt): return chat(prompt)</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>为什么要把 <code>retryable</code> 标记在异常上，而不是在调用处判断状态码？（让重试逻辑和错误来源解耦）</li>
+        <li>同步 <code>chat</code> 和异步 <code>achat</code>，在"同时调 10 个 prompt"时差别有多大？（下一课揭晓）</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：为什么 2026 年选 httpx 而不是 requests？</h3>
+    <p><strong>答：</strong>httpx API 和 requests 几乎一样，但<strong>原生支持异步</strong>（AsyncClient），还支持 HTTP/2、连接池、超时更完善。Agent 要并发调 LLM，异步是刚需，所以选 httpx。</p>
+    <h3>Q2：HTTP 状态码 4xx 和 5xx 的区别？各怎么处理？</h3>
+    <p><strong>答：</strong>4xx 是客户端错误（400 参数错、401 鉴权失败、429 限流），5xx 是服务端错误。429 和 5xx 通常临时性、可退避重试；其他 4xx 是你自己的问题，重试无用，应修正请求。</p>
+    <h3>Q3：调 LLM 的 API Key 放哪里？为什么？</h3>
+    <p><strong>答：</strong>放请求头 <code>Authorization: Bearer &lt;key&gt;</code>。放 URL 会被日志和历史泄露；放 header 是标准且相对安全的做法（再配合环境变量管理，别硬编码）。</p>
+    <h3>Q4：什么是 SSE？和 LLM streaming 什么关系？</h3>
+    <p><strong>答：</strong>SSE（Server-Sent Events）是服务端持续推送多行 <code>data:</code> 事件的协议。LLM 流式输出就走 SSE——逐行读、剥掉 <code>data: </code> 前缀、解析 JSON、取增量 token 显示。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://www.python-httpx.org/" target="_blank">httpx 官方文档</a> — 权威参考（<strong>首选</strong>）</li>
+      <li>· <a href="https://www.python-httpx.org/async/" target="_blank">httpx: Async Support</a> — AsyncClient 用法</li>
+      <li>· <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Status" target="_blank">MDN: HTTP 状态码</a> — 完整状态码含义</li>
+      <li>· <a href="0014-L10-exceptions-logging-context.html">L10 · 异常与重试</a> — 用 tenacity 包裹重试</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>HTTP 请求 = 方法 + URL + Headers(鉴权) + Body(JSON)；响应看状态码</li>
+      <li>httpx：<code>get/post(headers=, json=, timeout=)</code>，多请求用 <code>Client</code> 复用连接</li>
+      <li><code>raise_for_status()</code> + 分类捕获 TimeoutException / HTTPStatusError</li>
+      <li>429/5xx 退避重试，4xx（你的问题）不重试</li>
+      <li><code>AsyncClient</code> + <code>await</code> 是并发调 LLM 的基础（→ L16）</li>
+      <li>SSE 流式 = iter_lines + 剥 <code>data:</code> 前缀 + 解析 JSON（串起 L04/L09/L12）</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

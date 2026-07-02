@@ -21,6 +21,11 @@
     { file: '0013-L09-files-json-dict.html', title: '文件、JSON 与 Dict 深度操作', phase: '第一阶段' },
     { file: '0014-L10-exceptions-logging-context.html', title: '异常处理、日志与上下文管理器', phase: '第一阶段' },
     { file: '0015-L11-decorators.html', title: '装饰器', phase: '第一阶段' },
+    { file: '0016-L12-generators-streaming.html', title: '生成器与 Streaming', phase: '第一阶段' },
+    { file: '0017-L13-type-hints.html', title: '类型提示系统', phase: '第一阶段' },
+    { file: '0018-L14-pydantic.html', title: 'Pydantic 数据验证', phase: '第一阶段' },
+    { file: '0019-L15-httpx.html', title: '用 httpx 发起 HTTP 请求', phase: '第一阶段' },
+    { file: '0020-L16-async-concurrency.html', title: 'async/await 与并发', phase: '第一阶段' },
   ];
 
   const currentFile = window.location.pathname.split('/').pop();

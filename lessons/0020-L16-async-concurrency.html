@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L16 · async/await 与并发</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>async/await 与并发</h1>
+    <p class="subtitle">同时发 10 个 LLM 请求而不是一个个等 — Agent 提速的关键</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:100%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 常常要同时做很多件"等网络"的事：并发调多个工具、批量向 LLM 发请求、多路检索。如果一个个串行等，10 个各 1 秒的请求要 10 秒；<strong>并发起来只要 1 秒多</strong>。</p>
+    <p>Python 用 <code>async/await</code> + <code>asyncio</code> 实现这种并发。这是 Phase 1 的收官课——学完你就掌握了写高性能 Agent I/O 的全部语言基础。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清 GIL，以及为什么 async 适合 I/O 密集任务</li>
+      <li>区分协程 / 线程 / 进程的适用场景</li>
+      <li>写 <code>async def</code> / <code>await</code>，用 <code>asyncio.run</code> 启动</li>
+      <li>用 <code>asyncio.gather</code> 并发、<code>Semaphore</code> 限流、<code>wait_for</code> 超时</li>
+      <li>并发调用多个 LLM 并聚合结果</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. GIL 与"为什么 async 有用"</h2>
+  <div class="card">
+    <p><strong>GIL（全局解释器锁）</strong>：CPython 同一时刻只允许一个线程执行 Python 字节码。所以多线程<strong>不能</strong>让纯计算（CPU 密集）真正并行。</p>
+    <p>但 Agent 的瓶颈几乎都是<strong>等网络</strong>（I/O 密集）——等 LLM 回、等 API 回。等待时并不占用 CPU。<code>async</code> 正是利用这一点：<strong>一个请求在等网络时，切去处理别的请求</strong>，单线程内把等待时间重叠起来，实现高并发。</p>
+    <p style="margin-top:.5rem;font-size:.92rem;">一句话：<strong>I/O 密集（调 API）→ async；CPU 密集（大量计算）→ 多进程</strong>。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> asyncio 最适合加速哪类任务？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">大量纯数值计算</button>
+      <button data-answer="correct">大量等待网络的</button>
+      <button data-answer="wrong">单个快速的函数</button>
+      <button data-answer="wrong">图像像素级处理</button>
+    </div>
+    <div class="quiz-explanation">asyncio 擅长 <strong>I/O 密集</strong>任务——大量"等网络/等磁盘"的操作（如并发调 LLM）。等待时切去干别的，把等待重叠。纯计算（CPU 密集）受 GIL 限制，async 帮不上，得用多进程。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. async / await 基础</h2>
+  <pre><code>import asyncio
+
+async def call_llm(prompt):          # async def 定义协程
+    await asyncio.sleep(1)            # await：在此"让出"，等 I/O(这里模拟耗时)
+    return f"回答: {prompt}"
+
+async def main():
+    result = await call_llm("你好")   # await 调用协程、拿结果
+    print(result)
+
+asyncio.run(main())                  # 用 asyncio.run 启动整个异步程序</code></pre>
+  <ul>
+    <li><code>async def</code> 定义的是<strong>协程</strong>，调用它不会立刻执行，要 <code>await</code> 才跑</li>
+    <li><code>await</code> 只能用在 <code>async def</code> 里；遇到它就"让出控制权"，等这件 I/O 完成</li>
+    <li><code>asyncio.run(main())</code> 是同步世界进入异步世界的入口</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>3. gather：真正的并发</h2>
+  <p>单个 <code>await</code> 还是串行。<code>asyncio.gather</code> 才是并发——<strong>同时</strong>发起多个协程、一起等：</p>
+  <pre><code>import asyncio, time
+
+async def call_llm(prompt):
+    await asyncio.sleep(1)
+    return f"回答: {prompt}"
+
+async def main():
+    t0 = time.perf_counter()
+    # 同时发起三个，一起等 —— 总耗时≈1 秒，而不是 3 秒
+    results = await asyncio.gather(
+        call_llm("问题1"),
+        call_llm("问题2"),
+        call_llm("问题3"),
+    )
+    print(results)                                   # ['回答: 问题1', ...]
+    print(f"耗时 {time.perf_counter()-t0:.2f}s")     # ≈1.00s
+
+asyncio.run(main())</code></pre>
+  <p>批量场景用解包：<code>await asyncio.gather(*(call_llm(p) for p in prompts))</code>。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>多工具并行、多路 RAG 检索、批量向 LLM 打分——只要这些子任务互不依赖，就用 <code>gather</code> 并发，Agent 的响应速度立刻数倍提升。这是 Agent 性能优化最直接的一招。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 限流、超时与异步上下文</h2>
+  <h3>Semaphore：限制并发数（别把对方打挂 / 别触发限流）</h3>
+  <pre><code>sem = asyncio.Semaphore(5)           # 最多同时 5 个
+
+async def guarded_call(prompt):
+    async with sem:                  # 拿到名额才进，超出的排队
+        return await call_llm(prompt)
+
+# 就算 100 个任务，也最多 5 个同时在飞
+await asyncio.gather(*(guarded_call(p) for p in prompts))</code></pre>
+
+  <h3>wait_for：给单个任务加超时</h3>
+  <pre><code>try:
+    result = await asyncio.wait_for(call_llm("你好"), timeout=5)
+except asyncio.TimeoutError:
+    result = None                    # 5 秒没回就放弃</code></pre>
+
+  <h3>异步上下文管理器（呼应 L10 / L15）</h3>
+  <pre><code>async with httpx.AsyncClient() as client:      # async with
+    r = await client.post(url, json=payload)</code></pre>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>asyncio.gather</code> 相比逐个 <code>await</code>，好处是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">让代码更短一点</button>
+      <button data-answer="correct">并发执行更省时</button>
+      <button data-answer="wrong">自动重试失败项</button>
+      <button data-answer="wrong">保证顺序不乱序</button>
+    </div>
+    <div class="quiz-explanation"><code>gather</code> <strong>同时</strong>发起所有协程、一起等待，总耗时≈最慢的那个；逐个 <code>await</code> 是串行、耗时≈总和。并发调多个 LLM/工具时差别巨大。（gather 会保持结果顺序，但那不是它相对串行的核心优势。）</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 协程 vs 线程 vs 进程</h2>
+  <div class="card">
+    <table>
+      <tr><th>方式</th><th>适合</th><th>Agent 里的用途</th></tr>
+      <tr><td><strong>协程 asyncio</strong></td><td>I/O 密集、高并发</td><td>并发调 LLM/API/检索（首选）</td></tr>
+      <tr><td><strong>线程 threading</strong></td><td>I/O 密集、但库不支持 async</td><td>包装只有同步版的 SDK</td></tr>
+      <tr><td><strong>进程 multiprocessing</strong></td><td>CPU 密集（绕开 GIL）</td><td>大批量本地计算/向量运算</td></tr>
+    </table>
+    <p style="margin-top:.5rem;">Agent 绝大多数场景是"等 API"，所以 <strong>asyncio 是默认答案</strong>；遇到只有同步接口的库可用线程兜底；重计算才上多进程。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>GIL → 同一刻只一个线程跑字节码
+├── CPU 密集：多线程无用 → 多进程
+└── I/O 密集(等网络)：async 把等待重叠 → 高并发
+
+async/await
+├── async def = 协程；await 让出、等 I/O
+├── asyncio.run(main()) 入口
+└── await 单个 = 仍串行
+
+并发工具
+├── asyncio.gather(*coros) → 同时发起(总耗时≈最慢)★
+├── Semaphore(n) + async with → 限并发数
+├── wait_for(coro, timeout) → 超时控制
+└── async with(异步上下文，如 AsyncClient)
+
+选型：I/O→协程 / 同步库→线程 / CPU→进程</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：并发调用多个 LLM</h3>
+    <p>并发向"LLM"发多个 prompt，带限流、超时、重试、结果聚合与成本统计。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li>用 <code>asyncio.gather</code> 并发处理一批 prompt</li>
+      <li>用 <code>Semaphore</code> 限制最多同时 3 个</li>
+      <li>每个调用用 <code>wait_for</code> 加超时；超时/出错记为失败但不拖垮整体</li>
+      <li>聚合：成功的回答列表 + 成功数 + 估算总 token</li>
+      <li>（真实版把 <code>fake_llm</code> 换成 L15 的 <code>httpx.AsyncClient</code> + tenacity 重试）</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案（此代码可直接运行）</summary>
+      <pre><code>import asyncio, time
+
+async def fake_llm(prompt: str) -&gt; dict:
+    await asyncio.sleep(0.2)                       # 模拟网络耗时
+    return {"answer": f"回答:{prompt}", "tokens": len(prompt) + 10}
+
+async def call_one(prompt, sem):
+    async with sem:                               # 限流
+        try:
+            r = await asyncio.wait_for(fake_llm(prompt), timeout=1.0)
+            return {"ok": True, **r}
+        except (asyncio.TimeoutError, Exception) as e:
+            return {"ok": False, "error": repr(e)}   # 单个失败不拖垮整体
+
+async def batch(prompts):
+    sem = asyncio.Semaphore(3)                     # 最多同时 3 个
+    t0 = time.perf_counter()
+    results = await asyncio.gather(*(call_one(p, sem) for p in prompts))
+    ok = [r for r in results if r["ok"]]
+    return {
+        "answers": [r["answer"] for r in ok],
+        "success": len(ok),
+        "failed": len(results) - len(ok),
+        "total_tokens": sum(r["tokens"] for r in ok),
+        "elapsed": round(time.perf_counter() - t0, 2),
+    }
+
+prompts = [f"问题{i}" for i in range(7)]
+print(asyncio.run(batch(prompts)))
+# 7 个请求、限流 3、每个 0.2s → 约 3 批 ≈ 0.6s，而非串行的 1.4s
+# {'answers': [...7 条...], 'success': 7, 'failed': 0,
+#  'total_tokens': ..., 'elapsed': 0.6}</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>为什么要用 <code>Semaphore</code> 限流，而不是一口气 gather 100 个？（会触发对方 429、或耗尽本地连接）</li>
+        <li>把 <code>gather</code> 换成逐个 <code>await</code>，7 个请求耗时会变成多少？（≈1.4s，串行相加）</li>
+        <li>真实版里，单个请求的 429/5xx 重试应该放在 <code>call_one</code> 内层还是外层？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：什么是 GIL？它对并发有什么影响？</h3>
+    <p><strong>答：</strong>全局解释器锁，让 CPython 同一刻只有一个线程执行字节码。导致多线程无法加速 CPU 密集任务；但 I/O 密集任务（等网络）不受影响，可用 async 或多线程并发。CPU 密集要用多进程。</p>
+    <h3>Q2：async 和多线程都能做并发，区别在哪？</h3>
+    <p><strong>答：</strong>async 是单线程内协作式切换（遇 await 让出），开销小、适合高并发 I/O；多线程由 OS 调度、有切换开销、受 GIL 限制。调大量 API 首选 async；只有同步库时用线程兜底。</p>
+    <h3>Q3：asyncio.gather 是做什么的？</h3>
+    <p><strong>答：</strong>并发运行多个协程并收集结果，总耗时约等于最慢的一个，而非相加。用于并发调多个 LLM/工具，是 Agent 提速的核心手段。</p>
+    <h3>Q4：并发调 API 时为什么要限流？怎么做？</h3>
+    <p><strong>答：</strong>防止触发对方限流（429）和耗尽本地连接。用 <code>asyncio.Semaphore(n)</code> + <code>async with</code> 控制同时在飞的请求数。</p>
+    <h3>Q5：await 能用在普通函数里吗？</h3>
+    <p><strong>答：</strong>不能。<code>await</code> 只能出现在 <code>async def</code> 协程里。要从同步代码进入异步，用 <code>asyncio.run(coro)</code>。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/library/asyncio.html" target="_blank">Python 官方：asyncio</a> — 权威参考（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.gather" target="_blank">asyncio.gather 文档</a> — 并发聚合</li>
+      <li>· <a href="https://superfastpython.com/python-asyncio/" target="_blank">Super Fast Python: Asyncio</a> — 系统教程</li>
+      <li>· <a href="0019-L15-httpx.html">L15 · httpx</a> — AsyncClient 是并发调 LLM 的载体</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>GIL 让多线程无法加速计算；但 async 能重叠 I/O 等待</li>
+      <li>I/O 密集用协程，同步库用线程，CPU 密集用进程</li>
+      <li><code>async def</code> 定义协程，<code>await</code> 让出等 I/O，<code>asyncio.run</code> 启动</li>
+      <li><code>asyncio.gather</code> 并发（总耗时≈最慢），是 Agent 提速核心</li>
+      <li><code>Semaphore</code> 限流、<code>wait_for</code> 超时、<code>async with</code> 异步资源</li>
+      <li>并发调 LLM 时务必限流，避免 429 和连接耗尽</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    🎉🎉 <strong>恭喜！你已完成整个 Phase 1（Python 基础与 Agent 导向工程素养，L01–L16）。</strong><br>
+    从语法、数据结构、函数、类、装饰器，到生成器、类型、Pydantic、httpx、异步——你已经打牢了看懂框架源码、写出健壮 Agent 代码所需的全部 Python 功底。<br>
+    <strong>下一站 Phase 2：AI 知识与模型选型</strong>——开始真正进入 LLM 的世界。有任何问题随时问我！
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

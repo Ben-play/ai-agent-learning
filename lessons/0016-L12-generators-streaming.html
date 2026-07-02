@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L12 · 生成器与 Streaming 模式</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>生成器与 Streaming 模式</h1>
+    <p class="subtitle">生成器是"边算边给" — LLM 的逐字流式输出，本质就是一个生成器</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:75%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>你用 ChatGPT 时那种"一个字一个字蹦出来"的体验，靠的就是<strong>流式（streaming）</strong>——服务端算一个 token 就推一个，不用等整段生成完。在 Python 里，承载这种"边算边给"的正是<strong>生成器（generator）</strong>。</p>
+    <p>掌握生成器，你才能优雅地处理 LLM 流式响应、边收边解析、以及惰性处理大数据而不爆内存。这是 Part C（Agent 工程技能）的第一块拼图。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用 <code>yield</code> 写生成器，理解它"惰性、可暂停"的本质</li>
+      <li>区分生成器表达式和列表推导式，知道何时用哪个</li>
+      <li>理解迭代器协议（<code>__next__</code> / <code>StopIteration</code>）</li>
+      <li>用生成器处理 LLM 流式响应（逐 token）</li>
+      <li>了解 <code>send()</code> 能向生成器"回传"数据</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. yield：让函数"边算边给"</h2>
+  <p>普通函数 <code>return</code> 一次就结束。生成器用 <code>yield</code> <strong>产出一个值后暂停</strong>，下次取值再从暂停处继续：</p>
+  <pre><code>def stream_tokens(text, n=3):
+    for i in range(0, len(text), n):
+        yield text[i:i+n]          # 产出一块，暂停，等下次取
+
+for chunk in stream_tokens("HelloWorld", 3):
+    print(chunk, end="|")          # Hel|loW|orl|d|</code></pre>
+  <p>关键：<code>stream_tokens(...)</code> 调用时<strong>不会立刻执行函数体</strong>，只返回一个生成器；每次 <code>for</code> 取值才推进到下一个 <code>yield</code>。这就是"惰性"——用到才算。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>LLM 的 streaming API 返回的就是这种"一块一块"的流。用生成器包装它，上层代码就能写成 <code>for chunk in llm_stream(prompt):</code>，边收边显示/边处理，用户体验和内存都更好。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 调用一个含 <code>yield</code> 的函数，会发生什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">立即执行整个函数体</button>
+      <button data-answer="correct">返回生成器暂不执行</button>
+      <button data-answer="wrong">报错缺少 return 值</button>
+      <button data-answer="wrong">只运行到首个循环</button>
+    </div>
+    <div class="quiz-explanation">含 <code>yield</code> 的函数是生成器函数，调用它<strong>只返回一个生成器对象，函数体一行都不先跑</strong>。只有当你迭代（for / next）时，才推进到下一个 yield。这种"惰性"正是流式处理的基础。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 生成器表达式 vs 列表推导式</h2>
+  <pre><code># 列表推导式：立刻算出全部，占内存
+squares_list = [x*x for x in range(1000000)]     # 一百万个数全在内存里
+
+# 生成器表达式：惰性，用一个算一个，几乎不占内存
+squares_gen = (x*x for x in range(1000000))      # 括号，不是方括号
+
+# 生成器是"一次性"的，消费即耗尽
+gen = (c.upper() for c in "abc")
+print(next(gen))          # A
+print("".join(gen))       # BC   ← A 已被取走，只剩 BC</code></pre>
+  <p>差别就一对括号：<code>[]</code> 立刻生成整个列表，<code>()</code> 生成一个惰性生成器。处理大数据、或只需遍历一次时，用生成器省内存。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"列表推导式和生成器表达式的区别？"</p>
+    <p>答：列表推导式立即计算并把所有元素放进内存；生成器表达式惰性求值、逐个产出、几乎不占内存，但只能遍历一次。大数据或流式场景用生成器。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 迭代器协议（背后的机制）</h2>
+  <p><code>for</code> 循环能作用于生成器、列表、文件，是因为它们都遵守<strong>迭代器协议</strong>：能被 <code>iter()</code> 拿到迭代器、能被 <code>next()</code> 取下一个、取完抛 <code>StopIteration</code>：</p>
+  <pre><code>it = iter([1, 2])
+print(next(it))    # 1
+print(next(it))    # 2
+next(it)           # StopIteration（for 循环内部捕获它来结束循环）</code></pre>
+  <p>生成器天生就是迭代器——这就是它能直接用在 <code>for</code> 里的原因。</p>
+</div>
+
+<div class="section">
+  <h2>4. send()：向生成器回传数据（进阶）</h2>
+  <p><code>yield</code> 不只能"产出"，还能"接收"。<code>gen.send(x)</code> 把 <code>x</code> 传回给暂停处的 <code>yield</code> 表达式：</p>
+  <pre><code>def accumulator():
+    total = 0
+    while True:
+        x = yield total       # 产出 total，同时等待 send 传入的值
+        if x is not None:
+            total += x
+
+acc = accumulator()
+next(acc)              # 启动到第一个 yield（必须先 next 一次）
+print(acc.send(10))    # 10
+print(acc.send(5))     # 15</code></pre>
+  <p>这在需要"双向流"的场景（如可交互的 Agent 步骤流、协程式状态机）有用。日常处理 LLM streaming 通常只用单向 <code>yield</code>，<code>send</code> 了解即可。</p>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 生成器表达式 <code>(x for x in data)</code> 相比列表推导式，主要优势是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">支持多次重复遍历</button>
+      <button data-answer="correct">惰性求值省内存</button>
+      <button data-answer="wrong">计算速度总是更快</button>
+      <button data-answer="wrong">能随机索引访问</button>
+    </div>
+    <div class="quiz-explanation">生成器表达式<strong>惰性求值</strong>——用一个算一个，不把整个序列放进内存，处理大数据或流时省内存。代价是它一次性、不能重复遍历、也不能按下标索引。列表推导式则相反。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>生成器
+├── yield → 产出即暂停，惰性、可恢复
+├── 调用生成器函数 → 只返回生成器，不先执行
+├── 生成器表达式 (x for x in ...) → 惰性省内存、一次性
+└── send(x) → 向 yield 回传数据（双向，进阶）
+
+迭代器协议
+├── iter() 取迭代器 / next() 取下一个
+└── 取尽抛 StopIteration（for 内部捕获）
+
+Streaming 应用
+├── 包装 LLM 流：for chunk in llm_stream(...)
+├── 边收边处理、边显示（低延迟、低内存）
+└── 拼接流式 token（呼应 L09 的流解析）</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：实现一个 LLM Streaming 模拟器</h3>
+    <p>用生成器逐 token 输出一段"回答"，并支持在中途根据条件暂停/停止。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li>写生成器 <code>stream(text)</code>，逐字符 yield（模拟 token）</li>
+      <li>写 <code>collect(gen, stop_at=None)</code>：消费生成器、拼接输出；若遇到 <code>stop_at</code> 字符就提前停止（模拟"遇到停止词就中断")</li>
+      <li>统计实际产出了多少 token</li>
+      <li>体会：因为是惰性的，<code>stop_at</code> 之后的 token 根本不会被生成</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>def stream(text):
+    for ch in text:
+        yield ch                      # 逐 token 产出（惰性）
+
+def collect(gen, stop_at=None):
+    parts = []
+    count = 0
+    for tok in gen:
+        if stop_at is not None and tok == stop_at:
+            break                     # 遇到停止词，中断——后面的 token 不再生成
+        parts.append(tok)
+        count += 1
+    return {"text": "".join(parts), "tokens": count}
+
+
+print(collect(stream("你好，世界！")))
+# {'text': '你好，世界！', 'tokens': 6}
+
+print(collect(stream("答案是42。附注..."), stop_at="。"))
+# {'text': '答案是42', 'tokens': 4}   ← "。"及之后没有被消费
+
+
+# 进阶：用生成器表达式做惰性过滤（只在需要时计算）
+events = ({"type": "token", "text": c} for c in "abcd")
+answer = "".join(e["text"] for e in events if e["type"] == "token")
+print(answer)   # abcd</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>如果 <code>stream</code> 背后是真实网络请求（每个 token 要等服务端），惰性带来的好处是什么？（提示：遇停止词就 break，省掉后续请求）</li>
+        <li>为什么"拼接完整回答"的场景，用生成器比先收集成大 list 再处理更省内存？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：生成器和普通函数的区别？</h3>
+    <p><strong>答：</strong>生成器用 <code>yield</code>，产出一个值后暂停、保留状态、可恢复；调用它只返回生成器对象，函数体惰性执行。普通函数 <code>return</code> 一次性算完返回。</p>
+    <h3>Q2：列表推导式和生成器表达式怎么选？</h3>
+    <p><strong>答：</strong>需要多次遍历、随机访问、或数据不大 → 列表推导式；只遍历一次、数据很大或是流 → 生成器表达式（惰性、省内存）。</p>
+    <h3>Q3：迭代器协议是什么？</h3>
+    <p><strong>答：</strong>对象能被 <code>iter()</code> 得到迭代器、被 <code>next()</code> 逐个取值、取尽时抛 <code>StopIteration</code>。<code>for</code> 循环正是基于它工作，生成器天生满足该协议。</p>
+    <h3>Q4：生成器在 LLM 应用里有什么用？</h3>
+    <p><strong>答：</strong>承载流式响应——服务端逐 token 产出，用生成器包装后上层可 <code>for chunk in stream:</code> 边收边处理，降低首字延迟和内存占用；遇停止条件可提前中断，省掉后续计算/请求。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/howto/functional.html#generators" target="_blank">Python 官方：Generators</a> — 权威说明（<strong>首选</strong>）</li>
+      <li>· <a href="https://realpython.com/introduction-to-python-generators/" target="_blank">Real Python: Python Generators</a> — 深入 + 实战</li>
+      <li>· <a href="https://docs.python.org/3/reference/expressions.html#yield-expressions" target="_blank">Python 官方：yield 表达式</a> — send() 等细节</li>
+      <li>· <a href="0013-L09-files-json-dict.html">L09 · 文件与 JSON</a> — 流式 JSON 解析的容错处理</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li><code>yield</code> = 产出即暂停，生成器惰性、可恢复</li>
+      <li>调用生成器函数只返回生成器，函数体不立即执行</li>
+      <li>生成器表达式用 <code>()</code>，惰性省内存但一次性</li>
+      <li>迭代器协议（iter/next/StopIteration）是 for 循环的基础</li>
+      <li>生成器是承载 LLM streaming、惰性处理大数据的利器</li>
+      <li><code>send()</code> 可向生成器回传数据（双向流，进阶了解）</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

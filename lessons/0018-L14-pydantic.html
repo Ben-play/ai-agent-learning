@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L14 · Pydantic 数据验证</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>Pydantic 数据验证</h1>
+    <p class="subtitle">Pydantic 把类型变成运行时校验 — 也是生成 Tool Schema 的标准工具</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:88%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>L13 说过：类型提示运行时不校验。<strong>Pydantic 补上这一环</strong>——外部数据（LLM 输出、用户输入、API 响应）进来时自动校验、转换、报错。数据脏了立刻拦住，而不是在下游炸出诡异 bug。</p>
+    <p>更重要的是：Pydantic 能<strong>一键导出 JSON Schema</strong>。这正是喂给 LLM 的"工具说明书"。L11 你手写的 <code>@tool</code>，真实框架（LangChain、OpenAI SDK、Pydantic AI）就是用 Pydantic 来做的。这一课把 Part B 那条 <code>@tool → Schema</code> 线彻底闭环。</p>
+    <p style="font-size:.9rem;color:var(--muted);">※ 本课代码基于 <strong>Pydantic v2</strong>，先安装：<code>uv add pydantic</code>（或 <code>pip install pydantic</code>）。v2 的方法名和 v1 不同（如 <code>.model_dump()</code> 取代 <code>.dict()</code>）。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用 <code>BaseModel</code> 定义带校验的数据模型</li>
+      <li>用 <code>Field</code> 加默认值、描述、约束（范围/长度）</li>
+      <li>用 <code>@field_validator</code> 写自定义校验</li>
+      <li>序列化：<code>model_dump()</code> / <code>model_dump_json()</code></li>
+      <li>导出 JSON Schema 作为 Tool Schema，并说清 dataclass vs Pydantic</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. BaseModel：自动校验与转换</h2>
+  <pre><code>from pydantic import BaseModel
+
+class Message(BaseModel):
+    role: str
+    content: str
+    tokens: int = 0
+
+# 传进来自动按类型校验
+m = Message(role="user", content="你好", tokens="42")
+print(m.tokens)          # 42  ← 字符串 "42" 被自动转成 int 42
+
+# 类型不对且无法转换 → 抛 ValidationError
+Message(role="user", content="hi", tokens="abc")
+# ❌ ValidationError: tokens 不是有效整数</code></pre>
+  <p>和 dataclass 最大的区别：<strong>Pydantic 会在创建实例时校验</strong>。脏数据在门口就被拦下，这对"消化 LLM 不可控输出"至关重要。</p>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> Pydantic 的 BaseModel 相比 @dataclass，核心多了什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">自动生成 __repr__</button>
+      <button data-answer="correct">运行时校验与转换</button>
+      <button data-answer="wrong">支持类的继承</button>
+      <button data-answer="wrong">更省内存的存储</button>
+    </div>
+    <div class="quiz-explanation">两者都能定义数据模型、都有 <code>__repr__</code>/<code>__eq__</code>。Pydantic 的关键增值是<strong>创建实例时自动校验类型、尝试转换、失败抛 ValidationError</strong>——dataclass 完全不校验。所以外部/不可信数据用 Pydantic。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Field：默认值、描述与约束</h2>
+  <pre><code>from pydantic import BaseModel, Field
+
+class SearchInput(BaseModel):
+    query: str = Field(..., description="搜索关键词", min_length=1)
+    max_results: int = Field(5, ge=1, le=50, description="返回条数，1~50")
+    #                        ↑默认值  ↑约束：&gt;=1 且 &lt;=50
+
+SearchInput(query="ai", max_results=100)
+# ❌ ValidationError: max_results 必须 &lt;= 50</code></pre>
+  <ul>
+    <li><code>Field(...)</code> 里的 <code>...</code>（Ellipsis）表示<strong>必填</strong>；给具体值就是默认值</li>
+    <li><code>ge/le</code>（&gt;=/&lt;=）、<code>gt/lt</code>、<code>min_length/max_length</code> 等是内置约束</li>
+    <li><code>description</code> 会进入 JSON Schema —— LLM 就靠它理解每个参数是干嘛的</li>
+  </ul>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p><code>description</code> 和约束不只是校验，它们会写进工具的 JSON Schema。LLM 决定"要不要调这个工具、参数填什么"时，读的就是这些描述。<strong>写清楚 Field 描述 = 提升工具调用准确率</strong>，这是工具工程（Phase 3.4）的关键技巧。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 自定义校验与嵌套模型</h2>
+  <h3>@field_validator：写自己的校验规则</h3>
+  <pre><code>from pydantic import BaseModel, field_validator
+
+class ToolCall(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def must_be_known(cls, v: str) -&gt; str:
+        allowed = {"search", "calc", "weather"}
+        if v not in allowed:
+            raise ValueError(f"未知工具: {v}")
+        return v
+
+ToolCall(name="hack")   # ❌ ValidationError: 未知工具: hack</code></pre>
+
+  <h3>嵌套模型：模型套模型</h3>
+  <pre><code>class Function(BaseModel):
+    name: str
+    arguments: dict
+
+class ToolCallEnvelope(BaseModel):
+    id: str
+    function: Function            # 字段本身是另一个模型
+
+# 传嵌套 dict，Pydantic 会递归校验
+tc = ToolCallEnvelope(id="c1", function={"name": "search", "arguments": {"q": "x"}})
+print(tc.function.name)          # search</code></pre>
+</div>
+
+<div class="section">
+  <h2>4. 序列化 & 导出 JSON Schema</h2>
+  <pre><code>from pydantic import BaseModel, Field
+
+class SearchInput(BaseModel):
+    query: str = Field(..., description="搜索关键词")
+    max_results: int = Field(5, ge=1, le=50)
+
+obj = SearchInput(query="ai agents")
+
+# 序列化（v2 方法名）
+obj.model_dump()          # {'query': 'ai agents', 'max_results': 5}   → dict
+obj.model_dump_json()     # '{"query":"ai agents","max_results":5}'    → JSON 字符串
+
+# 导出 JSON Schema —— 这就是喂给 LLM 的"工具参数说明书"
+SearchInput.model_json_schema()
+# {
+#   'type': 'object',
+#   'properties': {
+#     'query': {'type': 'string', 'description': '搜索关键词'},
+#     'max_results': {'type': 'integer', 'default': 5,
+#                     'minimum': 1, 'maximum': 50}
+#   },
+#   'required': ['query']
+# }</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p><code>model_json_schema()</code> 输出的正是 OpenAI/Anthropic 工具定义里 <code>parameters</code> 字段要的东西。回想 L11 你用 <code>inspect</code> 手写的简易 Schema —— 真实框架就是用 Pydantic 生成这份标准、带校验、带描述的 JSON Schema。<strong>这条线到此闭环。</strong></p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> Pydantic v2 里把模型转成 dict，用哪个方法？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">调用 model_to_dict()</button>
+      <button data-answer="correct">调用 model_dump()</button>
+      <button data-answer="wrong">调用 as_dict()</button>
+      <button data-answer="wrong">调用 serialize()</button>
+    </div>
+    <div class="quiz-explanation">Pydantic v2 用 <code>model_dump()</code>（转 dict）和 <code>model_dump_json()</code>（转 JSON 字符串），并用 <code>model_json_schema()</code> 导出 Schema。这些取代了 v1 的 <code>.dict()</code>/<code>.json()</code>/<code>.schema()</code>——面试和实战都要认准 v2 名字。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. dataclass vs Pydantic：怎么选</h2>
+  <div class="card">
+    <table>
+      <tr><th>场景</th><th>选择</th></tr>
+      <tr><td>内部纯数据容器、不接触外部输入</td><td><strong>@dataclass</strong>（轻、快、零依赖）</td></tr>
+      <tr><td>校验 LLM 输出 / 用户输入 / API 响应</td><td><strong>Pydantic</strong>（自动校验转换）</td></tr>
+      <tr><td>定义工具参数、要导出 JSON Schema 喂 LLM</td><td><strong>Pydantic</strong>（model_json_schema）</td></tr>
+      <tr><td>配置模型（带默认值、约束）</td><td><strong>Pydantic</strong>（Field 约束）</td></tr>
+    </table>
+    <p style="margin-top:.6rem;">一句话：<strong>数据一旦跨越"信任边界"（来自外部或要给外部），就用 Pydantic；纯内部传递用 dataclass。</strong></p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>Pydantic v2（pip install pydantic）
+├── BaseModel → 创建即校验 + 类型转换（失败抛 ValidationError）
+├── Field(默认/描述/约束 ge le min_length...) → 描述进 Schema
+├── @field_validator + @classmethod → 自定义校验
+├── 嵌套模型 → 递归校验
+├── 序列化：model_dump() / model_dump_json()
+└── model_json_schema() → 导出 Tool Schema 喂 LLM ★
+
+dataclass vs Pydantic
+├── 内部数据 → dataclass（轻、零依赖）
+└── 跨信任边界(LLM/用户/API)、要 Schema → Pydantic</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：为 3 个工具设计 Pydantic Schema</h3>
+    <p>为三个真实工具定义 Pydantic 输入模型，并导出 JSON Schema。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li><code>SearchInput</code>：query（必填、非空）、max_results（默认 5、1~50）、lang（可选，Literal["zh","en"]，默认 "zh"）</li>
+      <li><code>ReadFileInput</code>：path（必填）、encoding（默认 "utf-8"）</li>
+      <li><code>CalcInput</code>：expression（必填、非空）；加 <code>@field_validator</code> 禁止包含 "import"（防注入）</li>
+      <li>对每个模型调用 <code>model_json_schema()</code>，模拟"注册工具清单喂给 LLM"</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>from typing import Literal
+from pydantic import BaseModel, Field, field_validator
+
+class SearchInput(BaseModel):
+    query: str = Field(..., min_length=1, description="搜索关键词")
+    max_results: int = Field(5, ge=1, le=50, description="返回条数 1~50")
+    lang: Literal["zh", "en"] = Field("zh", description="结果语言")
+
+class ReadFileInput(BaseModel):
+    path: str = Field(..., description="文件路径")
+    encoding: str = Field("utf-8", description="文本编码")
+
+class CalcInput(BaseModel):
+    expression: str = Field(..., min_length=1, description="数学表达式")
+
+    @field_validator("expression")
+    @classmethod
+    def no_import(cls, v: str) -&gt; str:
+        if "import" in v:
+            raise ValueError("表达式不允许包含 import")
+        return v
+
+
+# 模拟"工具清单"喂给 LLM
+import json
+TOOLS = {
+    "search": SearchInput,
+    "read_file": ReadFileInput,
+    "calc": CalcInput,
+}
+schemas = [
+    {"name": name, "parameters": model.model_json_schema()}
+    for name, model in TOOLS.items()
+]
+print(json.dumps(schemas, ensure_ascii=False, indent=2))
+
+# 校验演示
+print(SearchInput(query="ai", max_results="8").model_dump())
+# {'query': 'ai', 'max_results': 8, 'lang': 'zh'}  ← "8" 自动转 int
+# CalcInput(expression="__import__('os')")  → ValidationError</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>为什么 <code>CalcInput</code> 的 <code>no_import</code> 校验对 Agent 安全很重要？（LLM 可能生成危险表达式）</li>
+        <li>这三个模型导出的 Schema，和 OpenAI 工具定义里的 <code>parameters</code> 字段是什么关系？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：Pydantic 和 dataclass 的核心区别？</h3>
+    <p><strong>答：</strong>Pydantic 在创建实例时<strong>自动校验并转换类型</strong>、失败抛 ValidationError，还能导出 JSON Schema；dataclass 不校验。外部数据、工具 Schema 用 Pydantic，内部纯数据用 dataclass。</p>
+    <h3>Q2：Pydantic v2 相比 v1 的方法名有什么变化？</h3>
+    <p><strong>答：</strong>主要是 <code>.dict()→.model_dump()</code>、<code>.json()→.model_dump_json()</code>、<code>.schema()→.model_json_schema()</code>、<code>@validator→@field_validator</code>。v2 性能也大幅提升（核心用 Rust 重写）。</p>
+    <h3>Q3：Pydantic 在 Agent 里最重要的用途是什么？</h3>
+    <p><strong>答：</strong>两点：① 校验 LLM 的不可控输出（尤其 structured output）；② 用 <code>model_json_schema()</code> 生成工具参数 Schema 喂给 LLM，是 Function Calling 的基础。</p>
+    <h3>Q4：Field 的 description 有什么实际作用？</h3>
+    <p><strong>答：</strong>它会进入导出的 JSON Schema，成为 LLM 理解"这个参数是什么、该怎么填"的依据。描述写得好，工具调用准确率更高。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.pydantic.dev/latest/" target="_blank">Pydantic 官方文档（v2）</a> — 权威参考（<strong>首选</strong>）</li>
+      <li>· <a href="https://docs.pydantic.dev/latest/concepts/json_schema/" target="_blank">Pydantic: JSON Schema</a> — Schema 导出细节</li>
+      <li>· <a href="https://docs.pydantic.dev/latest/migration/" target="_blank">Pydantic v1 → v2 迁移指南</a> — 方法名变化</li>
+      <li>· <a href="0015-L11-decorators.html">L11 · 装饰器</a> — 手写 @tool（Pydantic 是它的工业版）</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>BaseModel 创建即校验、自动转换、失败抛 ValidationError</li>
+      <li>Field 加默认值/描述/约束（ge/le/min_length…），描述会进 Schema</li>
+      <li><code>@field_validator</code>（配 <code>@classmethod</code>）写自定义校验；模型可嵌套</li>
+      <li>v2 序列化：<code>model_dump()</code> / <code>model_dump_json()</code></li>
+      <li><code>model_json_schema()</code> 导出 Tool Schema —— 闭合 L11 的 @tool 线</li>
+      <li>跨信任边界的数据用 Pydantic，内部纯数据用 dataclass</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

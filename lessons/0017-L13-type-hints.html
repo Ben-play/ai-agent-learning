@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L13 · 类型提示系统</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
+    <h1>类型提示系统</h1>
+    <p class="subtitle">给代码标注类型 — Agent 的工具签名、状态、配置，靠它才严谨可查</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:81%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>类型提示是"写给人和工具看的契约"。标注清楚后，IDE 能自动补全、<code>mypy</code> 能在运行前抓出类型 bug，队友一眼看懂参数该传什么。</p>
+    <p>更关键的是：下一课 Pydantic、以及 L11 的 <code>@tool</code>，都<strong>读取你的类型注解来生成工具 Schema</strong>。类型标不准，Schema 就不准，LLM 就会传错参。这一课打好类型基础。</p>
+    <p style="font-size:.9rem;color:var(--muted);">※ 泛型 <code>Generic</code>/<code>TypeVar</code>、结构化子类型 <code>Protocol</code> 属进阶，放到 Phase 5（Agent 状态管理）需要时再深讲，本课聚焦最常用的部分。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>给变量、参数、返回值加基本类型标注</li>
+      <li>用 <code>Optional</code> 表达"可能为 None"</li>
+      <li>用 <code>Union</code> 表达"多种类型之一"</li>
+      <li>用 <code>Literal</code> 约束成有限的取值（如模型名）</li>
+      <li>用 <code>Callable</code> 标注函数参数，用类型别名简化复杂类型，并跑 <code>mypy</code></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 基本标注</h2>
+  <pre><code>def build_prompt(role: str, max_tokens: int = 100) -&gt; str:
+    return f"[{role}] limit={max_tokens}"
+
+name: str = "search"
+temperature: float = 0.7
+tools: list[str] = ["search", "calc"]           # 3.9+ 可直接用内置泛型
+config: dict[str, int] = {"max": 5}</code></pre>
+  <p>注意：类型提示<strong>不影响运行</strong>——Python 不会因为你传错类型而报错（它只是"提示"）。真正来抓错的是 <code>mypy</code> 这类静态检查工具，以及 IDE 的实时提示。要运行时强制校验，得用 Pydantic（下一课）。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>💡 面试常见问题：</strong>
+    <p>"类型提示会在运行时强制类型吗？"</p>
+    <p>答：不会。它是给静态检查器（mypy）和 IDE 看的元信息，运行时不校验、传错类型也照跑。要运行时校验用 Pydantic。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Optional：可能是 None</h2>
+  <pre><code>from typing import Optional
+
+def find_system_prompt(role: str) -&gt; Optional[str]:
+    # 返回 str 或 None
+    return "你是助手" if role == "system" else None
+
+# Optional[str] 完全等价于 Union[str, None]
+result = find_system_prompt("user")   # 可能是 None，用前要判断
+if result is not None:
+    print(result.upper())</code></pre>
+  <p><code>Optional[X]</code> 就是"<code>X</code> 或 <code>None</code>"。Agent 里大量字段可能缺失（工具可能没返回、配置可能没设），用 <code>Optional</code> 明确标出来，提醒调用方"记得判空"。</p>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>Optional[str]</code> 等价于下面哪个？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">Union[str, int]</button>
+      <button data-answer="correct">Union[str, None]</button>
+      <button data-answer="wrong">Union[str, bool]</button>
+      <button data-answer="wrong">Union[str, list]</button>
+    </div>
+    <div class="quiz-explanation"><code>Optional[X]</code> 是 <code>Union[X, None]</code> 的简写，表示"值可能是 X，也可能是 None"。它<strong>不代表"参数可省略"</strong>（那是默认值的事），只表示类型里包含 None。用它提醒调用方判空。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. Union & Literal</h2>
+  <h3>Union：多种类型之一</h3>
+  <pre><code>from typing import Union
+
+def to_text(x: Union[str, bytes]) -&gt; str:
+    return x.decode() if isinstance(x, bytes) else x
+
+# 3.10+ 也可写成 str | bytes（更简洁）
+def size(x: str | list) -&gt; int:
+    return len(x)</code></pre>
+
+  <h3>Literal：只能是这几个值</h3>
+  <pre><code>from typing import Literal
+
+Role = Literal["system", "user", "assistant"]      # 只能是这三个
+Model = Literal["gpt-5", "claude", "gemini"]
+
+def send(role: Role, model: Model) -&gt; None:
+    ...
+
+send("user", "claude")     # ✅
+send("admin", "claude")    # ❌ mypy 报错：'admin' 不在允许值里</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p><code>Literal</code> 特别适合 Agent 里的"枚举型"参数：消息角色、模型名、工具动作类型、finish_reason。把合法值写进类型，拼错立刻被 mypy 抓到，也让 LLM 工具 Schema 能列出"这个参数只能取这几个值"。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. Callable & 类型别名 & mypy</h2>
+  <h3>Callable：把函数当参数</h3>
+  <pre><code>from typing import Callable
+
+# Callable[[参数类型...], 返回类型]
+def apply(fn: Callable[[int], int], x: int) -&gt; int:
+    return fn(x)
+
+apply(lambda v: v + 1, 41)     # 42
+
+# Agent 场景：工具就是"接收 dict、返回 dict"的可调用体
+ToolFn = Callable[[dict], dict]</code></pre>
+
+  <h3>类型别名：给复杂类型起名</h3>
+  <pre><code>from typing import TypeAlias
+
+# 一长串类型写多遍很啰嗦，起个别名
+Messages: TypeAlias = list[dict[str, str]]
+
+def run(history: Messages) -&gt; Messages:
+    return history + [{"role": "assistant", "content": "ok"}]</code></pre>
+
+  <h3>mypy：把类型错误挡在运行前</h3>
+  <pre><code># 安装：pip install mypy
+# 检查：mypy your_file.py
+# 它会报出"传了 str 给需要 int 的参数""可能为 None 却没判空"等问题</code></pre>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>Literal["a", "b"]</code> 类型的作用是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">值必须是字符串型</button>
+      <button data-answer="correct">值只能取这几个</button>
+      <button data-answer="wrong">值可以是任意值</button>
+      <button data-answer="wrong">值必须至少两项</button>
+    </div>
+    <div class="quiz-explanation"><code>Literal</code> 把类型收窄到<strong>指定的几个具体值</strong>（这里只能是 "a" 或 "b"）。传别的值 mypy 会报错。用于 role、模型名、动作类型等"枚举型"参数，比裸 <code>str</code> 严谨得多。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>知识图谱</h2>
+  <div class="card">
+    <pre><code>基本标注 → 参数/返回/变量；不影响运行(只是提示)
+├── list[str] / dict[str, int]（3.9+ 内置泛型）
+└── 运行时不校验 → 要校验用 Pydantic(L14)
+
+Optional[X] = Union[X, None] → 可能为 None，提醒判空
+Union[A, B] / A | B(3.10+) → 多种类型之一
+Literal["x","y"] → 只能取这几个值（role/模型名/动作）
+Callable[[参数], 返回] → 函数作参数（工具 = ToolFn）
+TypeAlias → 给复杂类型起名
+
+mypy → 静态检查，把类型错误挡在运行前
+（Generic/TypeVar/Protocol 进阶 → Phase 5）</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：为 Agent 数据加类型</h3>
+    <p>给一段 Agent 相关的代码补上准确的类型注解，用上 Optional / Union / Literal / Callable。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li><code>Role</code>：用 Literal 定义为 system/user/assistant</li>
+      <li><code>make_message(role, content)</code>：role 用 <code>Role</code>，返回 <code>dict[str, str]</code></li>
+      <li><code>get_tool(name)</code>：按名字查工具，可能查不到 → 返回 <code>Optional[Callable[[dict], dict]]</code></li>
+      <li><code>truncate(x, n)</code>：x 是 <code>str | list</code>，返回同类型的前 n 个</li>
+      <li>（可选）装 mypy 跑一遍，把报错改干净</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>from typing import Optional, Literal, Callable
+
+Role = Literal["system", "user", "assistant"]
+ToolFn = Callable[[dict], dict]
+
+def make_message(role: Role, content: str) -&gt; dict[str, str]:
+    return {"role": role, "content": content}
+
+_TOOLS: dict[str, ToolFn] = {
+    "echo": lambda args: args,
+}
+
+def get_tool(name: str) -&gt; Optional[ToolFn]:
+    return _TOOLS.get(name)          # 查不到就是 None
+
+def truncate(x: str | list, n: int) -&gt; str | list:
+    return x[:n]
+
+
+msg = make_message("user", "你好")
+print(msg)                           # {'role': 'user', 'content': '你好'}
+
+tool = get_tool("echo")
+if tool is not None:                 # Optional → 必须判空
+    print(tool({"q": "x"}))          # {'q': 'x'}
+
+print(truncate("hello", 3))          # hel
+print(truncate([1, 2, 3, 4], 2))     # [1, 2]</code></pre>
+      <h4>思考题</h4>
+      <ul>
+        <li>如果把 <code>make_message("admin", ...)</code> 交给 mypy，会发生什么？（"admin" 不在 Literal 里 → 报错）</li>
+        <li>这里的 <code>Role</code>、<code>ToolFn</code> 到 L14 会怎样变成 Pydantic 模型的字段类型？</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>面试常见问题</h2>
+  <div class="card interview">
+    <h3>Q1：Python 类型提示在运行时生效吗？</h3>
+    <p><strong>答：</strong>不生效。它是给 mypy/IDE 的静态元信息，运行时不校验、传错类型也照跑。要运行时校验用 Pydantic。</p>
+    <h3>Q2：Optional[str] 是什么意思？和"参数可省略"一样吗？</h3>
+    <p><strong>答：</strong>它等于 <code>Union[str, None]</code>，表示值可能是 str 或 None。和"参数可省略"（那由默认值决定）不是一回事。</p>
+    <h3>Q3：Literal 有什么用？</h3>
+    <p><strong>答：</strong>把类型收窄到指定的几个具体值，适合枚举型参数（role、模型名、动作类型）。传非法值 mypy 会报错，比裸 str 严谨。</p>
+    <h3>Q4：怎么标注"接收函数作参数"？</h3>
+    <p><strong>答：</strong>用 <code>Callable[[参数类型...], 返回类型]</code>。例如工具函数是 <code>Callable[[dict], dict]</code>。装饰器、回调、策略注入都会用到。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考资源</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="https://docs.python.org/3/library/typing.html" target="_blank">Python 官方：typing 模块</a> — 权威参考（<strong>首选</strong>）</li>
+      <li>· <a href="https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html" target="_blank">mypy Cheat Sheet</a> — 常用标注速查</li>
+      <li>· <a href="https://realpython.com/python-type-checking/" target="_blank">Real Python: Python Type Checking</a> — 系统讲解</li>
+      <li>· <a href="0018-L14-pydantic.html">L14 · Pydantic</a> — 把类型变成运行时校验</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>类型提示是给人/工具看的契约，运行时不强制（要校验用 Pydantic）</li>
+      <li><code>Optional[X]</code> = <code>Union[X, None]</code>，标出"可能为 None"</li>
+      <li><code>Union[A,B]</code> / <code>A|B</code>（3.10+）表达多种类型之一</li>
+      <li><code>Literal</code> 把取值收窄到几个具体值（role/模型名/动作）</li>
+      <li><code>Callable[[参数],返回]</code> 标注函数参数；<code>TypeAlias</code> 给复杂类型起名</li>
+      <li>用 <code>mypy</code> 把类型错误挡在运行前；Generic/Protocol 留到 Phase 5</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>
