@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L30 · Context Window 管理</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>Context Window 管理</h1>
+    <p class="subtitle">对话越滚越长，窗口迟早撑爆——这是 Agent 能不能"长时间跑"的命脉</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:42%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>L25 你学会了"多轮对话要把历史全塞回 <code>messages</code>"。但这里藏着一个致命问题：<strong>历史会无限增长，上下文窗口却是有限的（L21）</strong>。Agent 每走一步就往对话里堆一轮 user/assistant、再堆一坨工具返回结果——十几步之后，窗口迟早撑爆。撑爆的下场只有两种：<strong>要么直接报错，要么悄悄丢掉早期信息</strong>，两者对一个正在执行长任务的 Agent 都是灾难。</p>
+    <p>更糟的是，就算没撑爆，长上下文本身也有两个税：一是 <strong>lost-in-the-middle</strong>（L21——放在中间的信息利用率最低，模型容易"看不见"），二是<strong>成本随长度线性上涨</strong>（L23——每次都把长历史当输入发出去）。所以上下文<strong>不能放任它长</strong>，必须<strong>主动管理</strong>。这一课就教你在 API 层怎么管。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清上下文撑爆的两种后果，以及 lost-in-the-middle、成本两个"隐性税"</li>
+      <li>掌握三大管理策略：<strong>滑动窗口 / 摘要记忆 / 压缩精简</strong>，知道各自的取舍</li>
+      <li>用 tiktoken（L18）在<strong>发请求前</strong>数 token，超阈值就触发策略</li>
+      <li>写出"计数 → 超阈值 → 摘要旧消息 → 重组 messages"的正确控制流</li>
+      <li>知道<strong>该保什么、该压什么</strong>——保 system + 关键信息，压中间冗余</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 问题：历史无限长，窗口却有限</h2>
+  <div class="card">
+    <p>回忆 L21：LLM 的<strong>上下文窗口（context window）是固定容量</strong>的——一次能塞进去的 token 数有上限（<strong>具体上限以模型而定</strong>，几 K 到几百 K 不等）。再回忆 L25：Agent 要"有记忆"，就得每次把全部历史回传。这两件事凑在一起，就是一颗定时炸弹：</p>
+    <ul>
+      <li><strong>历史单调增长</strong>：每一轮对话、每一次工具调用的返回，都往 <code>messages</code> 里累加。工具输出尤其"肥"——一次网页抓取、一段日志、一个大 JSON，动辄上千 token。</li>
+      <li><strong>撑爆 = 报错或丢信息</strong>：输入超过窗口上限，要么 API 直接抛错（请求被拒），要么框架帮你"截断"——但截断可能正好切掉了任务开头那句最关键的目标。</li>
+      <li><strong>lost-in-the-middle（L21）</strong>：即便没爆，塞得太满时，模型对<strong>中间段落</strong>的利用率会明显下降——重要信息夹在中间容易被"忽略"。</li>
+      <li><strong>成本随长度涨（L23）</strong>：每次请求都把整段长历史当输入 token 计费，对话越长、单次越贵，长任务累计更是可观。</li>
+    </ul>
+    <p>结论很直接：<strong>不能等它爆，要在爆之前主动把上下文"瘦身"</strong>。这就引出了下面三大策略。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> Agent 跑长任务时，为什么上下文迟早会出问题？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">模型会主动删旧消息</button>
+      <button data-answer="correct">历史无限长，窗口却有限</button>
+      <button data-answer="wrong">API 每次都清空历史</button>
+      <button data-answer="wrong">token 计数会自动归零</button>
+    </div>
+    <div class="quiz-explanation">根因是<strong>两件事的冲突</strong>：为了让 Agent 有记忆，每次要把历史全回传（L25）；但上下文窗口<strong>容量固定</strong>（L21）。历史随每一轮对话和每次工具返回单调增长，迟早超过窗口上限——<strong>撑爆就报错或丢信息</strong>。此外长上下文还有 lost-in-the-middle 和成本上涨两个隐性税。所以必须主动管理，而不是指望模型或 API 自己清理。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 三大策略：滑动窗口 / 摘要记忆 / 压缩</h2>
+  <div class="card">
+    <p>管理上下文的核心思路，都是"<strong>用更少的 token 装下够用的信息</strong>"。三种主流做法，从粗到精：</p>
+    <table>
+      <thead>
+        <tr><th>策略</th><th>做法</th><th>优点</th><th>代价</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>滑动窗口<br>(sliding window)</strong></td>
+          <td>只保留<strong>最近 N 轮</strong>对话，更早的直接丢掉</td>
+          <td>实现最简单，token 稳定可控</td>
+          <td>会<strong>硬丢早期信息</strong>——任务开头的目标可能被丢掉</td>
+        </tr>
+        <tr>
+          <td><strong>摘要记忆<br>(summarization)</strong></td>
+          <td>把老对话<strong>压成一段摘要</strong>塞回上下文，保留要点</td>
+          <td>比丢弃聪明——<strong>要点还在</strong>，token 大幅缩减</td>
+          <td>要多花一次 LLM 调用做摘要；摘要可能丢细节</td>
+        </tr>
+        <tr>
+          <td><strong>压缩 / 精简<br>(compression)</strong></td>
+          <td>去掉<strong>冗余</strong>：重复的工具输出、无关内容，只留有用的</td>
+          <td>无损或近无损，专杀"肥"工具结果</td>
+          <td>要判断"什么是冗余"，规则/逻辑更复杂</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>三者<strong>不是三选一，常常组合使用</strong>：比如"最近 N 轮原样保留（滑动窗口）+ 更早的压成摘要（摘要记忆）+ 沿途剔除重复工具输出（压缩）"。对 Agent 而言，工具返回是上下文膨胀的头号来源，所以<strong>压缩工具结果</strong>往往性价比最高。</p>
+  </div>
+  <div class="tip">
+    <strong>埋点 · compaction</strong>：把一大段历史<strong>压成摘要、再用摘要接着往下跑</strong>，这个动作在 2026 年的 Agent harness（Claude Code、各类 agent 框架）里叫 <strong>compaction</strong>，已是标准做法——上下文快满时自动触发一次"压缩重启"，让 Agent 能持续跑很久而不爆。本课先在 API 层掌握它的原理；到 <strong>Phase 5</strong> 讲 agentic memory 时，我们会把它做成 Agent 的核心机制。
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 实操思路：先数，超阈值再触发</h2>
+  <div class="card">
+    <p>策略怎么落地？核心是一条<strong>发请求前的检查</strong>：用 tiktoken（L18）数一下当前 <code>messages</code> 的 token，超过阈值就触发瘦身。阈值一般设成<strong>窗口上限的某个比例</strong>（如 75%），给模型的回复留出余量。控制流长这样：</p>
+    <pre><code>import tiktoken
+
+enc = tiktoken.get_encoding("cl100k_base")   # 示例编码器；实际应按你的模型选（L18，如 encoding_for_model）
+
+def count_tokens(messages):
+    # 粗略计数：把每条消息内容拼起来数 token
+    return sum(len(enc.encode(m.get("content") or "")) for m in messages)
+
+def manage_context(messages, limit, keep_recent=4):
+    # 1) 计数：还没超阈值就原样发
+    if count_tokens(messages) <= limit:
+        return messages
+
+    # 2) 超阈值 → 拆分：system + 最近 keep_recent 轮 要保住，中间的老消息拿去压缩
+    system_msgs = [m for m in messages if m["role"] == "system"]
+    body        = [m for m in messages if m["role"] != "system"]
+    old, recent = body[:-keep_recent], body[-keep_recent:]
+
+    # 3) 摘要旧消息（compaction）：让 LLM 把 old 压成一段要点
+    summary = summarize_with_llm(old)        # 另一次 LLM 调用，产出简短摘要
+
+    # 4) 重组 messages：system + 摘要 + 最近几轮 → token 大幅下降
+    return system_msgs + [
+        {"role": "system", "content": "早前对话摘要：" + summary}
+    ] + recent
+
+# 每次发请求前先过一遍
+messages = manage_context(messages, limit=6000)   # 阈值 < 窗口上限，留回复余量
+resp = client.chat.completions.create(model=..., messages=messages)</code></pre>
+    <p>四步记牢：<strong>① 计数 → ② 超阈值就拆（保 system + 最近几轮）→ ③ 摘要旧消息 → ④ 重组 messages</strong>。若走纯滑动窗口，把第 ③ 步省掉、第 ④ 步直接扔掉 <code>old</code> 即可；若走压缩，则在第 ③ 步换成"去重/裁剪工具输出"。这套检查就是 Agent 主循环里<strong>每次调 LLM 前</strong>都要跑的守卫。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 什么时候该触发上下文瘦身？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">等 API 报超限错误之后</button>
+      <button data-answer="correct">发请求前计数超阈值时</button>
+      <button data-answer="wrong">每轮对话固定触发一次</button>
+      <button data-answer="wrong">模型回复变慢的时候</button>
+    </div>
+    <div class="quiz-explanation">正确做法是<strong>主动、提前</strong>：每次发请求<strong>之前</strong>，用 tiktoken 数当前 <code>messages</code> 的 token，一旦<strong>超过阈值</strong>（通常设为窗口上限的某个比例，给回复留余量）就触发策略。等 API 报错才处理已经晚了——请求已经失败。也不必每轮都压（没超阈值时压缩纯属浪费一次 LLM 调用和信息）。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 保留什么：system + 关键信息优先</h2>
+  <div class="card">
+    <p>瘦身不是"无脑砍最老的"——<strong>砍谁、留谁大有讲究</strong>。优先级从高到低：</p>
+    <ul>
+      <li><strong>system prompt 永远保</strong>：它定义了 Agent 的角色、规则、任务目标（L25 讲的"人设"）。丢了它，Agent 直接"忘了自己是谁、在干嘛"。</li>
+      <li><strong>最近的关键信息优先保</strong>：当前正在处理的子任务、最新的工具结果、用户刚提的要求——这些是"现在正用得上"的。</li>
+      <li><strong>中间的冗余先压</strong>：早已用完的中间步骤、重复的工具输出、跑偏后被纠正的弯路——这些压成一句摘要甚至直接删。</li>
+    </ul>
+    <p>这里正好<strong>呼应 lost-in-the-middle（L21）</strong>：既然模型对"中间"利用率最低，那就<strong>把最重要的信息放在开头（system）或结尾（最近消息）</strong>，把要压缩/丢弃的目标锁定在中间段——一举两得：既省 token，又避开了模型的"视觉盲区"。<strong>压缩不只是省钱，还是在帮模型把注意力放对地方。</strong></p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 上下文瘦身时，最该优先保留的是哪部分？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">最早的那几轮历史对话</button>
+      <button data-answer="correct">system 与最近关键信息</button>
+      <button data-answer="wrong">重复出现的那些工具输出</button>
+      <button data-answer="wrong">占 token 数最多的那条</button>
+    </div>
+    <div class="quiz-explanation"><strong>system prompt</strong>（定义角色/规则/目标）和<strong>最近的关键信息</strong>（当前子任务、最新工具结果）优先级最高，要保住；<strong>中间的冗余</strong>（重复工具输出、跑偏的弯路）先压。这也呼应 lost-in-the-middle（L21）：模型对中间利用率最低，所以把重要信息放<strong>开头或结尾</strong>、把要压缩的目标锁在中间——省 token 又避开模型盲区。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 为什么这是 Agent 的命脉</h2>
+  <div class="card">
+    <p>把镜头拉远：<strong>Context Window 管理，直接决定 Agent 能不能"长时间跑"</strong>。</p>
+    <ul>
+      <li>一个只聊两三轮的 chatbot，可能永远碰不到窗口上限，管不管无所谓。</li>
+      <li>但一个要<strong>连续执行几十步</strong>的 Agent——查资料、调工具、读结果、再决策——上下文是单调膨胀的。<strong>没有 context 管理，长任务必崩</strong>：不是中途报超限错，就是把开头的目标丢了导致跑偏。</li>
+    </ul>
+    <p>所以你可以把它理解成 Agent 的"<strong>呼吸系统</strong>"：靠 compaction 一次次把历史压缩重启，Agent 才能在有限窗口里跑出远超窗口容量的任务长度。这一课我们先在 <strong>API 层</strong>掌握窗口管理的基本功（计数、阈值、三策略、保什么）；到 <strong>Phase 5</strong>，我们会把它升级成 <strong>agentic memory / 结构化笔记</strong>——让 Agent 把重要信息主动"记"到外部存储，而不只是在对话里压来压去。<strong>先把这一课的地基打牢，Phase 5 才盖得起楼。</strong></p>
+  </div>
+
+  <details>
+    <summary><strong>🛠 动手练一练：8000 token、窗口上限 8192，你怎么办？</strong>（点击展开）</summary>
+    <div class="card" style="margin-top:0.8rem;">
+      <p><strong>场景</strong>：你的 Agent 跑到一半，当前 <code>messages</code> 已累计约 <strong>8000 token</strong>，而所用模型的<strong>窗口上限是 8192</strong>。下一步还要发一次请求、并让模型回复约 500 token。请回答：</p>
+      <ol>
+        <li>直接把这 8000 token 发出去，会发生什么？</li>
+        <li>该用哪个（些）策略？怎么重组 <code>messages</code>？</li>
+      </ol>
+      <p style="color:var(--muted);">先自己想 30 秒，再看下面的参考答案。</p>
+      <hr>
+      <p><strong>参考答案</strong></p>
+      <p><strong>1) 会撑爆。</strong> 输入 8000 + 要回复 500 ≈ 8500，已<strong>超过 8192 上限</strong>——请求要么直接报错，要么框架帮你截断（可能切掉开头目标）。而且上下文越长，中间信息越容易被淹没（lost-in-the-middle）。<strong>不能原样发。</strong></p>
+      <p><strong>2) 触发瘦身，优先「摘要记忆 + 保关键」。</strong> 按第 3 节的四步走：</p>
+      <ul>
+        <li><strong>计数</strong>：确认 8000 已超过阈值（比如阈值设 6000，早就该触发了）。</li>
+        <li><strong>拆分</strong>：<code>system</code>（任务目标）保住；<strong>最近 3~4 轮</strong>对话/工具结果原样保住；<strong>中间的老消息</strong>拎出来。</li>
+        <li><strong>摘要</strong>：把中间老消息用一次 LLM 调用压成一段简短摘要（compaction），把里面重复的、跑偏的、已用完的内容压掉。</li>
+        <li><strong>重组</strong>：<code>[system] + [{"role":"system","content":"早前摘要：…"}] + [最近几轮]</code>。这样 token 从 8000 降到比如 2000~3000，既腾出了回复空间，又把重要信息放在了<strong>开头和结尾</strong>（避开中间盲区）。</li>
+      </ul>
+      <p>如果嫌摘要要多花一次调用，也可退而求其次用<strong>纯滑动窗口</strong>（只留最近 N 轮 + system）——更快，但会硬丢早期信息，适合早期信息确实不重要的场景。若膨胀主要来自某个巨大的工具输出，则优先<strong>压缩/裁剪那条工具结果</strong>，往往一步就够。</p>
+    </div>
+  </details>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：Context Window 管理</h2>
+  <div class="card">
+    <pre><code>【问题】历史无限长(L25 每次回传) × 窗口有限(L21) → 迟早撑爆
+  撑爆 = 报错 或 丢信息
+  隐性税：lost-in-the-middle(L21 中间利用率低) + 成本随长度涨(L23)
+  → 必须主动管理，别等它爆
+
+【三大策略】（常组合使用）
+  滑动窗口  只留最近 N 轮        简单 / 但硬丢早期信息
+  摘要记忆  老对话压成摘要塞回    保要点省 token / 多一次调用
+  压缩精简  去重、裁掉肥工具输出  近无损 / 规则更复杂
+  ★ compaction = 把历史压成摘要接着跑（2026 harness 标配，Phase 5 深入）
+
+【实操四步】发请求前跑
+  ① tiktoken 计数(L18)  ② 超阈值就拆(保 system+最近几轮)
+  ③ 摘要旧消息          ④ 重组 messages
+  阈值 < 窗口上限（如 75%），给回复留余量
+
+【保什么 / 压什么】
+  保：system prompt(角色/目标) + 最近的关键信息
+  压：中间的冗余(重复工具输出、跑偏弯路)
+  呼应 lost-in-the-middle：重要信息放开头或结尾
+
+【Agent 意义】长时运行的命脉——没管理，长任务必崩
+  API 层窗口管理(本课) → Phase 5 agentic memory / 结构化笔记</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents" target="_blank"><strong>Anthropic Engineering: Effective context engineering for AI agents</strong></a></p>
+    <p>Anthropic 工程团队讲"上下文工程"的系统文章，正面讲了 <strong>compaction（压缩重启）</strong>、结构化笔记、以及为长时运行 Agent 管理有限窗口的实践思路——正好把本课"API 层窗口管理"和 Phase 5"agentic memory"串成一条线。读完你会明白 2026 年的 Agent 是怎么"跑得又久又不爆"的。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0034-L29-multimodal-api.html">上一课 L29 · 多模态 API</a> — 图像/音频也会吃掉大量上下文</li>
+      <li>· <a href="0036-L31-error-handling-retry.html">下一课 L31 · 错误处理与重试</a> — 超限只是众多 API 异常之一</li>
+      <li>· <a href="0025-L21-model-capabilities.html">L21 · 上下文有限 + lost-in-the-middle</a> — 本课要解决的先天局限</li>
+      <li>· <a href="0022-L18-tokenization.html">L18 · 用 tiktoken 计数</a> — 触发策略靠它数 token</li>
+      <li>· <a href="0027-L23-token-economics.html">L23 · 长上下文的成本</a> — 为什么长历史又贵又该压</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li><strong>核心矛盾</strong>：历史无限长（L25 每次回传）× 窗口有限（L21）→ 撑爆就报错或丢信息</li>
+      <li>长上下文还有两个隐性税：<strong>lost-in-the-middle</strong>（L21）和<strong>成本上涨</strong>（L23）</li>
+      <li><strong>三大策略</strong>：滑动窗口（丢老的）/ 摘要记忆（压成要点）/ 压缩精简（去冗余），常组合使用</li>
+      <li><strong>实操四步</strong>：tiktoken 计数（L18）→ 超阈值就拆 → 摘要旧消息 → 重组 <code>messages</code></li>
+      <li><strong>保 system + 最近关键信息，压中间冗余</strong>；重要信息放开头或结尾避开中间盲区</li>
+      <li>这是 Agent <strong>长时运行的命脉</strong>——compaction 埋点 Phase 5 的 agentic memory</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    <strong>💼 面试高频：「Context Window 超限怎么办？」</strong> 标准答法三段：<strong>①</strong> 三大策略——<strong>滑动窗口 / 摘要记忆 / 压缩</strong>，三选一或组合（工具结果膨胀就优先压缩）；<strong>②</strong> 时机——<strong>发请求前用 tiktoken 计数</strong>，超阈值（窗口上限的某比例、留回复余量）就触发，别等报错；<strong>③</strong> 取舍——<strong>保 system + 最近关键信息，压中间冗余</strong>，顺带呼应 lost-in-the-middle 把重点放两端。能再点出"compaction 是 2026 Agent harness 标配"就是加分项。有疑问随时问我。下一课我们讲<strong>错误处理与重试</strong>。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

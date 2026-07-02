@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L37 · 成本工程</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>成本工程：2026 降本优先级</h1>
+    <p class="subtitle">把所有降本手段排成一张优先级清单——照着从上往下拧，$10k 砍到 $5k</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:92%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p><a href="0027-L23-token-economics.html">L23</a> 教了两根<strong>主杠杆</strong>——Prompt Caching 和 Model Routing。这一课把它们放进一张<strong>完整的、按性价比排序的降本清单</strong>里，并补上 L23 没细讲的几层：<strong>语义缓存、提示压缩、小模型蒸馏、Batch API</strong>。</p>
+    <p>为什么 Agent 尤其需要这个：Agent 是<strong>调用密集型</strong>系统——一次任务反复往返 LLM，每次都拖着长上下文（<a href="0027-L23-token-economics.html">L23</a> 的四个放大器）。所以成本工程不是锦上添花，而是<strong>生产必修</strong>。这套优先级清单还是一道面试高频题的标准答法：<strong>"一个 Agent 每月 $10k，怎么砍到 $5k？"</strong>——面试官想听的不是某一招，而是<strong>你按什么顺序拧、每一层省的是什么</strong>。学完你能把降本从"零散技巧"升级成"有优先级的工程决策"。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>背出 <strong>2026 降本优先级清单</strong>（6 层 + 组合心法），并说清每层省的是什么</li>
+      <li>讲清 <strong>前缀缓存 vs 语义缓存</strong>的本质区别（逐字节命中 vs 语义相似命中）——本课的灵魂</li>
+      <li>知道<strong>语义缓存跳过的是整次 LLM 调用</strong>，以及它的误命中（阈值）风险</li>
+      <li>认识 <strong>提示压缩（LLMLingua）</strong>、<strong>小模型蒸馏</strong>、<strong>Batch API</strong> 各自的适用场景</li>
+      <li>用这套优先级回答"$10k → $5k"这类成本面试题</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 一张表：2026 降本优先级清单</h2>
+  <div class="card">
+    <p>先给全景。<strong>降本不是"招越多越好"，而是"按性价比从上往下拧"</strong>——上面的收益大、改动小、几乎无副作用；下面的更专、更费工。<a href="0027-L23-token-economics.html">L23</a> 讲了 ①③（缓存与路由），这里把清单补全：</p>
+    <table>
+      <thead><tr><th>优先级</th><th>手段</th><th>降的是什么成本</th><th>改动量 / 代价</th></tr></thead>
+      <tbody>
+        <tr><td><strong>①</strong></td><td><strong>Prompt Caching（前缀缓存）</strong></td><td>重复<strong>静态前缀</strong>的输入成本</td><td>近乎零改动；命中即降价</td></tr>
+        <tr><td><strong>②</strong></td><td><strong>语义缓存（semantic cache）</strong></td><td><strong>相似问题</strong>的整次调用成本</td><td>需接向量库；要调阈值</td></tr>
+        <tr><td><strong>③</strong></td><td><strong>Model Routing（模型路由）</strong></td><td>简单请求用贵模型的浪费</td><td>需难度判断 / 网关</td></tr>
+        <tr><td><strong>④</strong></td><td><strong>提示压缩（Prompt Compression）</strong></td><td>冗长 prompt 里的<strong>冗余 token</strong></td><td>引入压缩工具；有信息损失风险</td></tr>
+        <tr><td><strong>⑤</strong></td><td><strong>小模型蒸馏 / 微调</strong></td><td>特定任务改用<strong>便宜小模型</strong></td><td>要训练 / 数据；工程最重</td></tr>
+        <tr><td><strong>⑥</strong></td><td><strong>Batch API</strong></td><td>非实时任务约省 <strong>50%</strong></td><td>牺牲延迟（结果稍后返回）</td></tr>
+      </tbody>
+    </table>
+    <p>本课其余章节逐层拆开讲。<strong>重点在 ①②——两种缓存的区别</strong>（第 2~3 节）是这一课的灵魂，也是面试最爱直接问的点。</p>
+  </div>
+  <div class="tip">
+    读表顺序 = 落地顺序。<strong>先把 ①② 缓存吃干净</strong>（零/低成本、大收益），再上 ③ 路由，剩下 ④⑤⑥ 按场景补。别一上来就搞最重的 ⑤ 蒸馏——那是"最后一公里"，不是第一步。
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. ① 原生 Prompt Caching（第一杠杆，回顾）</h2>
+  <div class="card">
+    <p>这层 <a href="0027-L23-token-economics.html">L23</a> 已详讲，这里快速捡回作为清单第一档。<strong>原理：</strong>把<strong>静态的、重复的前缀</strong>（长 system prompt、固定工具定义、反复出现的文档）缓存起来。后续请求只要前缀<strong>逐字节命中</strong>，这部分就大幅降价——不再为"每次都一样的内容"付全价。</p>
+    <p>数量级（以官方文档为准，一律用"约"）：</p>
+    <table>
+      <thead><tr><th>厂商</th><th>缓存读（命中）</th><th>缓存写（首次）</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Anthropic</strong></td><td>约 <strong>0.1×</strong> 输入价（省约 90%）</td><td>约 <strong>1.25×</strong>（首次略贵）</td></tr>
+        <tr><td><strong>OpenAI</strong></td><td>命中约省 <strong>50%~90%</strong>（视模型代次，以官方为准）</td><td>自动，无额外写入费</td></tr>
+      </tbody>
+    </table>
+    <p>出处：<a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。核心设计原则一句话：把 prompt 拆成「<strong>静态前缀（可缓存）+ 动态后缀（每次变）</strong>」，<strong>静态放最前面</strong>——因为是前缀匹配，开头混进时间戳 / 用户 ID / 随机数，缓存就永远不命中。</p>
+    <pre><code>【缓存键设计：静态前缀 + 动态后缀】
+┌─ 静态前缀（放前面，打缓存标记）─────────┐
+│  角色设定 / 工具定义(排序) / 固定示例    │ ← 命中约 0.1×
+└──────────────────────────────────────────┘
+┌─ 动态后缀（放后面，不缓存）───────────────┐
+│  本轮用户问题 / 时间戳 / 新检索片段        │ ← 全价但很短
+└──────────────────────────────────────────┘</code></pre>
+    <p>对 Agent 来说，长 system prompt + 固定工具集天然就是巨大的静态前缀，缓存几乎是"免费的午餐"。<strong>它降的是"重复前缀的输入成本"——记住这句，下一节的语义缓存降的是另一样东西。</strong></p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 前缀缓存（Prompt Caching）命中的条件是什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">两个问题意思相近就能命中同一份缓存</button>
+      <button data-answer="correct">前缀必须逐字节完全相同才命中</button>
+      <button data-answer="wrong">只要用同一个模型就自动全部命中</button>
+      <button data-answer="wrong">命中后被缓存那部分内容完全免费</button>
+    </div>
+    <div class="quiz-explanation">前缀缓存是<strong>逐字节的前缀匹配</strong>：开头哪怕差一个字符（时间戳、随机 ID、没排序的 JSON），整段前缀就失效、不命中。它<strong>不看语义</strong>——"意思相近"命中的是下一节的<strong>语义缓存</strong>，两者是不同的东西。命中也不是全免，而是降到约 0.1×（Anthropic）/ 约省 50%~90%（OpenAI，视模型代次）。具体倍数以官方为准。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2 与 3 的分水岭：两种缓存到底差在哪</h2>
+  <div class="card">
+    <p>这是全课最容易混、也最值钱的一张对照表。<strong>务必记牢</strong>：</p>
+    <table>
+      <thead><tr><th>维度</th><th>① 前缀缓存（Prompt Caching）</th><th>② 语义缓存（Semantic Cache）</th></tr></thead>
+      <tbody>
+        <tr><td><strong>命中条件</strong></td><td>前缀<strong>逐字节相同</strong></td><td>问题<strong>语义相似</strong>（超过阈值）</td></tr>
+        <tr><td><strong>怎么判断命中</strong></td><td>字符串前缀比对</td><td>embedding 算<strong>相似度</strong></td></tr>
+        <tr><td><strong>降的是</strong></td><td>重复<strong>前缀的输入</strong>成本</td><td><strong>相似问题的整次调用</strong>成本</td></tr>
+        <tr><td><strong>还调 LLM 吗</strong></td><td><strong>要</strong>（仍生成本轮输出）</td><td><strong>不调</strong>！直接返回缓存答案</td></tr>
+        <tr><td><strong>典型例子</strong></td><td>同一 system prompt 反复复用</td><td>"退货政策是什么" ≈ "怎么退货"</td></tr>
+      </tbody>
+    </table>
+    <p>一句话把两者钉死：<strong>前缀缓存省"输入的重复部分"，但每次照样调模型出新答案；语义缓存直接把"这个问题以前答过了"整次跳过，连 LLM 都不碰。</strong></p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. ② 语义缓存：与前缀缓存的本质区别（重点）</h2>
+  <div class="card">
+    <p><strong>问题所在：</strong>前缀缓存要求前缀<strong>逐字节相同</strong>才命中。但真实用户不会一字不差地重复提问——<strong>"退货政策是什么"</strong> 和 <strong>"怎么退货"</strong> 意思一样，可字节完全不同，前缀缓存<strong>一个都命不中</strong>，两次都得完整调一遍 LLM。这正是语义缓存要补的洞。</p>
+    <p><strong>原理：</strong>把每个问题先转成 <strong>embedding 向量</strong>，进来的新问题也转成向量，去缓存里找<strong>语义最相似</strong>的历史问题。相似度<strong>超过阈值</strong>，就直接返回那条缓存答案，<strong>完全跳过 LLM 调用</strong>——省的不是"输入的一部分"，而是<strong>整整一次调用</strong>（输入 + 输出 + 往返延迟全省）。</p>
+    <pre><code>【语义缓存工作流】
+新问题 → 转 embedding → 在向量缓存里找最相似的历史问题
+   ├─ 相似度 ≥ 阈值 → 命中！直接返回缓存答案（✗ 不调 LLM）
+   └─ 相似度 < 阈值 → 未命中 → 正常调 LLM → 把「问题→答案」写回缓存
+
+例：缓存里已有「退货政策是什么 → {政策原文}」
+   来一句「怎么退货」→ 语义高度相似 → 直接返回，省下整次调用</code></pre>
+    <p><strong>工具：</strong> <a href="https://github.com/zilliztech/GPTCache" target="_blank">GPTCache</a>（专门的 LLM 语义缓存库）、<a href="https://redis.io/docs/latest/develop/ai/" target="_blank">Redis 向量缓存</a>（用向量检索做语义缓存层）。二者都是 2026 生产里常见的语义缓存方案。</p>
+    <p><strong>关键区分（再强调一次，面试直接问）：</strong></p>
+    <ul>
+      <li><strong>前缀缓存</strong>降的是 <strong>"重复前缀的输入成本"</strong>——本轮 LLM 还是照调，只是输入那段前缀便宜了。</li>
+      <li><strong>语义缓存</strong>降的是 <strong>"相似问题的整次调用成本"</strong>——命中就<strong>不调 LLM 了</strong>，输入输出一起省，还顺带省了延迟。</li>
+    </ul>
+    <p>对 Agent 的意义：客服、FAQ、内部知识问答类 Agent，<strong>大量问题高度重复或近义</strong>——语义缓存能把一大票"换个说法的同一个问题"直接挡在 LLM 之外，是前缀缓存够不着的一大块钱。</p>
+  </div>
+  <div class="tip">
+    ⚠️ 语义缓存的头号风险：<strong>误命中（相似但不该等价）</strong>。阈值调太松，"我要退货" 可能错命中 "我要退款" 的答案——答非所问还一脸自信。所以<strong>阈值要调好</strong>：宁可偏严（多放几次真调用），也别让语义相近但语义不等价的问题串答案。上线后要抽查命中样本，盯住误命中率。
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 语义缓存相比前缀缓存，最本质的省钱点在哪？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">它把 system prompt 前缀压得更短</button>
+      <button data-answer="correct">相似问题命中后完全跳过整次 LLM 调用</button>
+      <button data-answer="wrong">它让缓存的 TTL 变得更长</button>
+      <button data-answer="wrong">它把输出 token 单价直接打了对折</button>
+    </div>
+    <div class="quiz-explanation">语义缓存按 <strong>embedding 相似度</strong>命中：意思相近但措辞不同的问题（"退货政策是什么" vs "怎么退货"）也能命中同一答案，命中后<strong>直接返回、完全不调 LLM</strong>——省的是<strong>整整一次调用</strong>（输入+输出+延迟）。前缀缓存则相反：它只降重复前缀的输入成本，本轮 LLM 照样要调。压前缀、改 TTL、打折单价都不是语义缓存的机制。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. ③ Model Routing（模型路由，回顾）</h2>
+  <div class="card">
+    <p>清单第三档，<a href="0027-L23-token-economics.html">L23</a> 和 <a href="0037-L32-routing-fallback-gateway.html">L32</a> 已讲透，这里定位它在优先级里的位置。<strong>原理：不是所有请求都值得用最贵的模型。</strong>便宜快的小模型兜底简单请求，贵而强的大模型只接难请求。</p>
+    <pre><code>请求进来 → 判断难度
+   ├─ 简单（分类 / 提取 / 闲聊 / 格式化）→ 便宜快模型 兜底
+   ├─ 中等（一般问答 / 总结）           → 中档模型
+   └─ 困难（多步推理 / 复杂 Agent 规划） → 顶级模型 只接这类</code></pre>
+    <p>为什么放在缓存之后：路由要做<strong>难度判断、接网关、可能调策略</strong>，改动比"打个缓存标记"大一些；但收益依然很高（<a href="0027-L23-token-economics.html">L23</a> 引用的真实报道降幅 40%~85%）。工程落地用一个 <a href="https://github.com/BerriAI/litellm" target="_blank">gateway（LiteLLM）</a>统一路由，业务代码不用管背后是哪个模型。它和"选型"一脉相承——只是把选择从一次性决策变成<strong>每请求的动态决策</strong>（<a href="0027-L23-token-economics.html">见 L23 对 L20/L22 的呼应</a>）。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. ④ 提示压缩（Prompt Compression）</h2>
+  <div class="card">
+    <p>缓存和路由拧完，还想再抠，就轮到<strong>压 prompt 本身</strong>。很多长 prompt（尤其塞了大段检索文档、冗长示例）里有大量<strong>对结果无关紧要的冗余 token</strong>。提示压缩就是用工具把这些冗余<strong>删繁就简</strong>，在尽量保留关键信息的前提下缩短输入。</p>
+    <p><strong>代表工具：微软 <a href="https://github.com/microsoft/LLMLingua" target="_blank">LLMLingua</a></strong>——它用一个小模型识别并删除 prompt 里"信息密度低"的 token，把长上下文压短再喂给大模型，<strong>能显著压缩</strong>（具体压缩比以你的实测为准，不同任务差别很大，别记死某个倍数）。</p>
+    <p>注意事项：</p>
+    <ul>
+      <li>压缩<strong>有信息损失风险</strong>——压太狠可能把关键细节也删掉，影响回答质量。压缩率和质量之间要权衡、要实测。</li>
+      <li>它和缓存是<strong>互补</strong>：缓存降的是"重复内容的价"，压缩降的是"内容本身的量"。二者可以叠加。</li>
+      <li>对 Agent：RAG 检索片段、超长历史是压缩的主要靶子——先压再进上下文，既省钱又缓解上下文膨胀。</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. ⑤ 小模型蒸馏 / 微调，与 ⑥ Batch API</h2>
+  <div class="card">
+    <p>清单最后两档，更专、更重，按需上。</p>
+    <p><strong>⑤ 小模型蒸馏 / 微调小模型</strong>：把大模型在某个<strong>特定任务</strong>上的能力"蒸馏"或微调到一个<strong>便宜的小模型</strong>上——用大模型生成/标注数据，训练小模型学会这一类活。之后这类任务全交给小模型，单价断崖式下降。代价是<strong>要数据、要训练、要维护</strong>，工程最重，所以排在缓存/路由/压缩之后，适合"某类高频任务量特别大、值得为它专门养一个小模型"的场景。</p>
+    <p><strong>⑥ Batch API</strong>：非实时任务（离线分类、批量总结、夜间跑的数据处理）走<strong>批处理接口</strong>，通常约省 <strong>50%</strong>，代价是<strong>延迟</strong>——结果不是立刻返回，而是稍后交付。凡是"不急着要答案"的活，都该考虑走 Batch。对 Agent：实时对话走普通接口，后台的批量离线任务走 Batch，两条通道分开。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 按 2026 降本优先级，应该<strong>最先</strong>动手的是哪一档？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">为高频任务蒸馏 / 微调一个专用小模型</button>
+      <button data-answer="correct">先把缓存（前缀 + 语义）吃干净</button>
+      <button data-answer="wrong">把所有请求都改走 Batch API 省一半</button>
+      <button data-answer="wrong">直接上提示压缩，把 prompt 全压短</button>
+    </div>
+    <div class="quiz-explanation">优先级的第一原则是<strong>"缓存优先"</strong>：①前缀缓存 + ②语义缓存<strong>收益大、改动小、几乎无副作用</strong>，是最高性价比的第一步。蒸馏（⑤）工程最重、Batch（⑥）牺牲延迟只适合非实时、压缩（④）有信息损失风险且收益在缓存之后——它们都排在缓存和路由后面。顺序是：①②缓存 → ③路由 → ④⑤⑥按需。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>7. 组合心法：从上往下拧</h2>
+  <div class="card">
+    <p>把六档串成一条落地路径，<strong>照顺序拧</strong>，每拧一层再看还差多少：</p>
+    <pre><code>① 前缀缓存   ← 先上，零/低改动、静态前缀省约 90%（呼应"原生缓存优先"）
+② 语义缓存   ← 紧接着，相似问题整次跳过、连 LLM 都不调
+─────────── 以上两层：缓存吃干净，通常已砍掉一大半 ───────────
+③ 模型路由   ← 便宜模型兜底、贵模型只接难题
+④ 提示压缩   ← 还想抠，用 LLMLingua 压掉冗余 token（实测权衡质量）
+⑤ 小模型蒸馏 ← 某类高频任务量大，值得养专用小模型
+⑥ Batch API  ← 非实时任务走批处理，约省 50%（换延迟）</code></pre>
+    <p>心法就一句：<strong>先缓存（①②），再路由（③），其余（④⑤⑥）按需。</strong>越靠上性价比越高——先把上面的收益吃满，再决定要不要动下面更重的手段。</p>
+  </div>
+
+  <div class="card">
+    <p><strong>为什么这套优先级是 Agent 的生产必修：</strong>Agent 调用密集（一次任务多次往返、每次拖长上下文），成本被 <a href="0027-L23-token-economics.html">L23 的四个放大器</a>反复放大。单次 chat 省不省无所谓，Agent 规模下这条清单直接决定账单是 $10k 还是 $5k。把它当成 Agent 上线前的成本"体检 + 优化"标准流程。</p>
+    <details>
+      <summary>🛠 练习：客服 Agent，为什么语义缓存比前缀缓存更省？</summary>
+      <p><strong>场景：</strong>一个客服 Agent，每天收到大量<strong>意思重复但措辞不同</strong>的问题——"退货政策是什么" / "怎么退货" / "退货要几天" / "我想退货怎么办"……含义高度重叠，但字节各不相同。请说明：为什么<strong>语义缓存</strong>比前缀缓存更省？以及阈值有什么风险？</p>
+      <hr>
+      <p><strong>① 为什么语义缓存更省</strong></p>
+      <ul>
+        <li><strong>前缀缓存命不中这些问题</strong>：它要求前缀<strong>逐字节相同</strong>。这些问题措辞全不一样，前缀比对失败，<strong>每一句都得完整调一次 LLM</strong>——前缀缓存只能省掉它们共享的那段 system prompt 输入，本轮问答照样全算。</li>
+        <li><strong>语义缓存直接整次跳过</strong>：把问题转成 embedding 按<strong>语义相似度</strong>命中——"怎么退货"和已缓存的"退货政策是什么"语义高度相似，<strong>超过阈值就直接返回缓存答案，完全不调 LLM</strong>。省的不是"输入的一部分"，而是<strong>整整一次调用</strong>（输入 + 输出 + 往返延迟全省）。</li>
+        <li>一句话：<strong>前缀缓存降"重复前缀的输入成本"，语义缓存降"相似问题的整次调用成本"</strong>——客服场景大量近义问题，正好是语义缓存的甜点、前缀缓存够不着的一大块钱。</li>
+      </ul>
+      <p><strong>② 阈值风险</strong></p>
+      <ul>
+        <li>阈值<strong>太松</strong> → <strong>误命中</strong>：语义相近但不该等价的问题会错串答案（"我要退货" 误命中 "我要退款" 的答案），答非所问还很自信。</li>
+        <li>阈值<strong>太严</strong> → 命中率低，很多本可复用的相似问题又都去调了 LLM，省得不够。</li>
+        <li>做法：<strong>宁可偏严</strong>，并上线后<strong>抽查命中样本、盯误命中率</strong>，再微调阈值。缓存答案是"折叠"起来的，一旦折错就是错答案直接返给用户，所以阈值必须谨慎。</li>
+      </ul>
+      <p><strong>最佳组合</strong>：两层缓存一起上——前缀缓存负责所有请求共享的 system prompt / 工具定义（逐字节复用），语义缓存负责挡下近义的重复问题（整次跳过）。各降一块，互不替代。</p>
+    </details>
+  </div>
+
+  <div class="tip">
+    💼 面试高频：<strong>"一个 Agent 每月 $10k，怎么砍到 $5k？"</strong> 满分答法按优先级顺序，并<strong>说清每层省什么</strong>：<strong>① Prompt Caching</strong>——缓存<strong>逐字节相同</strong>的静态前缀，静态部分省约 90%；<strong>② 语义缓存</strong>——按<strong>语义相似</strong>命中，相似问题<strong>跳过整次调用</strong>（连 LLM 都不调）；<strong>③ 模型路由</strong>——便宜模型兜底、贵模型只接难题；<strong>④ 提示压缩</strong>（LLMLingua，压冗余 token）；<strong>⑤ 蒸馏</strong>（高频任务养专用小模型）；<strong>⑥ Batch</strong>（非实时约省 50%）。<strong>务必点破 ①② 的区别</strong>——<strong>前缀缓存 = 逐字节前缀命中、降输入；语义缓存 = 语义相似命中、跳过整次调用</strong>。能把这个区别讲清，这道题就满分。
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：2026 降本优先级</h2>
+  <div class="card">
+    <pre><code>【优先级清单·从上往下拧】
+  ① 前缀缓存 Prompt Caching  静态前缀逐字节命中 → 省输入(约0.1× / 约省50~90%)
+  ② 语义缓存 Semantic Cache  embedding 相似度命中 → 跳过整次调用(不调LLM)
+  ③ 模型路由 Routing         便宜兜底/贵接难题 → 报道降40~85%(→L32)
+  ④ 提示压缩 Compression     LLMLingua 压冗余token → 能显著压(实测,有损)
+  ⑤ 小模型蒸馏/微调          高频任务养专用小模型 → 工程最重,按需
+  ⑥ Batch API                非实时约省50% → 换延迟
+
+【灵魂·两种缓存的区别(面试直接问)】
+  前缀缓存：前缀「逐字节相同」才命中；本轮仍调LLM；降「重复前缀的输入成本」
+  语义缓存：问题「语义相似(≥阈值)」命中；命中「不调LLM」；降「相似问题整次调用成本」
+  例："退货政策是什么" ≈ "怎么退货" → 语义缓存命中，前缀缓存命不中
+  ⚠️ 语义缓存误命中风险：阈值太松会串答案 → 宁严勿松+抽查
+
+【组合心法】先①②缓存(零/低成本大收益)→③路由→④⑤⑥按需；"原生缓存优先"
+【面试】$10k→$5k：①前缀②语义③路由④压缩⑤蒸馏⑥Batch，并说清①②区别</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank"><strong>Anthropic: Prompt Caching</strong></a> + <a href="https://github.com/zilliztech/GPTCache" target="_blank"><strong>GPTCache（语义缓存）</strong></a></p>
+    <p>前者是①前缀缓存的权威依据（读/写倍数、前缀匹配机制）；后者讲清②语义缓存怎么用 embedding 相似度命中、怎么跳过 LLM 调用——两篇对照读，正好把本课的灵魂（<strong>逐字节前缀 vs 语义相似</strong>）钉死。压缩层配 <a href="https://github.com/microsoft/LLMLingua" target="_blank">microsoft/LLMLingua</a>，路由层配 <a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a> 与 <a href="0027-L23-token-economics.html">L23</a>。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0041-L36-tool-robustness-registry.html">上一课 · 工具健壮性 + 注册</a> — 工具稳了，再谈把成本压下来</li>
+      <li>· <a href="0043-L38-phase3-capstone.html">下一课 · Phase 3 综合实战</a> — 把这套降本优先级用到真实 Agent</li>
+      <li>· <a href="0027-L23-token-economics.html">L23 · 缓存 + 路由基础</a> — 本课的地基：两根主杠杆从这来</li>
+      <li>· <a href="0022-L18-tokenization.html">L18 · token 计成本</a> — 一切降本的前提：先会数、会算</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>2026 降本是一张<strong>按性价比排序的清单</strong>：①前缀缓存 → ②语义缓存 → ③路由 → ④压缩 → ⑤蒸馏 → ⑥Batch</li>
+      <li><strong>灵魂是①②的区别</strong>：前缀缓存要前缀<strong>逐字节相同</strong>、降"重复前缀的输入成本"、本轮仍调 LLM；语义缓存按<strong>语义相似</strong>命中、降"相似问题的整次调用成本"、命中就<strong>不调 LLM</strong></li>
+      <li>语义缓存用 <strong>embedding 相似度 + 阈值</strong>命中（工具：GPTCache / Redis 向量缓存），注意<strong>误命中</strong>风险——宁严勿松</li>
+      <li>④压缩（LLMLingua 压冗余 token，有损）/ ⑤蒸馏（高频任务养小模型，最重）/ ⑥Batch（非实时约省 50%，换延迟）按需补</li>
+      <li>组合心法：<strong>先缓存、再路由、其余按需</strong>；这套优先级是 Agent 生产必修，也是"$10k→$5k"的标准答法</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    拿你自己的一个 Agent 场景走一遍这张清单：先估未优化月成本（<a href="0027-L23-token-economics.html">L23 第 6 节</a>的四步），然后从 ① 往下逐层问"这层能省多少"——① 静态前缀多大？② 有多少近义重复问题？③ 有多少简单请求可以下放？把每层的预估省额加起来，你会立刻看到从哪砍最划算。拿不准某个倍数（一律<strong>以官方为准</strong>）或语义缓存阈值怎么定，随时问我或你的老师。下一课我们把 Phase 3 学的工程能力一起用到 <a href="0043-L38-phase3-capstone.html">综合实战</a>里。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

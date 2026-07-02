@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L27 · Function Calling 原理</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>Function Calling 原理</h1>
+    <p class="subtitle">让 LLM 从"只会说"变成"能行动"——但它其实一行代码都不执行</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:21%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>到目前为止，你的 LLM 只能<strong>吐字</strong>：你问它天气，它只能编一句"我无法查询实时天气"。Function Calling（函数调用 / 工具调用）就是打破这堵墙的机制——它让模型能<strong>说出"我要用哪个工具、传什么参数"</strong>，从此 Agent 才有了"手"。</p>
+    <p>但这里藏着一个<strong>面试高频、新手必错</strong>的坑：<strong>模型自己并不执行任何代码</strong>。它只是输出一段"我想调用 X 工具、参数是 Y"的<strong>结构化意图（JSON）</strong>，真正跑代码、把结果送回去的是<strong>你的应用</strong>。搞懂这个"谁做什么"的边界，你就拿到了整个 Agent 循环的钥匙。本课把原理讲透，多轮/并行的循环细节留给 <a href="0040-L35-function-calling-loop.html">L35</a>。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>用一句话说清 Function Calling 的本质：<strong>模型只输出调用意图，不自己执行</strong></li>
+      <li>画出 Function Calling 的<strong>完整 5 步流程</strong>（发工具 → 模型选 → 你执行 → 回填 → 继续）</li>
+      <li>写出一个符合 OpenAI 规范的 <strong>工具定义</strong>（name / description / parameters JSON Schema）</li>
+      <li>从 <code>resp.choices[0].message.tool_calls</code> 里正确取出工具名和参数，并 <code>json.loads</code> 参数</li>
+      <li>理解模型可以<strong>一次返回多个工具调用</strong>（并行工具调用）</li>
+      <li>说清 Function Calling 为什么是 <strong>Agent "行动能力"的核心</strong></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 什么是 Function Calling：模型出"意图"，不出"动作"</h2>
+  <div class="card">
+    <p>Function Calling 常被翻译成"函数调用"或"工具调用"，一听好像是<strong>模型自己去调了个函数</strong>。这是<strong>最大的误解</strong>。真实情况是：</p>
+    <pre><code>❌ 错误心智：模型收到问题 → 模型自己运行 get_weather() → 返回结果
+✔ 正确心智：模型收到问题 → 模型输出一段 JSON 说"我想调 get_weather，参数 {city:'北京'}"
+             → 你的代码读到这个意图 → 你的代码去跑 get_weather("北京")
+             → 你把结果塞回去 → 模型基于结果继续回答</code></pre>
+    <p>换句话说，模型能做的<strong>只有"说话"</strong>——只不过这次它说的不是自然语言，而是一段<strong>结构化的、机器可解析的调用意图</strong>。它不会、也没有能力去访问网络、读数据库、发邮件。<strong>所有真正"改变世界"的动作，都是你的应用代码执行的。</strong></p>
+    <p>为什么这个区分对 Agent 至关重要？因为 Agent 的定义就是"能感知并采取行动"。LLM 本身<strong>只能说不能做</strong>；Function Calling 正是把"模型的语言意图"翻译成"程序可执行动作"的那道桥。<strong>没有它，LLM 永远停在聊天框里。</strong></p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> Function Calling 时，工具函数到底是谁执行的？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">模型在内部直接运行</button>
+      <button data-answer="correct">你的应用代码执行</button>
+      <button data-answer="wrong">OpenAI 服务器帮你跑</button>
+      <button data-answer="wrong">工具自己感知并触发</button>
+    </div>
+    <div class="quiz-explanation">模型<strong>不执行任何代码</strong>——它只输出一段"我想调用哪个工具、传什么参数"的<strong>结构化 JSON 意图</strong>。真正去运行函数、访问数据库或网络的，是<strong>你的应用代码</strong>；跑完还要由你把结果回填给模型。记住这个"谁做什么"的边界，是理解整个 Agent 循环的前提。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 完整流程：五步走通一次工具调用</h2>
+  <div class="card">
+    <p>一次完整的 Function Calling 是<strong>你和模型之间的一来一回</strong>，共五步。先建立整体画面，多轮循环与并行的细节我们留到 <a href="0040-L35-function-calling-loop.html">L35</a>：</p>
+    <pre><code>          你的应用                         模型（LLM API）
+             │                                  │
+   ① 带上"工具定义"发起请求  ───────────────▶  读到有哪些工具可用
+     (messages + tools=[...])                   │
+             │                                  │ 判断：这题需要用工具吗？
+             │                                  │ 需要 → 不直接答，而是……
+             │        ②  返回 tool_calls   ◀───  输出"我要调 get_weather,
+             │           (工具名 + 参数)          参数 {city:'北京'}"
+             │                                  │
+   ③ 你的代码真正执行该工具                        │
+     result = get_weather("北京")                │
+             │                                  │
+   ④ 把结果作为 role:"tool" 消息  ─────────────▶  读到工具返回的真实数据
+     追加进 messages 再发一次                      │
+             │                                  │ ⑤ 基于结果继续
+             │           最终自然语言回答   ◀───   "北京现在 25°C，晴。"
+             ▼                                  │</code></pre>
+    <p>关键点：<strong>第 ② 步模型不会给你最终答案</strong>，它只是"举手"说要用工具；<strong>第 ③ 步的执行完全是你的责任</strong>；<strong>第 ④ 步的回填是模型"看见"真实数据的唯一途径</strong>。这一来一回构成了 Agent Loop 最小的一个单元——Agent 的每一步"行动"，几乎都是这五步的重复。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 模型返回 <code>tool_calls</code> 后，下一步该做什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把它直接当成最终答案返回</button>
+      <button data-answer="correct">执行工具再回填</button>
+      <button data-answer="wrong">回头问用户要不要调</button>
+      <button data-answer="wrong">丢掉它然后重新提问</button>
+    </div>
+    <div class="quiz-explanation">收到 <code>tool_calls</code> 意味着模型"举手要用工具"，而<strong>不是</strong>给出了最终回答。你要：<strong>①执行</strong>对应的工具函数，<strong>②把返回值作为 <code>role:"tool"</code> 消息追加进 messages</strong>，再发一次请求，模型才能<strong>基于真实结果</strong>继续。跳过回填，模型就永远看不到工具的输出。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 工具定义长什么样：description 决定成败</h2>
+  <div class="card">
+    <p>要让模型知道"有哪些工具可用"，你得在请求里传一个 <code>tools</code> 参数。每个工具是一个 <code>type:"function"</code> 的对象，核心三件套：<strong>name（叫什么）、description（干什么用）、parameters（要哪些参数，用 JSON Schema 描述）</strong>：</p>
+    <pre><code>tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            # ↓ description 是模型"读说明书"的地方——写清楚"何时该用它"
+            "description": "查询指定城市的当前天气。当用户询问天气、气温、是否下雨时使用。",
+            "parameters": {                      # ← 这就是 JSON Schema
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "string",
+                        "description": "城市名，如 '北京'、'上海'",  # 参数描述也很关键
+                    },
+                    "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"],  # 枚举帮模型选对值
+                        "description": "温度单位，默认摄氏",
+                    },
+                },
+                "required": ["city"],            # 哪些参数必填
+            },
+        },
+    }
+]
+
+# 发请求时把 tools 一起带上
+resp = client.chat.completions.create(
+    model="gpt-5.5",                             # 具体型号以官网为准
+    messages=[{"role": "user", "content": "北京今天天气怎么样？"}],
+    tools=tools,                                 # ← 关键：告诉模型有哪些工具
+)</code></pre>
+    <p><strong>划重点</strong>：<code>description</code> 和每个参数的描述，<strong>直接决定模型选不选这个工具、选得对不对、参数填得准不准</strong>。模型没有别的线索——它就是靠读这段"说明书"来决策的。描述含糊，模型就乱选或不选；描述清晰（写明"何时用、参数啥含义"），命中率立刻上一个台阶。<strong>工具 Schema 的设计本身是一门手艺</strong>，我们在 <a href="0039-L34-tool-schema-design.html">L34 Tool Schema 设计</a>专门展开。参数 Schema 怎么用 Python 优雅地生成，见 <a href="0018-L14-pydantic.html">L14 Pydantic</a>。</p>
+  </div>
+  <div class="tip">
+    <strong>把 description 当成写给模型的 API 文档</strong>：不是给人看的注释，而是模型做决策的<strong>唯一依据</strong>。多写一句"什么时候该用 / 不该用"，往往比换个更大的模型还管用。这是最便宜的 Agent 提效手段。
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 模型怎么把工具调用还给你</h2>
+  <div class="card">
+    <p>当模型决定用工具时，它<strong>不会</strong>把答案放进平时的 <code>message.content</code>（这时 content 常常是 <code>None</code>），而是放进一个专门的字段 <code>tool_calls</code>：</p>
+    <pre><code>import json
+
+resp = client.chat.completions.create(model="gpt-5.5", messages=..., tools=tools)
+msg = resp.choices[0].message
+
+# ① 判断模型是否要求调用工具
+if msg.tool_calls:
+    messages.append(msg)                   # ★ 必须先把「模型这条工具请求」加回历史，
+                                           #   否则下一次请求会 400（tool 结果必须紧跟对应的 tool_calls 消息）
+    for call in msg.tool_calls:
+        name = call.function.name          # 工具名，如 "get_weather"
+        # ② arguments 是【JSON 字符串】，不是 dict！必须先解析
+        args = json.loads(call.function.arguments)   # → {"city": "北京"}
+
+        # ③ 你的代码按名字分发、真正执行
+        if name == "get_weather":
+            result = get_weather(**args)   # 这一步才真的去查天气
+
+        # ④ 回填：把结果作为 role:"tool" 消息追加（要带上 call.id）
+        messages.append({
+            "role": "tool",
+            "tool_call_id": call.id,       # 对应哪一次调用
+            "content": json.dumps(result), # 工具返回值（字符串）
+        })
+    # 再发一次请求，模型就能基于结果继续（详见 L35）</code></pre>
+    <p>三个每次都会踩的点：<strong>① 回复在 <code>tool_calls</code> 里，不在 <code>content</code></strong>；<strong>② 回填 tool 结果前，必须先把模型那条 <code>tool_calls</code> 消息 <code>append</code> 回 messages</strong>（否则下一次请求报错——tool 消息必须紧跟它对应的 tool_calls 消息）；<strong>③ <code>call.function.arguments</code> 是一段 <em>JSON 字符串</em>，不是 Python dict</strong>——必须 <code>json.loads()</code> 之后才能当参数用。字段名（<code>tool_calls</code> / <code>function.name</code> / <code>function.arguments</code>）都是 OpenAI 官方的真实结构，可对照官方文档核对：<a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank">OpenAI · Function calling guide</a>。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> <code>call.function.arguments</code> 拿到手是什么类型，怎么用？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">已经是 dict，可直接展开传参用</button>
+      <button data-answer="correct">是 JSON 串，先 json.loads</button>
+      <button data-answer="wrong">是解析好的 Python 对象，直接取属性即可</button>
+      <button data-answer="wrong">是纯文本，直接拼进提示词</button>
+    </div>
+    <div class="quiz-explanation"><code>arguments</code> 是模型生成的一段 <strong>JSON 字符串</strong>（如 <code>'{"city":"北京"}'</code>），<strong>不是</strong> dict。要用 <code>json.loads(call.function.arguments)</code> 解析成字典后再传给函数（<code>get_weather(**args)</code>）。同理，工具名在 <code>call.function.name</code>，且模型的这轮回复在 <code>tool_calls</code> 里而非 <code>content</code>。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 多工具选择与并行调用</h2>
+  <div class="card">
+    <p>真实 Agent 手里往往有一整套工具（查天气、查数据库、发邮件、算数……）。Function Calling 在这里有两层能力：</p>
+    <ul>
+      <li><strong>多选一 / 选合适的</strong>：你把多个工具一起放进 <code>tools</code>，模型会<strong>根据 description 自己判断</strong>该用哪一个（或一个都不用，直接文字作答）。这也是为什么第 3 节反复强调描述质量。</li>
+      <li><strong>并行工具调用</strong>：模型可以在<strong>一次回复里返回多个 <code>tool_calls</code></strong>——比如"帮我对比北京和上海的天气"，它可能一口气要求调用两次 <code>get_weather</code>。所以第 4 节的代码用 <code>for call in msg.tool_calls</code> 循环遍历，而不是只取第一个。你可以并发执行这些调用、分别回填，再让模型汇总。</li>
+    </ul>
+    <pre><code># 一次返回多个 tool_calls 的形状（简化）
+msg.tool_calls == [
+    call(id="c1", function=(name="get_weather", arguments='{"city":"北京"}')),
+    call(id="c2", function=(name="get_weather", arguments='{"city":"上海"}')),
+]
+# → 你遍历执行两次，各自用 tool_call_id 回填，模型再对比作答</code></pre>
+    <p>这里只建立概念：<strong>模型能一次要多个工具、也能在多工具间挑选</strong>。把它编织进"发→选→执行→回填→再发"的多轮循环，正是 Agent 真正干活的样子——完整机制我们在 <a href="0040-L35-function-calling-loop.html">L35 完整 FC 循环</a>里手把手实现。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 回到 Agent：Function Calling 就是 Agent 的"手"</h2>
+  <div class="card">
+    <p>把前面几节串起来，你会发现一个朴素但关键的结论：</p>
+    <pre><code>LLM 本身        = 一张"只会说话的嘴"（无状态、不能行动，见 L21/L25）
++ Function Calling = 给它装上一双"手"（能表达"我要做什么"）
++ 你的执行代码     = 手真正落到实处（跑工具、改世界）
+= Agent            = 能感知、能决策、能行动的系统</code></pre>
+    <p>观察任何一个 Agent Loop，你会发现它的<strong>几乎每一步都是一次 Function Calling</strong>：模型看当前状态 → 决定调哪个工具（输出意图）→ 应用执行 → 结果回填 → 模型再决定下一步……如此往复，直到任务完成。所以说，<strong>Function Calling 不是一个可选的 API 花样，而是"LLM 能行动"这件事的底层开关</strong>。没有它，你手里就只有一个聊天机器人，永远迈不进 Agent 的门。</p>
+    <p>本课把"原理与单次调用"讲透了。真正把它跑成一个会自己多轮推进、并行调用、直到收敛的 Agent，是 <a href="0040-L35-function-calling-loop.html">L35</a> 的主题。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>动手练习</h2>
+  <div class="card">
+    <p>试着<strong>自己先写一遍</strong>，再展开对照——设计能力比记 API 更值钱。</p>
+    <details>
+      <summary>练习：为"查数据库"设计一个工具定义，并说明模型会怎么返回调用</summary>
+      <p style="margin-top:.8rem;">目标：定义一个能"按用户 ID 查订单"的工具，并预测模型收到"帮我查下用户 42 的订单"时会返回什么。</p>
+      <p><strong>① 工具定义（tools 里的一项）：</strong></p>
+      <pre><code>{
+    "type": "function",
+    "function": {
+        "name": "query_orders",
+        # 描述写清"何时用" —— 决定模型选不选它
+        "description": "按用户 ID 查询该用户的历史订单。当用户询问某人的订单、购买记录时使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "integer",
+                    "description": "要查询的用户的数字 ID",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "最多返回多少条，默认 10",
+                },
+            },
+            "required": ["user_id"],
+        },
+    },
+}</code></pre>
+      <p><strong>② 模型会怎么返回（<code>resp.choices[0].message.tool_calls</code>）：</strong></p>
+      <pre><code>tool_calls == [
+    call(
+        id="call_abc123",
+        function=(
+            name="query_orders",
+            arguments='{"user_id": 42}',   # ← 注意：是 JSON 字符串！
+        ),
+    )
+]
+
+# 你的代码这样接住它：
+args = json.loads(tool_calls[0].function.arguments)  # → {"user_id": 42}
+rows = query_orders(**args)                           # 你的代码真正查库
+messages.append({                                     # 回填结果
+    "role": "tool",
+    "tool_call_id": tool_calls[0].id,
+    "content": json.dumps(rows),
+})</code></pre>
+      <p><strong>要点自检</strong>：模型只给出了"要调 query_orders、user_id=42"的<strong>意图</strong>；<code>arguments</code> 是<strong>字符串</strong>要 <code>json.loads</code>；真正的<strong>查库和回填都由你的代码完成</strong>。如果模型没填 <code>limit</code>，说明它按你写的"默认 10"理解了——这正是参数描述在起作用。</p>
+    </details>
+    <p style="margin-top:.9rem;"><strong>可运行性说明</strong>：上面代码的方法名（<code>chat.completions.create</code>）、字段名（<code>tool_calls</code> / <code>function.name</code> / <code>function.arguments</code>）都是 OpenAI SDK 的<strong>真实结构</strong>，<code>json.loads(arguments)</code> 是必需的。完整跑通需要 <code>pip install openai</code> 和 <code>OPENAI_API_KEY</code>（见 <a href="0030-L25-llm-api-basics.html">L25</a>）；没有 key 时，你可以把 <code>tool_calls</code> 手动 mock 成上面的形状，先把"解析 → 执行 → 回填"这段应用侧逻辑跑通。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：Function Calling</h2>
+  <div class="card">
+    <pre><code>【一句话本质】
+  模型只输出"我想调 X 工具、参数 Y"的结构化 JSON 意图
+  ★ 模型不执行任何代码；执行 + 回填 = 你的应用代码
+  ★ 这是 Agent"能行动"的核心开关
+
+【完整 5 步】
+  ① 带 tools=[...] 发请求（工具的 name/description/parameters）
+  ② 模型返回 tool_calls（工具名 + 参数），content 常为 None
+  ③ 你的代码执行工具： result = fn(**args)
+  ④ 回填： messages += {role:"tool", tool_call_id, content}
+  ⑤ 再发一次 → 模型基于结果继续（多轮循环见 L35）
+
+【工具定义三件套】
+  name         工具名
+  description  何时用它 —— 决定模型选不选、选得对不对（L34）
+  parameters   JSON Schema（type/properties/required/enum）
+
+【怎么取调用】
+  msg = resp.choices[0].message
+  for call in msg.tool_calls:           # 可能有多个（并行）
+      name = call.function.name
+      args = json.loads(call.function.arguments)  # ★ 是字符串，要解析！
+
+【多工具 / 并行】
+  多工具：模型按 description 自己选合适的（或都不用）
+  并行：一次回复可含多个 tool_calls → 用 for 遍历执行
+
+【铁律】arguments 是 JSON 字符串，永远 json.loads 后再传参</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank"><strong>OpenAI · Function calling guide</strong></a></p>
+    <p>官方权威文档，把"工具定义格式、模型如何返回 <code>tool_calls</code>、参数为何是 JSON 字符串、如何回填"讲得最清楚，还覆盖并行调用与 <code>tool_choice</code> 控制。读完这一篇，本课所有字段名你都能在文档里逐一对上号——这也是核对代码正确性的第一手来源。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0031-L26-streaming.html">上一课 L26 · Streaming 流式输出</a> — 让回复逐字蹦出来</li>
+      <li>· <a href="0033-L28-structured-outputs.html">下一课 L28 · Structured Outputs</a> — 让模型稳定吐出结构化数据</li>
+      <li>· <a href="0040-L35-function-calling-loop.html">L35 · 完整 FC 循环</a> — 多轮 / 并行，把原理跑成真 Agent</li>
+      <li>· <a href="0039-L34-tool-schema-design.html">L34 · Tool Schema 设计</a> — description 怎么写模型才选得准</li>
+      <li>· <a href="0018-L14-pydantic.html">L14 · Pydantic</a> — 用它优雅地定义参数 schema</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>Function Calling 让 LLM 能"用工具"，但<strong>模型只输出调用意图（结构化 JSON），不执行任何代码</strong></li>
+      <li>完整 5 步：<strong>带 tools 发请求 → 模型返回 <code>tool_calls</code> → 你执行工具 → 以 <code>role:"tool"</code> 回填 → 模型继续</strong></li>
+      <li>工具定义三件套 <strong>name / description / parameters(JSON Schema)</strong>，其中 <strong>description 直接决定模型选不选、选得对不对</strong>（L34）</li>
+      <li>取调用：<code>resp.choices[0].message.tool_calls</code>，参数 <code>arguments</code> 是 <strong>JSON 字符串，必须 <code>json.loads</code></strong></li>
+      <li>模型可<strong>一次返回多个 <code>tool_calls</code></strong>（并行）、也能在多工具间选择（深入见 L35）</li>
+      <li>Function Calling 是 <strong>Agent 的"手"</strong>——Agent Loop 的每一步几乎都是它</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    <strong>面试高频 · "讲讲 Function Calling 原理？"</strong>：一句话答清边界——<strong>模型只输出"要调哪个工具、传什么参数"的结构化 JSON 意图，它自己并不执行任何代码；真正的执行和结果回填由应用代码完成；这是 Agent 具备"行动能力"的核心机制。</strong> 能把"谁做什么"说清楚，就赢过一半候选人。原理懂了，下一课我们看怎么让模型稳定吐出结构化数据（Structured Outputs）。有疑问随时问我。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

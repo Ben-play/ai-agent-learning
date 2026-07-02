@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L34 · Tool Schema 设计</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>Tool Schema 设计</h1>
+    <p class="subtitle">工具定义就是模型的"说明书"——写好 Tool Schema 是 Agent 基本功</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:71%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>L27 你学了 Function Calling 的原理：模型不直接执行工具，而是<strong>输出一个"想调哪个工具、参数填什么"的结构化请求</strong>。但模型凭什么知道有哪些工具、每个工具干嘛、参数怎么填？——<strong>全靠你给的工具定义（Tool Schema）</strong>。</p>
+    <p>这就是本课的灵魂：<strong>Schema 的质量直接决定模型用不用得对</strong>。模型看不到你的函数实现，它<strong>只能看到 name / description / 参数 schema</strong> 这几行字来做决策。描述写得烂，模型就选错工具、填错参数——再强的模型也救不回来。<strong>Tool Schema 设计是"提示工程"在工具层的延伸，也是 Agent 能力的天花板。</strong>这一课把你在 <a href="0018-L14-pydantic.html">L14 Pydantic</a> 学的 <code>model_json_schema()</code> 真正用到刀刃上。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清"工具定义 = 模型的说明书"：模型只凭 name/description/参数 schema 做决策</li>
+      <li>用 <strong>Pydantic</strong> 定义参数、<code>model_json_schema()</code> 一键导出工具 schema</li>
+      <li>写出<strong>好的 description</strong>——让模型知道"何时用、参数填什么"</li>
+      <li>用 <strong>enum / Literal</strong> 约束取值、用 <strong>strict mode</strong> 保证格式严格符合 schema</li>
+      <li>控制工具数量与描述长度，<strong>省 input token</strong></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 工具定义 = 模型的"说明书"</h2>
+  <div class="card">
+    <p>先建立最核心的心智模型。你写的工具是这样一个函数：</p>
+    <pre><code>def get_order_status(order_id: str) -&gt; dict:
+    # ...真实实现：查数据库、调物流 API...
+    return {...}</code></pre>
+    <p>但<strong>模型看不到这段实现</strong>。传给模型的、模型唯一能读到的，只有一份"工具定义"——一段 JSON：</p>
+    <pre><code>{
+  "type": "function",
+  "name": "get_order_status",        # ← 模型据此决定"调不调"
+  "description": "查询用户订单的当前物流状态。", # ← 模型据此决定"什么时候调"
+  "parameters": {                    # ← 模型据此决定"参数填什么"
+    "type": "object",
+    "properties": {
+      "order_id": {"type": "string", "description": "订单号，如 'ORD-2026-0007'"}
+    },
+    "required": ["order_id"]
+  }
+}</code></pre>
+    <p>所以一句话：<strong>模型是靠"读说明书"来决定用不用、怎么用这个工具的</strong>。说明书写得清楚，模型就用得对；写得含糊，模型就选错工具、填错参数、甚至该调不调。这不是模型笨——是你没把话说清楚。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 模型靠什么决定"要不要调某个工具、参数怎么填"？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">读取函数的源码实现</button>
+      <button data-answer="correct">读你给的工具定义</button>
+      <button data-answer="wrong">运行工具看看结果</button>
+      <button data-answer="wrong">凭模型的先验知识猜</button>
+    </div>
+    <div class="quiz-explanation">模型<strong>看不到函数实现</strong>，也不会预先运行工具。它唯一的依据是你传入的<strong>工具定义（name + description + 参数 schema）</strong>。这几行字就是模型的全部信息——所以描述质量直接决定模型选得对不对、填得准不准。这正是本课的灵魂。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 用 Pydantic / JSON Schema 定义参数</h2>
+  <div class="card">
+    <p>手写 <code>parameters</code> 那坨 JSON 又累又容易错。<strong>业界标准做法：用 Pydantic 定义参数，再 <code>model_json_schema()</code> 一键导出</strong>（呼应 <a href="0018-L14-pydantic.html">L14</a>——LangChain、OpenAI SDK、Pydantic AI 内部都这么做）。</p>
+    <pre><code>from pydantic import BaseModel, Field
+
+class GetOrderStatus(BaseModel):
+    """查询用户订单的当前物流状态。"""     # ← docstring 会进 schema 的顶层 description
+    order_id: str = Field(
+        ...,                              # ... 表示必填（见 L14）
+        description="订单号，用户提供的完整编号，如 'ORD-2026-0007'",
+    )
+
+# 一键导出为工具参数 schema
+GetOrderStatus.model_json_schema()
+# {
+#   'type': 'object',
+#   'properties': {
+#     'order_id': {'type': 'string',
+#                  'description': "订单号，用户提供的完整编号，如 'ORD-2026-0007'"}
+#   },
+#   'required': ['order_id'],
+#   'description': '查询用户订单的当前物流状态。'
+# }</code></pre>
+    <p>关键点：<strong>每个字段都用 <code>Field(description=...)</code> 写清含义</strong>。这个 description 会进 JSON Schema，成为模型理解"这个参数填什么"的唯一依据。把它拼进工具定义：</p>
+    <pre><code>tool = {
+    "type": "function",
+    "name": "get_order_status",
+    "description": GetOrderStatus.__doc__,               # 顶层：这个工具干嘛
+    "parameters": GetOrderStatus.model_json_schema(),    # 参数：每个字段干嘛
+}</code></pre>
+  </div>
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>Pydantic 不只帮你导出 schema，还在<strong>工具执行前</strong>把模型返回的参数（一坨不可控的 JSON）<strong>校验一遍</strong>——类型不对、缺必填字段立刻抛错，而不是让脏参数流进你的函数（呼应 L14"跨信任边界就用 Pydantic"）。<strong>导出 schema + 校验入参，一个模型两头用。</strong></p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. description 如何影响模型选择（本课重点）</h2>
+  <div class="card">
+    <p>这是全课最该背下来的一节。<strong>description 直接决定模型选得对不对</strong>，有三个层面：</p>
+    <p><strong>① 工具的 description 要说清"这个工具什么时候用"</strong>。别只写工具是什么，要写<strong>它的用途和边界</strong>——尤其当你有多个相似工具时，模型全靠 description 区分该选哪个。</p>
+    <p><strong>② 每个参数的 description 要说清"填什么、什么格式"</strong>。给出格式、单位、示例。看这组"坏 vs 好"对比：</p>
+    <pre><code>❌ 坏描述（模型只能瞎猜）
+  query: "string"
+
+✅ 好描述（模型知道填什么、什么格式、给了例子）
+  query: "用户的搜索关键词，自然语言，如 '2026 最佳轻薄笔记本'"</code></pre>
+    <p>坏描述里 <code>"string"</code> 是废话——模型早知道它是字符串，它不知道的是"该塞用户原话还是提炼过的关键词"。好描述把这些全讲明白了。</p>
+    <p><strong>③ 用 enum / Literal 约束取值</strong>（呼应 <a href="0018-L14-pydantic.html">L14</a> 的 <code>Literal</code>）。取值有限就别让模型自由发挥，直接列出合法值：</p>
+    <pre><code>from typing import Literal
+from pydantic import BaseModel, Field
+
+class QueryOrders(BaseModel):
+    """按状态筛选并列出用户的订单。"""
+    status: Literal["pending", "shipped", "delivered", "cancelled"] = Field(
+        ..., description="要筛选的订单状态"
+    )
+# 导出的 schema 里 status 会带 "enum": ["pending","shipped","delivered","cancelled"]
+# → 模型只会从这 4 个里选，不会瞎编 "in_transit" 这种你代码里没有的值</code></pre>
+    <p><code>Literal</code> 导出成 JSON Schema 的 <code>enum</code>，模型只能在你给的选项里挑——从源头杜绝"编一个不存在的枚举值"。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 下面哪个参数 description 写得更好？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">"query：一个 string 类型的字符串参数值"</button>
+      <button data-answer="correct">"query：用户搜索词，如'轻薄本'"</button>
+      <button data-answer="wrong">"query：必填，不能为空，也不允许是空白"</button>
+      <button data-answer="wrong">"query：会被原样传给底层搜索函数用"</button>
+    </div>
+    <div class="quiz-explanation">好的参数 description 要告诉模型它<strong>不知道</strong>的东西：<strong>该填什么内容、什么格式，最好给个例子</strong>。"是个字符串""必填""传给搜索函数"这些要么是废话、要么模型从 schema 已经知道了。只有"用户搜索词 + 示例"真正帮模型判断该塞什么进去——这直接提升调用准确率。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. strict mode：让参数严格符合 schema</h2>
+  <div class="card">
+    <p>就算 description 完美，模型偶尔还是会<strong>漏字段、填错类型、多塞个你没定义的参数</strong>。<strong>strict mode（约束解码）</strong>从机制上根治这点——开启后，模型的输出被<strong>约束到只能生成符合 schema 的参数</strong>，而不是"尽力而为"。</p>
+    <pre><code>tool = {
+    "type": "function",
+    "name": "get_order_status",
+    "description": "查询用户订单的当前物流状态。",
+    "strict": True,                              # ← 开启严格模式
+    "parameters": {
+        "type": "object",
+        "properties": {"order_id": {"type": "string", "description": "订单号"}},
+        "required": ["order_id"],
+        "additionalProperties": False,           # strict 要求：禁止多余字段
+    },
+}</code></pre>
+    <p>OpenAI 官方原话：strict 让 function call <em>"reliably adhere to the function schema, instead of being best effort"</em>，并<strong>建议始终开启</strong>。注意它的两条要求：所有对象要 <code>additionalProperties: false</code>、<code>properties</code> 里的字段都要列进 <code>required</code>（可选字段用"允许 null"来表达）。</p>
+  </div>
+  <div class="tip">
+    <strong>同源机制</strong>：strict mode <em>"works by leveraging our structured outputs feature"</em>——它和你在 <a href="0033-L28-structured-outputs.html">L28 Structured Outputs</a> 学的<strong>约束解码是同一套底层技术</strong>。L28 用它保证"输出的 JSON 符合 schema"，这里用它保证"工具参数符合 schema"。一个机制，两处开花。来源：<a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank">OpenAI · Function calling（strict mode）</a>。
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. Token 成本：工具定义本身要花钱</h2>
+  <div class="card">
+    <p>容易被忽略的一点：<strong>工具定义会拼进每一次请求的 input，占 input token</strong>（呼应 <a href="0027-L23-token-economics.html">L23</a> / <a href="0018-L14-pydantic.html">L14</a>）。每一轮对话，你注册的<strong>所有</strong>工具的 name + description + 参数 schema 都要发一遍。</p>
+    <ul>
+      <li><strong>工具越多越贵</strong>：塞 40 个工具，这 40 份定义每轮都占 token，成本和延迟一起涨。</li>
+      <li><strong>描述越长越贵</strong>：description 要"讲清楚"但也要"精炼"，不是越啰嗦越好。</li>
+      <li><strong>工具太多还会降准确率</strong>：选项一多，模型更容易选错——省 token 和提准确率在这里是<strong>同一件事</strong>。</li>
+    </ul>
+    <p>实战原则：<strong>只给当前任务相关的工具</strong>。别一股脑把系统里几十个工具全塞进去；按场景动态挑选一小撮，既省钱又选得准。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于工具定义的 token 成本，哪个说法对？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">工具定义完全不占用任何 token</button>
+      <button data-answer="correct">工具越多越长越占 input</button>
+      <button data-answer="wrong">只有真正被调用到的工具才会计费</button>
+      <button data-answer="wrong">工具定义只在第一轮请求发送一次</button>
+    </div>
+    <div class="quiz-explanation">你注册的<strong>所有</strong>工具定义（name + description + 参数 schema）都会拼进<strong>每一轮</strong>请求的 input，无论是否被调用，都占 input token（L23）。所以工具越多、描述越长越贵，还会因选项过多降低选择准确率。对策：只给当前任务相关的一小撮工具，描述精炼。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 设计原则清单</h2>
+  <div class="card">
+    <p>把前面几节压缩成一份可直接照做的清单：</p>
+    <table>
+      <tr><th>原则</th><th>怎么做</th></tr>
+      <tr><td><strong>名字动词化</strong></td><td><code>get_order_status</code> / <code>search_docs</code>——动词开头，一看就知道"做什么"</td></tr>
+      <tr><td><strong>description 讲清用途和边界</strong></td><td>写"<strong>什么时候用</strong>"，不只写"是什么"；多工具靠它区分</td></tr>
+      <tr><td><strong>参数最少化</strong></td><td>只留必要参数；能有默认值的给默认值，减少模型要填的空</td></tr>
+      <tr><td><strong>用 enum 约束</strong></td><td>取值有限就用 <code>Literal</code>/enum，杜绝模型编不存在的值</td></tr>
+      <tr><td><strong>开 strict mode</strong></td><td>约束解码保证参数严格符合 schema</td></tr>
+      <tr><td><strong>错误信息友好</strong></td><td>参数非法时返回<strong>模型读得懂</strong>的报错，让它能据此重试（埋点 <a href="0041-L36-tool-robustness-registry.html">L36</a>）</td></tr>
+    </table>
+    <p style="margin-top:.6rem;">最后一条尤其重要：工具报错不该是给人看的堆栈，而该是<strong>给模型看的、能指导它下一步怎么改</strong>的一句话（如"order_id 格式应为 ORD-年份-序号"）。这为 L36 的"工具健壮性 + 让模型自我纠错"铺路。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>7. Agent 关联：工具设计是能力的天花板</h2>
+  <div class="card">
+    <p>把这一课放回 Agent 的大图里：Agent = 模型 + 一堆工具 + 循环（<a href="0040-L35-function-calling-loop.html">L35</a> 讲循环）。而<strong>模型能做多少事，上限就卡在工具设计上</strong>：</p>
+    <ul>
+      <li>工具描述差 → 模型选错、填错 → 再强的模型也<strong>用不好</strong>你的工具。</li>
+      <li>工具描述好 → 模型稳、准 → 一个中等模型也能把活干漂亮。</li>
+    </ul>
+    <p>所以本课的定位是：<strong>Tool Schema 设计是"提示工程"在工具层的延伸</strong>。你花在打磨 description、约束取值、精简参数上的每一分功夫，都会直接变成 Agent 的可靠性。这是 P0 级的 Agent 基本功——不是可选的优化，是能不能跑通的前提。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>实战练习</h2>
+  <div class="card">
+    <h3>练习：设计"查订单状态"工具的 Schema</h3>
+    <p>给你一个工具需求：<strong>查询订单状态</strong>。用 Pydantic 写出参数 schema，重点练<strong>好的 description</strong> 和 <strong>Literal 约束</strong>。要求：</p>
+    <ol>
+      <li>参数 <code>order_id</code>：必填，写清格式并给示例</li>
+      <li>参数 <code>detail_level</code>：可选，只能是 <code>"summary"</code> 或 <code>"full"</code>，默认 <code>"summary"</code>（用 Literal 约束）</li>
+      <li>工具的顶层 description 要说清"<strong>什么时候用</strong>它"</li>
+      <li>调 <code>model_json_schema()</code> 导出，拼成完整工具定义</li>
+    </ol>
+    <p><strong>先自己写，再看答案。</strong></p>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>from typing import Literal
+from pydantic import BaseModel, Field
+
+class GetOrderStatus(BaseModel):
+    """当用户询问某个订单的物流/发货状态时调用，返回该订单的当前状态。
+    需要用户提供订单号；查询多个订单请多次调用。"""   # ← 讲清"何时用 + 边界"
+
+    order_id: str = Field(
+        ...,
+        description="订单号，用户提供的完整编号，格式为 'ORD-年份-序号'，如 'ORD-2026-0007'",
+    )
+    detail_level: Literal["summary", "full"] | None = Field(
+        None,
+        description="返回详细程度（可选）：summary=只给当前状态；full=含完整物流轨迹；不填默认按 summary 处理",
+    )
+
+# 导出参数 schema（detail_level 会带 enum: ["summary","full"]）
+params = GetOrderStatus.model_json_schema()
+
+# 拼成完整工具定义
+tool = {
+    "type": "function",
+    "name": "get_order_status",          # 动词化命名
+    "description": GetOrderStatus.__doc__,
+    "strict": True,                       # 严格模式保证格式
+    "parameters": params,
+}
+
+# —— 校验演示：模型返回的参数进来先过一遍 Pydantic ——
+GetOrderStatus(order_id="ORD-2026-0007")              # ✅ detail_level 默认 summary
+GetOrderStatus(order_id="X", detail_level="verbose")  # ❌ ValidationError：不是合法枚举值</code></pre>
+      <h4>为什么这样写好？</h4>
+      <ul>
+        <li>顶层 description 讲了<strong>何时用</strong>（用户问订单状态）和<strong>边界</strong>（多订单要多次调），模型不会误用。</li>
+        <li><code>order_id</code> 给了<strong>格式 + 示例</strong>，模型不会填个乱七八糟的值。</li>
+        <li><code>detail_level</code> 用 <code>Literal</code> 锁死取值，模型编不出 <code>"verbose"</code>；设成"允许 null"（<code>| None</code>）表达"可选"，这才是 strict 模式下表达可选字段的正确姿势（strict 要求所有字段都在 <code>required</code> 里，用 null 表达"不填"）。</li>
+        <li>顺手拿同一个模型<strong>校验入参</strong>——脏参数在进函数前就被 Pydantic 拦下。</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：Tool Schema 设计</h2>
+  <div class="card">
+    <pre><code>【核心心智】工具定义 = 模型的"说明书"
+  模型看不到实现，只凭 name / description / 参数 schema 决策
+  ★ description 质量 → 直接决定模型选得对不对、填得准不准
+
+【怎么定义】用 Pydantic → model_json_schema() 一键导出
+  class Tool(BaseModel):
+      """顶层 description：这个工具【什么时候】用"""
+      arg: str = Field(..., description="填什么 + 格式 + 例子")
+  同一个模型还能【校验模型返回的参数】（跨信任边界，见 L14）
+
+【description 三层（重点）】
+  ① 工具级：说清"何时用、边界"（多工具靠它区分）
+  ② 参数级：说清"填什么、什么格式"，给示例
+     ❌ "query: string"
+     ✅ "query: 用户搜索词，如 '2026 最佳轻薄本'"
+  ③ 取值约束：Literal / enum 锁死合法值，杜绝模型瞎编
+
+【strict mode】约束解码，参数严格符合 schema（非尽力而为）
+  strict:True + additionalProperties:false + 字段进 required
+  与 L28 Structured Outputs 同源机制，官方建议始终开
+
+【Token 成本】所有工具定义每轮都占 input（L23）
+  工具越多越长越贵，还会降准确率 → 只给当前任务相关的一小撮
+
+【设计原则】名字动词化 · 讲清用途边界 · 参数最少化
+           · enum 约束 · 开 strict · 错误信息给模型看(→L36)</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank"><strong>OpenAI · Function calling guide</strong></a>（配合 <a href="https://docs.pydantic.dev/latest/concepts/json_schema/" target="_blank"><strong>Pydantic · JSON Schema</strong></a>）</p>
+    <p>前者是工具定义字段（name/description/parameters/strict）和 strict mode 的<strong>官方权威说明</strong>——注意它把 <code>description</code> 定义为 <em>"Details on when and how to use the function"</em>，一句话点破本课灵魂：description 要讲清"何时、如何"用。后者讲清 Pydantic 怎么把模型导成标准 JSON Schema。两篇读完，工具定义就通了。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0038-L33-observability.html">上一课 L33 · LLM 可观测性</a> — 工具调用也要被追踪</li>
+      <li>· <a href="0040-L35-function-calling-loop.html">下一课 L35 · 完整 FC 循环</a> — 把工具接进"调用 → 执行 → 回填"的环</li>
+      <li>· <a href="0018-L14-pydantic.html">L14 · Pydantic</a> — 定义 schema 的标准工具（本课地基）</li>
+      <li>· <a href="0033-L28-structured-outputs.html">L28 · Structured Outputs</a> — strict mode 的同源约束解码机制</li>
+      <li>· <a href="0032-L27-function-calling.html">L27 · Function Calling 原理</a> — 模型为什么需要工具定义</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li><strong>工具定义 = 模型的说明书</strong>：模型只凭 name/description/参数 schema 决策，看不到实现</li>
+      <li><strong>description 质量直接决定模型用得对不对</strong>——这是本课的灵魂</li>
+      <li>用 <strong>Pydantic + <code>model_json_schema()</code></strong> 定义并导出 schema，同一模型还能校验入参</li>
+      <li>description 三层：工具级讲"何时用"、参数级讲"填什么+格式+示例"、用 <strong>Literal/enum</strong> 约束取值</li>
+      <li><strong>strict mode</strong>（与 L28 同源）保证参数严格符合 schema，官方建议始终开</li>
+      <li>工具定义占 <strong>input token</strong>：工具最少化、描述精炼、只给相关工具</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    <strong>💼 面试高频：「如何设计好的 Tool Schema？」</strong><br>
+    答：核心是<strong>清晰的 description</strong>（讲清何时用、每个参数填什么、给示例）——它直接决定模型选得对不对；工程上用 <strong>Pydantic / JSON Schema</strong> 定义并导出，<strong>enum / Literal</strong> 约束取值，<strong>strict mode</strong> 保证格式严格符合 schema；再做<strong>参数最少化</strong>和<strong>控制工具数量</strong>来省 token、提准确率。一句话收尾：<strong>工具描述是 Agent 能力的天花板，再强的模型也用不好一份烂 schema。</strong>下一课我们把工具接进完整的 Function Calling 循环。有疑问随时问我。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

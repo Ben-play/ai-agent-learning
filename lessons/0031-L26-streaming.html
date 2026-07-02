@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L26 · Streaming 流式输出</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>Streaming 流式输出</h1>
+    <p class="subtitle">让回复像 ChatGPT 一样逐字往外蹦，而不是干等一大段</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:14%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>上一课（<a href="0030-L25-llm-api-basics.html">L25</a>）你学会了发一串 <code>messages</code>、收一条回复。但你有没有发现一个体验问题：如果模型要写 500 字，你得<strong>干等到整段生成完</strong>才看到第一个字——短则两三秒，长则十几秒，界面一直转圈，用户以为卡死了。</p>
+    <p>ChatGPT 为什么感觉"快"？因为它<strong>不等全部写完</strong>——字是一个一个往外蹦的。这就是<strong>流式输出（Streaming）</strong>：模型每生成一小块就立刻推给你，用户几乎<strong>立刻看到第一个字</strong>（首字延迟 TTFT 大幅降低）。这一课我们讲清它的原理（SSE）、两家 SDK 的正确写法（已核对 openai 2.x），以及工程上真正会踩的坑。对 Agent 来说，"打字机效果"和"边生成边解析"都靠它。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清<strong>流式 vs 非流式</strong>的差别，以及为什么流式能降低<strong>首字延迟（TTFT）</strong></li>
+      <li>理解流式底层是 <strong>SSE（Server-Sent Events）</strong>：服务端把回复切成一串 chunk 推过来</li>
+      <li>用 openai SDK 开启 <code>stream=True</code>，正确从 <code>chunk.choices[0].delta.content</code> 取增量并<strong>判空</strong></li>
+      <li>知道 Anthropic 的流式写法（<code>messages.stream</code> + <code>text_stream</code>），理解两家形状不同、概念一致</li>
+      <li>避开三个工程坑：<strong>usage 统计、流式 Function Calling、中途断流</strong></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 为什么要流式：把"干等"变成"边看边等"</h2>
+  <div class="card">
+    <p>一次 LLM 调用其实要花不少时间生成 token。<strong>非流式</strong>模式下，服务端<strong>攒齐整段回复</strong>才一次性返回——你的用户面对的是一个转圈的加载框，回复越长等得越久，中途还完全看不到任何进展。</p>
+    <p><strong>流式</strong>则相反：模型<strong>逐 token 边生成边返回</strong>，每生成一小块就立刻推给客户端，客户端收到就立刻显示。于是用户<strong>几乎立刻看到字往外蹦</strong>——就像 ChatGPT 那样。</p>
+    <pre><code>非流式：  [用户提问] ──等 8 秒（黑屏转圈）──> [唰！一次性出现 500 字]
+流式：    [用户提问] ─等 0.3 秒─> 字 字 字 字 字 …… 边生成边显示，一路到底
+                                  ↑ 首字延迟(TTFT)极低，体验天差地别</code></pre>
+    <p>关键指标叫 <strong>TTFT（Time To First Token，首字延迟）</strong>：从发请求到<strong>看到第一个 token</strong>的时间。流式把用户的"感知等待"从"整段总时长"压到了"首字时间"。<strong>总生成时间没变，但体验完全不同</strong>——这就是流式的核心价值。</p>
+  </div>
+  <div class="tip">
+    💡 一个直觉：流式不会让模型"算得更快"，它改变的是<strong>你什么时候开始看到结果</strong>。对话类、长文生成、Agent 的思考展示——凡是"人在盯着屏幕等"的场景，流式几乎是标配。
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 原理：流式跑在 SSE 上</h2>
+  <div class="card">
+    <p>流式不是什么黑魔法，它基于一个成熟的 Web 协议：<strong>SSE（Server-Sent Events，服务器推送事件）</strong>。机制很简单：客户端发一次请求，服务端<strong>不立刻关闭连接</strong>，而是把回复切成一串 <strong>chunk 事件</strong>，一个接一个地"推"过来；客户端<strong>逐个接收、增量拼接</strong>，直到收到结束标志。</p>
+    <pre><code>客户端 ──一次请求──> 服务端
+       <── data: {chunk 1}      "写"
+       <── data: {chunk 2}      "一首"
+       <── data: {chunk 3}      "短诗"
+       <── data: [DONE]         结束（OpenAI 用 [DONE]；Anthropic 用 message_stop 事件）
+       （同一条连接，事件一个一个流过来）</code></pre>
+    <p>这正好呼应你前面学过的两块基础：</p>
+    <ul>
+      <li><a href="0019-L15-httpx.html">L15 · httpx SSE</a>——SSE 就是<strong>流式的传输层</strong>。当你不用高层 SDK、直接打 HTTP 时，收到的就是一行行 <code>data: {...}</code> 的事件流，需要自己逐行解析。SDK 只是帮你把这层封装好了。</li>
+      <li><a href="0016-L12-generators-streaming.html">L12 · 生成器</a>——生成器<strong>天然适合逐块 yield</strong>。所以各家 SDK 的流式返回值都是一个<strong>可迭代对象</strong>：你用 <code>for chunk in stream:</code> 一块一块地取，取一块处理一块，内存里从不驻留整段回复。语言基础和 API 设计在这里完美对上了。</li>
+    </ul>
+    <p>一句话：<strong>SSE 负责"怎么把 chunk 推过来"，生成器负责"怎么在 Python 里一块块拿出来"</strong>。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> LLM 流式输出底层依赖的是哪种机制？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">客户端不断轮询接口</button>
+      <button data-answer="correct">SSE 逐块推送事件</button>
+      <button data-answer="wrong">一次性返回全部内容</button>
+      <button data-answer="wrong">双向 WebSocket 长连</button>
+    </div>
+    <div class="quiz-explanation">流式跑在 <strong>SSE（Server-Sent Events）</strong>上：客户端发一次请求，服务端保持连接、把回复切成一串 <code>chunk</code> 事件<strong>单向推</strong>过来，客户端逐个收、增量拼接（呼应 L15 httpx SSE）。它不是轮询（那要发很多次请求），也不是一次性返回（那就不叫流式了）；虽然 WebSocket 也能做，但 LLM 流式的行业标准是 SSE——单向推送足矣，更简单。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. OpenAI 流式：一个 <code>stream=True</code> 搞定</h2>
+  <div class="card">
+    <p>把 <a href="0030-L25-llm-api-basics.html">L25</a> 的非流式调用改成流式，<strong>只加一个参数、把取值方式换一下</strong>（已核对 openai 2.x 写法）：</p>
+    <pre><code>from openai import OpenAI
+
+client = OpenAI()   # 仍然读 OPENAI_API_KEY，别硬编码（L25 铁律）
+
+stream = client.chat.completions.create(
+    model="gpt-5.5",                          # 型号以官网为准，别写死
+    messages=[{"role": "user", "content": "写一首短诗"}],
+    stream=True,                              # ← 开启流式，返回值变成可迭代
+)
+
+for chunk in stream:                          # 逐块取（生成器，L12）
+    delta = chunk.choices[0].delta.content    # ← 增量片段，可能是 None
+    if delta:                                 # ← 必须判空，否则会拼进 "None"
+        print(delta, end="", flush=True)      # 逐块打印，别换行、立刻刷新</code></pre>
+    <p><strong>三个必须记住的点：</strong></p>
+    <ul>
+      <li><strong>正文在 <code>chunk.choices[0].delta.content</code></strong>——注意是 <code>delta</code>（<em>增量</em>），不是非流式的 <code>message</code>。每个 chunk 只带<strong>这一小块新增</strong>的文字，你要自己把它们首尾相接。</li>
+      <li><strong><code>delta.content</code> 可能是 <code>None</code></strong>——比如第一个 chunk 常常只带角色信息、末尾 chunk 带结束原因，正文是空的。所以<strong>一定要 <code>if delta:</code> 判空</strong>，否则 <code>print</code> 会把字符串 <code>"None"</code> 也拼进去。这是新手最常见的 bug。</li>
+      <li><strong><code>print(delta, end="", flush=True)</code></strong>——<code>end=""</code> 保证不换行（否则每块一行就乱了）；<code>flush=True</code> 强制立刻输出到终端，才有"逐字蹦"的效果，不然会被缓冲攒着。</li>
+    </ul>
+    <p>要拿到完整文本？边打印边 <code>full += delta</code> 累积即可。<strong>流式的本质就是：把一次"大返回"拆成 for 循环里的一串"小增量"，你负责拼。</strong></p>
+  </div>
+  <div class="tip">
+    📖 官方权威写法见 <a href="https://developers.openai.com/api/docs/guides/streaming-responses" target="_blank">OpenAI · Streaming responses</a>。里面还讲了 Responses API 的流式事件模型（<code>response.output_text.delta</code> 等），概念一致、字段名不同——记住"取 delta、判空、拼接"这个心法就能举一反三。
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. Anthropic 流式：形状不同，概念一致</h2>
+  <div class="card">
+    <p>Claude 的流式写法长得不太一样，但你会发现<strong>内核完全相同</strong>：还是"逐块取增量、自己拼"。它用一个<strong>上下文管理器</strong>，并贴心地提供了一个只吐文本的迭代器 <code>text_stream</code>：</p>
+    <pre><code>from anthropic import Anthropic
+
+client = Anthropic()   # 读 ANTHROPIC_API_KEY
+
+with client.messages.stream(                  # ← 用 stream()，配 with 上下文
+    model="claude-sonnet-4-6",                # 型号以官网为准
+    max_tokens=1024,                          # Anthropic 必填（L25 差异①）
+    messages=[{"role": "user", "content": "写一首短诗"}],
+) as stream:
+    for text in stream.text_stream:           # ← 直接拿到文本增量，无需判空
+        print(text, end="", flush=True)</code></pre>
+    <p>对比一下两家，你就抓住了流式的"不变量"与"可变量"：</p>
+    <ul>
+      <li><strong>不变（概念）</strong>：都是 SSE 推 chunk、都用 <code>for</code> 循环<strong>逐块取增量、增量拼接</strong>、都能立刻显示。</li>
+      <li><strong>可变（形状）</strong>：OpenAI 是 <code>stream=True</code> + 直接迭代 + 手动取 <code>delta.content</code> 并判空；Anthropic 是 <code>messages.stream(...)</code> + <code>with</code> 上下文 + <code>text_stream</code> 直接给文本。</li>
+    </ul>
+    <p>所以别去死记两套 API——记住<strong>「逐块取增量 → 拼接 → 立刻显示」</strong>这一条心法，换任何厂商都只是查一下"增量字段叫什么、要不要判空"而已。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> OpenAI 流式里，每个 chunk 的正文增量该从哪取、要注意什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">从 message.content 直接取</button>
+      <button data-answer="correct">取 delta.content 并判空</button>
+      <button data-answer="wrong">取 choices 的完整文本</button>
+      <button data-answer="wrong">末尾 chunk 一次性取</button>
+    </div>
+    <div class="quiz-explanation">流式下正文在 <code>chunk.choices[0].delta.content</code>——是 <strong>delta（增量）</strong>，不是非流式的 <code>message.content</code>，每块只带新增的一小段。而且它<strong>可能是 None</strong>（首块带角色、末块带结束原因，正文为空），所以必须 <code>if delta:</code> 判空后再拼接/打印，否则会把字符串 "None" 混进结果。这是流式最经典的坑。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 工程注意：流式带来的三个坑</h2>
+  <div class="card">
+    <p>流式体验好，但工程上有三件事和非流式不一样，提前知道能少踩坑：</p>
+    <ul>
+      <li><strong>① Token 用量（usage）统计变了</strong>。非流式一返回就有 <code>usage</code>；流式下正文一路是 <code>delta</code>，<strong>用量通常出现在<em>最后一个 chunk</em>，或需要单独开启</strong>（OpenAI 要传 <code>stream_options={"include_usage": True}</code> 才会在末尾多推一个带 usage 的 chunk）。别在循环中途读 usage——那时它还没来。这直接影响你按 <a href="0027-L23-token-economics.html">L23</a> 算成本。</li>
+      <li><strong>② 流式里做 Function Calling 更麻烦</strong>。工具调用的参数（一段 JSON）也是<strong>切成 delta 一块块推</strong>的，你得把这些 <code>tool_calls</code> 的增量片段<strong>按 index 拼起来</strong>，拼完整才能解析成参数。这个细节在 <a href="0032-L27-function-calling.html">L27 Function Calling</a> 起步、到 <a href="0041-L36-tool-robustness-registry.html">L36 工具健壮性</a>里会真正用到——这里先埋个点，知道"流式 + 工具调用要增量拼参数"即可。</li>
+      <li><strong>③ 出错处理：流到一半断了怎么办？</strong> 非流式是"要么全拿到、要么整个失败"；流式则可能<strong>已经收了半段、连接突然断了</strong>。你手里是<strong>部分结果</strong>——要考虑：是把已收到的展示出来，还是重试？重试又可能重复。健壮的流式要包 <code>try/except</code>、设超时、想清楚<strong>部分结果 + 重试</strong>的策略。这属于容错话题，<a href="0036-L31-error-handling-retry.html">L31 重试/超时/退避</a>会系统讲。</li>
+    </ul>
+    <p>一句话总结这三坑：<strong>usage 挪到了末尾、工具参数要拼、断流要有兜底</strong>。它们不难，但不知道就会在生产里被咬一口。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于流式模式下的 Token 用量（usage），下面哪种说法对？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">流式完全拿不到用量</button>
+      <button data-answer="correct">用量常在末块或需单开</button>
+      <button data-answer="wrong">每个 chunk 都带用量</button>
+      <button data-answer="wrong">用量在首个 chunk 里</button>
+    </div>
+    <div class="quiz-explanation">流式下正文是一路 <code>delta</code>，<strong>用量通常出现在最后一个 chunk，或需要单独开启</strong>（OpenAI 需传 <code>stream_options={"include_usage": True}</code>，才会在流末尾多推一个带 usage 的 chunk）。所以它<strong>能</strong>拿到，只是不像非流式那样一返回就有；也不是每块都带、更不在首块。算成本（L23）时要注意等到流结束再读。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 和 Agent 的关系：流式是"能被看见"和"能被边解析"的前提</h2>
+  <div class="card">
+    <p>你可能觉得流式只是"好看"，但对 Agent 它有两层实打实的价值：</p>
+    <ul>
+      <li><strong>打字机效果（给人看）</strong>：Agent 常要输出长回复、展示"正在思考"的过程。流式让用户<strong>立刻看到进展</strong>，而不是盯着转圈——交互式 Agent、聊天助手几乎都开流式。</li>
+      <li><strong>边生成边解析（给程序用）</strong>：更进阶的玩法是<strong>不等模型说完就开始处理</strong>——比如流式解析模型正在吐的结构化输出（JSON），或在工具调用参数刚拼够时就<strong>提前准备执行</strong>。这让 Agent 的响应链路更短、更灵敏。它依赖的正是"增量到达、增量处理"这个流式本质。</li>
+    </ul>
+    <p>所以流式不只是 UI 糖：它是 Agent <strong>"能被人看见"</strong>（打字机）和 <strong>"能被程序边收边用"</strong>（流式解析）的共同前提。学完这一课，你已经具备把 <a href="0030-L25-llm-api-basics.html">L25</a> 的普通调用升级成"活的、会蹦字的"调用的能力。</p>
+  </div>
+
+  <details style="margin-top:1rem;">
+    <summary style="cursor:pointer; font-weight:600;">🛠️ 动手练习：把一个非流式调用改成流式逐字打印（点开看任务，答案折叠在最后）</summary>
+    <div class="card" style="margin-top:.8rem;">
+      <p><strong>任务</strong>：下面是一段<strong>非流式</strong>的 OpenAI 调用，请你把它改成<strong>流式</strong>，并让回复<strong>逐字打印</strong>在终端上（要有"打字机"效果）。同时把完整回复<strong>累积到一个字符串 <code>full</code></strong> 里，循环结束后打印它的字数。</p>
+      <pre><code># 改造前（非流式）
+from openai import OpenAI
+client = OpenAI()
+
+resp = client.chat.completions.create(
+    model="gpt-5.5",
+    messages=[{"role": "user", "content": "用三句话介绍一下向量数据库"}],
+)
+print(resp.choices[0].message.content)</code></pre>
+      <p><strong>要求</strong>：① 开启流式；② 逐块取增量并<strong>判空</strong>；③ 逐字打印（不换行、立刻刷新）；④ 累积到 <code>full</code> 并在最后 <code>print(len(full))</code>。</p>
+      <details style="margin-top:.6rem;">
+        <summary style="cursor:pointer; font-weight:600;">✅ 参考答案（先自己写，再对照）</summary>
+        <pre><code>from openai import OpenAI
+client = OpenAI()
+
+stream = client.chat.completions.create(
+    model="gpt-5.5",
+    messages=[{"role": "user", "content": "用三句话介绍一下向量数据库"}],
+    stream=True,                                   # ① 开启流式
+)
+
+full = ""
+for chunk in stream:
+    delta = chunk.choices[0].delta.content         # ② 取增量
+    if delta:                                      #    判空（可能是 None）
+        print(delta, end="", flush=True)           # ③ 逐字打印，不换行、立刻刷新
+        full += delta                              # ④ 累积完整回复
+
+print()                                            # 收尾换个行
+print(f"共 {len(full)} 字")</code></pre>
+        <p style="margin-top:.5rem;">核心就三步：<code>stream=True</code> 开启、<code>delta.content</code> 判空后取、<code>end="" flush=True</code> 逐字打印。想在 Anthropic 上做？把中间换成 <code>with client.messages.stream(...) as stream: for text in stream.text_stream:</code> 即可——心法不变。</p>
+      </details>
+    </div>
+  </details>
+
+  <div class="tip" style="margin-top:1rem;">
+    🎤 <strong>面试高频：「Streaming 的好处是什么？」</strong> 标准答法：<strong>① 降低首字延迟（TTFT）</strong>，用户几乎立刻看到第一个字；<strong>② 改善长回复体验</strong>，把"干等整段"变成"边看边等"；<strong>③ 支持边生成边处理</strong>（如流式解析结构化输出 / 工具调用参数）。本质上它是把回复经 <strong>SSE 逐块推送</strong>、客户端增量拼接——总生成时间没变，但<em>感知等待</em>大幅下降。
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：流式输出</h2>
+  <div class="card">
+    <pre><code>【是什么】逐 token 边生成边返回，用户立刻看到字往外蹦（像 ChatGPT）
+  核心收益：首字延迟 TTFT ↓↓（总时长不变，感知等待暴降）
+
+【底层】SSE（Server-Sent Events）
+  一次请求 → 服务端把回复切成一串 chunk 事件推过来
+  客户端逐个收、增量拼接（传输层=L15 httpx SSE，取块=L12 生成器）
+
+【OpenAI · Chat Completions】
+  stream = client.chat.completions.create(..., stream=True)
+  for chunk in stream:
+      delta = chunk.choices[0].delta.content   # 增量，可能是 None
+      if delta:                                # ★ 必须判空
+          print(delta, end="", flush=True)     # 逐字，不换行、立刻刷新
+
+【Anthropic · Messages】
+  with client.messages.stream(..., max_tokens=必填) as stream:
+      for text in stream.text_stream:          # 直接给文本增量
+          print(text, end="", flush=True)
+
+【心法（换厂商都通用）】逐块取增量 → 增量拼接 → 立刻显示
+
+【三个工程坑】
+  ① usage：常在最后一个 chunk / 需单开
+     (OpenAI: stream_options={"include_usage": True})
+  ② 流式 Function Calling：tool_call 参数按 index 增量拼 → L27/L36
+  ③ 断流：手里是部分结果，要 try/except + 兜底重试 → L31
+
+【面试题】Streaming 好处？TTFT↓ + 长回复体验 + 边生成边处理，本质 SSE 逐块推</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://developers.openai.com/api/docs/guides/streaming-responses" target="_blank"><strong>OpenAI · Streaming responses</strong></a></p>
+    <p>官方最权威的流式指南：<code>stream=True</code> 的完整写法、每个 chunk 的结构、<code>delta</code> 增量与判空、以及 Responses API 的流式事件模型。读完你会明白——所有厂商的流式都是同一个心法（取 delta、拼接、立刻显示），只是字段名各异。配 <a href="0019-L15-httpx.html">L15 httpx SSE</a> 一起看，你还能理解"不用 SDK、直接读 <code>data:</code> 事件流"是怎么回事。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0030-L25-llm-api-basics.html">上一课 L25 · 主流 API 上手</a> — 先会发 messages / 收回复，再让它流式蹦</li>
+      <li>· <a href="0032-L27-function-calling.html">下一课 L27 · Function Calling</a> — 流式里工具调用参数要增量拼接</li>
+      <li>· <a href="0016-L12-generators-streaming.html">L12 · 生成器</a> — 流式的语言基础：逐块 yield / for 里一块块取</li>
+      <li>· <a href="0019-L15-httpx.html">L15 · httpx SSE</a> — 流式的传输层：一行行 <code>data:</code> 事件流</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>流式 = <strong>逐 token 边生成边返回</strong>，用户立刻看到字往外蹦，<strong>首字延迟（TTFT）</strong>大幅降低</li>
+      <li>底层是 <strong>SSE</strong>：服务端把回复切成一串 chunk 推过来，客户端<strong>逐块收、增量拼接</strong>（呼应 L15/L12）</li>
+      <li>OpenAI：加 <code>stream=True</code>，从 <code>chunk.choices[0].delta.content</code> 取增量，<strong>必须判空</strong>，<code>print(..., end="", flush=True)</code></li>
+      <li>Anthropic：<code>with client.messages.stream(...) as stream: for text in stream.text_stream:</code>——形状不同、<strong>心法一致</strong></li>
+      <li>三个工程坑：<strong>usage 常在末块/需单开、流式工具调用要拼参数、断流要有兜底</strong></li>
+      <li>对 Agent：流式支撑<strong>打字机效果</strong>（给人看）和<strong>边生成边解析</strong>（给程序用）</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    有 key 的话，把本课"练习"里的非流式调用真正改成流式跑一遍——亲眼看着字往外蹦，你会对 <code>delta</code> 增量和"判空"这个坑印象极深。没 key 也不急，后面 <a href="0043-L38-phase3-capstone.html">L38 综合实战</a>会带你把流式接进完整链路。任何地方卡住，随时问我。下一课：<a href="0032-L27-function-calling.html">Function Calling</a>——让模型学会"调用工具"。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

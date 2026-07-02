@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L32 · 路由·Fallback·AI Gateway</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>路由、Fallback 与 AI Gateway</h1>
+    <p class="subtitle">单一模型 = 单点故障；把主备切换、按需路由、限流缓存统一交给"网关"</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:57%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>上一课（<a href="0036-L31-error-handling-retry.html">L31</a>）你学会了对<strong>一次</strong>调用做退避、抖动、幂等。但如果<strong>整个主模型都挂了</strong>——厂商大面积过载（OpenAI 常见 503、Anthropic 常见 529）、或你的账号被限流封了一小时——退避重试再多次也是徒劳。这时候唯一的活路是<strong>换一条路走</strong>：切到备用模型、换个供应商。</p>
+    <p>这一课讲三件互相咬合的事：<strong>Fallback</strong>（主模型失败 → 自动切备用，保高可用）、<strong>Model Routing</strong>（按请求难度/成本把活分给最合适的模型，接着 <a href="0027-L23-token-economics.html">L23</a> 的降本）、以及把这些能力打包的 <strong>AI Gateway</strong>。而网关能"一个接口统一 100+ 模型"，底层正是 <a href="0030-L25-llm-api-basics.html">L25</a> 教过的那招——<strong>全部统一成 OpenAI 的调用格式</strong>。L25 埋的种子，这一课收工程化的果。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清"单一模型 / 单一厂商 = 单点故障"，以及它为什么会拖死整个 Agent</li>
+      <li>写出结构正确的 <strong>Fallback</strong>（主备切换）伪代码，并只对<strong>可重试错误</strong>切换</li>
+      <li>用 <strong>Model Routing</strong> 按难度/成本把请求分派给不同模型（贵的做难活、便宜的兜底）</li>
+      <li>理解 <strong>AI Gateway</strong> 模式：把 Fallback + 路由 + 限流 + 缓存 + 可观测 + 成本追踪收进一层</li>
+      <li>知道 <strong>LiteLLM / OpenRouter / Portkey</strong> 各自的定位，以及"为什么别自己造网关"</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 问题：单一模型 = 单点故障</h2>
+  <div class="card">
+    <p>Demo 里，你的 Agent 只连一个模型、一个厂商，跑得好好的。但这在生产上是一颗定时炸弹——<strong>只要那一个依赖出问题，你的整个 Agent 就死</strong>：</p>
+    <ul>
+      <li><strong>主模型挂了</strong>：厂商全线故障（大面积 5xx / 529 过载），你的 Agent 陪葬。</li>
+      <li><strong>被限流了</strong>：你的账号触发配额上限，接下来一小时持续 429——退避重试也没用（L31 说过：预算耗尽就该走别的路）。</li>
+      <li><strong>某个型号被下线 / 涨价</strong>：厂商说改就改，你写死的 <code>model=</code> 一夜失效。</li>
+    </ul>
+    <p>还有一个"钱"的维度：<strong>不该所有请求都用同一个模型</strong>。让最贵最强的旗舰模型去回答"今天星期几"，是纯粹的浪费——这正是 <a href="0027-L23-token-economics.html">L23</a> 讲的路由降本，也呼应 <a href="0026-L22-benchmarks-and-selection.html">L22</a> 的选型直觉：<strong>便宜模型做简单活、贵模型接难题</strong>。</p>
+    <pre><code>【单点故障的两个面】
+  可用性：只连 1 个模型/厂商 → 它一挂，Agent 全挂
+  成本  ：所有请求都打旗舰模型 → 简单问题也付旗舰价 💸
+
+【这一课的两把武器】
+  Fallback（主备）→ 治"可用性"：主挂了自动切备用
+  Routing（路由） → 治"成本"  ：按难度把活分给合适的模型</code></pre>
+    <p><strong>Agent 关联</strong>：一个 Agent 完成任务要发几十次 LLM 调用，且常常是"一群实例并发跑"。单点依赖意味着<strong>上游一抖，整个 Agent 集群同时躺平</strong>。生产 Agent 的高可用，从"不把命押在一个模型上"开始。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 主模型被限流、接下来一小时持续 429，最该做什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">无限指数退避一直重试</button>
+      <button data-answer="correct">Fallback 切到备用模型</button>
+      <button data-answer="wrong">把请求全部丢弃报错</button>
+      <button data-answer="wrong">调高 temperature 再试</button>
+    </div>
+    <div class="quiz-explanation">持续一小时的 429 意味着<strong>退避重试也救不回来</strong>——L31 说过重试预算耗尽就该 fail fast，然后走别的路。这里"别的路"就是 <strong>Fallback：自动切到备用模型</strong>（同厂商别的型号，或干脆换一家）。无限重试只会白白拖死链路、刷爆日志；丢弃报错则牺牲了可用性——而你明明还有备用模型可用。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Fallback（主备切换）：治可用性</h2>
+  <div class="card">
+    <p>Fallback 的思想极简单：<strong>主模型失败时，自动切到备用模型</strong>。备用可以是<strong>同厂商的另一个型号</strong>（如旗舰挂了退到小杯版），也可以是<strong>另一家厂商</strong>（OpenAI 挂了切 Anthropic）——后者容灾更彻底，因为两家同时挂的概率极低。</p>
+    <p>结构上就是"try 主模型 → 失败 → try 备用模型"，可以串成一条降级链：</p>
+    <pre><code># Fallback 伪代码：主 → 备1 → 备2，逐级降级
+def chat_with_fallback(messages):
+    chain = [
+        ("openai",    "gpt-primary"),      # 主：首选
+        ("anthropic", "claude-backup"),    # 备1：换一家厂商（跨厂容灾）
+        ("openai",    "gpt-small"),        # 备2：同厂小杯，最后兜底
+    ]
+    last_err = None
+    for provider, model in chain:
+        try:
+            return call_model(provider, model, messages)   # 成功就直接返回
+        except RetryableError as e:      # ★ 只对"可重试错误"才切（见 L31 分类）
+            last_err = e
+            continue                     # 换下一个模型再试
+        except FatalError:               # 400/401：你的请求就是错的
+            raise                        # 切模型也没用 → 立即抛出，别浪费
+    raise AllModelsFailed(last_err)      # 整条链都失败 → 明确报错</code></pre>
+    <p>三个必须记住的要点：</p>
+    <ul>
+      <li><strong>只对可重试错误切换</strong>：紧扣 <a href="0036-L31-error-handling-retry.html">L31 的错误分类</a>——429/5xx/超时才值得换模型；而 <strong>400/401 是你自己的 payload/key 错了</strong>，换 100 个模型还是错，必须立即 fail fast，别拿去 fallback 空转。</li>
+      <li><strong>Fallback 在退避重试<em>之后</em></strong>：先在主模型上按 L31 做有预算的退避重试，预算耗尽了才切备用。两者是"先原地救、救不动再换路"的接力。</li>
+      <li><strong>备用要真的能顶上</strong>：备用模型的能力不能太弱，否则切过去也答不好；跨厂 fallback 还要注意 API 差异（system 参数、字段名不同，见 L25）——这正是网关能帮你抹平的地方（下一节）。</li>
+    </ul>
+    <p><strong>Agent 关联</strong>：Agent 是长链条任务，中途某一步的 LLM 调用挂了，整条链就断。有了 Fallback，单个模型的抖动被"就地换路"消化掉，Agent 得以把任务走完——这是生产 Agent <strong>高可用</strong>的地基。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于 Fallback（主备切换），下面哪句是对的？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">遇到任何错误都要切备用</button>
+      <button data-answer="correct">只对可重试错误才切换</button>
+      <button data-answer="wrong">备用必须是同一个厂商</button>
+      <button data-answer="wrong">切换后就不用管返回格式</button>
+    </div>
+    <div class="quiz-explanation">Fallback 只该对<strong>可重试错误</strong>（429/5xx/超时）触发——这直接复用 L31 的分类。<strong>400/401 是确定性错误</strong>（payload 或 key 错了），换模型也没用，必须立即抛出。备用<strong>不必</strong>同厂，跨厂反而容灾更强（两家同时挂概率极低）；但跨厂要处理 API 差异（字段名/system 参数不同），返回格式该管还得管——网关正是来抹平这层差异的。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. Model Routing（路由）：治成本</h2>
+  <div class="card">
+    <p>Fallback 是"出事才换"的被动容灾；<strong>Routing 是"一开始就选对"的主动分派</strong>。核心：按请求的<strong>难度 / 类型 / 成本预算</strong>，把它派给最合适的那个模型。</p>
+    <pre><code># Routing 伪代码：按难度选模型（贵的做难活、便宜的兜底）
+def route(task):
+    if task.is_simple:                 # 分类、抽取、闲聊、格式化…
+        return "cheap-fast-model"      # 便宜模型：省钱又快
+    if task.needs_reasoning:           # 多步推理、复杂代码、疑难分析
+        return "flagship-model"        # 旗舰模型：贵但接得住难题
+    return "mid-tier-model"            # 其余：中杯平衡档</code></pre>
+    <p>这正是 <a href="0027-L23-token-economics.html">L23</a> 讲的<strong>路由降本</strong>落地：大多数真实流量是简单请求，用便宜模型处理能砍掉一大截账单；只有少数难题才动用旗舰模型。判断"难/易"可以靠简单规则（任务类型、输入长度），也可以用一个小模型先做<strong>难度分类</strong>再分派。</p>
+    <p>Routing 和 Fallback <strong>正交、可叠加</strong>：路由决定"这个请求<em>首选</em>谁"，Fallback 决定"首选<em>挂了</em>退给谁"。生产里两者往往同时开——先按成本路由到便宜模型，它若失败再 fallback 到备用。</p>
+    <pre><code>【Routing vs Fallback：别搞混】
+  Routing  ：主动 · 按难度/成本【选择】首发模型   → 降本
+  Fallback ：被动 · 首发【失败后】切到备用模型     → 高可用
+  二者叠加 ：便宜模型首发(路由) → 挂了切备用(fallback)</code></pre>
+    <p><strong>Agent 关联</strong>：Agent 一次任务里，"决定下一步调哪个工具"是简单分类活、"写一段复杂代码"是重推理活——<strong>用同一个旗舰模型全包，既慢又贵</strong>。按步骤难度路由到不同模型，是 Agent 降本增效的关键杠杆。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. AI Gateway 模式：把这些能力收进一层</h2>
+  <div class="card">
+    <p>问题来了：Fallback、路由、还有 L31 的退避重试、再加限流 / 缓存 / 监控 / 成本追踪……如果每个能力都塞进业务代码，你的 Agent 逻辑会被淹没在基础设施代码里。</p>
+    <p><strong>AI Gateway（AI 网关）</strong>就是答案：把这些横切能力<strong>统一到一个"网关"层</strong>，业务代码只跟网关说话，网关背后再去调各家模型。</p>
+    <pre><code>            ┌──────────────── AI Gateway ────────────────┐
+业务代码 ──▶ │  路由 · Fallback · 限流 · 缓存 · 重试        │ ──▶ OpenAI
+(只调一个    │  可观测(日志/指标) · 成本追踪 · 统一鉴权     │ ──▶ Anthropic
+ 接口)       └─────────────────────────────────────────────┘ ──▶ Google / …
+        ▲ 业务代码不感知背后是哪家、切没切模型</code></pre>
+    <p>开源代表是 <strong>LiteLLM</strong>：它把 <strong>100+ 厂商统一成 OpenAI 格式</strong>（这正是 <a href="0030-L25-llm-api-basics.html">L25</a> 的 base_url 兼容原理——一套 OpenAI 调用打天下），并内置 Router 做 fallback / 负载均衡，Proxy 层提供限流、缓存、成本追踪、可观测回调。除它之外还有托管型的 OpenRouter、偏治理的 Portkey 等：</p>
+    <table>
+      <thead>
+        <tr><th>选项</th><th>形态</th><th>定位 / 强项</th><th>适合</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>LiteLLM</strong></td>
+          <td>开源 · 自托管<br>（库 + Proxy）</td>
+          <td>100+ 厂商统一成 OpenAI 格式；内置 fallback/路由/重试/缓存/成本追踪；自己掌控数据与部署</td>
+          <td>想要<strong>完全掌控</strong>、自建网关、数据不出门</td>
+        </tr>
+        <tr>
+          <td><strong>OpenRouter</strong></td>
+          <td>托管（SaaS）</td>
+          <td>一个 key + OpenAI 兼容端点接入海量模型；自动 fallback 与择优路由；零运维</td>
+          <td><strong>快速接多模型</strong>、原型验证、不想管基础设施</td>
+        </tr>
+        <tr>
+          <td><strong>Portkey</strong></td>
+          <td>托管 / 混合</td>
+          <td>侧重<strong>治理</strong>：语义缓存、护栏(guardrails)、精细可观测、Prompt 管理</td>
+          <td>生产需要<strong>监控/治理/合规</strong>的团队</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="subtitle" style="margin-top:.6rem;">注：三者的具体功能与计费随版本快速演进，接入前请以各自官方文档为准——别把价格写死进代码或假设。生态还有 TrueFoundry、Braintrust 等网关，2026 年各家 gateway 横评可参考文末来源。</p>
+    <div class="tip">
+      ⚠️ 自托管 vs 托管的权衡：<strong>LiteLLM 自托管</strong>= 数据不出门、可定制、但要自己运维那一层；<strong>OpenRouter/Portkey 托管</strong>= 零运维、开箱即用、但请求要经过第三方（数据合规、额外延迟、供应商锁定需评估）。没有"最好"，只有"最适合你的合规与运维现状"。
+    </div>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> AI Gateway（如 LiteLLM）能"一个接口统一 100+ 模型"，靠的是什么原理？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把所有模型下载到本地</button>
+      <button data-answer="correct">统一成 OpenAI 调用格式</button>
+      <button data-answer="wrong">给每一家厂商都单独写一份适配逻辑</button>
+      <button data-answer="wrong">用一个超大模型代答</button>
+    </div>
+    <div class="quiz-explanation">网关的底层就是 <a href="0030-L25-llm-api-basics.html">L25</a> 教的<strong>OpenAI 兼容模式</strong>——把各家厂商的差异<strong>统一翻译成 OpenAI 的 <code>messages</code> 调用格式</strong>，业务代码只需按 OpenAI 那套写一次，换模型只改配置。它并不下载模型（模型仍在各厂商云端跑），也不是"一个大模型代答"，更不是让你给每家手写一套逻辑——抹平差异恰恰是网关替你干的活。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 为什么用网关，而不是自己写</h2>
+  <div class="card">
+    <p>你可能想："Fallback 和路由我自己写几个 <code>try/except</code> 不就行了？"能跑，但把它做<strong>对、做全、可维护</strong>，成本远超想象。网关帮你省掉的正是这些：</p>
+    <ul>
+      <li><strong>统一接口</strong>：各家 API 字段名、system 参数、错误类型都不同（L25 讲过的坑）。网关抹平差异，你只按一套（OpenAI）格式写。</li>
+      <li><strong>集中限流 / 重试 / 缓存 / 监控</strong>：这些横切能力写一次、所有调用共享，而不是散落在每个业务函数里各写一遍、各写各的 bug。</li>
+      <li><strong>换模型零改业务代码</strong>：加个备用模型、把某类请求路由到更便宜的型号——<strong>改网关配置即可，业务代码一行不动</strong>。这是自己硬编码 <code>if/else</code> 换模型永远做不到的解耦。</li>
+      <li><strong>集中鉴权 / 成本追踪</strong>：所有 key 收口在网关，按团队/项目配预算、算花费，不必让每个服务各自持有各家 key。</li>
+    </ul>
+    <p>一句话总结这一整课的因果：<strong>网关底层就是 L25 的"统一成 OpenAI 调用格式"</strong>，正因为统一了接口，Fallback（换模型）、路由（选模型）、限流缓存监控才能作为<strong>配置</strong>集中挂在这一层，而不用污染业务代码。L25 你学的是"怎么换 base_url"，这一课你看到的是它规模化后的成熟形态。</p>
+    <div class="card" style="margin-top:1rem;">
+      <details>
+        <summary>🧠 动手想一想：主模型突然 100% 返回 429，你怎么设计 Fallback + 路由策略？</summary>
+        <div style="margin-top:.8rem;">
+          <p><strong>场景：</strong>周一早高峰，你的 Agent 依赖的主模型（某厂旗舰）<strong>突然 100% 返回 429</strong>——不是偶发，是持续限流，退避重试完全无效。你的 Agent 要继续服务用户，怎么设计？请分"止血"和"长期"两层想。</p>
+          <details style="margin-top:.6rem;">
+            <summary>💡 点击查看参考答案</summary>
+            <div style="margin-top:.6rem;">
+              <p><strong>先判类型（L31）：</strong>429 是可重试错误，但"持续 100%"意味着重试预算会瞬间耗尽——所以不该在主模型上死磕，应<strong>快速 fail fast 后触发 Fallback</strong>。</p>
+              <p><strong>止血（立刻切路）：</strong></p>
+              <ul>
+                <li><strong>跨厂 Fallback</strong>：主模型 429 → 立即切到<strong>另一家厂商</strong>的对标模型。跨厂的价值不只是绕配额（限流常常是<em>按模型</em>算的，同厂换个小模型有时也能躲开），更关键的是<strong>故障独立</strong>——一家整体宕机时，另一家不受牵连。</li>
+                <li><strong>降级链兜底</strong>：备1 也顶不住时，再退到更小/更便宜的模型，宁可答得朴素也别停服。</li>
+                <li><strong>只对 429/5xx/超时切</strong>，400/401 仍直接抛（L31 分类不变）。</li>
+              </ul>
+              <p><strong>长期（把策略沉淀到网关）：</strong></p>
+              <ul>
+                <li>把上面的 fallback 链和路由规则<strong>配到 AI Gateway（如 LiteLLM）</strong>里，业务代码只调网关——下次再限流，网关自动切，无需改代码、无需半夜上线。</li>
+                <li>叠加<strong>路由降本</strong>：平时就把简单请求分流到便宜模型，既省钱、又减少打向主模型的流量，从源头降低触发 429 的概率（呼应 L16 从源头限流）。</li>
+                <li>开<strong>缓存</strong>：相同请求命中缓存直接返回，进一步减少真实调用。</li>
+                <li>接<strong>可观测</strong>：给 429 率、fallback 触发次数、各模型成本上告警，下次限流第一时间知道（引出下一课 L33）。</li>
+              </ul>
+              <p>一句话：<strong>止血靠跨厂 Fallback，长治靠网关把 Fallback+路由+缓存+监控固化成配置。</strong></p>
+            </div>
+          </details>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 拼起来：生产 Agent 为什么必须要有这一层</h2>
+  <div class="card">
+    <p>把 L31 和 L32 接成一张完整的"调用可靠性"图——这就是生产 Agent 面对"调用会失败 + 成本要可控"时的标准姿态：</p>
+    <pre><code>一次 Agent 的 LLM 调用：
+  ① Routing：按难度/成本选首发模型（便宜的兜底、贵的接难题）→ 降本
+  ② 在选中的模型上：退避 + 抖动 + 重试预算（L31）→ 就地自愈
+  ③ 预算耗尽仍失败？→ Fallback 切备用模型/换厂商 → 高可用
+       └─ 只对 429/5xx/超时切；400/401 直接 fail fast（L31 分类）
+  ④ 以上①~③ + 限流/缓存/监控/成本追踪，统一收进 AI Gateway
+       └─ 业务代码只调网关；换模型改配置、不改代码（底层=L25 OpenAI 格式）</code></pre>
+    <p><strong>Agent 关联（收束全课）：生产 Agent 必须有 Fallback（保高可用）+ 路由（保成本）</strong>——单点依赖会让整个 Agent 集群随上游一起躺平，而全用旗舰模型会让账单失控。而 <strong>AI Gateway 是把这些工程能力"外包"出去的标准做法</strong>：你不必在每个 Agent 里重复造轮子，把可靠性与成本治理交给成熟的网关层，业务代码回归纯粹的 Agent 逻辑。这，就是从"能跑的 Agent"到"能上生产的 Agent"关键的一步。</p>
+  </div>
+
+  <div class="tip" style="margin-top:1rem;">
+    <strong>🎤 面试高频："主模型挂了怎么办？"</strong>
+    <p>答：做 <strong>Fallback（主备切换）</strong>——主模型失败时自动切到<strong>备用模型</strong>（同厂商别的型号，或干脆<strong>换一家厂商</strong>容灾更彻底）。工程上用 <strong>AI Gateway（如开源的 LiteLLM）统一管理</strong>这套 fallback + 路由，业务代码只调一个 OpenAI 兼容接口、换模型改配置不改代码。关键细节：配合 <a href="0036-L31-error-handling-retry.html">L31 的错误分类</a>——<strong>只对可重试错误（429/5xx/超时）才切</strong>，400/401 这类确定性错误直接 fail fast，切模型也没用。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：路由 · Fallback · 网关</h2>
+  <div class="card">
+    <pre><code>【问题】单一模型/厂商 = 单点故障
+  可用性：它一挂 → 整个 Agent 挂
+  成本  ：全打旗舰模型 → 简单问题也付旗舰价 💸
+
+【Fallback（主备）】治可用性 · 被动
+  主失败 → 自动切备用（同厂别型号 / 换一家更佳）
+  try 主 → except(可重试) → try 备 → … → 都挂才报错
+  ★ 只对 429/5xx/超时 切；400/401 立即 fail fast（L31）
+  ★ 在退避重试【之后】：先原地救，救不动再换路
+
+【Routing（路由）】治成本 · 主动
+  按 难度/类型/预算 选【首发】模型
+  简单活 → 便宜模型；难题 → 旗舰模型（L23 降本）
+  与 Fallback 正交：路由选首发、fallback 换备用
+
+【AI Gateway】把能力收进一层
+  = Fallback + 路由 + 限流 + 缓存 + 可观测 + 成本追踪
+  业务代码只调网关；换模型改配置、不改代码
+  底层原理 = L25「统一成 OpenAI 调用格式」
+  · LiteLLM  自托管开源(100+ 厂商) · 掌控数据
+  · OpenRouter 托管 · 一 key 接海量模型 · 零运维
+  · Portkey   托管 · 治理/缓存/护栏/可观测
+  （功能与价格随版本变，以官方文档为准，别写死）
+
+【为什么别自己写】统一接口 · 集中限流重试缓存监控 ·
+  换模型零改业务代码 · 集中鉴权与成本追踪
+
+【Agent】生产 Agent 必须 Fallback(高可用)+路由(降本)
+  网关 = 把这些工程能力"外包"的标准做法</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://docs.litellm.ai/docs/" target="_blank"><strong>LiteLLM Docs</strong></a>（开源 AI Gateway，看 Router 的 fallback/路由与 Proxy 的限流/缓存/成本）+ <a href="https://openrouter.ai/docs/quickstart" target="_blank"><strong>OpenRouter Quickstart</strong></a>（托管网关，看 OpenAI 兼容端点 + 自动 fallback）</p>
+    <p>前者是自托管网关的开源标杆，读它你会看到"统一成 OpenAI 格式 + 内置 fallback/路由/缓存/成本追踪"如何落地——正是本课第 4/5 节的实物。后者是托管网关的代表，看它如何用一个 OpenAI 兼容 key 接入海量模型并自动 fallback。想横向对比 2026 各家网关，可参考 <a href="https://www.truefoundry.com/blog/best-llm-gateways" target="_blank">TrueFoundry</a> / <a href="https://www.braintrust.dev/blog/ai-gateway" target="_blank">Braintrust</a> 等的 gateway 评测（功能/计费以官方为准，勿据博客写死）。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0036-L31-error-handling-retry.html">上一课 L31 · 错误处理与重试</a> — 本课的前置：先分类错误、原地退避重试，救不动才 fallback</li>
+      <li>· <a href="0038-L33-observability.html">下一课 L33 · 可观测性</a> — 网关的最后一块：日志/指标/追踪，让 fallback 与成本可见</li>
+      <li>· <a href="0030-L25-llm-api-basics.html">L25 · OpenAI 兼容模式</a> — 网关"统一 100+ 模型"的底层原理（换 base_url）</li>
+      <li>· <a href="0027-L23-token-economics.html">L23 · 路由降本</a> — 便宜模型兜底、贵模型接难题的成本逻辑</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li><strong>单一模型 / 厂商 = 单点故障</strong>：它一挂整个 Agent 挂；全打旗舰模型则账单失控</li>
+      <li><strong>Fallback（主备）</strong>治可用性：主失败自动切备用（换一家更容灾），<strong>只对可重试错误切</strong>、400/401 立即 fail fast，且在退避重试之后</li>
+      <li><strong>Routing（路由）</strong>治成本：按难度/预算选首发模型，简单活给便宜模型、难题给旗舰（呼应 L23）；与 Fallback 正交可叠加</li>
+      <li><strong>AI Gateway</strong>把 Fallback+路由+限流+缓存+可观测+成本追踪收进一层，底层就是 <strong>L25 的"统一成 OpenAI 格式"</strong>——LiteLLM(自托管)/OpenRouter(托管)/Portkey(治理)各有定位</li>
+      <li><strong>别自己造网关</strong>：统一接口、集中横切能力、换模型零改业务代码</li>
+      <li>生产 Agent 必须有 <strong>Fallback（高可用）+ 路由（降本）</strong>，网关是把这些能力"外包"的标准做法</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    动手想一想：给你现在的 Agent 画一条 fallback 链（主 → 跨厂备用 → 小杯兜底），再标出哪些请求可以路由到便宜模型。如果手上有环境，试着用 LiteLLM 起一个本地 proxy，把两家模型配成一条 fallback——你会真切感到"业务代码只调一个接口"的解耦快感。下一课 <a href="0038-L33-observability.html">L33 可观测性</a>：把网关里发生的 fallback、成本、延迟<strong>看见</strong>，可靠性才闭环。有疑问随时问我。</p>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

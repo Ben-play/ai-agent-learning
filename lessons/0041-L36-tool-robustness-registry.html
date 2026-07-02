@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L36 · 工具健壮性 + 注册系统</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>工具健壮性与注册系统</h1>
+    <p class="subtitle">让工具层在真实世界稳定行动 —— 参数校验、流式拼接、Token 预算，再用装饰器把工具变得可扩展</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:85%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>上一课（<a href="0040-L35-function-calling-loop.html">L35</a>）你把 Function Calling 拼成了完整循环。但那还是"理想天气"下的循环——真实世界里，<strong>模型填的参数会出错、流式响应把工具调用切成碎片、工具一多 Token 就爆、手动维护工具列表根本不可扩展</strong>。这一课就是把循环从"能跑"升级到"扛得住生产"。</p>
+    <p>本课分两半：前半是<strong>工具健壮性</strong>（校验失败怎么办、流式怎么拼、Token 怎么省），后半是<strong>工具注册系统</strong>——用一个 <code>@tool</code> 装饰器自动注册 + 分发。这里会正式<strong>闭合 Phase 1 <a href="0015-L11-decorators.html">L11</a> 埋下的"手写 @tool 装饰器"那条线</strong>：当时你学会了从函数签名生成 Schema，现在把它接进真实的 Agent 工具层。学完这课，你就看得懂 LangChain / Pydantic AI 的 <code>@tool</code> 在幕后到底怎么实现的。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>把工具参数校验失败当成<strong>可回填的信号</strong>——用 Pydantic 校验，报错塞回让模型自我修正重试</li>
+      <li>在<strong>流式响应</strong>中把分片到达的 <code>arguments</code> 增量拼成完整 JSON 再解析</li>
+      <li>理解每个工具 Schema 的 <strong>Token 开销</strong>，据此决定"注册哪些工具、description 写多细"</li>
+      <li>用<strong>装饰器</strong>实现一个工具<strong>注册表（Registry）</strong>：自动提取 Schema + 登记 + 名字到函数的分发</li>
+      <li>说清"健壮的工具层"和"可扩展的注册系统"如何一起支撑 Agent</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 健壮性①：参数校验失败，回填给模型重试</h2>
+  <div class="card">
+    <p>模型决定调用工具时，<strong>参数是它"猜"着填的</strong>——类型可能填错（<code>qty</code> 填成字符串）、字段可能缺失、值可能越界（<code>page=-1</code>）。哪怕开了 Structured Outputs（<a href="0033-L28-structured-outputs.html">L28</a>）约束结构，业务约束（"数量必须 ≥ 1"）仍可能被违反。</p>
+    <p><strong>新手会直接把参数丢进函数，一崩整个 Agent 就死了。</strong>正确姿势：用 <a href="0018-L14-pydantic.html">L14</a> 的 Pydantic 校验，<strong>校验失败不要抛到顶层，而是把错误信息当成 tool 结果回填给模型</strong>——模型看到"你上次填错了什么"，会自己改正重试。这就是 <a href="0036-L31-error-handling-retry.html">L31</a> 错误处理思想在工具层的落地，也和 L28 的"校验 + 重试自愈循环"是同一招。</p>
+    <pre><code>from pydantic import BaseModel, Field, ValidationError
+
+# 用 Pydantic 描述这个工具的参数契约（L14）
+class SearchArgs(BaseModel):
+    query: str
+    max_results: int = Field(ge=1, le=50)     # 业务约束：1~50
+
+def run_tool(name, raw_args: dict) -> dict:
+    """执行一个工具调用；返回值会作为 tool 消息回填给模型。"""
+    try:
+        args = SearchArgs(**raw_args)          # ← 校验模型填的参数
+    except ValidationError as e:
+        # 关键：不 raise！把错误当成 tool 结果返回
+        return {"ok": False, "error": e.errors()}   # ← 模型会看到并据此改正
+    result = do_search(args.query, args.max_results)   # 校验通过才真正执行
+    return {"ok": True, "data": result}
+
+# 在 L35 的循环里，这条 tool 消息塞回 messages：
+# {"role": "tool", "tool_call_id": call.id, "content": json.dumps(ret)}
+# 模型下一轮读到 error，自己修好参数再调一次 —— 自我修正闭环</code></pre>
+    <p>要点：<strong>① 校验（Pydantic）和执行（业务逻辑）分开</strong>——校验没过绝不碰真实副作用；<strong>② 错误信息要具体</strong>（Pydantic 的 <code>e.errors()</code> 会说清哪个字段、为什么），模型才知道怎么改；<strong>③ 错误走的是正常的 tool 返回通道</strong>，不是异常通道。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>这一步是 Agent"<strong>在真实世界稳定行动</strong>"的核心。人类用错工具会看报错重来，Agent 也一样——把校验错误变成模型能读懂的反馈，它就获得了<strong>自我修正</strong>能力，而不是一遇脏参数就整轮崩溃。可靠 Agent 的信条：不信任模型的输出，但给它出错后自愈的机会。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 模型给工具填了非法参数（比如 <code>max_results=-1</code>），最稳的处理是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">抛异常让整个 Agent 停下</button>
+      <button data-answer="correct">把校验错误回填让模型重试</button>
+      <button data-answer="wrong">悄悄改成一个默认值继续</button>
+      <button data-answer="wrong">忽略这次调用直接跳过</button>
+    </div>
+    <div class="quiz-explanation">用 Pydantic 校验参数，<strong>失败时不要 raise 崩掉</strong>，而是把具体错误信息作为 <strong>tool 结果回填进 messages</strong>，让模型看到自己错在哪、据此改正重试（自我修正闭环，呼应 L28/L31）。抛异常会让整轮 Agent 死掉；悄悄改默认值会掩盖问题、产生模型没预期的行为；直接跳过则丢了这步动作。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 健壮性②：流式响应里，增量拼接工具调用</h2>
+  <div class="card">
+    <p>当你用<strong>流式</strong>（<a href="0031-L26-streaming.html">L26</a>）接收响应时，工具调用<strong>不是一次到齐的</strong>——模型把工具的 <code>arguments</code>（一段 JSON 字符串）<strong>切成很多 chunk 逐片吐出来</strong>。你不能拿到一片就 <code>json.loads</code>（那是残缺的 JSON，必然解析失败），得<strong>把所有 delta 片段按工具索引累加、拼成完整字符串，等这一轮结束再一次性 parse</strong>。</p>
+    <pre><code>import json
+
+# arguments 是分片到达的，用 dict 按 index 累加各工具的片段
+buffers = {}     # index -> {"name": str, "args": str(累加中的 JSON 片段)}
+
+for chunk in stream:
+    delta = chunk.choices[0].delta
+    for tc in (delta.tool_calls or []):
+        buf = buffers.setdefault(tc.index, {"name": "", "args": ""})
+        if tc.function.name:
+            buf["name"] = tc.function.name          # 名字通常首片就给
+        if tc.function.arguments:
+            buf["args"] += tc.function.arguments    # ← 关键：把片段拼起来，别急着 parse
+
+# 流结束后，缓冲区里才是完整 JSON，这时才解析
+for idx, buf in buffers.items():
+    args = json.loads(buf["args"])                  # 现在才是合法 JSON
+    run_tool(buf["name"], args)                     # 交给第 1 节的校验+执行</code></pre>
+    <p>心智模型：<strong>流式下的工具调用 = 一堆需要"按 index 归位再拼接"的碎片</strong>。名字一般首片就完整，而 <code>arguments</code> 是逐字符流过来的，所以用 <code>+=</code> 累加、<strong>只在流结束后 parse 一次</strong>。多个并行工具调用则靠 <code>tc.index</code> 区分，各拼各的。<span style="color:var(--muted);">（具体字段名以官方 SDK 文档为准。）</span></p>
+  </div>
+
+  <div class="tip">
+    <strong>为什么 Agent 需要流式还要拼工具调用？</strong>流式让用户"边想边看"（体验好，L26），但工具调用必须等参数<strong>完整</strong>才能执行——半个 JSON 无法校验、无法调用函数。所以流式 Agent 的标准套路是：<strong>文本 delta 实时显示给用户，工具调用的 arguments 在后台默默累加，凑齐了再进第 1 节的校验+执行流程。</strong>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 健壮性③：工具定义的 Token 开销</h2>
+  <div class="card">
+    <p>容易被忽略的成本：<strong>你注册的每一个工具，它的 Schema（名字 + description + 参数结构）都要作为 input token 发给模型</strong>——而且<strong>每一轮</strong>都要发（<a href="0022-L18-tokenization.html">L18</a> 讲过一切都是 token；<a href="0039-L34-tool-schema-design.html">L34</a> 讲过 Schema 设计）。工具越多，两个问题同时恶化：</p>
+    <ul>
+      <li><strong>越贵</strong>：20 个工具的 Schema 可能就上千 token，每轮循环都重复计费（成本细节见下一课 <a href="0042-L37-cost-engineering.html">L37</a>）。</li>
+      <li><strong>越容易选错</strong>：给模型摆 30 把工具，它更可能挑错那一把、或纠结。工具集越聚焦，模型决策越准。</li>
+    </ul>
+    <p>两条实操策略：</p>
+    <ul>
+      <li><strong>只注册当前任务相关的工具</strong>——不要把全公司 50 个工具一股脑塞进去。按场景/子任务动态挑选一个小工具集（这也是为什么第 4 节的注册表要能"按需取子集"）。</li>
+      <li><strong>description 精简但够用</strong>——写清"什么时候用它"，删掉废话。一句准确的描述胜过一段模糊的长文；token 省了，模型选得还更准。</li>
+    </ul>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于工具定义（Schema）的 Token 开销，下面哪句对？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">Schema 只在首轮发一次，几乎不占钱</button>
+      <button data-answer="correct">工具越多越贵，也越容易被选错</button>
+      <button data-answer="wrong">description 越长模型选得越准，应写满</button>
+      <button data-answer="wrong">工具数量和成本、准确率都无关</button>
+    </div>
+    <div class="quiz-explanation">每个工具的 Schema 都是 input token，<strong>每一轮</strong>都要重发（L18）。工具越多：<strong>越贵</strong>（重复计费，L37）且模型<strong>越容易选错</strong>那一把。对策是<strong>只注册当前任务相关的工具 + description 精简够用</strong>——不是写得越长越好，冗长反而费 token 又干扰决策。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 工具注册系统：用装饰器自动注册（闭合 L11 的线）</h2>
+  <div class="card">
+    <p>前三节都假设"工具已经登记好了"。但<strong>手动维护一个工具列表根本不可扩展</strong>——每加一个工具，你得手写 Schema、手动加进 <code>tools=[...]</code>、还得在 dispatch 里加一条 <code>if name == ...</code>。三处同步，迟早漏。</p>
+    <p>解法就是 <a href="0015-L11-decorators.html">L11</a> 教的那套：<strong>用装饰器做自动注册</strong>。<code>@tool</code> 装饰一个函数时，一次做三件事：<strong>① 从类型注解 / docstring 提取 Schema；② 把它登记进注册表；③ 建立"名字 → 函数"的映射供分发。</strong>你只管专心写函数，Schema 生成、工具清单、分发全自动。</p>
+    <pre><code>import functools, inspect, json
+
+REGISTRY = {}          # 工具名 -> {"schema": {...}, "fn": callable}
+
+# Python 类型名 → JSON Schema 类型名（str≠string 会生成非法 schema！）
+_JSON_TYPE = {"str": "string", "int": "integer", "float": "number", "bool": "boolean"}
+
+def tool(fn):
+    """把普通函数注册成工具：自动抽 Schema + 登记 + 建分发映射。"""
+    sig = inspect.signature(fn)                       # 读签名（呼应 L11/L05）
+    props, required = {}, []
+    for pname, p in sig.parameters.items():
+        props[pname] = {"type": _JSON_TYPE.get(getattr(p.annotation, "__name__", ""), "string")}
+        if p.default is inspect.Parameter.empty:      # 没默认值 = 必填
+            required.append(pname)
+    REGISTRY[fn.__name__] = {                          # ← ② 登记进注册表
+        "schema": {                                    # ← ① 自动生成的 Schema
+            "name": fn.__name__,
+            "description": (fn.__doc__ or "").strip(), # docstring 就是 description
+            "parameters": {"type": "object",
+                           "properties": props,
+                           "required": required},
+        },
+        "fn": fn,                                       # ← ③ 名字→函数，供 dispatch
+    }
+    @functools.wraps(fn)                                # 保住元信息（L11 强调过）
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+    return wrapper
+
+# ---- 现在加工具，只需一个装饰器，别处零改动 ----
+@tool
+def web_search(query: str, max_results: int = 5) -> dict:
+    "搜索网页并返回若干条结果。需要外部信息时使用。"
+    return {"query": query, "n": max_results}
+
+@tool
+def get_weather(city: str) -> dict:
+    "查询某城市的当前天气。"
+    return {"city": city, "temp": 22}
+
+# 自动生成"喂给 LLM 的工具清单"（第 3 节说的：可按需只取子集）
+def tools_param(names=None):
+    items = REGISTRY.values() if names is None \
+            else (REGISTRY[n] for n in names)
+    return [{"type": "function", "function": t["schema"]} for t in items]
+
+print(json.dumps(tools_param(["web_search"]), ensure_ascii=False))
+# 只把 web_search 的 schema 发出去 —— 呼应第 3 节"只注册相关工具"省 token</code></pre>
+    <p>对比 L11：当时的 <code>@tool</code> 只做到"生成 Schema 存进 <code>REGISTRY</code>"；<strong>这一版把真实函数也一起存进去（<code>"fn"</code>），于是注册表既能产出工具清单、又能拿来分发。</strong>Phase 1 埋的"手写 @tool"这条线，到这里正式闭合成一个能用的 Agent 工具层。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>🔑 这就是框架的底层原理：</strong>
+    <p>LangChain 的 <code>@tool</code>、Pydantic AI 的工具注册，幕后做的正是这三件事：<strong>装饰器读函数签名 + 类型注解 + docstring → 自动生成 Schema → 登记 + 提供分发</strong>。区别只是它们用 Pydantic 把参数 Schema 做得更严谨（带校验、可导出标准 JSON Schema，正好接上第 1 节）。看懂了这一版，你就看懂了它们。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 分发（dispatch）：把工具名映射到真实函数</h2>
+  <div class="card">
+    <p>模型返回的工具调用里只有<strong>名字（字符串）和参数</strong>——它并不知道你的 Python 函数在哪。<strong>分发</strong>就是注册表的另一半价值：拿名字去 <code>REGISTRY</code> 查出真实函数并调用。这正是 <a href="0040-L35-function-calling-loop.html">L35</a> 循环里"收到工具调用 → 执行 → 回填"那一步的实现。</p>
+    <pre><code>def dispatch(name: str, args: dict) -> dict:
+    entry = REGISTRY.get(name)
+    if entry is None:                       # 模型幻觉出一个不存在的工具
+        return {"ok": False, "error": f"未知工具: {name}"}   # ← 也回填让它改
+    # 这里可以接第 1 节：先用 Pydantic 校验 args 再执行
+    result = entry["fn"](**args)            # 名字 → 函数 → 调用
+    return {"ok": True, "data": result}
+
+# 在 L35 的循环中：
+# for call in resp.tool_calls:
+#     ret = dispatch(call.function.name, json.loads(call.function.arguments))
+#     messages.append({"role": "tool", "tool_call_id": call.id,
+#                      "content": json.dumps(ret, ensure_ascii=False)})</code></pre>
+    <p>注意最后一环也呼应第 1 节：<strong>连"模型调了个不存在的工具"都不该崩</strong>——查不到就返回一条错误回填，模型自己换一个。注册（第 4 节）负责"工具进得来"，分发（本节）负责"调用出得去"，两者合起来才是完整的工具层。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 工具注册系统里，"分发（dispatch）"这一步做的是什么？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把函数签名转换成 JSON Schema</button>
+      <button data-answer="correct">按模型给的名字找到真实函数并调用</button>
+      <button data-answer="wrong">决定这一轮该不该继续循环</button>
+      <button data-answer="wrong">把 API Key 注入到请求头里</button>
+    </div>
+    <div class="quiz-explanation">模型只返回<strong>工具名 + 参数</strong>。分发就是拿这个名字去注册表里<strong>查出对应的真实函数并调用它</strong>（名字 → 函数 → 执行），这是 L35 循环里"执行工具"那一步的实现。从签名生成 Schema 是"注册"（第 4 节）干的事；判断是否继续循环是循环控制（L35）的事——都不是分发。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 收束：健壮工具层 + 注册系统 = 可扩展的 Agent</h2>
+  <div class="card">
+    <p>把这一课两半拼起来看，它们各解决 Agent 的一个层面：</p>
+    <ul>
+      <li><strong>健壮的工具层（第 1–3 节）→ Agent 能在真实世界稳定行动。</strong>参数校验回填让它自我修正、流式拼接让它在真实响应下不碎、Token 预算让它既省钱又选得准。工具是 Agent 伸向世界的手，手稳，行动才可靠。</li>
+      <li><strong>注册系统（第 4–5 节）→ 工具可扩展、可维护。</strong>加工具只需一个 <code>@tool</code>，Schema、清单、分发全自动；从"手动同步三处"变成"一处声明"。Agent 的能力边界能随业务持续扩张，而不是加一个工具改三个地方。</li>
+    </ul>
+    <p>而这正是<strong>框架的底层原理</strong>——LangChain 的 <code>@tool</code>、各家 Agent SDK 的工具系统，本质就是"健壮性处理 + 装饰器注册 + 分发"这三件事的工程化封装。学完这课，你不再是"会调框架的人"，而是<strong>看得懂框架为什么这么设计、必要时能自己造一个的人</strong>。这就是从"用轮子"到"懂轮子"的跨越。</p>
+  </div>
+
+  <div class="card">
+    <h3>🛠 动手练习：写一个 @tool 装饰器骨架</h3>
+    <p>不看第 4 节的完整实现，自己写一个 <code>@tool</code> 装饰器<strong>骨架</strong>，说清它如何<strong>自动收集函数名 + 参数 Schema 并登记进 registry</strong>。<strong>先自己写，再看答案。</strong></p>
+    <h4>任务清单</h4>
+    <ol>
+      <li>用 <code>inspect.signature(fn)</code> 读出参数名、类型注解、有无默认值</li>
+      <li>把每个参数转成 Schema 字段（类型名；没默认值的进 <code>required</code>）</li>
+      <li>用 <code>fn.__name__</code> 作工具名、<code>fn.__doc__</code> 作 description</li>
+      <li>把 <code>{schema, fn}</code> 登记进全局 <code>REGISTRY</code>（fn 要一起存，方便分发）</li>
+      <li>用 <code>functools.wraps</code>，保证被装饰函数照常可调用</li>
+    </ol>
+    <details>
+      <summary>💡 点击查看参考答案</summary>
+      <pre><code>import functools, inspect
+
+REGISTRY = {}   # 工具名 -> {"schema": {...}, "fn": callable}
+_JSON_TYPE = {"str": "string", "int": "integer", "float": "number", "bool": "boolean"}
+
+def tool(fn):
+    sig = inspect.signature(fn)
+    props, required = {}, []
+    for name, p in sig.parameters.items():
+        props[name] = {"type": _JSON_TYPE.get(getattr(p.annotation, "__name__", ""), "string")}
+        if p.default is inspect.Parameter.empty:   # 无默认值 = 必填
+            required.append(name)
+
+    REGISTRY[fn.__name__] = {                       # ← 登记：名字为键
+        "schema": {
+            "name": fn.__name__,                    # 函数名 = 工具名
+            "description": (fn.__doc__ or "").strip(),   # docstring = 描述
+            "parameters": {
+                "type": "object",
+                "properties": props,                # ← 自动收集的参数 Schema
+                "required": required,
+            },
+        },
+        "fn": fn,                                    # ← 存函数本体，供 dispatch
+    }
+
+    @functools.wraps(fn)                             # 保住 __name__/__doc__
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+@tool
+def add(a: int, b: int) -> int:
+    "把两个整数相加。"
+    return a + b
+
+print(REGISTRY["add"]["schema"])
+# {'name': 'add', 'description': '把两个整数相加。',
+#  'parameters': {'type': 'object',
+#    'properties': {'a': {'type': 'int'}, 'b': {'type': 'int'}},
+#    'required': ['a', 'b']}}
+print(add(2, 3))            # 5 —— 装饰后照常调用
+print(add.__name__)         # add —— wraps 生效</code></pre>
+      <h4>进阶思考</h4>
+      <ul>
+        <li>想让参数<strong>带业务校验</strong>（如 <code>b</code> 必须 &gt; 0）该怎么改？（提示：第 1 节，用 Pydantic 模型描述参数，校验失败回填重试）</li>
+        <li>想只把<strong>部分工具</strong>发给模型省 token（第 3 节），注册表结构要支持什么操作？（提示：按名字取子集）</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：工具健壮性 + 注册系统</h2>
+  <div class="card">
+    <pre><code>【健壮性① 参数校验失败】
+  Pydantic 校验模型填的参数（L14）
+  ★ 失败别 raise！把 error 作为 tool 结果回填 → 模型自我修正重试
+  校验(没过绝不执行) 与 执行(真实副作用) 分开   （呼应 L28/L31）
+
+【健壮性② 流式拼工具调用】
+  流式(L26)下 arguments 分片到达 → 别拿一片就 parse
+  按 tc.index 用 += 累加片段 → 流结束后一次性 json.loads
+  文本 delta 实时显示 / 工具 args 后台拼齐再执行
+
+【健壮性③ 工具 Schema 的 Token 开销】
+  每个工具 Schema 都是 input token，且每轮都发（L18/L34）
+  工具越多 → 越贵(L37) + 越容易选错
+  对策：只注册当前任务相关工具 + description 精简够用
+
+【工具注册系统 = 装饰器自动注册（闭合 L11）】
+  @tool 一次做三件事：
+    ① 从注解/docstring 抽 Schema
+    ② 登记进 REGISTRY
+    ③ 存"名字→函数"供分发
+  REGISTRY[name] = {"schema": {...}, "fn": 函数本体}
+  tools_param(names) → 按需只取子集（省 token）
+
+【分发 dispatch（呼应 L35 循环）】
+  模型只给"名字+参数" → 去 REGISTRY 查函数并调用
+  查不到(幻觉工具)也别崩 → 回填错误让它换
+
+【一句话】不信任模型输出，但给它自愈机会；工具可扩展靠装饰器
+这就是 LangChain @tool 等框架的底层原理</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://platform.openai.com/docs/guides/function-calling" target="_blank"><strong>OpenAI · Function Calling guide</strong></a> + <a href="https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview" target="_blank"><strong>Anthropic · Tool use overview</strong></a></p>
+    <p>两篇官方文档都完整讲了工具定义的 Schema 结构、模型如何返回工具调用、以及流式下 <code>arguments</code> 分片到达该怎么拼——正好对应本课第 1–3 节。读的时候留意各家<strong>字段名的差异</strong>（和 L25 三家 API 的差异是一脉相承的）。想看"注册 + 分发"在真实框架里的样子，可再对照 LangChain 的 <code>@tool</code> 源码。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0040-L35-function-calling-loop.html">上一课 L35 · 完整 Function Calling 循环</a> — 本课的健壮性/注册都插在这个循环里</li>
+      <li>· <a href="0042-L37-cost-engineering.html">下一课 L37 · 成本工程（缓存分层）</a> — 工具 Schema 的 token 开销怎么再省</li>
+      <li>· <a href="0015-L11-decorators.html">L11 · 装饰器</a> — 注册系统的基础；本课闭合"手写 @tool"那条线</li>
+      <li>· <a href="0018-L14-pydantic.html">L14 · Pydantic</a> — 工具参数校验的地基</li>
+      <li>· <a href="0033-L28-structured-outputs.html">L28 · Structured Outputs</a> — 校验 + 重试兜底，与本课第 1 节同源</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li><strong>参数校验失败别崩</strong>：Pydantic 校验（L14），错误作为 tool 结果回填让模型自我修正重试（呼应 L28/L31）</li>
+      <li><strong>流式下工具调用要拼</strong>：<code>arguments</code> 分片到达，按 index 累加、流结束后一次性 parse（L26）</li>
+      <li><strong>工具 Schema 占 token 且每轮都发</strong>：只注册相关工具 + description 精简，省钱又选得准（L18/L34/L37）</li>
+      <li><strong>注册系统 = 装饰器自动注册</strong>：<code>@tool</code> 抽 Schema + 登记 + 存函数，闭合 Phase 1 L11 那条线</li>
+      <li><strong>分发</strong>：拿模型给的名字去注册表查真实函数并调用（呼应 L35 循环）</li>
+      <li>健壮工具层 → Agent 稳定行动；注册系统 → 工具可扩展 —— 这就是框架的底层原理</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    <strong>💼 面试高频：「工具参数校验失败怎么办？」</strong> 标准答法——<strong>别让它崩</strong>：用 Pydantic 校验模型填的参数，<strong>校验失败不 raise，而是把错误信息作为 tool 结果回填给模型，让它据此改正重试</strong>（自我修正，呼应 L28/L31）；再配合 <strong>Tool Registry（装饰器自动注册 + 分发）</strong>让工具集可扩展、可维护。一句话点透：<em>可靠 Agent 不是信任模型，而是在机制上给它自愈的机会、并让工具层能持续长大。</em> 下一课我们把 token 成本这条线收尾——<a href="0042-L37-cost-engineering.html">L37 成本工程</a>。有疑问随时问我。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

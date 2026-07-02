@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L38 · Phase 3 综合实战</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>Phase 3 综合实战：多模型 Agent 客户端</h1>
+    <p class="subtitle">把 L25–L37 学的全部串成一个"能上生产的 LLM 调用层"</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:100%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Phase 3 的十几课，每一课都在解决一个<strong>单点问题</strong>：怎么发请求（<a href="0030-L25-llm-api-basics.html">L25</a>）、怎么流式（<a href="0031-L26-streaming.html">L26</a>）、怎么让模型调工具（<a href="0040-L35-function-calling-loop.html">L35</a>）、怎么保证输出格式（<a href="0033-L28-structured-outputs.html">L28</a>）、怎么在失败时重试和切换（<a href="0036-L31-error-handling-retry.html">L31</a>/<a href="0037-L32-routing-fallback-gateway.html">L32</a>）、怎么观测和降本（<a href="0038-L33-observability.html">L33</a>/<a href="0042-L37-cost-engineering.html">L37</a>）。它们现在还是<strong>一堆零件</strong>。</p>
+    <p>真实生产里，这些能力不是可选项，而是<strong>叠在同一次调用上</strong>的：一个 Agent 请求要能流式返回、能跑完整的工具循环、能在主模型挂掉时退避重试再切备用、能把最终答案约束成结构化 JSON、还要顺手把 token 和成本记下来。这一课我们把它们<strong>拼成一个客户端</strong>——一个 <code>generate()</code> 就把上面全部包住。它不是玩具，而是你从 Phase 4 起搭真正 Agent 架构时，<strong>反复复用的那一层调用底座</strong>。</p>
+    <p>⚠️ 老规矩：<strong>不假设你有 API key</strong>。下面代码<strong>结构正确、可 mock 跑通</strong>，key 从环境变量读（清楚标注位置）。所有成本数字都标了<strong>「示例」</strong>——它们演示的是形态，不是真实报价。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清一个"生产级 LLM 调用层"要有哪几块能力，以及每块对应<strong>哪一课</strong></li>
+      <li>用 OpenAI 兼容 <code>base_url</code> 封装一个<strong>能切厂商</strong>的统一 client，key 从 env 读（<a href="0030-L25-llm-api-basics.html">L25</a>/<a href="0037-L32-routing-fallback-gateway.html">L32</a>）</li>
+      <li>包一层<strong>指数退避 + full jitter 重试</strong>，主模型失败自动切备用（<a href="0036-L31-error-handling-retry.html">L31</a>/<a href="0037-L32-routing-fallback-gateway.html">L32</a>）</li>
+      <li>嵌入一个<strong>完整的 Function Calling 循环</strong>，工具从 <code>@tool</code> registry 分发（<a href="0040-L35-function-calling-loop.html">L35</a>/L36）</li>
+      <li>用 Structured Outputs 或流式打字机<strong>组合</strong>出最终答案（<a href="0033-L28-structured-outputs.html">L28</a>/<a href="0031-L26-streaming.html">L26</a>）</li>
+      <li>从 <code>usage</code> 累加 <strong>token 与成本</strong>、超阈值告警、用缓存降本（<a href="0038-L33-observability.html">L33</a>/<a href="0042-L37-cost-engineering.html">L37</a>）</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 项目目标 &amp; 架构</h2>
+  <div class="card">
+    <p>我们要造的东西叫 <strong><code>AgentClient</code></strong>：对外只暴露一个 <code>generate(messages, tools=...)</code>，对内把 Phase 3 的能力<strong>层层包住</strong>。它的能力清单（每一项都对应一课）：</p>
+    <table>
+      <thead><tr><th>能力</th><th>做什么</th><th>来自哪一课</th></tr></thead>
+      <tbody>
+        <tr><td><strong>流式输出</strong></td><td>最终答案逐字蹦出，不干等</td><td><a href="0031-L26-streaming.html">L26</a></td></tr>
+        <tr><td><strong>完整 FC 循环</strong></td><td>模型请求工具 → 执行 → 回填 → 继续</td><td><a href="0040-L35-function-calling-loop.html">L35</a></td></tr>
+        <tr><td><strong>结构化输出</strong></td><td>最终答案约束成固定 JSON schema</td><td><a href="0033-L28-structured-outputs.html">L28</a></td></tr>
+        <tr><td><strong>错误重试</strong></td><td>指数退避 + full jitter，扛住 429/5xx</td><td><a href="0036-L31-error-handling-retry.html">L31</a></td></tr>
+        <tr><td><strong>Fallback</strong></td><td>主模型挂了自动切备用模型/厂商</td><td><a href="0037-L32-routing-fallback-gateway.html">L32</a></td></tr>
+        <tr><td><strong>原生缓存</strong></td><td>把稳定前缀缓存起来降本</td><td><a href="0042-L37-cost-engineering.html">L37</a></td></tr>
+        <tr><td><strong>成本追踪</strong></td><td>从 <code>usage</code> 累加 token/成本、超阈告警</td><td><a href="0038-L33-observability.html">L33</a></td></tr>
+      </tbody>
+    </table>
+    <p>把它们叠起来，就是这么一张<strong>洋葱式架构图</strong>——从外到内，一次 <code>generate()</code> 调用穿过每一层：</p>
+    <pre><code>┌─────────────────────────────────────────────────────────────┐
+│  AgentClient.generate(messages, tools)                       │
+│                                                              │
+│   ① 成本追踪 / 可观测        每次调用累加 usage、超阈告警  L33/L37 │
+│   └─┬────────────────────────────────────────────────────┐   │
+│     │ ② 重试(退避+full jitter)     429/5xx 自动重试        L31 │
+│     │  └─┬─────────────────────────────────────────────┐  │   │
+│     │    │ ③ Fallback     主模型失败 → 切备用模型/厂商    L32 │  │
+│     │    │  └─┬──────────────────────────────────────┐  │  │   │
+│     │    │    │ ④ 统一客户端  OpenAI 兼容 base_url 切厂商 L25/L32│
+│     │    │    │  └─┬───────────────────────────────┐  │  │  │   │
+│     │    │    │    │ ⑤ FC 循环   while: 工具请求→执行→回填 L35│ │
+│     │    │    │    │     tools 从 @tool registry 分发   L36 │ │  │
+│     │    │    │    │  └─┬────────────────────────┐  │  │  │  │   │
+│     │    │    │    │    │ ⑥ 最终答案               │  │  │  │  │   │
+│     │    │    │    │    │  Structured Outputs  L28 │  │  │  │  │   │
+│     │    │    │    │    │  或 流式打字机       L26 │  │  │  │  │   │
+│     │    │    │    │    └────────────────────────┘  │  │  │  │   │
+│     │    │    │    │  原生 Prompt Caching 贯穿全程   L37 │  │  │   │
+│     │    │    │    └───────────────────────────────┘  │  │  │   │
+│     │    │    └──────────────────────────────────────┘  │  │   │
+│     │    └─────────────────────────────────────────────┘  │   │
+│     └────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘</code></pre>
+    <p>下面我们<strong>从内往外</strong>一层层 build：先有能切厂商的 client（④），再包重试+Fallback（②③），再嵌 FC 循环（⑤），再拼最终答案（⑥），最后套上成本追踪（①）。</p>
+  </div>
+  <div class="tip">
+    <strong>为什么是"一层层包"而不是"一个大函数"？</strong> 每一层职责单一、能独立测试、能单独换实现——这正是 <a href="0037-L32-routing-fallback-gateway.html">L32</a> 讲的 <strong>AI Gateway 思路</strong>：把跨模型的通用能力（重试、Fallback、观测、缓存）从业务里抽出来，沉到一个统一的调用层。你现在是在<strong>手写一个迷你 Gateway</strong>。
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Step 1 · 统一客户端（L25 / L32）</h2>
+  <div class="card">
+    <p>最内层：一个<strong>能切厂商</strong>的 client。<a href="0030-L25-llm-api-basics.html">L25</a> 的关键技巧是——大多数厂商/网关都提供 <strong>OpenAI 兼容端点</strong>，所以你只用 <code>openai</code> 这一个 SDK，改 <code>base_url</code> + key 就能打到别家模型。<a href="0037-L32-routing-fallback-gateway.html">L32</a> 把它工程化：用一个<strong>供应商表</strong>登记每家的 <code>base_url</code> 和 env 变量名，按名字取 client。</p>
+    <pre><code>import os
+from openai import OpenAI
+
+# 供应商表：每家登记「兼容端点 + key 从哪个环境变量读」
+# ★ key 绝不写进代码，只写「变量名」，运行时从 env 取（L25 铁律）
+PROVIDERS = {
+    "primary":  {"base_url": "https://api.openai.com/v1",
+                 "key_env": "OPENAI_API_KEY",   "model": "gpt-5.5"},
+    "backup":   {"base_url": "https://api.anthropic.com/v1/",  # Anthropic 的 OpenAI 兼容端点（有限兼容：独门特性如 Extended Thinking 用不了；生产更稳的做法是走 LiteLLM 等网关，见 L32）
+                 "key_env": "ANTHROPIC_API_KEY", "model": "claude-sonnet-4-6"},
+}
+
+def make_client(name: str) -&gt; OpenAI:
+    """按供应商名取一个 OpenAI 兼容 client。换厂商 ≈ 换 base_url + key。"""
+    cfg = PROVIDERS[name]
+    api_key = os.environ.get(cfg["key_env"])     # 没设 → None，交给上层决定 mock
+    return OpenAI(api_key=api_key, base_url=cfg["base_url"])
+
+def raw_call(name: str, messages: list, **kw):
+    """最底层的一次真实调用：形状就是 L25 的 chat.completions.create。"""
+    client = make_client(name)
+    return client.chat.completions.create(
+        model=PROVIDERS[name]["model"],
+        messages=messages,
+        **kw,                     # tools / temperature / stream / response_format 都从这透传
+    )</code></pre>
+    <p>注意这一层<strong>只负责"发一次请求"</strong>，不管重试、不管切换、不管工具循环。方法名 <code>chat.completions.create</code>、参数 <code>model</code> / <code>messages</code> 都是 <a href="0030-L25-llm-api-basics.html">L25</a> 里的真实写法。上层要什么额外参数（<code>tools</code>、<code>stream</code>、<code>response_format</code>）都从 <code>**kw</code> 透传进来。</p>
+  </div>
+  <div class="tip">
+    ⚠️ 兼容模式很方便但<strong>不是 100% 等价</strong>（<a href="0030-L25-llm-api-basics.html">L25</a> 提过）：各家独门特性（如 Claude 的 Extended Thinking）在兼容层下可能用不了。做<strong>多模型切换 / Fallback</strong>时它够用；要吃满某家能力就得用原生 SDK。这也是为什么 <code>PROVIDERS</code> 表里每家单独登记 <code>model</code>——同一个逻辑名，底下是不同厂商的具体型号。
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. Step 2 · 带重试 + Fallback 的调用（L31 / L32）</h2>
+  <div class="card">
+    <p>往外包一层。真实网络里，429（限流）和 5xx（服务端抖动）是<strong>常态而非异常</strong>。<a href="0036-L31-error-handling-retry.html">L31</a> 的答案是<strong>指数退避 + full jitter</strong>：第 n 次重试等待 <code>random(0, base·2ⁿ)</code>，用抖动打散并发重试、避免"惊群"同时砸回去。<a href="0037-L32-routing-fallback-gateway.html">L32</a> 的答案是 <strong>Fallback</strong>：一个模型/厂商反复失败，就<strong>换一家</strong>接着试。</p>
+    <p>两者叠起来：<strong>对每个供应商先退避重试几次，全挂了再切下一个供应商</strong>。下面是结构正确的伪代码（标注了可 mock 的位置）：</p>
+    <pre><code>import os, time, random
+
+USE_MOCK = os.environ.get("OPENAI_API_KEY") is None   # 没 key → 整条链路走 mock
+
+RETRYABLE = (429, 500, 502, 503, 504)   # 只重试「暂时性」错误；400/401 立刻抛(L31)
+
+def call_with_retry(name, messages, max_retries=4, base=0.5, **kw):
+    """对单个供应商：指数退避 + full jitter 重试 (L31)。"""
+    for attempt in range(max_retries):
+        try:
+            if USE_MOCK:                       # —— mock：先跑通流程，不需要 key ——
+                return _mock_response(messages, **kw)
+            return raw_call(name, messages, **kw)   # —— 真实调用 (Step 1) ——
+        except Exception as e:
+            code = getattr(e, "status_code", None)
+            if code not in RETRYABLE or attempt == max_retries - 1:
+                raise                          # 不可重试 / 重试用尽 → 抛给 Fallback 层
+            # full jitter：等待 random(0, base * 2**attempt)，打散并发重试(L31)
+            time.sleep(random.uniform(0, base * (2 ** attempt)))
+
+def call_with_fallback(messages, order=("primary", "backup"), **kw):
+    """跨供应商 Fallback：主模型退避重试全挂了，切备用 (L32)。"""
+    last_err = None
+    for name in order:
+        try:
+            return call_with_retry(name, messages, **kw), name   # 返回响应 + 实际用了谁
+        except Exception as e:
+            last_err = e                       # 记下来，换下一家继续
+    raise RuntimeError(f"所有供应商都失败了: {last_err}")</code></pre>
+    <p>这一层是纯<strong>控制流</strong>：它不知道消息里有没有工具、答案是不是结构化的——它只保证"<strong>尽最大努力拿到一个响应回来</strong>"。<code>call_with_fallback</code> 顺手返回"实际用了哪个供应商"，方便上层观测（哪家在扛流量、哪家老失败）。<code>_mock_response</code> 是个占位函数，让你<strong>没 key 也能把整条链路跑通</strong>——它的样子在 Step 3 一并给出。</p>
+  </div>
+  <div class="tip">
+    <strong>为什么 400/401 不重试？</strong> <a href="0036-L31-error-handling-retry.html">L31</a> 的核心区分：<strong>暂时性错误</strong>（429/5xx，等一下会好）才重试；<strong>确定性错误</strong>（400 请求错、401 key 错）重试一万次也没用，只会白烧钱和时间——要<strong>立刻抛出</strong>让人来修。把 <code>RETRYABLE</code> 写成一个明确的白名单，就是把这条纪律固化进代码。
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. Step 3 · Function Calling 循环（L35 / L36）</h2>
+  <div class="card">
+    <p>现在嵌入 Agent 的心脏：<strong>完整的 FC 循环</strong>。<a href="0040-L35-function-calling-loop.html">L35</a> 讲过，一次工具调用不是一问一答，而是一个 <code>while</code> 循环：<strong>模型说"我要调工具" → 你执行 → 把结果回填进 messages → 再问模型 → …… 直到模型不再要工具、给出最终答案</strong>。工具本身从一个 <code>@tool</code> registry 来（L36）——注册即可用，循环里按名字 dispatch。</p>
+    <p>先看 registry（L36 的核心思想：<strong>装饰器登记 + 统一分发</strong>）：</p>
+    <pre><code>import json
+
+REGISTRY = {}      # 工具名 -&gt; (函数, JSON schema)，一处登记、循环里查
+
+def tool(schema):
+    """@tool 装饰器：把一个函数注册成模型可调用的工具 (L36)。"""
+    def deco(fn):
+        REGISTRY[schema["function"]["name"]] = (fn, schema)
+        return fn
+    return deco
+
+@tool({"type": "function", "function": {
+    "name": "get_weather",
+    "description": "查询某城市当前天气",
+    "parameters": {"type": "object",
+        "properties": {"city": {"type": "string", "description": "城市名"}},
+        "required": ["city"]}}})
+def get_weather(city: str) -&gt; str:
+    return f"{city} 现在 22°C 晴"      # 真实实现会去调天气 API
+
+def tool_specs():
+    """把所有已注册工具的 schema 汇成 tools= 参数 (L34 的 schema 设计)。"""
+    return [schema for _, schema in REGISTRY.values()]</code></pre>
+    <p>再看循环本身——这是把前面所有层<strong>用起来</strong>的地方（调用走 <code>call_with_fallback</code>，天然带上了重试和 Fallback）：</p>
+    <pre><code>def run_tool_loop(messages, max_turns=6):
+    """完整 FC 循环 (L35)：工具请求 → dispatch → 回填 → 继续。"""
+    for _ in range(max_turns):
+        resp, _used = call_with_fallback(messages, tools=tool_specs())
+        msg = resp.choices[0].message           # L25 的回复取法
+
+        if not msg.tool_calls:                  # 模型不要工具了 → 这就是最终答案
+            messages.append(msg)                # 把最终这轮也 append 进历史，供收尾复用
+            return msg
+
+        messages.append(msg)                    # 先把「模型的工具请求」回填进历史
+        for call in msg.tool_calls:             # 可能一次请求多个工具，逐个执行
+            fn, _ = REGISTRY[call.function.name]           # 按名字 dispatch (L36)
+            args = json.loads(call.function.arguments)     # 参数是 JSON 字符串，要 loads
+            result = fn(**args)                            # 真正执行工具
+            messages.append({                    # 结果回填，用 tool_call_id 对上号
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": json.dumps(result, ensure_ascii=False),
+            })
+    raise RuntimeError("工具循环超过最大轮数，可能陷入死循环")</code></pre>
+    <p>三个 <a href="0040-L35-function-calling-loop.html">L35</a> 的关键点，都是真实字段名：<strong>①</strong> 从 <code>msg.tool_calls</code> 读模型的工具请求；<strong>②</strong> 每个工具结果用 <code>role:"tool"</code> + <code>tool_call_id</code> 回填，<strong>tool_call_id 必须和请求对上</strong>否则模型接不上；<strong>③</strong> 参数是 JSON 字符串，要 <code>json.loads</code>，结果回填时 <code>json.dumps</code>。还有个安全阀：<code>max_turns</code> 上限，防止模型和工具<strong>互相纠缠陷入死循环</strong>（真实 Agent 常见事故）。</p>
+    <p>顺带补上 Step 2 欠的 mock——它要能<strong>模拟这个循环</strong>（第一次假装要调工具，第二次给最终答案），这样没 key 也能验证整条链路：</p>
+    <pre><code>class _M:                       # 极简的 mock 响应对象，模仿 SDK 的返回结构
+    def __init__(self, **kw): self.__dict__.update(kw)
+
+def _mock_response(messages, **kw):
+    """没 key 时的降级响应：模拟「一次工具调用 + 一次最终答案」。"""
+    called = any(m.get("role") == "tool" for m in messages)
+    if kw.get("tools") and not called:          # 第一轮：假装模型要调 get_weather
+        tc = _M(id="call_1", function=_M(name="get_weather",
+                                         arguments='{"city": "北京"}'))
+        message = _M(tool_calls=[tc], content=None)
+    else:                                        # 第二轮：给最终答案，无 tool_calls
+        message = _M(tool_calls=None, content="[MOCK] 北京现在 22°C 晴。")
+    usage = _M(prompt_tokens=120, completion_tokens=30)   # 假的 usage，供成本层累加
+    return _M(choices=[_M(message=message)], usage=usage)</code></pre>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> FC 循环里，工具执行完的结果要怎么交回给模型？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">把结果直接拼进下一句 user 消息的正文里发出去</button>
+      <button data-answer="correct">按 tool_call_id 用 role:"tool" 回填</button>
+      <button data-answer="wrong">调用厂商专门的 submit_tool_result 接口异步上传</button>
+      <button data-answer="wrong">写进服务端会话状态，让模型下轮自己去取</button>
+    </div>
+    <div class="quiz-explanation">工具结果必须作为一条 <code>{"role": "tool", "tool_call_id": ..., "content": ...}</code> 消息<strong>回填进 messages</strong>，且 <code>tool_call_id</code> 要和模型那次 <code>tool_calls</code> 请求里的 <code>id</code> <strong>严格对上号</strong>（<a href="0040-L35-function-calling-loop.html">L35</a>）——模型靠这个 id 把"我问的工具"和"你给的结果"配对。塞进普通 user 消息、或走别的接口，模型都接不上。LLM 无状态，服务端不会替你存循环状态。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. Step 4 · 结构化输出 + 流式（L28 / L26）</h2>
+  <div class="card">
+    <p>循环跑完，模型给出最终答案。这时有两种"收尾方式"，按场景二选一（或组合）：</p>
+    <ul>
+      <li><strong>要机器消费 → Structured Outputs（<a href="0033-L28-structured-outputs.html">L28</a>）</strong>：最终答案要被下游代码解析（存库、传给下一个服务），就用约束解码保证它<strong>一定是合法 JSON、一定符合 schema</strong>。做法是在<strong>最后一次</strong>调用（工具循环结束、要最终答案那次）带上 <code>response_format</code>。</li>
+      <li><strong>要给人看 → 流式打字机（<a href="0031-L26-streaming.html">L26</a>）</strong>：最终答案是给用户读的，就 <code>stream=True</code>，逐 chunk 把 <code>delta.content</code> 打出来，像 ChatGPT 一样即时。</li>
+    </ul>
+    <p>怎么组合进我们的 <code>generate()</code>？关键洞察：<strong>结构化 vs 流式，只作用在"最终那次调用"上，不影响中间的工具循环</strong>。工具循环里的调用照常（要拿 <code>tool_calls</code>），只有确认无工具、要出最终答案时，才按 <code>output</code> 参数切换收尾方式：</p>
+    <pre><code># 结构化收尾：给最后一次调用挂上 response_format (L28)
+FINAL_SCHEMA = {"type": "json_schema", "json_schema": {
+    "name": "answer",
+    "schema": {"type": "object",
+        "properties": {"summary": {"type": "string"},
+                       "confidence": {"type": "number"}},
+        "required": ["summary", "confidence"],
+        "additionalProperties": False},
+    "strict": True}}
+
+def finalize(messages, output="text"):
+    """收尾：结构化 or 流式，二选一。中间的工具循环不受影响。"""
+    if output == "json":                         # 机器消费：约束成固定 schema (L28)
+        resp, _ = call_with_fallback(messages, response_format=FINAL_SCHEMA)
+        return json.loads(resp.choices[0].message.content)   # 保证能 loads 成功
+
+    if output == "stream":                       # 给人看：逐字打字机 (L26)
+        stream, _ = call_with_fallback(messages, stream=True)
+        chunks = []
+        for ch in stream:                        # 遍历 chunk，累加 delta.content
+            piece = ch.choices[0].delta.content or ""
+            chunks.append(piece)
+            print(piece, end="", flush=True)     # flush=True 才即时(L26)
+        return "".join(chunks)
+
+    return call_with_fallback(messages)[0].choices[0].message.content</code></pre>
+    <p>这就是"组合"的含义：<strong>同一个客户端，同一条重试/Fallback 链路，尾部按需切换成结构化或流式</strong>。<a href="0033-L28-structured-outputs.html">L28</a> 提醒过——结构化输出和流式<strong>可以并存</strong>（一边流一边保证最终是合法 JSON），但也各有代价（结构化首次编译 schema 略慢、流式要自己拼 chunk），按"给人还是给机器"来选最省心。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 在这个客户端里，Structured Outputs 应该加在哪一步？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">每一次调用都加，包括工具循环中间那些</button>
+      <button data-answer="correct">只加在收尾、要最终答案的那次调用上</button>
+      <button data-answer="wrong">加在重试层，让每次重试都强制 JSON</button>
+      <button data-answer="wrong">不用加，模型会自己判断要不要出 JSON</button>
+    </div>
+    <div class="quiz-explanation">结构化输出（<a href="0033-L28-structured-outputs.html">L28</a>）只作用在<strong>最终答案</strong>上——工具循环中间的调用需要模型返回 <code>tool_calls</code>（那是模型在"要工具"，不是最终结果），若也强制成业务 schema 会打断循环。所以正确做法是：循环内照常调，<strong>确认无工具、要出最终答案的那一次</strong>才挂 <code>response_format</code>。这跟"流式只作用在最终收尾"是同一个道理。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. Step 5 · 成本追踪 + 可观测（L33 / L37）</h2>
+  <div class="card">
+    <p>最外层：<strong>成本追踪</strong>。<a href="0038-L33-observability.html">L33</a> 的核心是——生产系统要能回答"<strong>它现在花了多少钱、慢不慢、谁在失败</strong>"。每次调用的 <code>usage</code> 字段（<code>prompt_tokens</code> / <code>completion_tokens</code>）就是账单原料（<a href="0042-L37-cost-engineering.html">L37</a>）。我们做个累加器：<strong>每次调用记 token、按单价折算成本、超阈值告警</strong>。</p>
+    <pre><code># 单价用「示例」值：真实价格请查各厂商官网，这里只演示算法
+# 单位：美元 / 每百万 token（输出通常是输入的 3~5 倍，见 L37）
+PRICE = {   # 模型名: (输入价/百万, 输出价/百万) —— 均为示例，非真实报价
+    "gpt-5.5":            (5.0, 25.0),
+    "claude-sonnet-4-6":  (3.0, 15.0),
+}
+
+class CostTracker:
+    """从 usage 累加 token 与成本，超阈值告警 (L33/L37)。"""
+    def __init__(self, alert_usd=1.0):
+        self.calls = 0; self.in_tok = 0; self.out_tok = 0
+        self.cost = 0.0; self.alert_usd = alert_usd
+
+    def record(self, model: str, usage) -&gt; None:
+        in_p, out_p = PRICE[model]
+        self.calls += 1
+        self.in_tok  += usage.prompt_tokens          # L25 的 usage 字段
+        self.out_tok += usage.completion_tokens
+        self.cost += (usage.prompt_tokens * in_p
+                      + usage.completion_tokens * out_p) / 1_000_000
+        if self.cost &gt; self.alert_usd:               # 超阈值 → 告警(L33)
+            print(f"⚠️ 成本告警：累计已达 ${self.cost:.4f}（阈值 ${self.alert_usd}）")
+
+    def report(self) -&gt; dict:
+        return {"调用数": self.calls, "总输入token": self.in_tok,
+                "总输出token": self.out_tok, "总成本USD": round(self.cost, 6)}</code></pre>
+    <p>把它挂到最外层——<code>generate()</code> 每完成一次底层调用，就 <code>tracker.record(...)</code> 一下。跑几轮（含一次工具往返）后，<code>report()</code> 长这样（<strong>下面所有数字都是"示例"，token 数按 mock 的 usage 算、金额按示例单价算</strong>）：</p>
+    <pre><code>┌───────────────┬──────────┐
+│ 指标          │ 值(示例) │
+├───────────────┼──────────┤
+│ 调用数        │    3     │   ← 2 次工具往返 + 1 次最终答案
+│ 总输入 token  │   360    │
+│ 总输出 token  │    90    │
+│ 总成本 (USD)  │ 0.00405  │   ← 按示例单价折算，非真实报价
+└───────────────┴──────────┘</code></pre>
+    <p>成本能看见了，就能<strong>动手降它</strong>。<a href="0042-L37-cost-engineering.html">L37</a> 最省力的杠杆是<strong>原生 Prompt Caching</strong>：把稳定不变的前缀（长 system prompt、工具 schema、少样本示例）标记缓存，重复请求时这部分只按<strong>约 0.1× 单价</strong>计费。它对我们的客户端尤其划算——因为<strong>工具循环里 system + tool schema 每一轮都重发</strong>，缓存一次、循环内全程复用，省的就是这块反复重发的钱。</p>
+  </div>
+  <div class="tip">
+    <strong>成本追踪不只是记账，更是"控制回路"。</strong> <a href="0038-L33-observability.html">L33</a> 的意义在于：先<strong>看得见</strong>（每次 <code>record</code>），才谈得上<strong>控制</strong>（超阈告警、按供应商归因谁贵）。真实生产里你会把这些数据发到 OTel / 监控面板，而不是 <code>print</code>；但心智模型一样——<strong>从 <code>usage</code> 采集 → 折算成本 → 触发告警/优化</strong>。缓存降本的效果，也正是靠这个追踪器<strong>量化出来</strong>的（缓存前后跑一遍，对比总成本）。
+  </div>
+
+  <details>
+    <summary>🧪 进阶挑战：给这个客户端接上 OTel 分布式追踪（点开看思路）</summary>
+    <div class="card" style="margin-top:.8rem;">
+      <p><code>print</code> 告警在生产里不够用——你需要把每次调用变成一条<strong>结构化 span</strong>，串成一次完整请求的调用链（哪层重试了、切了哪个供应商、工具循环跑了几轮、各花多少 token）。<a href="0038-L33-observability.html">L33</a> 讲的 <strong>OpenTelemetry GenAI 语义约定</strong>正是干这个的：给每次 LLM 调用打上标准化属性（<code>gen_ai.request.model</code>、<code>gen_ai.usage.input_tokens</code> …）。思路草图：</p>
+      <pre><code>from opentelemetry import trace
+tracer = trace.get_tracer("agent-client")
+
+def raw_call_traced(name, messages, **kw):
+    # 每次底层调用包一个 span，属性走 OTel GenAI 语义约定 (L33)
+    with tracer.start_as_current_span("chat.completions") as span:
+        span.set_attribute("gen_ai.system", name)                 # 用了哪个供应商
+        span.set_attribute("gen_ai.request.model", PROVIDERS[name]["model"])
+        resp = raw_call(name, messages, **kw)                     # Step 1 的真实调用
+        u = resp.usage
+        span.set_attribute("gen_ai.usage.input_tokens",  u.prompt_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", u.completion_tokens)
+        return resp</code></pre>
+      <p>三个要点：<strong>①</strong> span 要<strong>嵌套</strong>——外层 <code>generate</code> 一个大 span，里面每次底层调用一个子 span，重试和 Fallback 就在链路上一目了然；<strong>②</strong> 用 <a href="0038-L33-observability.html">L33</a> 的<strong>标准属性名</strong>（<code>gen_ai.*</code>），这样任何支持 OTel 的后端（Jaeger / Grafana / Datadog）都认；<strong>③</strong> 别把完整 prompt/响应正文塞进 span 属性（可能含敏感数据、也撑爆存储），只记<strong>元数据</strong>（模型、token、耗时、是否失败）。接上之后，<code>CostTracker</code> 的累加逻辑可以直接从 span 数据聚合，账本和链路合二为一。</p>
+    </div>
+  </details>
+</div>
+
+<div class="section">
+  <h2>7. 收尾：你造出了一个"生产级 LLM 调用层"</h2>
+  <div class="card">
+    <p>把五步拼起来，<code>AgentClient.generate()</code> 现在是这个样子——一次调用穿过全部七层能力：</p>
+    <pre><code>class AgentClient:
+    def __init__(self):
+        self.cost = CostTracker(alert_usd=1.0)     # ① 成本追踪 (L33/L37)
+
+    def generate(self, messages, output="text"):
+        """一个方法，包住 Phase 3 全部能力。"""
+        # ⑤ FC 循环(L35) 内部走 ②重试(L31) + ③Fallback(L32) + ④统一client(L25)
+        final_msg = run_tool_loop(messages)   # 工具全跑完，final_msg 是模型的最终回答
+        # ⑥ 收尾：text 直接用循环拿到的答案（不重复调用）；
+        #        json/stream 才需要对已完成的对话再跑一次，换成结构化 / 流式形态(L28/L26)
+        if output == "text":
+            return final_msg.content
+        return finalize(messages, output=output)
+
+# —— 没 key 也能跑（走 mock），验证整条链路 ——
+client = AgentClient()
+answer = client.generate(
+    [{"role": "user", "content": "北京今天天气怎么样？"}],
+    output="text")
+print(answer)                    # [MOCK] 北京现在 22°C 晴。
+print(client.cost.report())      # {'调用数': ..., '总成本USD': ...}（示例值）</code></pre>
+    <p>这层东西的价值在于：<strong>业务代码从此只跟 <code>generate()</code> 打交道</strong>。上层写 Agent 时，不用再操心"这次要不要重试、主模型挂了切哪个、token 记没记"——那些都被这一层吃掉了。这正是 Phase 4 起我们要做的事：<strong>在这个稳固的调用底座之上，搭真正的 Agent 架构</strong>（规划、记忆、多工具编排、多智能体协作）。你现在拥有的，是所有那些高级架构最终都要落到的<strong>那一次次可靠的 LLM 调用</strong>。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：Phase 3 一页复习</h2>
+  <div class="card">
+    <pre><code>【L25 统一客户端】发 messages → 收 message；OpenAI 兼容 base_url 切厂商
+  client.chat.completions.create(model=, messages=)
+  回复 resp.choices[0].message.content   用量 resp.usage
+  ★ key 走环境变量，绝不硬编码 / 绝不进公开仓库
+
+【L26 流式】stream=True，逐 chunk 取 delta.content，flush=True 才即时
+  给「人」看用流式；边流边拼、可与结构化并存
+
+【L27/L35 Function Calling】不是一问一答，是 while 循环：
+  模型出 tool_calls → 执行 → role:"tool"+tool_call_id 回填 → 再问
+  参数 json.loads、结果 json.dumps；设 max_turns 防死循环
+
+【L28 结构化输出】response_format 约束成合法 JSON+schema
+  只加在「最终那次」调用；给「机器」消费用它；首次编译 schema 略慢
+
+【L29 多模态】messages 里塞 image/audio 内容块；一样是 messages 进
+
+【L30 Context Window】历史越长越贵越易溢出；截断/摘要/搬进工具
+
+【L31 错误处理】暂时性错误(429/5xx)才重试；确定性错误(400/401)立刻抛
+  指数退避 + full jitter：等 random(0, base·2ⁿ)，打散并发重试
+  幂等键：重试不重复扣款/下单
+
+【L32 路由·Fallback·Gateway】主模型挂了切备用(退避重试全挂→换一家)
+  Gateway = 把重试/Fallback/观测/缓存 抽成统一调用层；本课就在手写迷你 Gateway
+
+【L33 可观测】看得见才控制得住；OTel GenAI 语义约定(gen_ai.*)
+  从 usage 采集 token→折算成本→告警/归因；只记元数据不记正文
+
+【L34 Tool Schema】工具描述写清「何时用」；参数 schema 越明确模型越少出错
+  @tool registry：装饰器登记 + 循环里按名 dispatch(L36)
+
+【L36 工具健壮性】工具会失败：try/except 兜住、返回结构化错误让模型自愈
+  注册系统统一管理、参数校验、超时/限流
+
+【L37 成本工程】输出通常 3~5×输入；原生 Prompt Caching 缓存稳定前缀(~0.1×)
+  循环里 system+tool schema 每轮重发 → 缓存一次全程复用，最省
+
+【本课 综合客户端】洋葱式：成本追踪⊃重试⊃Fallback⊃统一client⊃FC循环⊃(结构化|流式)
+  一个 generate() 包住全部；业务只跟它打交道 → Phase 4 在它之上搭 Agent</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank"><strong>OpenAI: Function Calling Guide</strong></a> + <a href="https://litellm.ai/" target="_blank"><strong>LiteLLM（AI Gateway 参考实现）</strong></a></p>
+    <p>前者是本课 FC 循环的官方权威，把"模型请求工具 → 执行 → 回填 → 继续"这套往返讲透，含并行工具调用与 <code>tool_call_id</code> 配对的细节。后者是一个成熟的开源 AI Gateway——你这一课手写的重试、Fallback、统一多厂商调用、成本追踪，它都做成了生产级实现；读它的源码，就能看到"迷你 Gateway"长大后是什么样，也能理解 <a href="0037-L32-routing-fallback-gateway.html">L32</a> 说的"一个接口统一 100+ 模型"背后的工程。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0042-L37-cost-engineering.html">上一课 · L37 · 成本工程</a> — 缓存分层降本，本课成本追踪层的地基</li>
+      <li>· <a href="0030-L25-llm-api-basics.html">L25 · 统一客户端</a> — <code>chat.completions.create</code> / <code>base_url</code> 切厂商，最内层来源</li>
+      <li>· <a href="0031-L26-streaming.html">L26 · 流式</a> — 收尾的打字机输出</li>
+      <li>· <a href="0033-L28-structured-outputs.html">L28 · 结构化输出</a> — 收尾的 <code>response_format</code> 约束</li>
+      <li>· <a href="0036-L31-error-handling-retry.html">L31 · 重试 + 幂等</a> — 指数退避 + full jitter</li>
+      <li>· <a href="0037-L32-routing-fallback-gateway.html">L32 · Fallback / 网关</a> — 主备切换与 Gateway 思路</li>
+      <li>· <a href="0040-L35-function-calling-loop.html">L35 · FC 循环</a> — 客户端的心脏，工具往返</li>
+      <li>· <a href="0038-L33-observability.html">L33 · 可观测性</a> — <code>usage</code> → 成本 → 告警</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>生产级 LLM 调用层 = <strong>把 Phase 3 的能力叠在同一次调用上</strong>，而不是散着用</li>
+      <li><strong>架构是洋葱式</strong>：成本追踪 ⊃ 重试 ⊃ Fallback ⊃ 统一 client ⊃ FC 循环 ⊃（结构化 | 流式）</li>
+      <li><strong>Step 1</strong>：OpenAI 兼容 <code>base_url</code> + 供应商表，一套 SDK 切厂商，key 走 env（<a href="0030-L25-llm-api-basics.html">L25</a>/<a href="0037-L32-routing-fallback-gateway.html">L32</a>）</li>
+      <li><strong>Step 2</strong>：指数退避 + full jitter 重试，主模型全挂再切备用；400/401 立刻抛（<a href="0036-L31-error-handling-retry.html">L31</a>/<a href="0037-L32-routing-fallback-gateway.html">L32</a>）</li>
+      <li><strong>Step 3</strong>：完整 FC 循环，工具从 <code>@tool</code> registry dispatch，结果用 <code>tool_call_id</code> 回填，设 <code>max_turns</code>（<a href="0040-L35-function-calling-loop.html">L35</a>/L36）</li>
+      <li><strong>Step 4</strong>：收尾按场景切换——机器消费用 Structured Outputs、给人看用流式，只作用在最终那次调用（<a href="0033-L28-structured-outputs.html">L28</a>/<a href="0031-L26-streaming.html">L26</a>）</li>
+      <li><strong>Step 5</strong>：从 <code>usage</code> 累加 token/成本、超阈告警、用原生缓存降本（<a href="0038-L33-observability.html">L33</a>/<a href="0042-L37-cost-engineering.html">L37</a>）</li>
+      <li>成品是 <code>generate()</code> 一个方法——<strong>业务代码从此只跟它打交道</strong></li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    🎉🎉 <strong>恭喜！你已完成整个 Phase 3（LLM API 工程实践，L25–L38）。</strong><br>
+    从"怎么发第一个请求"，到流式、Function Calling、结构化输出、多模态、上下文管理，再到错误重试、路由 Fallback、可观测、Tool Schema、完整工具循环、工具健壮性、成本工程——最后这一课把它们<strong>拼成了一个能上生产的 LLM 调用层</strong>。你不再只是"会调 API"，而是能造出一层<strong>扛得住失败、切得动厂商、看得见成本、跑得起工具循环</strong>的可靠底座。这层东西，就是所有真正的 Agent 最终都要落脚的地方。<br>
+    <strong>下一站 Phase 4：Agent 架构</strong>——从"可靠的一次次调用"，升维到"会规划、有记忆、能编排多工具、能多智能体协作"的真正 Agent。你现在手里的这个客户端，正是 Phase 4 一切架构的起跑线。一路有任何疑问，随时问我(agent)！
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

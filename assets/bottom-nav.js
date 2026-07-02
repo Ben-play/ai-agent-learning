@@ -11,6 +11,7 @@
     { file: '0001-ai-agent-learning-path-overview.html', title: '学习路径总览', phase: '' },
     { file: '0002-phase1-python-outline.html', title: '第一阶段大纲', phase: '' },
     { file: '0029-phase2-ai-knowledge-outline.html', title: '第二阶段大纲', phase: '' },
+    { file: '0044-phase3-api-engineering-outline.html', title: '第三阶段大纲', phase: '' },
     { file: '0004-L01-dev-environment-setup.html', title: '开发环境搭建', phase: '第一阶段' },
     { file: '0005-L02-python-runtime-and-modules.html', title: 'Python 运行机制与模块系统', phase: '第一阶段' },
     { file: '0006-L03-variables-types-data-structures.html', title: '变量、类型与数据结构', phase: '第一阶段' },
@@ -35,6 +36,20 @@
     { file: '0026-L22-benchmarks-and-selection.html', title: '看懂 Benchmark 与模型选型', phase: '第二阶段' },
     { file: '0027-L23-token-economics.html', title: 'Token 经济学与降本杠杆', phase: '第二阶段' },
     { file: '0028-L24-phase2-capstone.html', title: 'Phase 2 综合实战项目', phase: '第二阶段' },
+    { file: '0030-L25-llm-api-basics.html', title: '主流 LLM API 上手', phase: '第三阶段' },
+    { file: '0031-L26-streaming.html', title: 'Streaming 流式输出', phase: '第三阶段' },
+    { file: '0032-L27-function-calling.html', title: 'Function Calling 原理', phase: '第三阶段' },
+    { file: '0033-L28-structured-outputs.html', title: 'Structured Outputs（约束解码）', phase: '第三阶段' },
+    { file: '0034-L29-multimodal-api.html', title: '多模态 API', phase: '第三阶段' },
+    { file: '0035-L30-context-window-management.html', title: 'Context Window 管理', phase: '第三阶段' },
+    { file: '0036-L31-error-handling-retry.html', title: '错误处理、退避与幂等', phase: '第三阶段' },
+    { file: '0037-L32-routing-fallback-gateway.html', title: '路由、Fallback 与 AI Gateway', phase: '第三阶段' },
+    { file: '0038-L33-observability.html', title: 'LLM 可观测性', phase: '第三阶段' },
+    { file: '0039-L34-tool-schema-design.html', title: 'Tool Schema 设计', phase: '第三阶段' },
+    { file: '0040-L35-function-calling-loop.html', title: '完整 Function Calling 循环', phase: '第三阶段' },
+    { file: '0041-L36-tool-robustness-registry.html', title: '工具健壮性与注册系统', phase: '第三阶段' },
+    { file: '0042-L37-cost-engineering.html', title: '成本工程：2026 降本优先级', phase: '第三阶段' },
+    { file: '0043-L38-phase3-capstone.html', title: 'Phase 3 综合实战', phase: '第三阶段' },
   ];
 
   const currentFile = window.location.pathname.split('/').pop();
@@ -58,9 +73,9 @@
   html += '</div>';
 
   // 中间：回到大纲（按当前课程所属阶段选对应大纲页）
-  var outlineFile = cur && cur.phase === '第二阶段'
-    ? '0029-phase2-ai-knowledge-outline.html'
-    : '0002-phase1-python-outline.html';
+  var outlineFile = '0002-phase1-python-outline.html';
+  if (cur && cur.phase === '第二阶段') outlineFile = '0029-phase2-ai-knowledge-outline.html';
+  else if (cur && cur.phase === '第三阶段') outlineFile = '0044-phase3-api-engineering-outline.html';
   html += '<div class="bottom-nav-center">';
   html += '<a href="' + outlineFile + '" class="bottom-nav-outline">';
   html += '<span class="bottom-nav-outline-icon">☰</span>';

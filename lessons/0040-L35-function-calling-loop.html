@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L35 · 完整 Function Calling 循环</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>完整 Function Calling 循环</h1>
+    <p class="subtitle">把单步工具调用跑成一个 while 循环——这就是 Agent Loop 的骨架</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:78%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p><a href="0032-L27-function-calling.html">L27</a> 讲透了 Function Calling 的<strong>原理</strong>：模型只输出"我要调哪个工具、传什么参数"的意图，执行和回填由你完成。但那只是<strong>一来一回的单步</strong>。真实任务往往不是一步能完成的——模型可能<strong>先调工具 A、看结果、再调工具 B、……最后才给答案</strong>。</p>
+    <p>这一课把单步<strong>展开成一个循环</strong>：只要模型还在请求工具，就执行 + 回填，直到它给出最终文本答案。这个 <code>while</code> 循环<strong>不是某个花哨的技巧，它就是 Agent Loop 最核心的骨架</strong>——感知 → 行动 → 观察 → 再感知。Phase 4/6 里所有 Agent 架构，本质都建在这几行代码之上。写对它，你就握住了整个 Agent 的心脏。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>说清为什么单步不够，为什么需要一个 <strong><code>while</code> 循环</strong>反复"执行 + 回填"</li>
+      <li>写出一个<strong>结构正确</strong>的完整 FC 循环（真实字段名、<code>tool_call_id</code>、<code>json.loads/dumps</code>）</li>
+      <li>记住三个关键动作：<strong>把模型的 <code>tool_calls</code> 消息 append 回去、每个结果带对应 <code>tool_call_id</code>、循环到没有 <code>tool_calls</code></strong></li>
+      <li>区分<strong>并行工具调用</strong>（一个回合多个工具）与<strong>多轮调用</strong>（多个回合串行）</li>
+      <li>用<strong>最大轮数上限</strong>防止模型无限调工具（死循环）</li>
+      <li>指出这个 <code>while</code> 循环<strong>就是 Agent Loop 的骨架</strong></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 回顾一步 → 展开成循环</h2>
+  <div class="card">
+    <p>L27 里那"一来一回"是这样的：你带 <code>tools</code> 发请求 → 模型返回 <code>tool_calls</code> → 你执行 → 回填 → <strong>再发一次</strong>。问题是：<strong>"再发一次"之后呢？</strong> 模型看到工具结果，<strong>可能又要调下一个工具</strong>，而不是直接给答案。</p>
+    <pre><code>用户："帮我查下北京天气，然后根据天气推荐今天穿什么。"
+
+第 1 回合：模型说 → "先调 get_weather(city='北京')"   （还不能推荐，它还不知道天气）
+   ↓ 你执行 + 回填："北京 3°C，大风"
+第 2 回合：模型说 → 基于结果，给出最终文本 "今天冷且大风，建议羽绒服 + 围巾。"（不再要工具）</code></pre>
+    <p>一步显然不够——第 1 回合模型<strong>只拿到了信息，还没做完事</strong>。它需要"看一眼结果再决定下一步"。把这个"看→决定→（可能再调）"的过程<strong>重复执行</strong>，直到模型不再要工具、给出最终答案，就是一个循环。</p>
+    <p>所以我们需要一个 <strong><code>while</code> 循环</strong>，规则只有一条：<strong>只要模型这一回合还在请求工具（返回了 <code>tool_calls</code>），就执行它们、把结果回填、再发一次；一旦模型不要工具了（<code>tool_calls</code> 为空、直接给了文本），就结束循环、输出答案。</strong> 这正是把 L27 的单步"卷"起来。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 为什么单次"发→执行→回填"不够，要做成循环？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">因为一次只能定义一个工具</button>
+      <button data-answer="correct">模型看结果后可能再要工具</button>
+      <button data-answer="wrong">因为回填必须发很多次才生效</button>
+      <button data-answer="wrong">循环能让模型算得更准</button>
+    </div>
+    <div class="quiz-explanation">回填之后，模型<strong>看到工具结果，可能又要调下一个工具</strong>（比如先查天气、再据此推荐穿搭），而不是直接给答案。单步只覆盖"一来一回"；要走完一个多步任务，就得把"执行 + 回填"放进 <strong><code>while</code> 循环</strong>反复做，直到模型不再要工具、给出最终文本。这个循环就是 Agent Loop 的雏形。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 完整循环代码（核心）</h2>
+  <div class="card">
+    <p>下面是整个循环的骨架。字段名（<code>choices[0].message</code> / <code>tool_calls</code> / <code>function.name</code> / <code>function.arguments</code> / <code>tool_call_id</code>）都是 OpenAI SDK 的<strong>真实结构</strong>，可对照官方文档逐一核对：</p>
+    <pre><code>import json
+
+messages = [{"role": "user", "content": "查北京天气，再据此推荐穿搭"}]
+
+while True:
+    resp = client.chat.completions.create(
+        model=MODEL, messages=messages, tools=TOOLS,   # 型号以官网为准
+    )
+    msg = resp.choices[0].message
+
+    if not msg.tool_calls:            # 模型不再要工具 → 这就是最终答案
+        print(msg.content)
+        break
+
+    messages.append(msg)             # ① 把模型这条"工具请求"消息加回历史
+    for tc in msg.tool_calls:        # ② 逐个执行工具（可能不止一个）
+        args = json.loads(tc.function.arguments)          # arguments 是 JSON 串！
+        result = dispatch(tc.function.name, args)         # 你的工具分发
+        messages.append({            # ③ 把结果作为 tool 消息回填
+            "role": "tool",
+            "tool_call_id": tc.id,   # ★ 对应哪一次调用
+            "content": json.dumps(result),
+        })
+    # 回到循环顶：模型基于刚回填的工具结果，决定下一步（再调 or 给答案）</code></pre>
+    <p>这段代码短，但有<strong>三个关键点，漏一个循环就崩</strong>：</p>
+    <ul>
+      <li><strong>① 模型的 <code>tool_calls</code> 消息要 <code>append</code> 回去</strong>（<code>messages.append(msg)</code>）。很多人只回填了工具结果，却忘了先把<strong>模型那条"我要调工具"的 assistant 消息</strong>放回历史——那样 <code>tool</code> 消息就"无主"了，API 会报错（每个 <code>tool</code> 消息必须能对上前面某个 <code>tool_call</code>）。</li>
+      <li><strong>② 每个 <code>tool</code> 结果要带对应的 <code>tool_call_id</code></strong>。一个回合可能有多个工具调用，模型靠 <code>tool_call_id</code> 把"哪条结果对应哪次请求"配起来。用 <code>tc.id</code> 原样回填，别自己编。</li>
+      <li><strong>③ 循环条件是"直到没有 <code>tool_calls</code>"</strong>。<code>if not msg.tool_calls: break</code> 就是出口——模型不再举手要工具、直接给文本时收敛。</li>
+    </ul>
+    <p>把这三点刻进肌肉记忆，你就能<strong>凭手写出</strong>整个 Agent 的执行内核。字段与回填格式的权威来源：<a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank">OpenAI · Function calling guide</a>。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 回填工具结果前，为什么要先 <code>messages.append(msg)</code>？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">为了给这一轮模型省点 Token</button>
+      <button data-answer="correct">tool 消息要能对上它</button>
+      <button data-answer="wrong">否则模型会重复调用同一个工具</button>
+      <button data-answer="wrong">只是写法习惯，删掉照样能跑</button>
+    </div>
+    <div class="quiz-explanation">每个 <code>role:"tool"</code> 消息都要<strong>对应前面某个 <code>tool_call</code></strong>（靠 <code>tool_call_id</code> 配对）。如果不先把模型那条带 <code>tool_calls</code> 的 assistant 消息 <code>append</code> 回历史，回填的 <code>tool</code> 消息就"无主"，API 会直接报错。顺序是固定的：<strong>先放模型的工具请求消息，再逐个放对应的 tool 结果</strong>。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 并行工具调用：一个回合，多个工具</h2>
+  <div class="card">
+    <p>模型在<strong>一个回合里可以一次返回多个 <code>tool_calls</code></strong>——比如"帮我对比北京和上海的天气"，它可能一口气要求调两次 <code>get_weather</code>。这就是<strong>并行工具调用</strong>。第 2 节的 <code>for tc in msg.tool_calls</code> 循环<strong>已经处理了它</strong>：遍历<strong>全部</strong>调用、逐个执行、各自带 <code>tool_call_id</code> 回填。</p>
+    <pre><code># 模型一个回合返回多个 tool_calls（简化形状）
+msg.tool_calls == [
+    tc(id="c1", function=(name="get_weather", arguments='{"city":"北京"}')),
+    tc(id="c2", function=(name="get_weather", arguments='{"city":"上海"}')),
+]
+# → for 循环执行两次，各自用 c1 / c2 的 id 回填，模型下一回合再汇总对比</code></pre>
+    <p><strong>易错点：别只取第一个。</strong> <code>msg.tool_calls[0]</code> 只处理了一半，另一个工具的结果没回填，模型就会"缺一条腿"——要么报错（有 <code>tool_call</code> 没对应的 <code>tool</code> 结果），要么答得残缺。<strong>永远 <code>for</code> 遍历全部。</strong></p>
+    <p>因为这几个调用<strong>互不依赖</strong>（查北京不需要先知道上海），它们可以<strong>并发执行</strong>提速——呼应 <a href="0020-L16-async-concurrency.html">L16</a> 的 <code>asyncio.gather</code>：把两次 <code>get_weather</code> 同时发出去，总耗时约等于最慢那个，而不是两个相加。对 Agent 来说这很实在：一个回合要调 5 个 API，串行等 5 秒，并发可能 1 秒。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 多轮 vs 并行：别把两个概念搅在一起</h2>
+  <div class="card">
+    <p>"并行"和"多轮"听起来像，其实是<strong>两个正交的维度</strong>，面试常被追问，务必分清：</p>
+    <pre><code>并行工具调用（一个回合，横向铺开）
+   模型这一回合同时要 A、B、C  →  你全部执行、各自回填  →  下一回合汇总
+   前提：A/B/C 互不依赖（查北京 / 查上海，谁先都行）→ 可并发提速（L16）
+
+多轮工具调用（多个回合，纵向串行）
+   回合1：调 A（查天气）      → 回填
+   回合2：看了 A 的结果，才决定调 B（据天气推荐）→ 回填
+   回合3：给最终答案
+   前提：B 依赖 A 的结果（不查到天气，没法推荐穿搭）→ 只能一轮一轮来</code></pre>
+    <p>一句话记：<strong>并行是"一个回合里宽"，多轮是"跨回合深"。</strong> 两者<strong>可以叠加</strong>——某一回合并行调 3 个工具，看完结果这一回合再串到下一回合调更多。而承载这一切的容器，正是第 2 节那个 <code>while</code> 循环：<strong>循环负责"多轮"（一圈就是一个回合），循环体里的 <code>for</code> 负责"并行"（一圈内的多个工具）</strong>。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> "并行工具调用"和"多轮工具调用"的区别是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">并行更快，而多轮是它早期过时的旧叫法</button>
+      <button data-answer="correct">并行=一回合多工具，多轮=跨回合</button>
+      <button data-answer="wrong">并行要跑多个模型，多轮只要一个</button>
+      <button data-answer="wrong">两者其实完全一样，只是措辞不同</button>
+    </div>
+    <div class="quiz-explanation"><strong>并行</strong>：模型在<strong>同一个回合</strong>返回多个 <code>tool_calls</code>（它们互不依赖，可并发执行）——由循环体内的 <code>for</code> 处理。<strong>多轮</strong>：<strong>跨多个回合</strong>串行，后一个工具依赖前一个的结果（先查天气才能推荐穿搭）——由外层 <code>while</code> 循环处理。一个是"横向铺开"，一个是"纵向推进"，可以叠加。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 防死循环：给循环装个"闸"</h2>
+  <div class="card">
+    <p><code>while True</code> 有个隐患：<strong>万一模型"想不明白"，一直反复要工具、永不给最终答案怎么办？</strong> 那循环就<strong>停不下来</strong>——烧钱、卡死、甚至打爆下游 API。生产代码必须给它装个闸：<strong>设一个最大轮数上限</strong>。</p>
+    <pre><code>MAX_TURNS = 8            # 上限：最多循环 8 回合
+
+for turn in range(MAX_TURNS):        # 用 for 天然带上限，比 while True 更稳
+    resp = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
+    msg = resp.choices[0].message
+    if not msg.tool_calls:
+        print(msg.content); break
+    messages.append(msg)
+    for tc in msg.tool_calls:
+        args = json.loads(tc.function.arguments)
+        messages.append({
+            "role": "tool", "tool_call_id": tc.id,
+            "content": json.dumps(dispatch(tc.function.name, args)),
+        })
+else:                                 # for-else：没 break（跑满上限也没收敛）
+    print("达到最大轮数，未能完成——需要人工介入或返回兜底回答")</code></pre>
+    <p>把 <code>while True</code> 换成 <code>for turn in range(MAX_TURNS)</code>，就天然有了硬上限；配合 <code>for-else</code>，跑满还没收敛时能给出<strong>兜底处理</strong>（返回错误、降级答复、或转人工），而不是无声地卡住或无限烧钱。</p>
+    <p>这正是 <a href="0036-L31-error-handling-retry.html">L31</a> 的<strong>预算思想</strong>在 Agent 循环里的落地：Token 有预算、延迟有预算，<strong>"步数"同样要有预算</strong>。任何会自主循环的系统，都必须有一个"最多做多少"的闸——这是 Agent 从"能跑"到"敢上生产"的分水岭。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 回到 Agent：这个 while 循环就是 Agent Loop 的骨架</h2>
+  <div class="card">
+    <p>现在把第 2 节那段代码<strong>换个视角</strong>看——它不只是"FC 循环"，它<strong>就是 Agent Loop 本身</strong>。Agent 的经典四拍——<strong>感知 → 行动 → 观察 → 再感知</strong>——每一拍都对得上循环里的一行：</p>
+    <pre><code>感知（Perceive） = 模型看当前 messages，输出下一步意图
+                    msg = resp.choices[0].message  →  msg.tool_calls
+行动（Act）       = 你的代码真正执行工具
+                    dispatch(tc.function.name, args)
+观察（Observe）   = 把工具结果回填进 messages
+                    messages.append({"role":"tool", ...})
+再感知（Loop）     = 回到循环顶，模型基于新观察决定下一步
+                    while / for turn in range(MAX_TURNS)
+
+出口：模型不再要工具（给出最终文本）→ 任务收敛</code></pre>
+    <p>换句话说，你刚写的这几行，<strong>已经是一个能自主多步推进、并行调工具、直到收敛的最小 Agent</strong>。Phase 4 讲的 ReAct、Plan-and-Execute，Phase 6 讲的多智能体协作，剥到最里层，<strong>核心都是这个"感知-行动-观察"的循环</strong>——只是在感知里加了规划、在观察里加了记忆、在出口处加了反思。</p>
+    <p><strong>所以这一课是整个 Agent 部分的地基。</strong> L27 给了你"手"（单次调用），这一课把手<strong>接上了神经和肌肉</strong>（循环）。下一课 <a href="0041-L36-tool-robustness-registry.html">L36</a> 会让这个循环更健壮——工具报错怎么办、几十个工具怎么优雅注册与分发，把这个骨架养成能扛生产的躯干。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>动手练习</h2>
+  <div class="card">
+    <p>先<strong>在脑子里把循环跑一遍</strong>，再展开对照——能"手动模拟"循环，才算真懂它。</p>
+    <details>
+      <summary>练习：给"查天气 → 据天气推荐穿搭"的场景，说明这个 while 循环会跑几个回合、每回合发生什么</summary>
+      <p style="margin-top:.8rem;">场景：用户说<strong>"查一下北京今天的天气，然后根据天气告诉我该穿什么。"</strong> 工具只有一个 <code>get_weather(city)</code>。请说明第 2 节的循环会跑几圈、每圈里 <code>msg.tool_calls</code> 是什么、<code>messages</code> 怎么变化。</p>
+      <p><strong>循环会跑 2 个回合（外层循环 2 圈）：</strong></p>
+      <pre><code>【回合 1】发出 messages=[user]
+  模型判断：要推荐穿搭，得先知道天气 → 返回 tool_calls
+  msg.tool_calls == [ tc(id="c1", name="get_weather", arguments='{"city":"北京"}') ]
+  → not msg.tool_calls 为 False，不 break
+  → ① messages.append(msg)               # 放回模型的工具请求
+  → ② 执行 get_weather("北京") == {"temp": 3, "wind": "大风"}
+  → ③ messages.append({role:"tool", tool_call_id:"c1",
+                        content:'{"temp":3,"wind":"大风"}'})
+  此时 messages == [user, assistant(带tool_calls), tool(c1的结果)]
+  → 回到循环顶
+
+【回合 2】带着上面 3 条 messages 再发一次
+  模型看到"3°C、大风" → 已经够了，不再要工具，直接给文本
+  msg.tool_calls == None（或空）
+  → not msg.tool_calls 为 True → print(msg.content); break
+  输出："北京今天 3°C 还有大风，建议羽绒服 + 围巾，注意保暖。"</code></pre>
+      <p><strong>要点自检</strong>：① 这是<strong>多轮</strong>（不是并行）——因为"推荐穿搭"<strong>依赖</strong>先查到的天气，两个动作必须串行、跨两个回合。② 第 1 回合模型<strong>只拿信息、不给答案</strong>；第 2 回合才收敛。③ 每圈都严格执行"<strong>append 模型消息 → 执行 → 带 tool_call_id 回填</strong>"三步。如果工具改成"同时查北京和上海"，则会变成<strong>一个回合里两个 <code>tool_calls</code></strong>（并行），由 <code>for</code> 处理，循环仍只需约 2 圈。</p>
+    </details>
+    <p style="margin-top:.9rem;"><strong>可运行性说明</strong>：上面代码的方法名（<code>chat.completions.create</code>）、字段名（<code>tool_calls</code> / <code>function.name</code> / <code>function.arguments</code> / <code>tool_call_id</code>）都是 OpenAI SDK 的<strong>真实结构</strong>，<code>json.loads(arguments)</code> 与回填时的 <code>json.dumps(result)</code> 都是必需的。完整跑通需要 <code>pip install openai</code> 和 <code>OPENAI_API_KEY</code>（见 <a href="0030-L25-llm-api-basics.html">L25</a>）；没有 key 时，你可以把每一回合的 <code>resp</code> 手动 mock 成上面的形状，先把"循环 + 执行 + 回填"这段应用侧逻辑跑通。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：完整 FC 循环</h2>
+  <div class="card">
+    <pre><code>【一句话本质】
+  把 L27 的单步"发→执行→回填"卷进一个 while 循环，
+  直到模型不再要工具、给出最终文本 → 这就是 Agent Loop 骨架
+
+【循环骨架】
+  while True:
+      msg = client.chat.completions.create(...).choices[0].message
+      if not msg.tool_calls:            # 出口：模型给了最终答案
+          print(msg.content); break
+      messages.append(msg)              # ① 模型的工具请求消息，先放回历史
+      for tc in msg.tool_calls:         # ② 遍历全部（并行也在这处理）
+          args = json.loads(tc.function.arguments)   # arguments 是 JSON 串
+          result = dispatch(tc.function.name, args)  # 你执行
+          messages.append({             # ③ 结果回填，带 tool_call_id
+              "role":"tool", "tool_call_id": tc.id,
+              "content": json.dumps(result)})
+
+【三个必记关键点】
+  ① 模型的 tool_calls 消息要 append 回去（否则 tool 消息无主、报错）
+  ② 每个 tool 结果带对应 tool_call_id（tc.id 原样回填）
+  ③ 循环到没有 tool_calls 为止（if not msg.tool_calls: break）
+
+【并行 vs 多轮】
+  并行 = 一个回合多个 tool_calls（互不依赖）→ 循环体内 for，可并发(L16)
+  多轮 = 跨回合串行（B 依赖 A 的结果）      → 外层 while，一圈一回合
+  可叠加：某回合并行 3 个，看完再串到下一回合
+
+【防死循环】
+  for turn in range(MAX_TURNS)  代替  while True
+  配 for-else 兜底：跑满未收敛 → 报错/降级/转人工（预算思想 L31）
+
+【Agent Loop 对应】
+  感知=模型输出意图 / 行动=执行工具 / 观察=回填结果 / 再感知=回到循环顶</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank"><strong>OpenAI · Function calling guide</strong></a></p>
+    <p>官方权威文档，把"多轮如何把 <code>tool_calls</code> 消息与 <code>role:"tool"</code> 结果按 <code>tool_call_id</code> 配对回填、并行工具调用如何返回多个 call、如何用 <code>tool_choice</code> 控制"讲得最清楚。本课循环里每一个字段名，你都能在这篇里逐一对上号——它也是核对循环代码正确性的第一手来源。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0039-L34-tool-schema-design.html">上一课 L34 · Tool Schema 设计</a> — description 怎么写，模型才选得准</li>
+      <li>· <a href="0041-L36-tool-robustness-registry.html">下一课 L36 · 工具健壮性 + 注册</a> — 工具报错怎么办、几十个工具怎么优雅注册分发</li>
+      <li>· <a href="0032-L27-function-calling.html">L27 · Function Calling 原理（单步）</a> — 本课就是把它跑成循环</li>
+      <li>· <a href="0020-L16-async-concurrency.html">L16 · 并发执行工具</a> — 用 <code>asyncio.gather</code> 让并行调用提速</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>单步不够——模型看完结果<strong>可能再要工具</strong>，所以要把"执行 + 回填"卷进一个 <strong><code>while</code> 循环</strong>，直到它给出最终文本</li>
+      <li>循环三个关键点：<strong>① 模型的 <code>tool_calls</code> 消息要 <code>append</code> 回去；② 每个结果带对应 <code>tool_call_id</code>；③ 循环到没有 <code>tool_calls</code> 为止</strong></li>
+      <li><strong>并行</strong>=一个回合多个工具（循环体内 <code>for</code>，可并发提速 L16）；<strong>多轮</strong>=跨回合串行（外层 <code>while</code>，后者依赖前者结果）</li>
+      <li>生产必设<strong>最大轮数上限</strong>防死循环（<code>for range(MAX_TURNS)</code> + <code>for-else</code> 兜底，呼应 L31 预算思想）</li>
+      <li>这个 <code>while</code> 循环<strong>就是 Agent Loop 的骨架</strong>：感知 → 行动 → 观察 → 再感知，Phase 4/6 的架构都建在它之上</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    <strong>面试高频 · "并行工具调用怎么处理？"</strong>：一个回合里模型可能返回<strong>多个 <code>tool_calls</code></strong>，要<strong>全部执行、各自带 <code>tool_call_id</code> 回填</strong>（用 <code>for</code> 遍历，别只取第一个）；因它们互不依赖，<strong>可并发（<code>asyncio.gather</code>）提速</strong>。而整个 FC 循环是一个 <strong><code>while</code> 循环，跑到模型不再要工具为止</strong>，并且要<strong>设最大轮数上限防死循环</strong>。能把"并行（一回合内 <code>for</code>）vs 多轮（跨回合 <code>while</code>）"和"防死循环"一起说清，就答到点子上了。下一课我们把这个骨架养壮：工具健壮性 + 注册。有疑问随时问我。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

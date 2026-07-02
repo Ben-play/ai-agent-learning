@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L28 · Structured Outputs</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
+    <h1>Structured Outputs（约束解码）</h1>
+    <p class="subtitle">让 LLM 的输出<strong>保证</strong>符合你给的 schema，而不是"希望它格式对"</p>
+    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:28%"></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>💡 为什么这课重要？</strong>
+    <p>Agent 的每一步都要把 LLM 的输出<strong>交给下游代码</strong>——存进数据库、拿去调 API、传给下一个节点。这些下游只吃<strong>结构化数据</strong>：字段名要对、类型要对、必填的不能少。可 LLM 生来输出的是自由文本，你写句"请返回 JSON"求它配合，它随时可能不听。</p>
+    <p>这一课教你把"求它配合"升级成"机制上保证"。核心是一个 <strong>2026 面试高频区分题</strong>：<strong>纯 prompt、JSON mode、Structured Outputs 是三个不同强度的层次</strong>——尤其 <strong>Structured Outputs ≠ JSON mode</strong>，这句话答错当场扣分。搞懂它，你就掌握了 Agent 可靠性的一根支柱。本课延续 <a href="0018-L14-pydantic.html">L14 的 Pydantic</a>——你已经会用它定义 schema，这里让那份 schema 真正"锁死"模型的输出。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>学习目标</h2>
+  <div class="card">
+    <p>完成本课后，你将能够：</p>
+    <ul>
+      <li>分清 <strong>纯 prompt / JSON mode / Structured Outputs</strong> 三个层次各<strong>保证什么</strong></li>
+      <li>一句话说清 <strong>Structured Outputs ≠ JSON mode</strong>（这是面试送分/送命题）</li>
+      <li>解释<strong>约束解码</strong>（constrained decoding）在 token 层面怎么做到"不可能违反 schema"</li>
+      <li>用 <strong>Pydantic 模型 + OpenAI <code>parse</code></strong> 拿回一个已验证的对象</li>
+      <li>知道<strong>兜底</strong>：不支持时退回"校验 + 重试"，并处理 refusal</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>1. 问题：下游代码只吃可靠的结构化数据</h2>
+  <div class="card">
+    <p>设想 Agent 要从一段用户消息里抽出订单信息，交给 <code>create_order(...)</code>：</p>
+    <pre><code># 你只是"请求"模型返回 JSON —— 靠 prompt
+resp = client.chat.completions.create(
+    model="gpt-5.5",
+    messages=[{"role": "user",
+               "content": '把这句抽成 JSON：{"item": ..., "qty": ...}。原句：来两杯拿铁'}],
+)
+raw = resp.choices[0].message.content
+data = json.loads(raw)          # ← 这一行随时可能炸
+create_order(item=data["item"], qty=data["qty"])</code></pre>
+    <p>这段代码脆在哪？模型完全可能：<strong>①</strong> 在 JSON 外面裹一句"好的，这是结果："——<code>json.loads</code> 直接抛异常；<strong>②</strong> 把 <code>qty</code> 写成 <code>"两"</code> 而不是 <code>2</code>——类型错；<strong>③</strong> 干脆漏掉 <code>item</code> 字段——<code>KeyError</code>。</p>
+    <p><strong>对 Agent 而言，输出格式不是"锦上添花"，而是能不能把这一步的结果接到下一步的<em>硬前提</em>。</strong>"请返回 JSON" 这种 prompt 层面的请求，在生产里<strong>不可靠</strong>——因为它没有任何机制拦住上面三种翻车。我们需要更强的保证。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q1">
+    <div class="quiz-question"><span class="quiz-q">Q</span> Agent 为什么必须要"结构化"的 LLM 输出？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">JSON 比纯文本更省 Token</button>
+      <button data-answer="correct">下游代码要拿去直接用</button>
+      <button data-answer="wrong">模型只会输出 JSON</button>
+      <button data-answer="wrong">结构化输出永远更便宜</button>
+    </div>
+    <div class="quiz-explanation">关键是<strong>下游</strong>：Agent 每一步的输出都要喂给代码（存库、调 API、传给下一节点），而代码只吃字段名对、类型对、必填齐的结构化数据。纯文本或"格式随缘"的 JSON 会让 <code>json.loads</code> / 字段访问随时炸。省 Token、便宜都不是重点——结构化输出有时反而多花 Token。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 三个层次：这是面试的分水岭</h2>
+  <div class="card">
+    <p>把 LLM 输出格式化，业界有<strong>三个强度递增</strong>的手段。务必分清它们各自<strong>保证什么</strong>：</p>
+    <table>
+      <tr><th>方法</th><th>保证什么</th><th>可靠性</th></tr>
+      <tr>
+        <td><strong>纯 prompt</strong><br>（"请输出 JSON"）</td>
+        <td>什么都不保证——只是<strong>请求</strong>模型配合</td>
+        <td>最弱 · 可能不听、裹废话、字段/类型全错</td>
+      </tr>
+      <tr>
+        <td><strong>JSON mode</strong></td>
+        <td>只保证输出是<strong>合法 JSON</strong>（能被 <code>json.loads</code> 解析）；<strong>不保证</strong>符合你的具体 schema</td>
+        <td>中 · 字段可能缺、类型可能错、可能多出字段</td>
+      </tr>
+      <tr>
+        <td><strong>Structured Outputs</strong><br>（strict mode / 约束解码）</td>
+        <td><strong>最强</strong>：在 token 生成层面<em>保证</em>输出严格符合你给的 <strong>JSON Schema</strong></td>
+        <td>强 · 字段、类型、必填、枚举全部锁死</td>
+      </tr>
+    </table>
+    <p style="margin-top:.7rem;">这三行请刻进脑子。面试官问"怎么保证 LLM 输出格式"，本质就是在考你分不分得清这三层。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 一句话记牢：Structured Outputs ≠ JSON mode</strong>
+    <p><strong>JSON mode 只保证"是合法 JSON"，Structured Outputs 保证"符合你的 schema"。</strong>JSON mode 给你的可能是 <code>{"数量": "两杯", "note": "多加糖"}</code>——它是合法 JSON，但字段名、类型、结构全不对你的胃口，下游照样炸。OpenAI 官方原话：<em>"only Structured Outputs ensure schema adherence"</em>（只有 Structured Outputs 保证符合 schema）。把这两个概念混为一谈，是这块最常见的错答。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> JSON mode 和 Structured Outputs 的核心区别是？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">JSON mode 更快、更省钱</button>
+      <button data-answer="correct">前者只保证合法 JSON</button>
+      <button data-answer="wrong">两者保证完全一样</button>
+      <button data-answer="wrong">Structured Outputs 只是别名</button>
+    </div>
+    <div class="quiz-explanation"><strong>JSON mode 只保证输出是合法 JSON</strong>（能解析），但不保证符合你的具体 schema——字段可能缺、类型可能错、可能多字段。<strong>Structured Outputs 额外保证严格符合你给的 JSON Schema</strong>。二者不是别名、也不是同一件事：官方明确"only Structured Outputs ensure schema adherence"。速度/成本不是区分点。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 约束解码原理：为什么是"保证"而不是"求配合"</h2>
+  <div class="card">
+    <p>Structured Outputs 强在哪？强在它不靠"求模型听话"，而是从<strong>采样机制</strong>上动手。这个机制叫<strong>约束解码</strong>（constrained decoding，也叫 constrained sampling）。</p>
+    <p>回忆一下模型怎么生成文本（<a href="0025-L21-model-capabilities.html">L21</a>）：每生成一个 token，模型先给<strong>整个词表</strong>打分（logits），再从中采样出下一个。约束解码在这一步插了一手：</p>
+    <pre><code>【普通生成】词表所有 token 都能被选中
+   logits ──softmax──▶ 采样 ──▶ 任意 token（可能破坏结构）
+
+【约束解码】先算出"此刻哪些 token 合法"，把非法 token 概率归零
+   JSON Schema ──转成──▶ 语法(CFG) ──▶ 每一步的"合法 token 集合"
+
+   logits[非法 token] = -∞      # 概率被压到 0，绝无可能被采样
+   logits ──softmax──▶ 采样 ──▶ 只可能是"让结构依然合法"的 token</code></pre>
+    <p>原理拆开看：把你的 <strong>JSON Schema 编译成一套语法</strong>（上下文无关文法 CFG），据此在生成的<strong>每一步</strong>算出"接下来只有哪些 token 能让输出仍然符合 schema"。所有不合法的 token，其 logits 被设为 <code>-∞</code>——softmax 之后概率是 0，<strong>根本不可能被采样出来</strong>。</p>
+    <p>所以结论是机制级的：<strong>模型"不可能"生成不符合 schema 的输出</strong>——不是因为它乖，而是因为非法的路径在采样时被物理封死了。这和 prompt"请你务必按格式来"有本质区别：后者是<strong>请求</strong>，前者是<strong>约束</strong>。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>"保证"这两个字对 Agent 是刚需。工具调用的参数、状态机的更新、路由的决策——这些输出<strong>一旦格式错，整条链就断</strong>。约束解码把"格式对不对"从一个<strong>概率问题</strong>（大概率对）变成<strong>确定性问题</strong>（一定对），这是 Agent 能稳定跑长链路的底层保障。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q3">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 约束解码为什么能"保证"符合 schema？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">因为把 prompt 写得足够严厉</button>
+      <button data-answer="correct">非法 token 概率归零</button>
+      <button data-answer="wrong">生成后再自动重写一遍</button>
+      <button data-answer="wrong">用了更聪明的大模型</button>
+    </div>
+    <div class="quiz-explanation">约束解码把 JSON Schema 编译成语法，<strong>在每一步生成时把"不符合 schema 的 token"的 logits 设为 -∞</strong>，softmax 后概率为 0，永远采样不到。所以模型<strong>不可能</strong>产出违反 schema 的输出。这是采样机制上的保证，既不靠 prompt 严厉，也不是"生成后再修"，更不是换个大模型就行。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. 实操：配合 Pydantic，拿回已验证的对象</h2>
+  <div class="card">
+    <p>好消息：你不用手写 JSON Schema。<a href="0018-L14-pydantic.html">L14</a> 学的 <strong>Pydantic 模型可以直接当 schema 传给 API</strong>——OpenAI SDK 会自动导出 <code>model_json_schema()</code>、开启 strict、并把返回<strong>解析成 Pydantic 对象</strong>还给你。三步走：</p>
+    <pre><code>from pydantic import BaseModel, Field
+from openai import OpenAI
+
+# ① 用 Pydantic 定义 schema（呼应 L14）—— 就是你想要的结构
+class Order(BaseModel):
+    item: str = Field(..., description="商品名")
+    qty:  int = Field(..., ge=1, description="数量，至少 1")
+
+client = OpenAI()   # key 走环境变量（L25），没 key 可 mock
+
+# ② 传给 API：response_format 直接吃 Pydantic 模型
+#    方法名 parse 以官方文档为准
+completion = client.chat.completions.parse(
+    model="gpt-5.5",
+    messages=[{"role": "user", "content": "来两杯拿铁"}],
+    response_format=Order,          # ← strict 约束解码在此开启
+)
+
+# ③ 拿回的是已验证的 Order 对象，不是字符串！
+order = completion.choices[0].message.parsed
+create_order(item=order.item, qty=order.qty)   # 放心直接用：类型/字段都已保证</code></pre>
+    <p>和第 1 节的脆代码对比：那里是 <code>json.loads(raw)</code> 加一堆祈祷；这里 <code>completion.choices[0].message.parsed</code> 直接是<strong>结构正确的对象</strong>，<code>order.qty</code> 铁定是 <code>int ≥ 1</code>。约束解码保证结构、Pydantic 保证类型与业务约束，两层叠加。</p>
+    <p style="font-size:.9rem;color:var(--muted);">※ 底层等价于给 <code>chat.completions.create</code> 传 <code>response_format={"type": "json_schema", "json_schema": {..., "strict": True}}</code> 且 <code>additionalProperties: false</code>；<code>parse</code> 只是帮你把这些 + Pydantic 解析都包好了。工具调用（Function Calling）里同理，在 tool 定义上加 <code>strict: true</code>。具体方法名 / 参数一律<strong>以官方文档为准</strong>。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联：</strong>
+    <p>这正是 <a href="0032-L27-function-calling.html">L27 Function Calling</a> 里"工具参数为什么可靠"的答案——真实框架在工具定义里开 <code>strict</code>，让模型填的参数<strong>保证</strong>符合工具的 Pydantic schema，你的工具函数才敢直接用这些参数。Structured Outputs 不只是"输出个 JSON"，它是整个工具调用链的可靠性地基。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5. 兜底与坑：不是万能，要有 Plan B</h2>
+  <div class="card">
+    <p>Structured Outputs 很强，但工程上必须知道它的边界，并准备退路：</p>
+    <ul>
+      <li><strong>① 不是所有模型 / 所有情况都支持。</strong>老模型、某些接口、或走 <a href="0030-L25-llm-api-basics.html">L25</a> 的兼容层时可能没这能力。<strong>退路：验证 + 重试</strong>——照常让模型输出，拿 Pydantic 校验；<code>ValidationError</code> 了就把<strong>报错信息塞回 messages 让模型重试</strong>（"你上次 qty 不是整数，请修正"）。这就把 L14 的校验变成了自愈循环。</li>
+      <li><strong>② refusal（拒答）要单独处理。</strong>模型可能因安全原因拒绝，此时它<strong>不会</strong>吐你要的 schema。strict 模式下会有独立的 <code>refusal</code> 字段——<strong>先判空 refusal，再取 parsed</strong>，否则你会拿着 <code>None</code> 去访问字段而崩溃。</li>
+      <li><strong>③ schema 太复杂可能不支持。</strong>Structured Outputs 只覆盖 JSON Schema 的一个子集（出于性能/技术原因），过深的嵌套、某些高级关键字可能被拒。<strong>对策：schema 尽量扁平、字段克制。</strong></li>
+    </ul>
+    <pre><code># 兜底两件事：先看 refusal，再走"校验+重试"
+msg = completion.choices[0].message
+if msg.refusal:                       # ← 坑②：安全拒答，没有 parsed
+    handle_refusal(msg.refusal)
+else:
+    order = msg.parsed                # 正常路径
+
+# 若模型 / 接口不支持 Structured Outputs → 坑① 的通用退路
+def ask_with_retry(prompt, Model, max_try=3):
+    for _ in range(max_try):
+        raw = call_llm(prompt)        # 普通调用，不保证格式
+        try:
+            return Model.model_validate_json(raw)   # Pydantic 校验
+        except ValidationError as e:
+            prompt += f"\n上次输出不合法：{e}，请严格按 schema 重发"  # 带错重试
+    raise RuntimeError("重试仍无法得到合法结构")</code></pre>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 开发关联（呼应 L19）：</strong>
+    <p><a href="0023-L19-hallucination.html">L19</a> 教过：对冲 LLM 的不确定性，靠<strong>结构化 + 校验</strong>。这里是它的落地——<strong>能约束就约束（Structured Outputs），不能约束就校验 + 重试（Pydantic）</strong>。Agent 的可靠性从来不是"信任模型",而是"在机制上不给它出错的机会,出了错也能自愈"。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. 动手练一练</h2>
+  <div class="card">
+    <details>
+      <summary>💡 练习：从用户评论抽取结构化情感数据（点击查看参考答案）</summary>
+      <p style="margin-top:.6rem;"><strong>场景：</strong>你的 Agent 要把一段用户评论抽成固定结构 <code>{sentiment, score, keywords}</code>，交给下游做统计入库。要求：<code>sentiment</code> 只能是 <code>positive/negative/neutral</code> 三选一；<code>score</code> 是 0~1 的浮点；<code>keywords</code> 是字符串列表。请用 <strong>Pydantic 定义 schema</strong>，并说明 <strong>Structured Outputs 如何保证这份输出能被下游直接用</strong>。先自己写，再看答案。</p>
+      <h4>参考答案</h4>
+      <pre><code>from typing import Literal
+from pydantic import BaseModel, Field
+from openai import OpenAI
+
+class Review(BaseModel):
+    sentiment: Literal["positive", "negative", "neutral"] = Field(
+        ..., description="整体情感倾向")
+    score: float = Field(..., ge=0, le=1, description="情感强度 0~1")
+    keywords: list[str] = Field(..., description="评论中的关键短语")
+
+client = OpenAI()
+completion = client.chat.completions.parse(
+    model="gpt-5.5",
+    messages=[
+        {"role": "system", "content": "你是情感分析器，抽取结构化情感数据。"},
+        {"role": "user",   "content": "用了三年，最近这次更新界面太难用了，找功能像寻宝。"},
+    ],
+    response_format=Review,          # 约束解码：strict 开启
+)
+
+r = completion.choices[0].message.parsed
+# r.sentiment 一定 ∈ {positive,negative,neutral}；r.score 一定是 0~1 的 float
+db.insert(sentiment=r.sentiment, score=r.score, keywords=r.keywords)  # 直接入库</code></pre>
+      <h4>Structured Outputs 如何"保证可直接用"？</h4>
+      <ul>
+        <li><strong>字段齐全</strong>：三个字段都是必填（<code>...</code>），约束解码不会漏生成任一字段。</li>
+        <li><strong>类型正确</strong>：<code>score</code> 生成时只允许合法的数字 token，不可能给你 <code>"高"</code> 这种字符串。</li>
+        <li><strong>枚举锁死</strong>：<code>Literal[...]</code> 让 <code>sentiment</code> 只可能是这三个值之一，下游 <code>if r.sentiment == "positive"</code> 永不落空。</li>
+        <li><strong>下游零防御</strong>：因为结构在生成时就被锁死，<code>db.insert(...)</code> 不用再写一堆 <code>try/except</code> 和字段存在性判断。</li>
+      </ul>
+      <p style="margin-top:.4rem;color:var(--muted);font-size:.9rem;">思考：若换成一个<strong>不支持</strong> Structured Outputs 的模型，你会怎么改？（提示：用第 5 节的 <code>model_validate_json</code> + 带错重试兜底。）</p>
+    </details>
+  </div>
+
+  <div class="tip">
+    <strong>🎤 面试高频：「如何保证 LLM 输出格式？」</strong>满分答按强度分三层：<strong>Structured Outputs（约束解码，token 级<em>保证</em>符合 schema）> JSON mode（只保证是合法 JSON）> prompt 请求（最弱，可能不听）</strong>；并主动补一句 <strong>Structured Outputs ≠ JSON mode——前者保证符合你的 schema，后者只保证是合法 JSON</strong>。最后加兜底：<strong>模型/接口不支持时，用 Pydantic 校验 + 带错重试</strong>，并处理 <strong>refusal</strong>。这样层次、区分、兜底都齐，直接满分。
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎯 速查卡：Structured Outputs</h2>
+  <div class="card">
+    <pre><code>【三个层次 · 强度递增】★面试分水岭
+  纯 prompt "请输出 JSON"  → 什么都不保证（可能不听/裹废话/字段错）
+  JSON mode               → 只保证是【合法 JSON】，不保证符合你的 schema
+  Structured Outputs      → 【保证严格符合你给的 JSON Schema】（strict/约束解码）
+
+【一句话】Structured Outputs ≠ JSON mode
+  JSON mode = 合法 JSON        Structured Outputs = 符合 schema
+  官方原话：only Structured Outputs ensure schema adherence
+
+【约束解码原理】不是求配合，是机制保证
+  JSON Schema → 语法(CFG) → 每步算"合法 token 集合"
+  非法 token 的 logits = -∞ → 概率归 0 → 不可能被采样
+  ∴ 模型"不可能"产出违反 schema 的输出
+
+【实操 · 配合 Pydantic（方法名以官方为准）】
+  class Order(BaseModel): item: str; qty: int
+  c = client.chat.completions.parse(..., response_format=Order)
+  order = c.choices[0].message.parsed   # 拿回已验证对象，不是字符串
+  # 等价：response_format={"type":"json_schema",...,"strict":True}
+  # 工具调用同理：tool 定义加 strict:true
+
+【兜底三坑】
+  ① 不支持 → 退回：Pydantic 校验 + 带错重试（自愈循环）
+  ② refusal → 先判 msg.refusal，再取 .parsed（否则拿 None 崩）
+  ③ schema 太复杂可能不支持 → 尽量扁平、字段克制
+
+【记忆锚】能约束就约束，不能约束就校验+重试（呼应 L19）</code></pre>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📚 primary source（最推荐精读）</h2>
+  <div class="card">
+    <p><a href="https://developers.openai.com/api/docs/guides/structured-outputs" target="_blank"><strong>OpenAI · Structured Outputs 指南</strong></a>（含 JSON mode 对比表、<code>parse</code> 用法、refusal、schema 限制）+ <a href="https://openai.com/index/introducing-structured-outputs-in-the-api/" target="_blank"><strong>OpenAI 官方博客：Introducing Structured Outputs</strong></a>（讲清约束解码机制）。</p>
+    <p>另配一篇动手向：<a href="https://developers.openai.com/cookbook/examples/structured_outputs_intro" target="_blank"><strong>OpenAI Cookbook · Structured Outputs Intro</strong></a>（可跑的完整示例、refusal 与兜底处理）。Anthropic 侧见 <a href="https://docs.anthropic.com/en/docs/test-and-evaluate/strengthen-guardrails/increase-consistency" target="_blank"><strong>Increase output consistency</strong></a>——它明确指路：要"保证符合 schema"用 Structured Outputs，prompt 技巧（prefill/给例子）只是更软的退路。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🔗 关联课程</h2>
+  <div class="card">
+    <ul>
+      <li>· <a href="0032-L27-function-calling.html">上一课 L27 · Function Calling</a> — 工具参数为什么可靠？就靠这一课的 strict</li>
+      <li>· <a href="0034-L29-multimodal-api.html">下一课 L29 · 多模态 API</a> — 让模型不只吃文本，还能看图听声</li>
+      <li>· <a href="0018-L14-pydantic.html">L14 · Pydantic</a> — 定义 schema 的工具，本课直接把它传给 API</li>
+      <li>· <a href="0023-L19-hallucination.html">L19 · 幻觉与不确定性</a> — 用结构化 + 校验对冲不确定性，本课是其落地</li>
+      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>总结</h2>
+  <div class="card">
+    <ul>
+      <li>Agent 每步输出都要喂下游代码，<strong>格式对 = 硬前提</strong>，"请返回 JSON" 靠 prompt 不可靠</li>
+      <li>三个层次：<strong>纯 prompt（不保证）&lt; JSON mode（只保证合法 JSON）&lt; Structured Outputs（保证符合 schema）</strong></li>
+      <li>核心区分：<strong>Structured Outputs ≠ JSON mode</strong>——前者保证符合你的 schema，后者只保证是合法 JSON</li>
+      <li>原理是<strong>约束解码</strong>：把非法 token 概率归零，模型"不可能"违反 schema——是机制保证，不是求配合</li>
+      <li>实操：把 <strong>Pydantic 模型当 schema</strong> 传给 <code>parse</code>，拿回<strong>已验证的对象</strong>直接用</li>
+      <li>兜底：不支持时<strong>校验 + 带错重试</strong>；strict 下先处理 <strong>refusal</strong>；schema 尽量扁平</li>
+    </ul>
+  </div>
+  <div class="tip" style="margin-top:1rem;">
+    有 key 的话，把第 4 节那段 <code>parse</code> 跑一次，再故意把 <code>Order</code> 改出个 <code>Literal</code> 字段，看模型是不是"只可能"给你允许的值——你会对"约束"两个字有实感。没 key 也行，用第 5 节的 <code>model_validate_json</code> + 重试先把兜底链路跑通。记住这根准绳：<strong>能约束就约束，不能约束就校验加重试。</strong>下一课：让模型开始"看图听声"——多模态 API。
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

@@ -152,21 +152,22 @@
       <strong>Module 3.1 · API 基础：</strong>主流 API 快速上手（OpenAI/Anthropic/Google）、Streaming 流式输出<br><br>
       <strong>Module 3.2 · 核心能力（Agent 必备）：</strong><br>
       · <strong>Function Calling</strong> — 工具定义、模型调用工具流程、多工具选择<br>
-      · <strong>Structured Output</strong> — JSON mode、Pydantic 约束、输出验证与重试<br>
+      · <strong>Structured Output</strong> — <strong>Structured Outputs（约束解码/strict mode，token 级<em>保证</em>符合 Schema）≠ 旧 JSON mode</strong>、Pydantic 约束、无法保证时的验证与重试兜底<br>
       · <strong>多模态 API</strong> — 图片理解（Vision）、音频转录（Whisper）<br><br>
       <strong>Module 3.3 · 工程实践（生产级）：</strong><br>
       · <strong>Context Window 管理</strong> — 上下文压缩、滑动窗口、摘要记忆<br>
-      · <strong>错误处理与重试策略</strong> — 速率限制（429）、指数退避、重试预算<br>
+      · <strong>错误处理与重试策略</strong> — 速率限制（429）、指数退避 + <strong>抖动（full jitter，防重试风暴）</strong>、重试预算、<strong>幂等键（idempotency key，让有副作用的工具调用可安全重试）</strong><br>
       · <strong>模型路由与 Fallback</strong> — 主备模型策略、AI Gateway 模式（LiteLLM）<br>
-      · <strong>LLM 可观测性基础</strong> — 调用日志、Token 用量追踪、成本告警<br><br>
+      · <strong>LLM 可观测性基础</strong> — 调用日志、Token 用量追踪、成本告警；<strong>OpenTelemetry GenAI 语义约定（<code>gen_ai.*</code> span，厂商无关标准）+ Langfuse</strong><br><br>
       <strong>Module 3.4 · 工具工程与 Function Calling（v7 新增 · P0 实战必修）：</strong><br>
       · <strong>Tool Schema 设计</strong> — 用 Pydantic / JSON Schema 定义工具、strict mode、参数描述如何影响模型选择<br>
       · <strong>完整 Function Calling 循环</strong> — 模型请求工具 → 执行 → 回填结果 → 再推理，多轮 / 并行调用<br>
       · <strong>健壮性</strong> — 参数校验失败如何反馈给模型重试、流式响应中增量解析工具调用、工具定义占多少 Token<br>
       · <strong>工具注册系统</strong> — 用装饰器做可扩展的 Tool Registry（衔接 Phase 1）<br><br>
-      <strong>Module 3.5 · 成本工程（v7 强化）：</strong>2026 降本优先级 — <strong>① 原生 Prompt Caching</strong>（OpenAI/Anthropic/Google，零改动、输入成本最高降 ~90%，关键是「静态前缀 + 动态后缀」缓存键设计）＞ ② 模型路由（LiteLLM）＞ ③ 提示压缩（LLMLingua）＞ ④ 小模型蒸馏 ＞ ⑤ Batch API<br><br>
-      <div class="interview-box">"Streaming 好处" / "Function Calling 原理" / "如何设计好的 Tool Schema" / "并行工具调用怎么处理" / "如何保证输出格式" / "Context Window 超限" / "如何处理速率限制" / "主模型挂了怎么办" / "Prompt Caching 与语义缓存的区别" / "一个 Agent 每月 $10k 如何砍到 $5k" — 共 12+ 道高频题</div><br>
-      <strong>实战项目：</strong>构建多模型 Agent 客户端 — 流式输出 + <strong>完整 Function Calling 循环</strong> + 结构化输出 + 错误重试 + 模型 Fallback + 原生缓存 + 成本追踪
+      <strong>Module 3.5 · 成本工程（v7 强化）：</strong>2026 降本优先级 — <strong>① 原生 Prompt Caching</strong>（OpenAI/Anthropic/Google，零改动、输入成本最高降 ~90%，关键是「静态前缀 + 动态后缀」缓存键设计）＞ ② <strong>语义缓存</strong>（semantic cache：按<em>语义相似度</em>命中，GPTCache/Redis，与前缀缓存互补）＞ ③ 模型路由（LiteLLM）＞ ④ 提示压缩（LLMLingua）＞ ⑤ 小模型蒸馏 ＞ ⑥ Batch API<br><br>
+      <div class="interview-box">"Streaming 好处" / "Function Calling 原理" / "如何设计好的 Tool Schema" / "并行工具调用怎么处理" / "Structured Outputs 与 JSON mode 区别" / "Context Window 超限" / "如何处理速率限制（退避+抖动）" / "有副作用的工具调用如何安全重试（幂等）" / "主模型挂了怎么办" / "Prompt Caching 与语义缓存的区别" / "一个 Agent 每月 $10k 如何砍到 $5k" — 共 14+ 道高频题</div><br>
+      <strong>实战项目：</strong>构建多模型 Agent 客户端 — 流式输出 + <strong>完整 Function Calling 循环</strong> + 结构化输出 + 错误重试 + 模型 Fallback + 原生缓存 + 成本追踪<br><br>
+      <a href="0044-phase3-api-engineering-outline.html" style="font-weight:600;">📋 查看 Phase 3 详细大纲（L25–L38）→</a>
     </div>
   </div>
 </div>

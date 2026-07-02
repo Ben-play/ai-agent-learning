@@ -251,6 +251,10 @@
   Tool 定义、strict mode、并行调用、多轮循环最佳实践。Use for: 工具工程实战（Phase 3.4）。**面试必考**。
 - [Anthropic: Tool Use (Function Calling)](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
   Claude 工具调用规范，含工具定义与结果回填。Use for: 对照不同厂商的工具调用差异。
+- [OpenAI: Structured Outputs Guide](https://developers.openai.com/api/docs/guides/structured-outputs)
+  官方一手。**约束解码（constrained decoding）在 token 级<em>保证</em>输出符合 JSON Schema**（[原理博客](https://openai.com/index/introducing-structured-outputs-in-the-api/)）。**面试关键区分：Structured Outputs ≠ 旧 JSON mode**（后者只保证是合法 JSON，不保证符合你的 schema）。Use for: Phase 3.2 结构化输出。
+- [Anthropic: Increase output consistency (Structured Outputs)](https://docs.anthropic.com/en/docs/test-and-evaluate/strengthen-guardrails/increase-consistency)
+  Claude 侧「保证 JSON schema 一致性用 Structured Outputs」。Use for: 对照两厂商的 schema 保证机制。
 
 #### 成本工程（原生缓存优先）
 - [OpenAI: Prompt Caching](https://platform.openai.com/docs/guides/prompt-caching)
