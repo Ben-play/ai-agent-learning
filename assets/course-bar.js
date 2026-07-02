@@ -78,17 +78,29 @@
   }
   html += '</div>';
 
-  // 中：课程信息
+  // 中：课程信息 —— 坐标读数 + 一根连续进度条（精装书页眉；无百分比数字）
   html += '<div class="course-bar-center">';
   if (isCourse) {
+    // 阶段出现顺序 → 当前课属于第几阶段（1-based）
+    var phaseOrder = [];
+    COURSE.forEach(function(l) { if (phaseOrder.indexOf(l.phase) === -1) phaseOrder.push(l.phase); });
+    var phaseNum = phaseOrder.indexOf(cur.phase) + 1;          // 第几阶段
+    var overallPct = Math.round((courseIdx + 1) / TOTAL * 100); // 总进度（仅驱动进度条视觉，不显数字）
+
+    // 坐标读数：第三阶段 · L30（中文阶段名 + 细竖线 + 课号）
+    html += '<span class="course-bar-coord" aria-label="第 ' + phaseNum + ' 阶段 · 第 ' + (courseIdx + 1) + ' 课，共 ' + TOTAL + ' 课">';
+    html += '<span class="course-bar-phase-name">' + cur.phase + '</span>';
+    html += '<span class="course-bar-coord-rule"></span>';
     html += '<span class="course-bar-num">L' + String(courseIdx + 1).padStart(2, '0') + '</span>';
+    html += '</span>';
+
     html += '<span class="course-bar-title">' + cur.title + '</span>';
-    // 进度点
-    html += '<div class="course-bar-dots">';
-    COURSE.forEach(function(_, i) {
-      var cls = i < courseIdx ? 'done' : (i === courseIdx ? 'active' : '');
-      html += '<span class="course-bar-dot ' + cls + '"></span>';
-    });
+
+    // 一根连续进度条（整门课总进度）+ 游标，凹槽内发光
+    html += '<div class="course-bar-track" role="progressbar" aria-valuenow="' + (courseIdx + 1) +
+            '" aria-valuemin="1" aria-valuemax="' + TOTAL + '" aria-label="课程进度 ' + (courseIdx + 1) + ' / ' + TOTAL + '">';
+    html += '<span class="course-bar-track-fill" style="width:' + overallPct + '%"></span>';
+    html += '<span class="course-bar-track-cursor" style="left:' + overallPct + '%"></span>';
     html += '</div>';
   } else {
     html += '<span class="course-bar-title">' + cur.title + '</span>';

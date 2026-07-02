@@ -753,38 +753,41 @@ footer {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: var(--card-bg);
+  background: color-mix(in srgb, var(--card-bg) 82%, transparent);
   border-bottom: 1px solid var(--border-light);
   padding: 0;
   margin: 0 -2rem;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
 .course-bar-inner {
   max-width: 52rem;
   margin: 0 auto;
   display: flex;
   align-items: center;
-  height: 2.8rem;
+  height: 3rem;
   padding: 0 2rem;
+  gap: 0.5rem;
 }
 .course-bar-side {
   flex: 1;
   min-width: 0;
+  display: flex;
 }
-.course-bar-left { text-align: left; }
-.course-bar-right { text-align: right; }
+.course-bar-left  { justify-content: flex-start; }
+.course-bar-right { justify-content: flex-end; }
 
 .course-bar-nav {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.78rem;
+  gap: 0.4rem;
+  font-size: 0.775rem;
+  font-weight: 500;
   color: var(--muted);
   border-bottom: none;
-  padding: 0.25em 0.6em;
+  padding: 0.32em 0.7em;
   border-radius: var(--radius-pill);
-  transition: all 0.2s;
+  transition: color 0.22s ease, background 0.22s ease, transform 0.22s cubic-bezier(0.22,1,0.36,1);
   max-width: 100%;
 }
 .course-bar-nav:hover {
@@ -792,10 +795,18 @@ footer {
   background: var(--bg-warm);
   border-bottom: none;
 }
+/* 定向微位移：上一课向左挪、下一课向右挪 */
+.course-bar-left  .course-bar-nav:hover { transform: translateX(-2px); }
+.course-bar-right .course-bar-nav:hover { transform: translateX(2px); }
 .course-bar-nav-arrow {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   flex-shrink: 0;
+  opacity: 0.65;
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.22,1,0.36,1);
 }
+.course-bar-nav:hover .course-bar-nav-arrow { opacity: 1; }
+.course-bar-left  .course-bar-nav:hover .course-bar-nav-arrow { transform: translateX(-2px); }
+.course-bar-right .course-bar-nav:hover .course-bar-nav-arrow { transform: translateX(2px); }
 .course-bar-nav-label {
   white-space: nowrap;
   overflow: hidden;
@@ -807,13 +818,18 @@ footer {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  padding: 0 0.85rem;
+  /* 用左右细分割线把中区框成一个"字段"，像杂志的栏规 */
+  border-left: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
 }
 .course-bar-num {
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 0.82rem;
-  color: var(--accent);
+  font-size: 0.8rem;
+  color: var(--fg-soft, var(--fg));
+  letter-spacing: -0.01em;
 }
 .course-bar-title {
   font-weight: 600;
@@ -823,27 +839,98 @@ footer {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: 0.005em;
 }
-.course-bar-dots {
-  display: flex;
-  gap: 4px;
+
+/* 坐标读数：章节标记样式（P3·L30，无百分比） */
+.course-bar-coord {
+  display: inline-flex;
   align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  padding: 0.2em 0.55em;
+  border-radius: 5px;
+  background: var(--accent-subtle, var(--bg-warm));
+  font-weight: 700;
+  line-height: 1;
 }
-.course-bar-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--border);
-  transition: all 0.2s;
+.course-bar-phase-name {
+  font-size: 0.72rem;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
-.course-bar-dot.done {
+/* 分隔：一条细竖线 rule（editorial，比菱形点更利落） */
+.course-bar-coord-rule {
+  width: 1px;
+  height: 0.85em;
+  margin: 0 0.5em;
   background: var(--accent);
-  opacity: 0.5;
+  opacity: 0.28;
+  flex-shrink: 0;
 }
-.course-bar-dot.active {
+
+/* 连续进度条：凹槽 + 渐变填充 + 发光游标（无百分比数字） */
+.course-bar-track {
+  position: relative;
+  width: 116px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent-subtle, var(--border-light));
+  box-shadow: inset 0 0.5px 1.5px rgba(0,0,0,0.14);
+  flex-shrink: 0;
+  overflow: visible;
+}
+.course-bar-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  box-shadow: 0 0 10px -2px var(--accent-bright);
+  animation: courseTrackGrow 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left;
+}
+.course-bar-track-cursor {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
   background: var(--accent-bright);
-  width: 14px;
-  border-radius: 3px;
+  border: 2px solid var(--card-bg);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px var(--accent-bright), 0 0 8px -1px var(--accent-bright), 0 1px 3px rgba(0,0,0,0.2);
+  animation: courseCursorIn 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* 游标外圈呼吸光晕（极轻，静止时微微脉动） */
+.course-bar-track-cursor::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-bright);
+  opacity: 0;
+  animation: courseCursorPulse 2.8s ease-in-out 1s infinite;
+}
+@keyframes courseTrackGrow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@keyframes courseCursorIn {
+  0%, 65% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  100%    { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes courseCursorPulse {
+  0%, 100% { opacity: 0; transform: scale(0.9); }
+  50%      { opacity: 0.5; transform: scale(1.25); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .course-bar-track-fill,
+  .course-bar-track-cursor { animation: none; }
+  .course-bar-track-cursor::after { animation: none; }
+  .course-bar-nav,
+  .course-bar-nav-arrow { transition: none; }
 }
 
 /* 移动端 */
@@ -852,7 +939,8 @@ footer {
   .course-bar { margin: 0 -1rem; }
   .course-bar-nav-label { max-width: 80px; }
   .course-bar-title { max-width: 120px; }
-  .course-bar-dots { display: none; }
+  .course-bar-center { border: none; padding: 0; }
+  .course-bar-track { display: none; }
 }
 
 /* ============================================
@@ -1214,9 +1302,9 @@ a:focus-visible,
 [data-theme="dark"] .course-bar-nav:hover {
   background: var(--bg-warm);
 }
-[data-theme="dark"] .course-bar-dot.done {
-  background: var(--accent);
-}
+[data-theme="dark"] .course-bar-phase-name { color: var(--accent-bright); }
+[data-theme="dark"] .course-bar-coord-rule { background: var(--accent-bright); }
+[data-theme="dark"] .course-bar-track-cursor { border-color: var(--card-bg); }
 [data-theme="dark"] .bottom-nav-card:hover {
   border-color: var(--accent-bright);
 }
