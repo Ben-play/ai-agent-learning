@@ -13,6 +13,12 @@
 
 # 更新日志
 
+- 2026-07-02: **订正"本机装不了 pydantic/httpx"的错误 + 实跑验证 L14/L15** — 此前判断有误：本机 `python -m ensurepip` 可引导出 pip，随后 `pip install pydantic httpx` 成功(pydantic 2.13.4 / httpx 0.28.1)。**用真实库把 L14 全部代码 + L15(httpx MockTransport 走真实 API)跑通**，claimed 输出全部一致——L14/L15 从"手工复核"升级为"实跑验证"。已改正 NOTES/学习记录里"装不了"的表述。课程本就是机器无关的(pip/uv 安装即可)，与本机能否装无关。
+
+- 2026-07-02: **Part C 审核（L12–L16）** — 三查基本清白：① 内部交叉链接全有效、外部真实文档 URL 全 200(api.example.com 是代码内占位、Real Python 被 curl 拦属浏览器正常)；② L14 Pydantic v2 / L15 httpx 的 API 正确性(方法名 model_dump/model_dump_json/model_json_schema、Field 约束、field_validator+classmethod、httpx 异常类与捕获顺序，无 v1/v2 混用)——**后已用真实库实跑确认**；③ Quiz 已在编写时修至 0 泄露。修复：L15 SSE 片段补 `import json`；L14/L15 安装说明补 uv。结论：Part C 质量过关。
+
+- 2026-07-01: **Part C 全部落地 L12–L16 → Phase 1 完结**（5 节课）— L12 生成器/0016、L13 类型提示/0017、L14 Pydantic/0018(闭合 @tool→Schema 线)、L15 httpx/0019、L16 async 并发/0020(收官)。可运行代码(L12/13/16 stdlib)开工前跑通；L16 课内批量练习实测 7/7、0.62s；L14 Pydantic / L15 httpx 代码按 v2/httpx 正确 API 写、标注 pip install + RESOURCES 链接（后于 2026-07-02 用真实库跑通验证，见下）。结构/6脚本/nav L01–L16 连续/各3-3 登记；Quiz 修掉 2 处答案泄露(0 剩余)。至此 Phase 1(L01–L16,16 节)全部完成，仅剩 Phase 2+。学习记录 0015。**遗留：Phase 5 补 L13 留下的 Generic/Protocol。**
+
 - 2026-07-01: **回到顶部浅色配色调浅** — 用户反馈浅色下太深。静止态从深森林绿盘改为"纸片"感：白→奶油微渐变 + 森林绿箭头 + 细边框(与奶油页分离)；**hover 才填森林绿盘+奶油箭头**(浅→彩的满足感)+琥珀光晕。深色模式维持深绿盘+薄荷箭头(含 hover token)。node --check + DOM 模拟通过。
 
 - 2026-07-01: **回到顶部按钮配色优化** — 圆盘改森林绿渐变+奶油箭头+内高光，进度环轨道改暖色 --accent-subtle+琥珀微光，hover 由绿→琥珀换色改为保持绿盘+琥珀光晕。**并修复深色模式对比度 bug**(原 --accent 深色下变浅薄荷、白箭头看不清 → 覆盖为深绿盘+薄荷箭头)。node --check + DOM 模拟复跑通过。
