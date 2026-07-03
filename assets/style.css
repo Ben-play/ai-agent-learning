@@ -1607,47 +1607,108 @@ a.lesson-qa-link { border-bottom: 1px solid color-mix(in srgb, var(--accent-brig
 /* 模块内 .lesson-qa-link 顶部无多余间距（它现在是卡片首元素） */
 .card > .lesson-qa-link:first-child { margin-top: 0; }
 
-/* 思考题：每题一个默认折叠的 details（summary=问题，展开=答案） */
+/* 思考题：每题一枚「考卷卡」——默认折叠，summary=问题（Q 徽章 + 流式题干），展开=实证答案 */
 .think-q {
+  position: relative;
   border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-warm);
-  margin: 0.6rem 0;
-  padding: 0 0.9rem;
+  background: var(--card-bg);
+  margin: 0.7rem 0;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
+.think-q:hover { border-left-color: var(--accent-bright); }
+.think-q[open] {
+  border-left-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+/* summary 用 block（不是 flex）——让题干里的内联 <code> 正常随文断行、不各占一行 */
 .think-q > summary {
   cursor: pointer;
-  padding: 0.7rem 0;
+  list-style: none;
+  display: block;
+  position: relative;
+  padding: 0.85rem 1rem 0.85rem 2.5rem;   /* 左留白给箭头 */
   font-weight: 600;
   color: var(--fg);
-  list-style: none;
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
+  line-height: 1.6;
 }
 .think-q > summary::-webkit-details-marker { display: none; }
+/* 箭头：绝对定位在左，不参与题干文字流 */
 .think-q > summary::before {
   content: "▸";
+  position: absolute;
+  left: 1rem;
+  top: 0.9rem;
   color: var(--accent-bright);
-  font-size: 0.85em;
-  transition: transform 0.15s ease;
+  font-size: 0.9em;
+  transition: transform 0.18s ease;
 }
 .think-q[open] > summary::before { transform: rotate(90deg); }
-.think-q > summary .think-q-tag {
+.think-q > summary:hover { background: var(--bg-warm); }
+/* Q 徽章：实心琥珀小药丸，内联在题干最前，随行不换位 */
+.think-q .think-q-tag {
+  display: inline-block;
   font-family: var(--font-mono);
   font-size: 0.7rem;
   font-weight: 700;
-  color: var(--accent-bright);
-  flex: 0 0 auto;
+  color: var(--card-bg);
+  background: var(--accent-bright);
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-pill);
+  margin-right: 0.55em;
+  vertical-align: 0.06em;
+  letter-spacing: 0.02em;
 }
+/* summary 里的内联 code：整段 import/路径当一个视觉 token，绝不从中间断开 */
+.think-q > summary code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: 500;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  padding: 0.08em 0.34em;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+/* 答案区 */
 .think-q-answer {
-  padding: 0.2rem 0 0.9rem 1.3rem;
+  padding: 0.9rem 1rem 1rem 2.5rem;
   border-top: 1px dashed var(--border);
-  margin-top: -1px;
-  padding-top: 0.8rem;
+  background: var(--bg-warm);
   color: var(--fg-soft);
-  line-height: 1.7;
+  line-height: 1.75;
+  animation: thinkReveal 0.22s ease;
 }
-.think-q-answer p { margin: 0 0 0.6rem; }
+@keyframes thinkReveal {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.think-q-answer p { margin: 0 0 0.65rem; }
 .think-q-answer p:last-child { margin-bottom: 0; }
 .think-q-answer strong { color: var(--accent); }
+.think-q-answer code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  padding: 0.08em 0.34em;
+  border-radius: 4px;
+}
+.think-q-answer a { color: var(--accent-bright); }
+
+/* 深色模式 */
+[data-theme="dark"] .think-q .think-q-tag { color: var(--bg); }
+[data-theme="dark"] .think-q > summary code,
+[data-theme="dark"] .think-q-answer code { color: var(--accent-bright); }
+
+/* 移动端：箭头缩进略收 */
+@media (max-width: 640px) {
+  .think-q > summary { padding-left: 2.2rem; }
+  .think-q-answer { padding-left: 1.1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .think-q-answer { animation: none; }
+  .think-q > summary::before { transition: none; }
+}
