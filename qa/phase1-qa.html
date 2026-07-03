@@ -23,7 +23,7 @@
 <div class="section">
   <div class="qa-howto">
     <span class="qa-howto-icon">💡</span>
-    <div>本页收录 <strong>Python 基础与工程能力</strong> 每节课学习时遇到的疑问 + 解答。学到哪课有不懂的，<strong>直接问我（你的老师）</strong>，我会把「问题 + 解答」记到对应课程下面。当前已记录 <span class="qa-stat">1</span> 个问题。</div>
+    <div>本页收录 <strong>Python 基础与工程能力</strong> 每节课学习时遇到的疑问 + 解答。学到哪课有不懂的，<strong>直接问我（你的老师）</strong>，我会把「问题 + 解答」记到对应课程下面。当前已记录 <span class="qa-stat">2</span> 个问题。</div>
   </div>
 </div>
 
@@ -47,8 +47,23 @@
     <div class="qa-lesson-head">
       <span class="qa-lesson-num">L02</span>
       <span class="qa-lesson-title"><a href="../lessons/0005-L02-python-runtime-and-modules.html">Python 运行机制与模块系统</a></span>
+      <span class="qa-count">1 问</span>
     </div>
-    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+    <div class="qa-item">
+      <div class="qa-q"><span class="qa-badge">Q</span><span class="qa-q-text">跑 <code>tests/test_core.py</code> 报 <code>ModuleNotFoundError: No module named 'agent'</code>——<code>python tests/test_core.py</code> 报、<code>pytest</code> 也报。<code>agent/</code> 明明就在旁边，为什么找不到？</span></div>
+      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text">
+        <p><strong>不是 import 写错了，是「搜索起点」错了。</strong>Python 找包只在 <code>sys.path</code> 里找；而 <code>agent/</code> 包住在项目根 <code>agent-hello/</code>，你两次运行都让搜索起点落在了 <code>tests/</code> 目录，那里当然没有 <code>agent/</code>。两个报错是<strong>同一个病根</strong>：</p>
+        <p><strong>① <code>python tests/test_core.py</code>：</strong>Python 的铁律——用 <code>python 某脚本.py</code> 直接跑脚本时，<code>sys.path[0]</code> = <strong>脚本所在目录</strong>（这里是 <code>tests/</code>），既不是你当前所在目录、也不是项目根。于是只在 <code>tests/</code> 里找 <code>agent</code> → 找不到。</p>
+        <p><strong>② <code>pytest</code>：</strong>pytest 9 默认 <code>prepend</code> 导入模式，会把 test 文件的「包根」插进 <code>sys.path</code>。「包根」= 从 test 往上、<strong>第一个没有 <code>__init__.py</code> 的目录</strong>。你的 <code>tests/</code> 没有 <code>__init__.py</code> → pytest 认定 <code>tests/</code> 自己是包根 → 把 <code>tests/</code>（而非项目根）加进路径 → 一样找不到 <code>agent</code>。而 <code>pyproject.toml</code> 里没有 <code>[tool.pytest.ini_options]</code>，没有 <code>pythonpath</code> 兜底，全凭 rootdir 猜，所以脆、换个上下文表现就不同。</p>
+        <p><strong>一句话记牢：</strong><code>python xxx.py</code> 看「文件在哪」，搜索起点 = 文件目录；<code>python -m xxx</code> 看「你在哪」，搜索起点 = 当前目录。包在项目根，就得让搜索起点是项目根。</p>
+        <p><strong>怎么修（首选，一劳永逸、跟在哪跑无关）：</strong>往 <code>pyproject.toml</code> 末尾加——</p>
+        <pre><code>[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]</code></pre>
+        <p>之后在项目根 <code>agent-hello/</code> 下直接 <code>pytest</code> 就稳过（实测 <code>1 passed</code>）。备选：给 <code>tests/</code> 加个空的 <code>__init__.py</code>（让 pytest 一路往上找到项目根）；或临时 <code>PYTHONPATH=. pytest</code>（治标）。手动跑单文件用 <code>python -m tests.test_core</code>（在项目根），别用 <code>python tests/test_core.py</code>。</p>
+      </div></div>
+      <div class="qa-date">记录于 2026-07-03</div>
+    </div>
   </div>
 </div>
 
