@@ -248,10 +248,27 @@ async def achat(prompt: str) -&gt; str:
 #        retry=retry_if_exception(lambda e: isinstance(e, LLMError) and e.retryable))
 # def chat_with_retry(prompt): return chat(prompt)</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>为什么要把 <code>retryable</code> 标记在异常上，而不是在调用处判断状态码？（让重试逻辑和错误来源解耦）</li>
-        <li>同步 <code>chat</code> 和异步 <code>achat</code>，在"同时调 10 个 prompt"时差别有多大？（下一课揭晓）</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>为什么要把 <code>retryable</code> 标记在异常上，而不是在调用处判断状态码？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>因为"这个错该不该重试"是<strong>错误本身固有的属性</strong>。把它标在异常上，让这份知识随错误一起传播，重试逻辑只需问 <code>exc.retryable</code>，不用在每个调用点重复判断状态码——错误来源与重试策略就此解耦。</p>
+          <p>如果在调用处判断，每个发请求的地方都要重写一遍"429 或 5xx 才重试、4xx 不重试"的逻辑。散落多处，容易写漏、写岔；将来新增一种可重试错误，得逐个地方改。</p>
+          <p>把判断收敛到抛错的 <code>_parse</code> 一处（<code>retryable = code == 429 or 500 &lt;= code &lt; 600</code>），异常带着结论往上冒。tenacity 的重试条件只看 <code>isinstance(e, LLMError) and e.retryable</code>，通用且干净。</p>
+          <p>好处：新增错误类型只改抛错那一处；重试策略与"哪些错可重试"彻底分离；调用方代码更薄。这就是让语义随对象走、而非散落在流程里的设计思路。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>同步 <code>chat</code> 和异步 <code>achat</code>，在"同时调 10 个 prompt"时差别有多大？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>差别接近 <strong>10 倍</strong>：同步串行大约是 10 × 单个请求延迟（一个接一个等），异步并发（<code>gather</code>）大约只要 1 × 单个请求延迟（10 个网络等待重叠在一起）。</p>
+          <p>同步 <code>chat</code> 一次只能发一个、等它回来再发下一个。10 个各 1 秒的请求，总耗时≈10 秒——CPU 大部分时间在干等网络。</p>
+          <p>异步 <code>achat</code> 配 <code>asyncio.gather</code> 可以同时把 10 个请求都发出去，然后一起等。因为瓶颈是 I/O（等网络）而非计算，等待时间可以重叠，总耗时≈最慢的那一个≈1 秒多。</p>
+          <p>这正是下一课 L16 的主题：I/O 密集场景下 async 靠重叠等待实现高并发。注意真实场景还要用 <code>Semaphore</code> 限流，否则一口气打太多会触发 429 或耗尽本地连接。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

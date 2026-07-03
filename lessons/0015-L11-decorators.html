@@ -260,10 +260,26 @@ print(web_search.__name__)              # web_search（wraps 生效）
 import json
 print(json.dumps(get_schemas(), ensure_ascii=False, indent=2))</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>为什么去掉 <code>@functools.wraps</code> 后，很多框架会读不到工具的真实名字？</li>
-        <li>到 L14，如果用 Pydantic 的模型来描述参数，这个 Schema 会多出什么能力？（提示：校验 + 标准 JSON Schema 导出）</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>为什么去掉 <code>@functools.wraps</code> 后，很多框架会读不到工具的真实名字？</summary>
+        <div class="think-q-answer">
+          <p><strong>因为装饰器默认是用内层的 <code>wrapper</code> 函数替换掉原函数，没有 <code>@functools.wraps</code> 把元信息复制回来，<code>func.__name__</code> 就变成了 <code>"wrapper"</code>，而不是工具的真实名字。</strong></p>
+          <p><code>@deco</code> 等价于 <code>fn = deco(fn)</code>，装饰之后外界拿到的其实是 <code>wrapper</code> 这个新函数对象。<code>wrapper</code> 自己的 <code>__name__</code> 就是字符串 <code>"wrapper"</code>、<code>__doc__</code> 是 <code>None</code>，于是原函数的名字、docstring、签名全被盖掉了。</p>
+          <p>而很多 Agent 框架（LangChain、Pydantic AI 等）注册工具时，正是靠反射读 <code>func.__name__</code> 当工具名、读 <code>func.__doc__</code> 当工具描述、读签名生成参数 Schema。少了 <code>@functools.wraps(fn)</code>，框架读到的就是一堆叫 <code>"wrapper"</code>、没有描述的工具——名字冲突、LLM 也不知道每个工具是干嘛的。<code>functools.wraps</code> 的作用就是把原函数的 <code>__name__</code>/<code>__doc__</code>/<code>__wrapped__</code> 等元信息拷回 <code>wrapper</code>，让包装对外"透明"。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>到 L14，如果用 Pydantic 的模型来描述参数，这个 Schema 会多出什么能力？（提示：校验 + 标准 JSON Schema 导出）</summary>
+        <div class="think-q-answer">
+          <p><strong>比手写的 dict Schema 多出三样：运行时自动校验、一键导出标准 JSON Schema、以及字段级的描述/默认值/嵌套建模。</strong></p>
+          <p>① <strong>运行时校验</strong>：Pydantic 模型在实例化时会按类型和约束（如 <code>int</code>、<code>gt=0</code>、<code>max_length</code>）自动校验入参，不符合就抛 <code>ValidationError</code>。而我们手写的 <code>{"type": "str", "required": True}</code> 只是一份"描述"，本身并不会真正拦截非法参数——LLM 传错类型也照样进来。</p>
+          <p>② <strong>标准 JSON Schema 导出</strong>：调 <code>Model.model_json_schema()</code> 就能得到符合 JSON Schema 规范的结构，可以直接塞进 OpenAI / Anthropic tools 定义里的 <code>parameters</code> 字段，不用自己拼 <code>type</code>/<code>required</code>/<code>properties</code>，也不怕拼错格式。</p>
+          <p>③ <strong>更丰富的表达力</strong>：每个字段能带 <code>Field(description=...)</code> 描述（LLM 看得懂）、默认值、可选/必填、以及嵌套模型和复杂类型（<code>list[Item]</code>、枚举等）。这就是为什么 L14 之后工具 Schema 会比本课手写版严谨得多——校验和导出都交给 Pydantic，人只负责声明。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

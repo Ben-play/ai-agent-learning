@@ -259,10 +259,27 @@ print(SearchInput(query="ai", max_results="8").model_dump())
 # {'query': 'ai', 'max_results': 8, 'lang': 'zh'}  ← "8" 自动转 int
 # CalcInput(expression="__import__('os')")  → ValidationError</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>为什么 <code>CalcInput</code> 的 <code>no_import</code> 校验对 Agent 安全很重要？（LLM 可能生成危险表达式）</li>
-        <li>这三个模型导出的 Schema，和 OpenAI 工具定义里的 <code>parameters</code> 字段是什么关系？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>为什么 <code>CalcInput</code> 的 <code>no_import</code> 校验对 Agent 安全很重要？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>因为 <code>expression</code> 的值来自 <strong>LLM 输出，是不可信的</strong>，而这个表达式后续会被 <code>eval</code> 一类的机制执行；<code>no_import</code> 在执行前就拦掉含 <code>import</code>（乃至 <code>__import__</code>、双下划线）的输入，防止注入和远程代码执行（RCE）。</p>
+          <p>设想 LLM 被诱导生成 <code>__import__("os").system("rm -rf ...")</code> 这样的"表达式"。如果 <code>CalcInput</code> 不校验就直接求值，等于把 shell 交给了模型输出——这是典型的工具注入漏洞。</p>
+          <p><code>no_import</code> 校验器让脏数据在"进门那一刻"（构造模型时）就被 <code>ValidationError</code> 挡下，根本到不了求值那一步。这正是 Pydantic 的价值：把校验放在信任边界上。</p>
+          <p>更一般地：<strong>凡是工具入参来自模型输出，都必须当成不可信输入来校验</strong>。<code>no_import</code> 只是最小示例，真实场景还要限制可用函数、白名单运算符等。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>这三个模型导出的 Schema，和 OpenAI 工具定义里的 <code>parameters</code> 字段是什么关系？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>是"直接就是"的关系：<code>model.model_json_schema()</code> 导出的标准 JSON Schema，可以<strong>原样填进</strong>工具定义里 <code>function.parameters</code> 的位置，无需手写第二份。</p>
+          <p>练习里 <code>{"name": name, "parameters": model.model_json_schema()}</code> 就是这个对应关系的雏形——把每个 Pydantic 输入模型转成 Schema，拼成"工具清单"喂给 LLM。LLM 读 <code>properties</code>、<code>required</code>、<code>description</code> 来决定调哪个工具、参数怎么填。</p>
+          <p>关键好处是<strong>单一真源</strong>：同一个 Pydantic 模型既负责运行时校验入参，又负责导出给 LLM 的 Schema。校验规则和 Schema 描述同源，改一处两边一致，不会出现"文档说要 int、代码却收 str"这种漂移。</p>
+          <p>这也正是 L11 手写 <code>@tool</code> 那条线的工业版闭环：真实框架（LangChain、OpenAI SDK、Pydantic AI）就是用 Pydantic 生成这份带校验、带描述的标准 Schema。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

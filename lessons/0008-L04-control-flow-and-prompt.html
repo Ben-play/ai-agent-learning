@@ -415,10 +415,26 @@ print(result)</code></pre>
 问题：怎么退货？</code></pre>
 
       <h4>思考题</h4>
-      <ul>
-        <li>如果 <code>tools</code> 默认写成 <code>tools=[]</code> 会有什么隐患？（回顾 L03 的可变默认参数陷阱）</li>
-        <li>如果要支持 few-shot 示例（一组 输入→输出 样例），你会怎么扩展这个函数？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>如果 <code>tools</code> 默认写成 <code>tools=[]</code> 会有什么隐患？</summary>
+        <div class="think-q-answer">
+          <p><strong>会踩可变默认参数陷阱：所有调用共享同一个列表，一次污染、次次遭殃。</strong></p>
+          <p>默认值 <code>[]</code> 只在<strong>函数定义时创建一次</strong>，之后每次不传 <code>tools</code> 的调用拿到的都是同一个列表对象。只要函数体内对它做过一次 <code>append</code>（或别处持有它并改动），下一次调用就会看到上一次残留的内容——工具列表会莫名越攒越多。</p>
+          <p>正解是默认写 <code>tools=None</code>，进函数第一件事 <code>tools = tools or []</code>，让每次调用都拿到一个全新的空列表。这正是本课参考实现里 <code>tools = tools or []</code> 那行的用意，也呼应 L03 的可变默认参数陷阱。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>如果要支持 few-shot 示例（一组 输入→输出 样例），你会怎么扩展这个函数？</summary>
+        <div class="think-q-answer">
+          <p><strong>加一个 <code>examples</code> 参数（默认 <code>None</code>），把每个样例渲染成一段文本片段，按条件 <code>append</code> 进 <code>parts</code> 列表。</strong></p>
+          <p>沿用本课「条件拼接」的套路，签名扩成 <code>render_prompt(role, question, ..., examples=None)</code>，其中 <code>examples</code> 是一个 <code>[{"input": ..., "output": ...}, ...]</code> 列表。函数内先 <code>examples = examples or []</code> 兜住可变默认参数，再判断非空才拼这一段。</p>
+          <p>拼法就是一个 f-string 循环：<code>lines = [f"输入：{e['input']}\n输出：{e['output']}" for e in examples]</code>，然后 <code>parts.append("示例：\n" + "\n\n".join(lines))</code>。位置放在「问题」之前——先给模型看几个范例，再抛出真正的问题，效果最好。</p>
+          <p>这样既没破坏原有结构，又完全复用了「片段入列表再 join」的思路：新增一种内容，只是多一个 <code>if ... append</code>。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

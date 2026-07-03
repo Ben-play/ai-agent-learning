@@ -210,10 +210,25 @@ print(state.step)              # 2
 print(len(state.messages))     # 2
 print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q': '天气'})</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>如果 <code>Message.content</code> 传进来的是数字 <code>123</code>，dataclass 会报错吗？（答案：不会——它不校验类型。这就是为什么外部输入要用 Pydantic）</li>
-        <li>为什么 <code>ToolCall</code> 适合 frozen，而 <code>AgentState</code> 不适合？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>如果 <code>Message.content</code> 传进来的是数字 <code>123</code>，dataclass 会报错吗？</summary>
+        <div class="think-q-answer">
+          <p><strong>不会报错。<code>Message(role="user", content=123)</code> 会照常创建，<code>content</code> 里就老老实实存着整数 <code>123</code>。</strong></p>
+          <p>关键在于：dataclass 里的 <code>content: str</code> <strong>只是类型注解，不是校验</strong>。Python 的注解在运行时不强制，<code>@dataclass</code> 也只拿它来生成 <code>__init__</code>/<code>__repr__</code> 等样板，<strong>完全不检查你传进来的值是不是真的 str</strong>。所以传 <code>123</code>、<code>None</code>、一个列表，都能塞进去，直到后面某处把它当字符串用（比如 <code>.strip()</code>）才可能意外炸掉。</p>
+          <p>这正是「数据一旦来自外部（用户、LLM、API）就该用 Pydantic」的理由：换成 <code>Pydantic BaseModel</code>，<code>content: str</code> 会在构造时<strong>自动校验并尝试类型转换</strong>，类型不对直接抛错，把脏数据挡在门口。dataclass 负责「内部可信数据的容器」，校验的活交给 Pydantic（L14 深入）。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>为什么 <code>ToolCall</code> 适合 frozen，而 <code>AgentState</code> 不适合？</summary>
+        <div class="think-q-answer">
+          <p><strong>因为 <code>ToolCall</code> 是「一旦发生就不该再变」的历史记录，而 <code>AgentState</code> 天生要随对话不断被修改。</strong></p>
+          <p><code>ToolCall</code> 记录的是「某一刻用某参数调了某工具」这一既成事实，把它设成 <code>frozen=True</code> 有三重好处：语义上宣告「这是不可篡改的日志」；防止代码不小心改写调用历史；而且 frozen 实例<strong>可 hash</strong>，能放进 <code>set</code> 去重、或当 dict 的 key 做缓存。这类不可变值对象正是 frozen 的典型用武之地。</p>
+          <p><code>AgentState</code> 恰恰相反——它的 <code>add()</code> 方法要 <code>messages.append(msg)</code>、要 <code>step += 1</code>，本质就是一个<strong>随 Agent Loop 逐轮累积、持续变化</strong>的状态对象。若强行 frozen，任何一次追加消息、推进步数都会抛 <code>FrozenInstanceError</code>，方法根本没法工作。<strong>不可变适合「记录事实」，可变适合「承载过程」</strong>——这就是二者的分野。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

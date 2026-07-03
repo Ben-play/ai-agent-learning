@@ -192,10 +192,25 @@ events = ({"type": "token", "text": c} for c in "abcd")
 answer = "".join(e["text"] for e in events if e["type"] == "token")
 print(answer)   # abcd</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>如果 <code>stream</code> 背后是真实网络请求（每个 token 要等服务端），惰性带来的好处是什么？（提示：遇停止词就 break，省掉后续请求）</li>
-        <li>为什么"拼接完整回答"的场景，用生成器比先收集成大 list 再处理更省内存？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>如果 <code>stream</code> 背后是真实网络请求（每个 token 要等服务端），惰性带来的好处是什么？</summary>
+        <div class="think-q-answer">
+          <p><strong>惰性意味着"用到才算"：一旦在 <code>collect</code> 里遇到停止词 <code>break</code>，生成器就停在那里，后面的 token 根本不会再去请求服务端，省掉了剩余的网络往返——既省时又省钱。</strong></p>
+          <p>生成器是"边算边给"的：每次 <code>for</code> 取值才推进到下一个 <code>yield</code>，才触发下一次网络请求。如果换成"先把整段回答全拉完再处理"，即便你只需要停止词之前的内容，也已经白白等了、付了后面所有 token 的请求。</p>
+          <p>在真实 LLM streaming 里，这个好处非常实在：命中停止词、达到长度上限、或用户中途取消时，直接 <code>break</code> 就能立刻掐断上游生成，省掉后续 token 的延迟和 API 费用。这也是为什么流式接口天然适合"提前中断"的场景。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>为什么"拼接完整回答"的场景，用生成器比先收集成大 list 再处理更省内存？</summary>
+        <div class="think-q-answer">
+          <p><strong>因为生成器是"边产边用"，内存里同一时刻基本只留当前一个 token；而先 collect 成大 list，要把<strong>所有</strong> token 同时驻留在内存里，回答越长占用越大。</strong></p>
+          <p>用生成器时，<code>for tok in gen:</code> 每次只取一个 token、立刻 <code>append</code> 或写出去，处理完这个才要下一个，峰值内存和回答长度几乎无关。</p>
+          <p>而如果先 <code>tokens = list(gen)</code> 把全部 token 收集成列表再统一处理，列表必须一次性容纳整段回答的每一个元素——一段很长的回复（几千上万 token）就会实打实地全部压在内存里。对于长文本、或同时处理很多并发流的 Agent，这个差别会直接决定内存扛不扛得住。所以"流式拼接"这类只需顺序遍历一次的场景，用生成器逐个消费是更省内存的做法。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

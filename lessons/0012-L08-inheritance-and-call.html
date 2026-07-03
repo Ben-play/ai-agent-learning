@@ -224,10 +224,25 @@ for call in calls:
     tool = tools[call["name"]]
     print(repr(tool), "→", tool(**call["args"]))   # 统一方式调用不同工具（多态）</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>如果新增一个 <code>WeatherTool</code>，Agent 的调用循环需要改吗？（不需要——这就是多态+统一接口的威力）</li>
-        <li>为什么用"Agent 持有工具字典"（组合）比"Agent 继承各种工具"更好？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>如果新增一个 <code>WeatherTool</code>，Agent 的调用循环需要改吗？</summary>
+        <div class="think-q-answer">
+          <p><strong>不需要改循环——这正是多态 + 统一接口的威力。</strong></p>
+          <p><code>WeatherTool</code> 只要照样继承 <code>BaseTool</code>、实现自己的 <code>run</code>，它就自动获得了和其它工具一样的调用方式：<code>tool(**args)</code> 触发 <code>__call__</code> 再转发到 <code>run</code>。Agent 的循环 <code>for call in calls: tools[call["name"]](**call["args"])</code> 是<strong>对着 <code>BaseTool</code> 这个统一接口编程</strong>的，它压根不关心具体是哪个子类。</p>
+          <p>要改的只有<strong>注册表</strong>那一行——把新工具加进 <code>tools</code> 字典（如 <code>tools["weather"] = WeatherTool()</code>）。调用逻辑一个字都不用动。这就是多态的核心价值：<strong>新增实现，而非修改调用方</strong>，也贴合「对扩展开放、对修改封闭」的开闭原则。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>为什么用"Agent 持有工具字典"（组合）比"Agent 继承各种工具"更好？</summary>
+        <div class="think-q-answer">
+          <p><strong>因为 Agent 和工具是「has-a（有）」关系，不是「is-a（是）」关系；组合灵活、可运行时增删，继承则僵硬且会爆炸。</strong></p>
+          <p>从语义看，「Agent <strong>拥有</strong>一组工具」是自然的，而「Agent <strong>是</strong>一个搜索工具、同时又<strong>是</strong>一个计算工具」根本讲不通——这正是 is-a 与 has-a 的区别，用错就是把继承当箩筐。</p>
+          <p>从工程看，组合的好处非常实在：工具集是一个 <code>dict</code>，能在<strong>运行时动态增删</strong>（按用户权限、按场景开关工具），一个 Agent 可以持有任意多个工具；而继承是编译期就定死的静态结构。更要命的是，「继承各种工具」意味着<strong>多继承</strong>，工具一多就组合爆炸、方法解析顺序（MRO）混乱、耦合严重、难以维护。所以各大框架都是「Agent 持有工具集合」这套组合设计——这就是本课「组合优于继承」的落地。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

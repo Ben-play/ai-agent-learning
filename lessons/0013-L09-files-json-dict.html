@@ -234,10 +234,25 @@ stream = (
 print(parse_stream(stream))
 # {'text': '你好，世界', 'total_tokens': 42, 'done': True}</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>如果最后一行被网络截断成半个 JSON（如 <code>{"type":"tok</code>），你的代码会崩吗？（不会——被 except 跳过）</li>
-        <li>真实 SSE 流每行前面还有 <code>data: </code> 前缀，你会怎么先剥掉它？（提示：L04 的 removeprefix）</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>如果最后一行被网络截断成半个 JSON（如 <code>{"type":"tok</code>），你的代码会崩吗？</summary>
+        <div class="think-q-answer">
+          <p><strong>不会崩——半个 JSON 解析失败，会被 <code>except json.JSONDecodeError</code> 捕获并跳过。</strong></p>
+          <p>代码里 <code>json.loads(line)</code> 是包在 <code>try/except json.JSONDecodeError</code> 里的。<code>{"type":"tok</code> 这种被截断的字符串不是合法 JSON，<code>json.loads</code> 会抛 <code>JSONDecodeError</code>，正好落进 <code>except</code> 分支，执行 <code>continue</code> 跳过这一行，循环继续。整个流不会因为一个半行而崩溃。</p>
+          <p>这正是"坏行跳过、继续处理"容错骨架的价值：网络流里截断、心跳空行、编码抖动都很常见，健壮的解析绝不能因为单行异常就让整段响应作废。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>真实 SSE 流每行前面还有 <code>data: </code> 前缀，你会怎么先剥掉它？（提示：L04 的 removeprefix）</summary>
+        <div class="think-q-answer">
+          <p><strong>在 <code>json.loads</code> 之前，先用 <code>line = line.removeprefix("data: ")</code>（Python 3.9+）把 SSE 前缀剥掉。</strong></p>
+          <p>SSE（Server-Sent Events）规范里每条数据行长成 <code>data: {"type":"token",...}</code>，前面固定带 <code>data: </code>。<code>str.removeprefix</code> 的好处是：前缀存在就精确切掉，不存在就原样返回，比 <code>line[6:]</code> 这种硬编码切片安全得多。</p>
+          <p>顺序上，在 <code>strip()</code> 之后、<code>json.loads()</code> 之前插入这一步即可。另外 SSE 常用 <code>data: [DONE]</code> 作为结束哨兵——剥掉前缀后要单独判断 <code>if line == "[DONE]": break</code>（或 continue），因为 <code>[DONE]</code> 不是 JSON，直接丢给 <code>json.loads</code> 会当坏行跳过，虽然不崩，但显式处理更清晰。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

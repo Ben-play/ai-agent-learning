@@ -230,11 +230,37 @@ print(asyncio.run(batch(prompts)))
 # {'answers': [...7 条...], 'success': 7, 'failed': 0,
 #  'total_tokens': ..., 'elapsed': 0.6}</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>为什么要用 <code>Semaphore</code> 限流，而不是一口气 gather 100 个？（会触发对方 429、或耗尽本地连接）</li>
-        <li>把 <code>gather</code> 换成逐个 <code>await</code>，7 个请求耗时会变成多少？（≈1.4s，串行相加）</li>
-        <li>真实版里，单个请求的 429/5xx 重试应该放在 <code>call_one</code> 内层还是外层？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>为什么要用 <code>Semaphore</code> 限流，而不是一口气 gather 100 个？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>一口气 gather 100 个会<strong>同时</strong>把 100 个请求全发出去，两头都会出事：对方可能因请求太密而返回 <strong>429（限流）</strong>，本地则可能<strong>耗尽 socket / 连接池</strong>。<code>Semaphore(n)</code> 把"同时在飞"的请求数限制在 n 个，平滑并发。</p>
+          <p>并发不是越多越好。服务端有速率限制，短时间打太多请求会被 429 拒绝甚至封禁；客户端的文件描述符、连接池也有上限，开太多连接会报错或急剧变慢。</p>
+          <p><code>async with sem:</code> 让每个协程先抢名额、拿到才发请求、发完释放，超出的自动排队。这样即使有 100 个任务，任一时刻也最多 n 个在跑，既快又稳。</p>
+          <p>所以实战里 <code>gather</code>（要并发）几乎总是和 <code>Semaphore</code>（要克制）搭配使用：前者提速，后者防止把对方和自己打挂。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>把 <code>gather</code> 换成逐个 <code>await</code>，7 个请求耗时会变成多少？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>会从并发的≈0.2s 变成串行的<strong>≈1.4s</strong>（7 × 0.2s，逐个相加）。</p>
+          <p>逐个 <code>await</code> 是串行：发第 1 个、等它 0.2s 回来，再发第 2 个……7 个就是 7 段 0.2s 首尾相接，总计≈1.4s。这时 <code>async</code> 的并发优势完全没用上。</p>
+          <p><code>await asyncio.gather(*(call_one(p, sem) for p in prompts))</code> 则同时发起所有协程、一起等，总耗时≈最慢的那个≈0.2s（本例限流 3、请求数 7，实际约 3 批≈0.6s）。</p>
+          <p>要点：<code>await</code> 单个只是"拿到这个协程的结果"，本身不带来并发；真正的并发来自 <code>gather</code>（或 <code>TaskGroup</code>）把多个协程一起调度。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q3</span>真实版里，单个请求的 429/5xx 重试应该放在 <code>call_one</code> 内层还是外层？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>放在 <strong><code>call_one</code> 内层</strong>——让每个请求独立重试自己的 429/5xx。这样一个请求失败只重试它自己，不影响其它已经成功的。</p>
+          <p>如果把重试放在外层（把整个 <code>gather</code> 包起来重跑），只要批里有一个失败，就会把所有请求——包括已经成功的——统统重发一遍。既浪费又可能因请求翻倍反而触发更多 429。</p>
+          <p>放内层的正确形态是：在 <code>call_one</code> 里、<code>Semaphore</code> 名额之内，对单个请求叠加 tenacity 的 <code>@retry</code>（只重试 <code>retryable</code> 的错，配指数退避）。失败隔离在单请求粒度，<code>gather</code> 收集的是"每个都尽力重试后的最终结果"。</p>
+          <p>一句话：<strong>重试的粒度应该和失败的粒度一致</strong>。失败是单请求级的，重试就该在单请求级；外层只负责并发与聚合。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

@@ -221,10 +221,27 @@ if tool is not None:                 # Optional → 必须判空
 print(truncate("hello", 3))          # hel
 print(truncate([1, 2, 3, 4], 2))     # [1, 2]</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>如果把 <code>make_message("admin", ...)</code> 交给 mypy，会发生什么？（"admin" 不在 Literal 里 → 报错）</li>
-        <li>这里的 <code>Role</code>、<code>ToolFn</code> 到 L14 会怎样变成 Pydantic 模型的字段类型？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>如果把 <code>make_message("admin", ...)</code> 交给 mypy，会发生什么？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>mypy 会在<strong>运行前</strong>报类型错误："admin" 不在 <code>Role = Literal["system","user","assistant"]</code> 允许的取值里；但如果直接 <code>python</code> 跑，代码照常执行、不会报错。</p>
+          <p><code>Role</code> 是 <code>Literal</code> 类型，它把合法值收窄到那三个字符串。<code>make_message</code> 的第一个参数标注成 <code>Role</code>，等于告诉静态检查器"这里只接受这三个值之一"。传 "admin" 时 mypy 立刻标红。</p>
+          <p>但类型提示<strong>运行时不强制</strong>（这是 L13 的核心结论）：Python 解释器不看注解，<code>make_message("admin", ...)</code> 会正常返回 <code>{"role": "admin", ...}</code>。要在运行时也拦住非法值，得靠下一课的 Pydantic。</p>
+          <p>所以两者分工：mypy 在写代码/CI 阶段抓错，越早越省事；Pydantic 在数据进门时兜底，尤其面对不可信的 LLM 输出。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>这里的 <code>Role</code>、<code>ToolFn</code> 到 L14 会怎样变成 Pydantic 模型的字段类型？</summary>
+        <div class="think-q-answer">
+          <p><strong>【结论】</strong>同一个类型注解，在 dataclass/普通函数里只是"静态提示"，搬进 Pydantic <code>BaseModel</code> 后就变成"运行时强制的字段约束"——非法值会在创建实例时抛 <code>ValidationError</code>。</p>
+          <p><code>Role</code>（<code>Literal["system","user","assistant"]</code>）可以直接当 Pydantic 字段的类型，例如 <code>class Message(BaseModel): role: Role</code>。这时传 <code>role="admin"</code> 不再只是 mypy 标红，而是<strong>运行时</strong>直接被拒——正好接住 LLM 可能吐出的非法角色。</p>
+          <p><code>ToolFn</code>（<code>Callable[[dict], dict]</code>）这类可调用别名，更多用来描述"字段本身是个函数"或工具注册表的值类型；它表达的是接口契约（收 dict、还 dict）。</p>
+          <p>一句话：type hint 是静态提示，Pydantic 读取同一套注解把它变成运行时校验。L13 打的类型基础，到 L14 直接升级成"数据契约"。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

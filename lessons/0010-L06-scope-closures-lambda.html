@@ -211,10 +211,25 @@ print(track("calc", 15))
 # {'calls': 2, 'total_ms': 200, 'per_tool': {'search': 2}}
 # {'calls': 3, 'total_ms': 215, 'per_tool': {'search': 2, 'calc': 1}}</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>为什么 <code>per_tool</code>（dict）不需要 <code>nonlocal</code>，而 <code>calls</code>（int）需要？（提示：可变 vs 不可变，回顾 L03）</li>
-        <li>如果两个地方各 <code>make_tracker()</code> 一次，它们的计数会互相影响吗？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>为什么 <code>per_tool</code>（dict）不需要 <code>nonlocal</code>，而 <code>calls</code>（int）需要？</summary>
+        <div class="think-q-answer">
+          <p><strong>因为 <code>nonlocal</code> 只在你要<em>重新绑定</em>外层变量名时才需要；<code>per_tool</code> 是原地改内容、没有重新赋值，而 <code>calls</code> 每次都被重新赋一个新值。</strong></p>
+          <p><code>per_tool[tool_name] += 1</code> 本质是 <code>per_tool.__setitem__(...)</code>——它<strong>修改的是 dict 对象的内容</strong>，变量名 <code>per_tool</code> 始终指向同一个 dict，从没被重新赋值。Python 只有在函数内对某个名字<strong>赋值</strong>时，才会默认把它当作新的局部变量；这里没有对 <code>per_tool</code> 赋值，所以它顺着 LEGB 在外层作用域被找到、直接改就行。</p>
+          <p><code>calls += 1</code> 则等价于 <code>calls = calls + 1</code>——这是一次<strong>赋值</strong>，会让 Python 把 <code>calls</code> 判定为局部变量；而 int 是不可变对象，「加一」只能靠重新绑定名字来实现。不加 <code>nonlocal</code>，右边读一个「尚未赋值的局部 calls」就会抛 <code>UnboundLocalError</code>。一句话：<strong>改可变对象的内容不用 nonlocal，重新给名字赋值才要。</strong></p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>如果两个地方各 <code>make_tracker()</code> 一次，它们的计数会互相影响吗？</summary>
+        <div class="think-q-answer">
+          <p><strong>不会。每次调用 <code>make_tracker()</code> 都会创建一套全新的、彼此独立的状态。</strong></p>
+          <p>每调用一次 <code>make_tracker()</code>，函数体就重新执行一遍：<code>calls = 0</code>、<code>total_ms = 0</code>、<code>per_tool = defaultdict(int)</code> 都是<strong>新建的局部变量</strong>，返回的那个 <code>record</code> 闭包只「记住」属于自己这一次的这几个变量。</p>
+          <p>于是 <code>t1 = make_tracker()</code> 和 <code>t2 = make_tracker()</code> 各自捂着独立的 <code>calls</code>/<code>per_tool</code>，<code>t1</code> 记了 100 次调用，<code>t2</code> 依旧从 0 开始，互不干扰。这正是闭包相比模块全局变量的优势——<strong>每个实例有隔离的状态</strong>，天然适合给「每个 Agent / 每个会话」各配一个独立计数器或限流器。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>

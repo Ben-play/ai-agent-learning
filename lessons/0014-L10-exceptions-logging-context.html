@@ -249,10 +249,25 @@ except APIError as e:
 # @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
 # def call(): ...</code></pre>
       <h4>思考题</h4>
-      <ul>
-        <li>为什么在 <code>except</code> 里 <code>logger.error</code> 后还要 <code>raise</code>？（记录 ≠ 处理——不重抛会把错误吞掉，调用方以为成功了）</li>
-        <li>耗时统计放在 <code>finally</code> 而不是 <code>else</code>，为什么？</li>
-      </ul>
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q1</span>为什么在 <code>except</code> 里 <code>logger.error</code> 后还要 <code>raise</code>？</summary>
+        <div class="think-q-answer">
+          <p><strong>因为"记录 ≠ 处理"。<code>logger.error</code> 只是把错误留了个痕，并没有真正解决它；不 <code>raise</code> 重抛，异常就被这个 <code>except</code> 吞掉了。</strong></p>
+          <p>异常一旦被 <code>except</code> 捕获又不重抛，控制流就会正常离开 <code>try</code> 块继续往下走，函数最终可能返回 <code>None</code> 或半成品结果。调用方收不到任何异常信号，会误以为调用成功了——这就是最危险的"静默错误"：日志里明明记了错，程序却装作没事，问题被掩盖到很后面才爆发。</p>
+          <p>正确的原则是：要么在这一层<strong>彻底处理</strong>（有兜底方案、能恢复），要么<strong>记录后重抛</strong>，把决定权交给更了解业务的上层。这里的上下文管理器选择记录 + <code>raise APIError(...) from e</code>，既留了痕、又保留了根因异常链，还让调用方能明确知道"这次失败了"。</p>
+        </div>
+      </details>
+
+      <details class="think-q">
+        <summary><span class="think-q-tag">Q2</span>耗时统计放在 <code>finally</code> 而不是 <code>else</code>，为什么？</summary>
+        <div class="think-q-answer">
+          <p><strong>因为耗时无论成功还是失败都要统计，而 <code>finally</code> 一定执行、<code>else</code> 只在没抛异常时才执行。</strong></p>
+          <p><code>else</code> 分支只有当 <code>try</code> 块<strong>没有</strong>抛出任何异常时才会走；一旦调用出错（超时、连接失败），控制流转到 <code>except</code>，<code>else</code> 直接被跳过——那次失败调用的耗时就统计不到了。可失败调用往往正是我们最想知道耗时的场景（比如超时到底卡了多久）。</p>
+          <p><code>finally</code> 则保证"无论 try 正常结束、抛异常、还是在 except 里被重抛"，收尾代码都会执行。把 <code>time.perf_counter()</code> 的差值计算放这里，成功和失败两条路径都能覆盖，耗时日志永远完整。这也是上下文管理器"保证成对操作收尾一定执行"的核心用法。</p>
+        </div>
+      </details>
     </details>
   </div>
 </div>
