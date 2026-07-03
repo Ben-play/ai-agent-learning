@@ -94,7 +94,8 @@
       · <strong>Pydantic 数据验证</strong> — Tool Schema 设计、JSON Schema 导出、dataclass vs Pydantic 对比<br>
       · <strong>httpx 网络请求</strong> — HTTP 基础、同步/异步客户端、SSE 流式（LLM 调用的传输层地基）<br>
       · <strong>async/await 与并发</strong> — GIL 概念、事件循环、并发 LLM 调用、超时控制<br><br>
-      <strong>实战练习：</strong>每课都有 Agent 场景练习 — 解析 LLM 响应、构建 Prompt 模板引擎、手写 @tool 装饰器、设计 Pydantic Schema、用 httpx 写迷你 LLM 客户端、并发 LLM 调用
+      <strong>实战练习：</strong>每课都有 Agent 场景练习 — 解析 LLM 响应、构建 Prompt 模板引擎、手写 @tool 装饰器、设计 Pydantic Schema、用 httpx 写迷你 LLM 客户端、并发 LLM 调用<br><br>
+      <a href="../qa/phase1-qa.html" style="font-weight:600;">❓ Phase 1 疑难解答 Q&amp;A →</a>
     </div>
   </div>
 </div>
@@ -128,7 +129,8 @@
       <strong>Module 2.3 · Token 经济学：</strong>各主流模型价格对比（输出通常 3–5× 输入）、隐藏成本、成本计算公式、Token 预算制定；<strong>两大降本杠杆——Prompt Caching（缓存读 ~0.1×、写 ~1.25×，官方文档实锤）与 Model Routing（便宜模型兜底、贵模型只接难题）</strong>，真实案例降本 59–70%<br><br>
       <div class="interview-box">"LLM 工作原理" / "为什么中文消耗更多 Token" / "Temperature 0 vs 1" / "为什么会幻觉（校准视角）" / "推理模型是什么、何时用" / "MMLU/SWE-bench 各测什么" / "如何选模型" / "Prompt Caching 与 Routing 如何降本" — 共 9+ 道高频题</div><br>
       <strong>实战项目：</strong>用 API 对比不同模型 + 幻觉测试 + 成本计算（含 Prompt Caching 前后对比），输出综合报告<br><br>
-      <a href="0029-phase2-ai-knowledge-outline.html" style="font-weight:600;">📋 查看 Phase 2 详细大纲（L17–L24）→</a>
+      <a href="0029-phase2-ai-knowledge-outline.html" style="font-weight:600;">📋 查看 Phase 2 详细大纲（L17–L24）→</a><br>
+      <a href="../qa/phase2-qa.html" style="font-weight:600;">❓ Phase 2 疑难解答 Q&amp;A →</a>
     </div>
   </div>
 </div>
@@ -167,7 +169,8 @@
       <strong>Module 3.5 · 成本工程（v7 强化）：</strong>2026 降本优先级 — <strong>① 原生 Prompt Caching</strong>（OpenAI/Anthropic/Google，零改动、输入成本最高降 ~90%，关键是「静态前缀 + 动态后缀」缓存键设计）＞ ② <strong>语义缓存</strong>（semantic cache：按<em>语义相似度</em>命中，GPTCache/Redis，与前缀缓存互补）＞ ③ 模型路由（LiteLLM）＞ ④ 提示压缩（LLMLingua）＞ ⑤ 小模型蒸馏 ＞ ⑥ Batch API<br><br>
       <div class="interview-box">"Streaming 好处" / "Function Calling 原理" / "如何设计好的 Tool Schema" / "并行工具调用怎么处理" / "Structured Outputs 与 JSON mode 区别" / "Context Window 超限" / "如何处理速率限制（退避+抖动）" / "有副作用的工具调用如何安全重试（幂等）" / "主模型挂了怎么办" / "Prompt Caching 与语义缓存的区别" / "一个 Agent 每月 $10k 如何砍到 $5k" — 共 14+ 道高频题</div><br>
       <strong>实战项目：</strong>构建多模型 Agent 客户端 — 流式输出 + <strong>完整 Function Calling 循环</strong> + 结构化输出 + 错误重试 + 模型 Fallback + 原生缓存 + 成本追踪<br><br>
-      <a href="0044-phase3-api-engineering-outline.html" style="font-weight:600;">📋 查看 Phase 3 详细大纲（L25–L38）→</a>
+      <a href="0044-phase3-api-engineering-outline.html" style="font-weight:600;">📋 查看 Phase 3 详细大纲（L25–L38）→</a><br>
+      <a href="../qa/phase3-qa.html" style="font-weight:600;">❓ Phase 3 疑难解答 Q&amp;A →</a>
     </div>
   </div>
 </div>

@@ -13,7 +13,11 @@
 
 # 更新日志
 
-- 2026-07-03: **时长徽章：缩小 + 去交互（纯展示）** — 用户：太大了、不要交互、只展示。把上一版"实心醒目章"收敛为**克制的静态章**：字号 0.9→**0.8rem**、数字 1.12→1.02em（仍 mono 700，秒表 em 自动随缩）、**删掉全部 hover / transition / box-shadow**（徽章本体 + 秒针 + 深色描边阴影都清），深色仅留描边。纯 CSS 展示、零动效。复核：CSS 226/226 平衡、徽章段无 hover/transition/box-shadow、秒针无 transition、深色无阴影。仅动 style.css。
+- 2026-07-03: **去掉答疑模块里的「← 返回学习路径总览」** — 用户：为什么还加个学习路径总览，去掉（底部导航已有大纲/总览按钮，模块内重复且累赘）。**Case A（22 课，有关联课程）**：只删关联链接 `<ul>` 末尾那条 `返回总览` `<li>`，真实关联链接（L18/L19…）保留。**Case B（16 课，延伸区只有返回总览）**：删除整个 `.qa-related` 块，模块只剩 Q&A 入口行。复核：38 课 `返回学习路径总览` 归零、div 全平衡、模块 + qa-link 各 1 保持、Case-B 收尾空白已整理。 — 用户：把每课的关联课程改成 QA 答疑模块，全 38 课统一，保留关联链接。**改造**：每课收尾前的模块统一为 `<h2>❓ 答疑与延伸</h2>` + 一张 card：card 首元素是 Q&A 入口行（`.lesson-qa-link` 跳 `../qa/phaseN-qa.html#L##`），下面 `.qa-related`（细虚线分隔 + 「🔗 关联课程」小标签）**保留原关联课程链接**。**两种情形**：L17–38（22 课，原有 `🔗 关联课程` 卡片）→ 换标题 + 把 Q&A 行插到 `<ul>` 前 + 包 `.qa-related`；L01–16（16 课，无关联卡片，只有独立 qa-link 块）→ 把独立块升级成同款标题化模块（延伸区仅「返回总览」）。同时**删除原先单独注入在 总结 前的 `.lesson-qa-link` 块**（Q&A 入口已并入模块，避免重复）。新增 `.qa-related`/`.qa-related-label` CSS。复核：CSS 271/271 平衡、38 课各含 1 模块 + 1 qa-link（在模块内）+ 0 个旧「🔗 关联课程」h2 + 0 个独立 qa-link 块、div 全平衡、课程链接全解析（`0003-type-hints-basics` 的死链是**未纳入课程的孤儿旧文件**、非本次改动、不在 38 课内）。脚本用完即删。
+
+- 2026-07-03: **Q&A 页迁到独立 `qa/` 目录（更好找）** — 用户：Q&A 单独建文件夹存放。把 `lessons/0045/0046/0047` 迁为 **`qa/phase1-qa.html`/`phase2-qa.html`/`phase3-qa.html`**（语义名，folder+编辑器 tab 都自解释）。**路径处理**：`qa/` 与 `lessons/` 同深度 → `../assets/` 不变；页内链课程/大纲/总览改 `../lessons/…`（重写 44 条：18+10+16）。**入口回指**：38 课入口块 + 3 大纲 + 总览 3 卡片的 `href` 全改 `../qa/phaseN-qa.html#L##`（重写 44 处）。**nav 处理**：从 bottom-nav.js + course-bar.js 的 LESSONS 数组**移除** 3 个 Q&A 条目——它们是目的地不是线性课，留着会让 `0044→0045`、`0047→L01` 的跨目录 prev/next 生成坏链；移除后 course-bar 在 Q&A 页 `idx===-1` 早退不渲染（正确，Q&A 页用自带页脚 ← 大纲/总览 导航），theme-toggle/back-to-top 仍工作。复核：两 nav node --check 过、TOTAL 仍 38、**端到端 0 坏链**（双向 resolve：lessons↔qa↔assets）、44 条入站 `../qa/` 链数对、3 Q&A 页 div 平衡、DOM 模拟 Q&A 页不渲坐标。NOTES 维护流程/清单路径同步更新。
+
+- 2026-07-03: **新增 Q&A 疑难解答系统（每阶段一页 + 每课入口）** — 用户：给课程加 Q&A，记录每课疑问，学完后从课页 link 过去，用 /frontend-design 设计。**架构**（纯静态 HTML 无后端 → 排除网页表单持久化）：用户口头问 → 我把「问题+解答」写进 Q&A 文件；**每阶段一个汇总页**（0045/0046/0047，可扩展到 11 阶段）；每课加入口链接。**关键发现**：38 课仅 22 课（L17–38）有 `🔗 关联课程` 卡片，16 课没有；但全 38 课都以 `总结`/`小结` 收尾 → 改为在收尾段前统一注入 `.lesson-qa-link` 块（设计块非列表项，38 课形态一致）。**产出**：① 3 个 Q&A 页（每课一个 `<section id="L##">`，含课号徽记+标题链接+问答列表；没问题的课显示🌱空状态；每阶段种一条真示范问答 L01/L17/L25）；② `assets/style.css` 加 `.qa-*` + `.lesson-qa-link` 组件（森林绿书脊卡片、琥珀 Q 徽/森林绿 A 徽、静态无交互、深浅色+移动端）；③ 38 课注入入口块（脚本、按 L## 映射阶段+锚点 `#L##`、div 平衡不变）；④ bottom-nav.js + course-bar.js 各注册 3 页（`phase:''` 不计入 L##/TOTAL 仍 38）；⑤ 大纲 0002/0029/0044 + 总览 0001 三卡片加 Q&A 链接。复核：CSS 267/267 平衡、两 nav node --check 过、3 Q&A 页 div 平衡（76/44/68）+ section 数=16/8/14、38 课注入全对（div 平衡+锚点+位置断言）、DOM 模拟 Q&A 页 isCourse=false 不渲坐标。**追加流程**见下方「Q&A 维护流程」。 — 用户：太大了、不要交互、只展示。把上一版"实心醒目章"收敛为**克制的静态章**：字号 0.9→**0.8rem**、数字 1.12→1.02em（仍 mono 700，秒表 em 自动随缩）、**删掉全部 hover / transition / box-shadow**（徽章本体 + 秒针 + 深色描边阴影都清），深色仅留描边。纯 CSS 展示、零动效。复核：CSS 226/226 平衡、徽章段无 hover/transition/box-shadow、秒针无 transition、深色无阴影。仅动 style.css。
 
 - 2026-07-03: **时长徽章去重复 + 放大醒目（frontend-design 再优化）** — 用户：顶栏别再显时长（和标题旁重复），标题旁的做大更醒目。**① 去重**：`course-bar.js` 坐标读数回退为纯 `第三阶段 │ L30`（删渲染时长的分支，`min:` 数据字段保留无害）；删掉配套死类 `.course-bar-time`/`.course-bar-coord-dot`（CSS+JS 都清）。**② 徽章从「幽灵批注」升级为「实心琥珀章」**（后于同日再次按"太大"收敛，见上条）。**只此一处显时长**，唯一真值仍是 `lesson-times.json`（未动数字）。
 
@@ -74,6 +78,20 @@
 - 2026-06-30: **Phase 1 大纲优化（v7.1，仅改大纲页 0002，未写课程）** — ① 新增 L15「网络请求与 HTTP(httpx)」(新模块 3.3，async 顺延 L16/模块 3.4)；② L10 折入 logging + tenacity，模块 2.3 更名；③ L13 类型提示瘦身(聚焦 Optional/Union/Literal/Callable+mypy，Generic/Protocol 后移 Phase 5)；④ 修 total-bar 计数(8→实为9→新增后 10 模块·16 课)，同步 0001 总览(Phase 1 课时 22→16、Part B/C 描述)与 README(→16)；⑤ RESOURCES 补 httpx/tenacity/logging/asyncio 文档。结构校验通过(div 平衡、L01–L16 连续)，新增 URL 已验证。详见学习记录 0008。**遗留提醒：Phase 5 需补讲泛型 AgentState[T]/Protocol，因 L13 已移除。**
 - 2026-06-30: **v7 大纲骨架落地（按审核结论，scope=只更新骨架）** — ① 修复 bug：补齐缺失的 `assets/quiz.js` + `assets/toc.js`（此前所有课程引用但文件不存在，Quiz 点不动 / TOC 不生成，现已修复并通过 node --check）；② 总览页 0001 升级 v7：Phase 3 新增「工具工程与 Function Calling」(3.4)+成本工程重排(原生缓存优先)、Phase 8 新增「LLM/Agent 系统设计」+评估升级 Agentic Metrics+安全加深、Phase 9 补 browser-use/OpenHands、Phase 10 案例订正(真实仓库链接+OpenHands 对照+AutoGen 降级+协议去噪)、Phase 11 补云托管 Agent 服务+Temporal、模型版本去硬编码、技术栈表全面更新、新增 v7 变更日志与设计原则、面试题覆盖 15+→30+、修死链 claude-code-harness、链入审核报告 0007；③ RESOURCES.md 新增「v7 新增」整段（Function Calling/原生缓存/Agentic 评估+基准/OTEL GenAI/云托管/安全/真实案例 4 个），Gaps 标注 ANP/AGNTCY 生态未定；④ README 同步 Phase 3/8 课时。**所有新增 URL 已 curl 验证 200，HTML 标签结构平衡校验通过。未写整节新课程（按用户选择的 scope）。**
 
+# Q&A 维护流程（用户口头提问 → 我记录）
+
+**触发**：用户学某课时口头提问 / 说"这个没懂"。**动作**：把「问题 + 解答」append 到**对应阶段 Q&A 页**（L01–16→`qa/phase1-qa.html`、L17–24→`qa/phase2-qa.html`、L25–38→`qa/phase3-qa.html`）里该课的 `<section id="L##">` 中。**Q&A 页在独立的 `qa/` 目录**（不在 `lessons/`），页内链回课程用 `../lessons/…`、资产用 `../assets/…`。
+
+**每条问答的 HTML 结构**（照页内已有示范 L17/L01/L25）：
+```
+<div class="qa-item">
+  <div class="qa-q"><span class="qa-badge">Q</span><span class="qa-q-text">问题</span></div>
+  <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p>解答…</p></div></div>
+  <div class="qa-date">记录于 YYYY-MM-DD</div>
+</div>
+```
+**规则**：① 首次给某课加问答时，删掉该课的 `.qa-empty` 空状态块、在 `.qa-lesson-head` 补 `<span class="qa-count">N 问</span>`（已有则数字+1）；② 解答我把关准确，可含 `<code>`/`<pre>`；③ 顶部 `.qa-howto` 里的 `<span class="qa-stat">N</span>` 总数同步+1；④ 日期用当天绝对日期。**内容我写，用户零手动编辑。**
+
 # 预估学习时间（估算模型 —— 所有课程统一口径）
 
 **口径**：深度学习（读透正文 + 看懂代码 + 做完 Quiz + 尝试动手练习），非略读。数据源 = `assets/lesson-times.json`（唯一真值），三处消费：各课 `.lesson-header` 徽章、`course-bar.js` 的 `min:` 字段、大纲页 `.lesson-num-time`。
@@ -104,6 +122,7 @@
 - [ ] 大纲中该课标题有链接
 - [ ] 代码风格一致（safe_get 实现方式统一等）
 - [ ] **每课 `.lesson-header` 内含预估学习时间徽章** — `<div class="lesson-meta-row">` 包住 `.lesson-phase-tag` + `.lesson-time`（秒表图标 + mono 数字 + 「分钟」，实心琥珀章、醒目）；时长按下方估算模型算、写进 `assets/lesson-times.json`，并同步大纲页 `.lesson-num-time` 小标。**时长只此一处 + 大纲页展示，顶栏 course-bar 坐标不再显时长（避免与标题旁重复）**
+- [ ] **每课收尾段前含「❓ 答疑与延伸」模块** — `<h2>❓ 答疑与延伸</h2>` + card：首元素是 Q&A 入口行（`.lesson-qa-link` 指向 `../qa/phaseN-qa.html#L##`），下面 `.qa-related` 放关联课程/延伸链接。新阶段开课时先建该阶段 Q&A 页（放 `qa/` 目录、照 `qa/phase1-qa.html` 版式，每课一个 `<section id="L##">` + 空状态），并在大纲页、总览注册（**Q&A 页不进 nav 的 LESSONS 数组**——它是目的地不是线性课，进了会破坏跨目录 prev/next）。详见下方「Q&A 维护流程」
 
 ### Agent 实战关联
 - [ ] 每个知识点有 Agent 场景说明

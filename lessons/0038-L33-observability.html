@@ -256,17 +256,25 @@ Traceloop.init()                     # 一行初始化，之后自动追踪
 </div>
 
 <div class="section">
-  <h2>🔗 关联课程</h2>
+  <h2>❓ 答疑与延伸</h2>
   <div class="card">
+    <a class="lesson-qa-link" href="../qa/phase3-qa.html#L33">
+      <span class="lesson-qa-icon">❓</span>
+      <span class="lesson-qa-text">学完这课还有疑问？记到 <strong>第三阶段 · 疑难解答</strong>，有不懂随时问我。</span>
+      <span class="lesson-qa-arrow">→</span>
+    </a>
+    <div class="qa-related">
+    <div class="qa-related-label">🔗 关联课程</div>
     <ul>
       <li>· <a href="0037-L32-routing-fallback-gateway.html">上一课 L32 · 路由与 Fallback</a> — 路由后每次模型可能不同，更要靠 trace 记清用了谁</li>
       <li>· <a href="0039-L34-tool-schema-design.html">下一课 L34 · Tool Schema 设计</a> — 工具调用是 span 里的一等公民，schema 设计影响可观测</li>
       <li>· <a href="0027-L23-token-economics.html">L23 · 成本追踪与告警</a> — <code>gen_ai.usage.*</code> 正是成本 metrics 的来源</li>
       <li>· <a href="0036-L31-error-handling-retry.html">L31 · 错误也要可观测</a> — 错误进 span（<code>error.type</code>），才能设错误率告警</li>
-      <li>· <a href="0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
     </ul>
   </div>
+  </div>
 </div>
+
 
 <div class="section">
   <h2>总结</h2>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第三阶段 · 疑难解答 Q&amp;A</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <div class="lesson-meta-row">
+      <span class="lesson-phase-tag">第三阶段 · 疑难解答</span>
+    </div>
+    <h1>第三阶段 · 疑难解答 Q&amp;A</h1>
+    <p class="subtitle">把 API 调用写成生产级——流式、FC、结构化输出、重试、可观测</p>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-howto">
+    <span class="qa-howto-icon">💡</span>
+    <div>本页收录 <strong>LLM API 工程实践</strong> 每节课学习时遇到的疑问 + 解答。学到哪课有不懂的，<strong>直接问我（你的老师）</strong>，我会把「问题 + 解答」记到对应课程下面。当前已记录 <span class="qa-stat">1</span> 个问题。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L25">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L25</span>
+      <span class="qa-lesson-title"><a href="../lessons/0030-L25-llm-api-basics.html">主流 LLM API 上手</a></span>
+      <span class="qa-count">1 问</span>
+    </div>
+    <div class="qa-item">
+      <div class="qa-q"><span class="qa-badge">Q</span><span class="qa-q-text">OpenAI、Anthropic 的 SDK 长得不一样，换厂商是不是要重写一大堆代码？</span></div>
+      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p>核心心智是相通的，业务代码<strong>基本不用大改</strong>。两家都是"传一个 messages 列表、拿回一段生成"，差异集中在<strong>调用入口和少数字段名</strong>：OpenAI 是 <code>client.chat.completions.create</code>、Anthropic 是 <code>client.messages.create</code>；system 提示的位置、stop 参数名等略有不同。</p><p>生产上换厂商的标准做法是<strong>加一层网关</strong>（如 LiteLLM），用统一的 OpenAI 兼容接口把多家包在后面，切换只改配置。所以别把厂商 SDK 的调用散落到业务各处——包一个自己的薄封装，未来换厂商只动那一层。</p></div></div>
+      <div class="qa-date">记录于 2026-07-03</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L26">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L26</span>
+      <span class="qa-lesson-title"><a href="../lessons/0031-L26-streaming.html">Streaming 流式输出</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L27">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L27</span>
+      <span class="qa-lesson-title"><a href="../lessons/0032-L27-function-calling.html">Function Calling 原理</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L28">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L28</span>
+      <span class="qa-lesson-title"><a href="../lessons/0033-L28-structured-outputs.html">Structured Outputs（约束解码）</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L29">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L29</span>
+      <span class="qa-lesson-title"><a href="../lessons/0034-L29-multimodal-api.html">多模态 API</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L30">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L30</span>
+      <span class="qa-lesson-title"><a href="../lessons/0035-L30-context-window-management.html">Context Window 管理</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L31">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L31</span>
+      <span class="qa-lesson-title"><a href="../lessons/0036-L31-error-handling-retry.html">错误处理、退避与幂等</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L32">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L32</span>
+      <span class="qa-lesson-title"><a href="../lessons/0037-L32-routing-fallback-gateway.html">路由、Fallback 与 AI Gateway</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L33">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L33</span>
+      <span class="qa-lesson-title"><a href="../lessons/0038-L33-observability.html">LLM 可观测性</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L34">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L34</span>
+      <span class="qa-lesson-title"><a href="../lessons/0039-L34-tool-schema-design.html">Tool Schema 设计</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L35">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L35</span>
+      <span class="qa-lesson-title"><a href="../lessons/0040-L35-function-calling-loop.html">完整 Function Calling 循环</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L36">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L36</span>
+      <span class="qa-lesson-title"><a href="../lessons/0041-L36-tool-robustness-registry.html">工具健壮性与注册系统</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L37">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L37</span>
+      <span class="qa-lesson-title"><a href="../lessons/0042-L37-cost-engineering.html">成本工程：2026 降本优先级</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L38">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L38</span>
+      <span class="qa-lesson-title"><a href="../lessons/0043-L38-phase3-capstone.html">Phase 3 综合实战</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card">
+    <ul>
+      <li>· <a href="../lessons/0044-phase3-api-engineering-outline.html">← 返回第三阶段大纲</a></li>
+      <li>· <a href="../lessons/0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

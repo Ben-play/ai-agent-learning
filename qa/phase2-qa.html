@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第二阶段 · 疑难解答 Q&amp;A</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <div class="lesson-meta-row">
+      <span class="lesson-phase-tag">第二阶段 · 疑难解答</span>
+    </div>
+    <h1>第二阶段 · 疑难解答 Q&amp;A</h1>
+    <p class="subtitle">看懂 LLM 怎么工作、怎么选模型、怎么算 token 账</p>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-howto">
+    <span class="qa-howto-icon">💡</span>
+    <div>本页收录 <strong>AI 知识与模型选型</strong> 每节课学习时遇到的疑问 + 解答。学到哪课有不懂的，<strong>直接问我（你的老师）</strong>，我会把「问题 + 解答」记到对应课程下面。当前已记录 <span class="qa-stat">1</span> 个问题。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L17">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L17</span>
+      <span class="qa-lesson-title"><a href="../lessons/0021-L17-llm-essence-and-parameters.html">LLM 本质与生成参数</a></span>
+      <span class="qa-count">1 问</span>
+    </div>
+    <div class="qa-item">
+      <div class="qa-q"><span class="qa-badge">Q</span><span class="qa-q-text">temperature 和 top_p 到底该调哪个？两个一起调会怎样？</span></div>
+      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p><strong>只重点调一个，另一个留默认。</strong>两者都在控制"采样有多随机"，但作用点不同：temperature <strong>缩放整个概率分布的形状</strong>（改每个词的相对概率），top_p <strong>裁剪候选集</strong>（先砍长尾再采样）。</p><p>同时把两个都往极端调，行为会互相叠加、很难预测——比如 temperature 已经把分布压得很尖，top_p 再砍一刀，可能只剩一个候选，等于强制贪心。实践惯例：<strong>固定 top_p=1 只调 temperature</strong>（最常见），或反之。抽取/函数调用用低 temperature（0~0.3），创意用高（0.7~1.0+）。</p></div></div>
+      <div class="qa-date">记录于 2026-07-03</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L18">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L18</span>
+      <span class="qa-lesson-title"><a href="../lessons/0022-L18-tokenization.html">Token 与 Tokenization</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L19">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L19</span>
+      <span class="qa-lesson-title"><a href="../lessons/0023-L19-hallucination.html">幻觉全解（校准视角）</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L20">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L20</span>
+      <span class="qa-lesson-title"><a href="../lessons/0024-L20-reasoning-models.html">推理模型与 Extended Thinking</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L21">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L21</span>
+      <span class="qa-lesson-title"><a href="../lessons/0025-L21-model-capabilities.html">模型能力边界与 Base vs Instruct</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L22">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L22</span>
+      <span class="qa-lesson-title"><a href="../lessons/0026-L22-benchmarks-and-selection.html">看懂 Benchmark 与模型选型</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L23">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L23</span>
+      <span class="qa-lesson-title"><a href="../lessons/0027-L23-token-economics.html">Token 经济学与降本杠杆</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L24">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L24</span>
+      <span class="qa-lesson-title"><a href="../lessons/0028-L24-phase2-capstone.html">Phase 2 综合实战项目</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card">
+    <ul>
+      <li>· <a href="../lessons/0029-phase2-ai-knowledge-outline.html">← 返回第二阶段大纲</a></li>
+      <li>· <a href="../lessons/0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

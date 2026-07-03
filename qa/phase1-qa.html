@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第一阶段 · 疑难解答 Q&amp;A</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+
+<div class="section">
+  <div class="lesson-header">
+    <div class="lesson-meta-row">
+      <span class="lesson-phase-tag">第一阶段 · 疑难解答</span>
+    </div>
+    <h1>第一阶段 · 疑难解答 Q&amp;A</h1>
+    <p class="subtitle">把 Python 学扎实——变量到 async、装饰器到 Pydantic，为写 Agent 打地基</p>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-howto">
+    <span class="qa-howto-icon">💡</span>
+    <div>本页收录 <strong>Python 基础与工程能力</strong> 每节课学习时遇到的疑问 + 解答。学到哪课有不懂的，<strong>直接问我（你的老师）</strong>，我会把「问题 + 解答」记到对应课程下面。当前已记录 <span class="qa-stat">1</span> 个问题。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L01">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L01</span>
+      <span class="qa-lesson-title"><a href="../lessons/0004-L01-dev-environment-setup.html">开发环境搭建</a></span>
+      <span class="qa-count">1 问</span>
+    </div>
+    <div class="qa-item">
+      <div class="qa-q"><span class="qa-badge">Q</span><span class="qa-q-text">为什么要用虚拟环境（venv）？直接 pip install 到全局不行吗？</span></div>
+      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p>可以跑，但迟早会踩坑。全局装包意味着<strong>所有项目共用一套依赖</strong>：项目 A 要 <code>httpx==0.24</code>、项目 B 要 <code>httpx==0.28</code>，全局只能留一个版本，另一个项目就坏了。</p><p>虚拟环境给每个项目一个<strong>独立、隔离的包目录</strong>，互不干扰；删项目时连 venv 一起删干净，不留垃圾。Agent 项目依赖多（openai / anthropic / pydantic / tenacity…），隔离几乎是必须的。习惯：<code>python -m venv .venv</code> → 激活 → 再 <code>pip install</code>。</p></div></div>
+      <div class="qa-date">记录于 2026-07-03</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L02">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L02</span>
+      <span class="qa-lesson-title"><a href="../lessons/0005-L02-python-runtime-and-modules.html">Python 运行机制与模块系统</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L03">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L03</span>
+      <span class="qa-lesson-title"><a href="../lessons/0006-L03-variables-types-data-structures.html">变量、类型与数据结构</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L04">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L04</span>
+      <span class="qa-lesson-title"><a href="../lessons/0008-L04-control-flow-and-prompt.html">流程控制、字符串与 Prompt 构造</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L05">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L05</span>
+      <span class="qa-lesson-title"><a href="../lessons/0009-L05-functions-and-parameters.html">函数定义与参数</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L06">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L06</span>
+      <span class="qa-lesson-title"><a href="../lessons/0010-L06-scope-closures-lambda.html">作用域、闭包与 Lambda</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L07">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L07</span>
+      <span class="qa-lesson-title"><a href="../lessons/0011-L07-classes-and-dataclass.html">类、对象与 @dataclass</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L08">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L08</span>
+      <span class="qa-lesson-title"><a href="../lessons/0012-L08-inheritance-and-call.html">继承、多态与 __call__</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L09">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L09</span>
+      <span class="qa-lesson-title"><a href="../lessons/0013-L09-files-json-dict.html">文件、JSON 与 Dict 深度操作</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L10">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L10</span>
+      <span class="qa-lesson-title"><a href="../lessons/0014-L10-exceptions-logging-context.html">异常处理、日志与上下文管理器</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L11">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L11</span>
+      <span class="qa-lesson-title"><a href="../lessons/0015-L11-decorators.html">装饰器</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L12">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L12</span>
+      <span class="qa-lesson-title"><a href="../lessons/0016-L12-generators-streaming.html">生成器与 Streaming</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L13">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L13</span>
+      <span class="qa-lesson-title"><a href="../lessons/0017-L13-type-hints.html">类型提示系统</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L14">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L14</span>
+      <span class="qa-lesson-title"><a href="../lessons/0018-L14-pydantic.html">Pydantic 数据验证</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L15">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L15</span>
+      <span class="qa-lesson-title"><a href="../lessons/0019-L15-httpx.html">用 httpx 发起 HTTP 请求</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="qa-lesson" id="L16">
+    <div class="qa-lesson-head">
+      <span class="qa-lesson-num">L16</span>
+      <span class="qa-lesson-title"><a href="../lessons/0020-L16-async-concurrency.html">async/await 与并发</a></span>
+    </div>
+    <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="card">
+    <ul>
+      <li>· <a href="../lessons/0002-phase1-python-outline.html">← 返回第一阶段大纲</a></li>
+      <li>· <a href="../lessons/0001-ai-agent-learning-path-overview.html">← 返回学习路径总览</a></li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<aside class="toc" id="toc"></aside>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>
