@@ -1606,3 +1606,48 @@ a.lesson-qa-link { border-bottom: 1px solid color-mix(in srgb, var(--accent-brig
 .qa-related ul { margin: 0; padding-left: 0; list-style: none; }
 /* 模块内 .lesson-qa-link 顶部无多余间距（它现在是卡片首元素） */
 .card > .lesson-qa-link:first-child { margin-top: 0; }
+
+/* 思考题：每题一个默认折叠的 details（summary=问题，展开=答案） */
+.think-q {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-warm);
+  margin: 0.6rem 0;
+  padding: 0 0.9rem;
+}
+.think-q > summary {
+  cursor: pointer;
+  padding: 0.7rem 0;
+  font-weight: 600;
+  color: var(--fg);
+  list-style: none;
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.think-q > summary::-webkit-details-marker { display: none; }
+.think-q > summary::before {
+  content: "▸";
+  color: var(--accent-bright);
+  font-size: 0.85em;
+  transition: transform 0.15s ease;
+}
+.think-q[open] > summary::before { transform: rotate(90deg); }
+.think-q > summary .think-q-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-bright);
+  flex: 0 0 auto;
+}
+.think-q-answer {
+  padding: 0.2rem 0 0.9rem 1.3rem;
+  border-top: 1px dashed var(--border);
+  margin-top: -1px;
+  padding-top: 0.8rem;
+  color: var(--fg-soft);
+  line-height: 1.7;
+}
+.think-q-answer p { margin: 0 0 0.6rem; }
+.think-q-answer p:last-child { margin-bottom: 0; }
+.think-q-answer strong { color: var(--accent); }
