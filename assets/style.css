@@ -559,6 +559,20 @@ blockquote {
   min-width: 2.5rem;
   flex-shrink: 0;
 }
+/* 大纲页每课的预估时长小标（琥珀 mono，与课号同列，读作次要元信息） */
+.lesson-num-time {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent-bright);
+  background: color-mix(in srgb, var(--accent-light) 45%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 0.05em 0.45em;
+  margin-left: 0.1rem;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
 .lesson-title {
   font-weight: 600;
   font-size: 0.95rem;
@@ -949,6 +963,14 @@ footer {
 .lesson-header {
   margin-bottom: 0.5rem;
 }
+/* 阶段标签 + 预估时间徽章 同基线一行（书页眉的两枚小印记） */
+.lesson-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
 .lesson-phase-tag {
   display: inline-block;
   font-size: 0.75rem;
@@ -957,8 +979,73 @@ footer {
   background: var(--accent-light);
   padding: 0.15em 0.65em;
   border-radius: var(--radius-pill);
-  margin-bottom: 0.5rem;
   letter-spacing: 0.03em;
+}
+/* 兼容：仍单独用 .lesson-phase-tag（未包在 meta-row 里）的旧页保留下间距 */
+.lesson-phase-tag:only-child { margin-bottom: 0.5rem; }
+
+/* 预估学习时间徽章 —— 标题旁的静态琥珀章：纯 CSS 秒表 + mono 数字 + 「分钟」。
+   克制尺寸、实心填充但不喧哗；纯展示，无 hover / 动效。*/
+.lesson-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-bright);
+  background: var(--accent-light);
+  border: 1px solid color-mix(in srgb, var(--accent-bright) 22%, transparent);
+  padding: 0.24em 0.72em 0.24em 0.6em;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  line-height: 1;
+}
+.lesson-time-num {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent-bright);
+  font-size: 1.02em;
+  letter-spacing: -0.01em;
+}
+.lesson-time-unit {
+  font-size: 0.82em;
+  font-weight: 500;
+  opacity: 0.9;
+}
+/* 秒表图标：纯 CSS 画的表盘 + 顶钮，随文字色，无需外部图标字体。em 尺寸 → 随徽章放大 */
+.lesson-time-clock {
+  position: relative;
+  width: 1.02em;
+  height: 1.02em;
+  flex: 0 0 auto;
+  border: 1.6px solid var(--accent-bright);
+  border-radius: 50%;
+  margin-top: 0.5px;
+  box-sizing: border-box;
+}
+.lesson-time-clock::before {          /* 顶部小按钮（秒表的既视感） */
+  content: "";
+  position: absolute;
+  top: -0.2em;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0.22em;
+  height: 0.14em;
+  background: var(--accent-bright);
+  border-radius: 1px;
+}
+.lesson-time-clock::after {           /* 指针：指向 ~2 点方向的一根 */
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.6px;
+  height: 0.34em;
+  background: var(--accent-bright);
+  border-radius: 1px;
+  transform-origin: bottom center;
+  transform: translate(-50%, -100%) rotate(66deg);
 }
 .lesson-header h1 {
   margin-bottom: 0.3rem;
@@ -1298,6 +1385,9 @@ a:focus-visible,
 /* 深色模式下的 lesson header */
 [data-theme="dark"] .lesson-phase-tag {
   background: var(--accent-light);
+}
+[data-theme="dark"] .lesson-time {
+  border-color: color-mix(in srgb, var(--accent-bright) 32%, transparent);
 }
 [data-theme="dark"] .course-bar-nav:hover {
   background: var(--bg-warm);

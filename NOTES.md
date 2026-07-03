@@ -13,7 +13,11 @@
 
 # 更新日志
 
-- 2026-07-02: **course-bar 坐标:去菱形点 + 阶段名中文化** — 用户:菱形点不要 + 阶段名中文显示。坐标读数从 `P3◇L30` 改为 **`第三阶段 │ L30`**:①删菱形分隔点,换成**细竖线 rule**(1px,editorial 利落);②阶段号 `P3` → 中文全名(直接用 `cur.phase`,如"第三阶段",body 字体+森林绿,不用 mono——中文 mono 难看);③`L30` 课号保留 mono+ink 色。坐标盒去掉整体 mono(只 L## 用 mono)。未来 11 阶段最长"第十一阶段"(5 字)坐标盒可容纳。深浅色同步(暗色 phase-name/rule 用 accent-bright)。改 course-bar.js(cur.phase + rule span)+ style.css(phase-num/coord-sep → phase-name/coord-rule)。node --check 过、CSS 括号 216/216、无死类引用、DOM 模拟确认中文阶段名正常。仅动 2 共享 asset。（顶栏第四次迭代。）
+- 2026-07-03: **时长徽章：缩小 + 去交互（纯展示）** — 用户：太大了、不要交互、只展示。把上一版"实心醒目章"收敛为**克制的静态章**：字号 0.9→**0.8rem**、数字 1.12→1.02em（仍 mono 700，秒表 em 自动随缩）、**删掉全部 hover / transition / box-shadow**（徽章本体 + 秒针 + 深色描边阴影都清），深色仅留描边。纯 CSS 展示、零动效。复核：CSS 226/226 平衡、徽章段无 hover/transition/box-shadow、秒针无 transition、深色无阴影。仅动 style.css。
+
+- 2026-07-03: **时长徽章去重复 + 放大醒目（frontend-design 再优化）** — 用户：顶栏别再显时长（和标题旁重复），标题旁的做大更醒目。**① 去重**：`course-bar.js` 坐标读数回退为纯 `第三阶段 │ L30`（删渲染时长的分支，`min:` 数据字段保留无害）；删掉配套死类 `.course-bar-time`/`.course-bar-coord-dot`（CSS+JS 都清）。**② 徽章从「幽灵批注」升级为「实心琥珀章」**（后于同日再次按"太大"收敛，见上条）。**只此一处显时长**，唯一真值仍是 `lesson-times.json`（未动数字）。
+
+- 2026-07-03: **全课程加「预估学习时间」+ 徽章设计（38 课）** — 用户：给每节课加预估学习时间，用 /frontend-design 设计，以后生成的课也要加。**① 估时**：不是拍脑袋，逐课量内容信号（中文字数/代码行/Quiz 数/`<details>` 练习数）按统一公式算（读250字/min、代码5s/行、Quiz1.5min、练习5min/个、capstone 下限40、四舍5min、clamp10–45、L01实操+5），落 `assets/lesson-times.json` 为唯一真值。结果 L17/L18=15min（轻概念）→ L20=45min（5练习）/L38=45min（capstone），全课 ~18h。**② 设计**（frontend-design 口径=克制+融入既有精装书美学，不新造风格）：`.lesson-time` 幽灵型 meta-chip——纯 CSS 画的琥珀秒表图标 + mono 数字 + 「分钟」，细描边、比实心 phase-tag 更轻（读作页角批注的次要元信息）；新增 `.lesson-meta-row` flex 让阶段标签+时长同基线一行。**③ 三处同步**：38 课 `.lesson-header` 徽章（脚本注入、div 平衡不变）+ `course-bar.js` 坐标读数扩为 `第三阶段 │ L30 · 25min`（加 `min:` 字段 + `.course-bar-time`，恒定占位、11阶段不退化）+ 大纲页 0002/0029/0044 每课 `.lesson-num-time` 小标（38 chips）。**④ 立规**：NOTES 加「预估学习时间」估算模型段 + 审核清单加「每课必含时长徽章、三处口径一致」，以后生成课程照此办。复核：CSS 228/228 平衡、course-bar.js node --check 过、DOM 模拟坐标读数正确（L01→`第一阶段 L01·15min`、L38→`45min`、大纲页不渲坐标）、38 徽章 num 全对、3 大纲 div 平衡 + 38 chips num 全对。仅动 style.css/course-bar.js/lesson-times.json + 各课 header，未改课程正文。**（注：坐标读数的时长于同日下一次迭代按用户要求去除，仅留标题旁。）** — 用户:菱形点不要 + 阶段名中文显示。坐标读数从 `P3◇L30` 改为 **`第三阶段 │ L30`**:①删菱形分隔点,换成**细竖线 rule**(1px,editorial 利落);②阶段号 `P3` → 中文全名(直接用 `cur.phase`,如"第三阶段",body 字体+森林绿,不用 mono——中文 mono 难看);③`L30` 课号保留 mono+ink 色。坐标盒去掉整体 mono(只 L## 用 mono)。未来 11 阶段最长"第十一阶段"(5 字)坐标盒可容纳。深浅色同步(暗色 phase-name/rule 用 accent-bright)。改 course-bar.js(cur.phase + rule span)+ style.css(phase-num/coord-sep → phase-name/coord-rule)。node --check 过、CSS 括号 216/216、无死类引用、DOM 模拟确认中文阶段名正常。仅动 2 共享 asset。（顶栏第四次迭代。）
 - 2026-07-02: **course-bar 精致化 + 去掉百分比数字** — 用户:不显示百分比 + 整条更美观。**① 去 %**:进度条已视觉表达进度,裸数字冗余,删掉 `.course-bar-pct`。**② 精装书页眉质感重塑**:坐标读数 `P3·L30` 做成 chapter-mark(浅底圆角小盒 + `P3` 森林绿),分隔符从"·"换成细菱形小点(rotate 45°);进度条改凹槽(inset 阴影)+ 更细(3px)+ 游标加发光环 + 静止时极轻呼吸光晕(courseCursorPulse);左/中/右三区加细分割线(border-left/right,像杂志栏规)把中区框成字段;prev/next 药丸 hover **定向微位移**(上一课向左 2px、下一课向右,箭头同步)+ 箭头默认 0.65 透明度 hover 提亮;栏背景 blur 10→14px+saturate、半透明 color-mix。深浅色(暗色游标 card-bg 描边、分隔点/P号用 accent-bright)+ 移动端(窄屏去分割线+隐藏 track)+ reduced-motion(关全部动画+hover 位移)。改 course-bar.js(去%+分隔符空 span)+ style.css(全量重写 .course-bar-* 块)。node --check 过、CSS 括号 216/216、无死类引用、DOM 模拟确认不渲染 %。仅动 2 共享 asset,不碰课程 HTML,全 40+ 页生效。（顶栏第三次迭代:dot→seg→连续条→本次精致化。）
 - 2026-07-02: **course-bar 二次重设计（面向 11 阶段可扩展）** — 用户指出：分段进度条现在 3 段还行，但课程规划 **11 个阶段**，全生成后会碎成 11 个小方块（和"38 点"同类病）。**改为单一连续进度条 + 坐标读数**：`P3·L30`（阶段号·课号，mono）+ 一根连续总进度条（游标标当前位置，森林绿→琥珀渐变）+ `79%` 百分比。核心：进度只需一根连续条，"第几阶段"用文字读数表达，不给每阶段各画一段——**占位恒定，阶段再多也不变乱**。DOM 模拟验证：现 3 阶段 `P1·L01 3%`→`P3·L38 100%` 正确；合成 **11 阶段/100 课**未来场景，坐标读数封顶 8 字符（`P11·L100`）、始终【坐标+一条+百分比】三件套、零布局退化。载入 scaleX 展开 + 游标淡入动画（reduced-motion 降级），深浅色（暗色用 accent-bright + card-bg 描边游标）+ 移动端（窄屏隐藏 track 保留坐标）。改 `course-bar.js` 中段渲染 + `style.css`（删 .course-bar-seg/phase/count/total 换 .course-bar-coord/phase-num/track/track-fill/track-cursor/pct）。node --check 过、无死类引用。仅动 2 共享 asset，不碰课程 HTML，自动全 40+ 页生效。（本次与前一次 dot→seg 改动同日，此为 seg→连续条的再优化。）
 - 2026-07-02: **顶部 course-bar 进度指示重设计（去掉 38 点 swarm）** — 用户反馈"章节中间的点太多了"。根因:`course-bar.js` 每课渲一个进度点,38 课=38 点挤中间,数不清、无意义。**改为分阶段进度计**:`L##/38` 计数(mono,像书页码)+ 3 段 proportional 进度条(段宽按各阶段课时 16:8:14,当前阶段精确 fill%、过去阶段满、未来阶段淡轨)+ 阶段徽章(森林绿药丸)。信息量反升(一眼看出:哪个阶段/总进度/精确到第几课),占位反降。森林绿→琥珀渐变 fill + 载入 scaleX 动画(reduced-motion 降级),深浅色 + 移动端(窄屏隐藏 meter/phase)都覆盖。改 `course-bar.js`(中段渲染逻辑)+ `style.css`(删 .course-bar-dot* 换 .course-bar-meter/seg/phase + 移动端 + 深色规则)。node --check 过、DOM 模拟 L01/L17/L30/L38 阶段数学全对(如 L30=阶段三 43%=6/14)、大纲页 isCourse=false 不渲 meter。仅动 2 个共享 asset,不改任何课程 HTML,自动作用于全部 40+ 页。
@@ -70,10 +74,15 @@
 - 2026-06-30: **Phase 1 大纲优化（v7.1，仅改大纲页 0002，未写课程）** — ① 新增 L15「网络请求与 HTTP(httpx)」(新模块 3.3，async 顺延 L16/模块 3.4)；② L10 折入 logging + tenacity，模块 2.3 更名；③ L13 类型提示瘦身(聚焦 Optional/Union/Literal/Callable+mypy，Generic/Protocol 后移 Phase 5)；④ 修 total-bar 计数(8→实为9→新增后 10 模块·16 课)，同步 0001 总览(Phase 1 课时 22→16、Part B/C 描述)与 README(→16)；⑤ RESOURCES 补 httpx/tenacity/logging/asyncio 文档。结构校验通过(div 平衡、L01–L16 连续)，新增 URL 已验证。详见学习记录 0008。**遗留提醒：Phase 5 需补讲泛型 AgentState[T]/Protocol，因 L13 已移除。**
 - 2026-06-30: **v7 大纲骨架落地（按审核结论，scope=只更新骨架）** — ① 修复 bug：补齐缺失的 `assets/quiz.js` + `assets/toc.js`（此前所有课程引用但文件不存在，Quiz 点不动 / TOC 不生成，现已修复并通过 node --check）；② 总览页 0001 升级 v7：Phase 3 新增「工具工程与 Function Calling」(3.4)+成本工程重排(原生缓存优先)、Phase 8 新增「LLM/Agent 系统设计」+评估升级 Agentic Metrics+安全加深、Phase 9 补 browser-use/OpenHands、Phase 10 案例订正(真实仓库链接+OpenHands 对照+AutoGen 降级+协议去噪)、Phase 11 补云托管 Agent 服务+Temporal、模型版本去硬编码、技术栈表全面更新、新增 v7 变更日志与设计原则、面试题覆盖 15+→30+、修死链 claude-code-harness、链入审核报告 0007；③ RESOURCES.md 新增「v7 新增」整段（Function Calling/原生缓存/Agentic 评估+基准/OTEL GenAI/云托管/安全/真实案例 4 个），Gaps 标注 ANP/AGNTCY 生态未定；④ README 同步 Phase 3/8 课时。**所有新增 URL 已 curl 验证 200，HTML 标签结构平衡校验通过。未写整节新课程（按用户选择的 scope）。**
 
+# 预估学习时间（估算模型 —— 所有课程统一口径）
+
+**口径**：深度学习（读透正文 + 看懂代码 + 做完 Quiz + 尝试动手练习），非略读。数据源 = `assets/lesson-times.json`（唯一真值），三处消费：各课 `.lesson-header` 徽章、`course-bar.js` 的 `min:` 字段、大纲页 `.lesson-num-time`。
+
+**公式**：读 = 250 字/min；代码 = 5s/行；Quiz = 1.5min/题；每个 `<details>` 练习 = 5min；capstone 下限 40min。求和后四舍五入到 5min、clamp 10–45。装环境类实操课（如 L01）手动 +5。改课或加课后，用同一公式重算并同步三处 + `lesson-times.json`。
+
 # 课程审核清单（每次生成课程后必须执行）
 
 ### 内容正确性
-- [ ] 所有代码示例能正确运行
 - [ ] 知识点因果关系正确（不可混淆原因和结果）
 - [ ] 面试问题答案准确、完整
 - [ ] **强声明必须当场验证来源** — 凡涉及「项目名 + Star 数 + 具体版本号 + arXiv 编号」，须用 WebFetch 打开来源核实；无法证实的具体数字只写方向、不写数字（教训：OpenClaw/Hermes 虚构案例）
@@ -94,6 +103,7 @@
 - [ ] 上一课/下一课链接正确
 - [ ] 大纲中该课标题有链接
 - [ ] 代码风格一致（safe_get 实现方式统一等）
+- [ ] **每课 `.lesson-header` 内含预估学习时间徽章** — `<div class="lesson-meta-row">` 包住 `.lesson-phase-tag` + `.lesson-time`（秒表图标 + mono 数字 + 「分钟」，实心琥珀章、醒目）；时长按下方估算模型算、写进 `assets/lesson-times.json`，并同步大纲页 `.lesson-num-time` 小标。**时长只此一处 + 大纲页展示，顶栏 course-bar 坐标不再显时长（避免与标题旁重复）**
 
 ### Agent 实战关联
 - [ ] 每个知识点有 Agent 场景说明

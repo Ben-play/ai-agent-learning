@@ -97,7 +97,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L25</span>
+      <span class="lesson-num">L25</span><span class="lesson-num-time">20min</span>
       <div>
         <div class="lesson-title"><a href="0030-L25-llm-api-basics.html">主流 LLM API 上手</a> <span class="badge-llm">API</span></div>
         <div class="lesson-desc">统一心智模型（messages: system/user/assistant，模型无状态需回传历史）、OpenAI Chat Completions / Anthropic Messages 两家 SDK 正确写法与差异（max_tokens、system 位置、返回字段）、<strong>OpenAI 兼容模式（base_url 切厂商）</strong>、Key 走环境变量铁律</div>
@@ -105,7 +105,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L26</span>
+      <span class="lesson-num">L26</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0031-L26-streaming.html">Streaming 流式输出</a> <span class="badge-llm">API</span></div>
         <div class="lesson-desc">为什么要流式（降低首字延迟 TTFT、改善长回复体验）、原理是 SSE 逐块推送、OpenAI <code>stream=True</code> + <code>delta.content</code> 增量拼接、Anthropic <code>messages.stream</code>、工程注意（流式下的 usage 统计 / 增量拼工具调用 / 中途断连）</div>
@@ -126,7 +126,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L27</span>
+      <span class="lesson-num">L27</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0032-L27-function-calling.html">Function Calling 原理</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">关键澄清：<strong>模型自己不执行代码，只输出结构化的"调用意图"</strong>，执行+回填由你的代码做；完整流程（发工具定义 → 模型返回 tool_calls → 执行 → 回填 role:"tool" → 继续）、工具定义结构、<code>tool_calls</code> 里 arguments 是 JSON 字符串需 json.loads、多工具选择</div>
@@ -134,7 +134,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L28</span>
+      <span class="lesson-num">L28</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0033-L28-structured-outputs.html">Structured Outputs（约束解码）</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc"><strong>面试高频区分题</strong>：纯 prompt < JSON mode（只保证合法 JSON）< <strong>Structured Outputs（strict / 约束解码，token 级<em>保证</em>符合 JSON Schema）</strong>；约束解码原理、配合 Pydantic（呼应 L14）、无法保证时的验证+重试兜底、refusal 处理。<strong>Structured Outputs ≠ JSON mode</strong></div>
@@ -142,7 +142,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L29</span>
+      <span class="lesson-num">L29</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0034-L29-multimodal-api.html">多模态 API</a> <span class="badge-llm">API</span></div>
         <div class="lesson-desc">Vision 图片理解（image_url / base64 传图，放进 content 数组）、音频转录（Whisper 类）、<strong>隐藏成本：图片按分辨率折算成大量 token</strong>（呼应 L18/L23）、工程注意（大图先压缩、能力矩阵以官网为准）</div>
@@ -163,7 +163,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L30</span>
+      <span class="lesson-num">L30</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0035-L30-context-window-management.html">Context Window 管理</a> <span class="badge-agent">Agent 核心</span></div>
         <div class="lesson-desc">窗口有限 + 越滚越长 + lost-in-the-middle + 成本随长度涨（呼应 L21/L23）；三大策略：滑动窗口 / 摘要记忆（compaction）/ 压缩精简；用 tiktoken 计数触发；保 system + 关键信息、压中间冗余</div>
@@ -171,7 +171,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L31</span>
+      <span class="lesson-num">L31</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0036-L31-error-handling-retry.html">错误处理、退避与幂等</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">区分可重试（429/5xx/超时）vs 不可重试（400/401）、指数退避（呼应 L10 tenacity）、<strong>抖动（full jitter，防重试风暴/惊群）</strong>、重试预算、<strong>幂等键（idempotency key，让"扣款"这类有副作用的工具调用重试也只生效一次）</strong></div>
@@ -179,7 +179,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L32</span>
+      <span class="lesson-num">L32</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0037-L32-routing-fallback-gateway.html">路由、Fallback 与 AI Gateway</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">单点故障 → Fallback（主备模型自动切换）、Model Routing（便宜模型兜底、贵模型接难题，呼应 L23）、<strong>AI Gateway 模式</strong>（LiteLLM 自托管 / OpenRouter 托管 / Portkey 治理，统一成 OpenAI 格式，底层即 L25 兼容原理）、为什么用网关而非自己写</div>
@@ -187,7 +187,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L33</span>
+      <span class="lesson-num">L33</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0038-L33-observability.html">LLM 可观测性</a> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">三大支柱（Traces 调用链 span 树 / Metrics token·延迟·成本·错误率 / Logs）、要追踪什么（模型/token/TTFT/成本/工具/错误）、<strong>OpenTelemetry GenAI 语义约定（<code>gen_ai.*</code> span，厂商无关标准，semconv 已到 1.42）+ Langfuse</strong>、基于成本 metrics 设告警</div>
@@ -208,7 +208,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L34</span>
+      <span class="lesson-num">L34</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0039-L34-tool-schema-design.html">Tool Schema 设计</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">工具定义 = 模型的"说明书"，<strong>description 质量直接决定模型选不选得对、填不填得对</strong>；用 Pydantic/JSON Schema 定义、好 vs 坏 description 对比、enum/Literal 约束取值、strict mode（同 L28 约束解码机制）、工具定义的 Token 开销、设计原则清单</div>
@@ -216,7 +216,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L35</span>
+      <span class="lesson-num">L35</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0040-L35-function-calling-loop.html">完整 Function Calling 循环</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">把单步 FC（L27）跑成 <strong>while 循环——这就是 Agent Loop 的骨架</strong>：模型请求工具 → 执行 → 回填（带 tool_call_id） → 继续，直到无 tool_calls；并行工具调用全部执行各自回填（可 asyncio.gather 提速）、多轮 vs 并行之别、设最大轮数防死循环</div>
@@ -224,7 +224,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L36</span>
+      <span class="lesson-num">L36</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0041-L36-tool-robustness-registry.html">工具健壮性与注册系统</a> <span class="badge-agent">Agent 核心</span></div>
         <div class="lesson-desc">健壮性：参数校验失败<strong>把错误回填给模型让它重试</strong>（不崩）、流式下增量拼接工具调用参数、工具定义的 Token 开销控制；<strong>Tool Registry：用装饰器（呼应 L11）自动注册+分发</strong>，闭合 Phase 1「手写 @tool」线，看懂框架 @tool 底层</div>
@@ -245,7 +245,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L37</span>
+      <span class="lesson-num">L37</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0042-L37-cost-engineering.html">成本工程：2026 降本优先级</a> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">按性价比排序的完整清单：① 原生 Prompt Caching（前缀逐字节命中）→ ② <strong>语义缓存（按 embedding 相似度命中、跳过整次调用，与前缀缓存的区别是面试高频题）</strong> → ③ 模型路由 → ④ 提示压缩（LLMLingua）→ ⑤ 小模型蒸馏 → ⑥ Batch API；组合心法「原生缓存优先」</div>
@@ -253,7 +253,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L38</span>
+      <span class="lesson-num">L38</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0043-L38-phase3-capstone.html">Phase 3 综合实战</a> <span class="badge-agent">综合</span></div>
         <div class="lesson-desc">收官项目「生产级多模型 Agent 客户端」：整合 L25–L37——统一客户端（L25/L32）+ 重试+Fallback（L31/L32）+ 完整 FC 循环（L35/L36）+ 结构化输出/流式（L28/L26）+ 成本追踪/可观测（L33/L37），构建一个"能上生产的 LLM 调用层"</div>
