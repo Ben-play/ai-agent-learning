@@ -101,6 +101,18 @@ def to_text(x: Union[str, bytes]) -&gt; str:
 def size(x: str | list) -&gt; int:
     return len(x)</code></pre>
 
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 别被两种写法搞混：<code>|</code> 就是 <code>Union</code> 的新写法。</strong>
+    <p>你会在代码里看到两套等价写法并存，它们含义完全一样，<code>|</code> 只是 Python 3.10+ 的简写：</p>
+    <table>
+      <tr><th>老写法（需 import）</th><th>新写法 <code>|</code>（3.10+，推荐）</th><th>含义</th></tr>
+      <tr><td><code>Union[str, bytes]</code></td><td><code>str | bytes</code></td><td>str 或 bytes</td></tr>
+      <tr><td><code>Optional[str]</code></td><td><code>str | None</code></td><td>str 或 None</td></tr>
+      <tr><td><code>Union[int, str, None]</code></td><td><code>int | str | None</code></td><td>三者之一</td></tr>
+    </table>
+    <p style="margin-top:.5rem;">所以 <code>Optional[X]</code>、<code>Union[X, None]</code>、<code>X | None</code> 是<strong>同一件事的三种写法</strong>。新代码优先用 <code>|</code>（不用 import、更短）；读老代码时认得 <code>Union</code>/<code>Optional</code> 即可。</p>
+  </div>
+
   <h3>Literal：只能是这几个值</h3>
   <pre><code>from typing import Literal
 

@@ -46,7 +46,24 @@
 
 <div class="section">
   <h2>1. yield：让函数"边算边给"</h2>
-  <p>普通函数 <code>return</code> 一次就结束。生成器用 <code>yield</code> <strong>产出一个值后暂停</strong>，下次取值再从暂停处继续：</p>
+  <p>普通函数 <code>return</code> 一次就结束。生成器用 <code>yield</code> <strong>产出一个值后暂停</strong>，下次取值再从暂停处继续。</p>
+
+  <p><strong>怎么把一个普通函数改造成生成器？</strong>其实只改一处：把"建列表 → 循环 append → return 整个列表"换成"循环里直接 <code>yield</code> 每个值"。同一个任务，两种写法并排看：</p>
+  <pre><code># ① 普通函数：一次性造好整个列表再返回
+def chunk_list(text, n=3):
+    result = []
+    for i in range(0, len(text), n):
+        result.append(text[i:i+n])     # 攒进列表
+    return result                      # 最后一次性返回
+
+# ② 生成器：去掉列表，把 append + return 换成 yield
+def chunk_gen(text, n=3):
+    for i in range(0, len(text), n):
+        yield text[i:i+n]              # 产出一块，暂停，等下次取
+
+chunk_list("HelloWorld", 3)   # ['Hel', 'loW', 'orl', 'd']  ← 立刻拿到完整列表
+chunk_gen("HelloWorld", 3)    # &lt;generator object&gt;         ← 只拿到一个生成器！</code></pre>
+  <p><strong>认出生成器就看一点：函数体里有没有 <code>yield</code>。</strong>只要有 <code>yield</code>，它就不再是普通函数，而是"生成器函数"——调用它<strong>不会立刻执行</strong>，只返回一个生成器对象；每次迭代（<code>for</code> / <code>next</code>）才推进到下一个 <code>yield</code>。两者产出的内容一样，但下面这个版本用 <code>for</code> 取值时才逐块算出：</p>
   <pre><code>def stream_tokens(text, n=3):
     for i in range(0, len(text), n):
         yield text[i:i+n]          # 产出一块，暂停，等下次取
