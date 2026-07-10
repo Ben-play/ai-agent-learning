@@ -28,6 +28,11 @@ Thumbs.db
 # Logs
 *.log
 
+# 练习运行产生的杂物（学员跑课程代码时生成，非课程内容）
+c.json
+config.json
+data/
+
 # Secrets / MCP（含 API key，禁止入库；key 用环境变量注入）
 .mcp.json
 .env
