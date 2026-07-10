@@ -312,7 +312,7 @@ def good(item, acc=None):
 
 # 测试
 r = search_tool("  ai agents  ", 3, filters={"lang": "zh"})
-print(r["query"])        # ai agents  （首尾空格已清理）
+print(r["query"])        # ai agents（首尾空格已被 strip 清理掉）
 print(r["max_results"])  # 3
 print(len(r["results"])) # 3
 print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
@@ -406,6 +406,11 @@ print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
       <li>带类型注解的函数签名，就是 Agent 工具契约的雏形（→ L11 / L14）</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经会定义函数、设计参数了。<strong>下一课</strong>看函数的「记忆」——作用域与闭包，这是限流器、计数器、以及装饰器（L11）的底层。 <a href="0010-L06-scope-closures-lambda.html">L06 · 作用域、闭包与 Lambda →</a></span>
+  </div>
+
 </div>
 
 </main>

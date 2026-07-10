@@ -121,6 +121,7 @@ send("admin", "claude")    # ❌ mypy 报错：'admin' 不在允许值里</code>
 
 <div class="section">
   <h2>4. Callable & 类型别名 & mypy</h2>
+  <p>前面标注的都是"数据"的类型。这一节收尾三样更进阶的工具：<code>Callable</code>（把<strong>函数</strong>本身也标注出类型——Agent 里工具就是函数，得能描述它）、<strong>类型别名</strong>（给又长又重复的类型起个短名）、以及 <strong>mypy</strong>（把类型检查真正跑起来，在运行前抓错）。</p>
   <h3>Callable：把函数当参数</h3>
   <pre><code>from typing import Callable
 

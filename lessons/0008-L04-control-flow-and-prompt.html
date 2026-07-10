@@ -243,7 +243,7 @@ text = "search, calc , weather"
 
 "TOOL_CALL".lower()         # "tool_call"   归一化
 "error" in response.lower() # 子串判断（先转小写更稳）
-"  ".join(["a", "b", "c"])  # "a  b  c"   用分隔符拼接
+", ".join(["a", "b", "c"])  # "a, b, c"   用分隔符把列表拼成一个字符串
 
 resp = "Final Answer: 42"
 resp.startswith("Final")    # True
@@ -497,6 +497,11 @@ print(result)</code></pre>
       <li>"片段列表 + join" 是动态构造 Prompt 的首选写法</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经会写分支、循环和 Prompt 了。<strong>下一课</strong>把这些逻辑封装成函数——重点是参数怎么设计，这直接决定了 Agent 工具好不好用。 <a href="0009-L05-functions-and-parameters.html">L05 · 函数定义与参数 →</a></span>
+  </div>
+
 </div>
 
 </main>

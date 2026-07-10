@@ -46,6 +46,7 @@
 
 <div class="section">
   <h2>1. 类的基础：属性与方法</h2>
+  <p><strong>类是"把数据和操作它的函数打包在一起"的模板。</strong>前面学的函数是零散的动作，而一个 Agent 既有状态（名字、配置、对话历史）又有行为（回复、调工具）——用类正好把两者收在一处。先认清一个类的"三件套"：<strong>类属性</strong>（所有实例共享）、<strong>实例属性</strong>（每个实例独有，在 <code>__init__</code> 里设）、<strong>方法</strong>（第一个参数永远是 <code>self</code>，指向实例自己）。</p>
   <pre><code>class Agent:
     default_model = "claude"          # 类属性：所有实例共享
 
@@ -103,7 +104,7 @@ print(m1 == m2)    # True  ← 自动 __eq__（按字段比较）</code></pre>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p><code>field(default_factory=dict)</code> 正是 L03/L05 讲的<strong>可变默认参数陷阱</strong>在 dataclass 里的正解——绝不能写 <code>meta: dict = {}</code>，那会让所有实例共享同一个 dict。这个坑面试常考。</p>
+    <p><code>field(default_factory=dict)</code> 正是 L03/L05 讲的<strong>可变默认参数陷阱</strong>在 dataclass 里的正解——绝不能写 <code>meta: dict = {}</code>，dataclass 会当场抛 <code>ValueError</code> 阻止你这样写（就是为了帮你避开"所有实例共享同一个 dict"这个坑）。这个坑面试常考。</p>
   </div>
 </div>
 
@@ -282,6 +283,11 @@ print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q'
       <li>内部数据用 dataclass，外部输入/Schema 用 Pydantic（→ L14）</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经会用 @dataclass 建数据模型了。<strong>下一课</strong>让对象「像函数一样被调用」（__call__）——这正是 Agent 里每个「工具」的核心骨架。 <a href="0012-L08-inheritance-and-call.html">L08 · 继承、多态与 __call__ →</a></span>
+  </div>
+
 </div>
 
 </main>

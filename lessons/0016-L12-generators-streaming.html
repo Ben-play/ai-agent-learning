@@ -184,7 +184,7 @@ print(collect(stream("你好，世界！")))
 # {'text': '你好，世界！', 'tokens': 6}
 
 print(collect(stream("答案是42。附注..."), stop_at="。"))
-# {'text': '答案是42', 'tokens': 4}   ← "。"及之后没有被消费
+# {'text': '答案是42', 'tokens': 5}   ← 逐字符产出："答案是42"是 5 个 token；"。"及之后没被消费
 
 
 # 进阶：用生成器表达式做惰性过滤（只在需要时计算）
@@ -264,6 +264,11 @@ print(answer)   # abcd</code></pre>
       <li><code>send()</code> 可向生成器回传数据（双向流，进阶了解）</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经会写流式生成器了。<strong>下一课</strong>给函数和数据加上「契约」——类型提示，它也是下下课 Pydantic 和 @tool 生成工具 Schema 的基础。 <a href="0017-L13-type-hints.html">L13 · 类型提示系统 →</a></span>
+  </div>
+
 </div>
 
 </main>

@@ -100,6 +100,7 @@ SearchInput(query="ai", max_results=100)
 
 <div class="section">
   <h2>3. 自定义校验与嵌套模型</h2>
+  <p>上一节 <code>Field</code> 能表达"类型、范围、必填"这类<strong>通用</strong>约束。但有些规则 Field 写不出来——比如"工具名必须在已知列表里"、"表达式不能含危险字符"。这时用 <code>@field_validator</code> <strong>写自己的校验函数</strong>；再看模型如何<strong>嵌套</strong>（一个模型的字段是另一个模型），对应 LLM 那种层层嵌套的响应。</p>
   <h3>@field_validator：写自己的校验规则</h3>
   <pre><code>from pydantic import BaseModel, field_validator
 
@@ -264,7 +265,7 @@ print(SearchInput(query="ai", max_results="8").model_dump())
       <details class="think-q">
         <summary><span class="think-q-tag">Q1</span>为什么 <code>CalcInput</code> 的 <code>no_import</code> 校验对 Agent 安全很重要？</summary>
         <div class="think-q-answer">
-          <p><strong>【结论】</strong>因为 <code>expression</code> 的值来自 <strong>LLM 输出，是不可信的</strong>，而这个表达式后续会被 <code>eval</code> 一类的机制执行；<code>no_import</code> 在执行前就拦掉含 <code>import</code>（乃至 <code>__import__</code>、双下划线）的输入，防止注入和远程代码执行（RCE）。</p>
+          <p><strong>【结论】</strong>因为 <code>expression</code> 的值来自 <strong>LLM 输出，是不可信的</strong>，而这个表达式后续会被 <code>eval</code> 一类的机制执行；<code>no_import</code> 在执行前就拦掉含 <code>import</code> 子串的输入（<code>__import__</code> 因为也含 "import" 会被一并拦下），防止注入和远程代码执行（RCE）。</p>
           <p>设想 LLM 被诱导生成 <code>__import__("os").system("rm -rf ...")</code> 这样的"表达式"。如果 <code>CalcInput</code> 不校验就直接求值，等于把 shell 交给了模型输出——这是典型的工具注入漏洞。</p>
           <p><code>no_import</code> 校验器让脏数据在"进门那一刻"（构造模型时）就被 <code>ValidationError</code> 挡下，根本到不了求值那一步。这正是 Pydantic 的价值：把校验放在信任边界上。</p>
           <p>更一般地：<strong>凡是工具入参来自模型输出，都必须当成不可信输入来校验</strong>。<code>no_import</code> 只是最小示例，真实场景还要限制可用函数、白名单运算符等。</p>
@@ -333,6 +334,11 @@ print(SearchInput(query="ai", max_results="8").model_dump())
       <li>跨信任边界的数据用 Pydantic，内部纯数据用 dataclass</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经会用 Pydantic 校验数据了。<strong>下一课</strong>真正联网——用 httpx 发出带 API Key 的 HTTP 请求，把数据送给 LLM、再收回来，这是所有「联网工具」的传输层。 <a href="0019-L15-httpx.html">L15 · 用 httpx 发起 HTTP 请求 →</a></span>
+  </div>
+
 </div>
 
 </main>

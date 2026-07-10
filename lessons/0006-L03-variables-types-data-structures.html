@@ -93,6 +93,7 @@ print(x)</code></pre>
 <div class="section">
   <h2>2. 可变与不可变类型</h2>
 
+  <p>上一节看到：多个变量可以指向<strong>同一个对象</strong>。那么改动这个对象，会不会"牵连"其他变量？<strong>答案取决于这个对象能不能被改</strong>——这就引出了 Python 类型的一条根本分界：可变 vs 不可变。</p>
   <p>Python 的数据类型分为两大阵营：</p>
 
   <table>
@@ -142,17 +143,16 @@ def add_item(item, lst=None):
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question">
       <span class="quiz-q">Q</span>
-      下面哪个对象可以作为 dict 的 key？
+      <code>def f(item, lst=[])</code> 这样写，反复调用会怎样？
     </div>
     <div class="quiz-options">
-      <button data-answer="wrong">[1, 2, 3]</button>
-      <button data-answer="wrong">{"a": 1}</button>
-      <button data-answer="correct">(1, 2, 3)</button>
-      <button data-answer="wrong">{1, 2, 3}</button>
+      <button data-answer="correct">每次调用共享同一列表</button>
+      <button data-answer="wrong">每次都新建空白列表</button>
+      <button data-answer="wrong">第二次调用直接报错</button>
+      <button data-answer="wrong">默认值会自动变None</button>
     </div>
     <div class="quiz-explanation">
-      dict 的 key 必须是 hashable 的，即不可变且可哈希。tuple 是不可变的，可以当 key。list、dict、set 都是可变的，不行。
-      注意：包含可变元素的 tuple（如 (1, [2, 3])）也不行。
+      默认参数 <code>[]</code> 只在<strong>函数定义时创建一次</strong>，之后每次调用都共享同一个列表对象——上一次 append 进去的元素会"残留"到下一次。这就是"可变默认参数陷阱"。正确做法：默认值用 <code>None</code>，在函数体里再 <code>lst = []</code>。
     </div>
   </div>
 </div>
@@ -187,6 +187,8 @@ print(sys.getrefcount(a))  # 2</code></pre>
 <div class="section">
   <h2>4. 四大容器：list / dict / tuple / set</h2>
 
+  <p>前面三节讲的是"单个值"的性质（引用、可变性、回收）。但 Agent 代码里的数据几乎都是<strong>成组</strong>的——一串工具、一组消息、一份配置。Python 用四种容器来装它们，各有各的取舍：<strong>list</strong>（有序可变）、<strong>dict</strong>（键值查找）、<strong>tuple</strong>（不可变、能当 key）、<strong>set</strong>（去重）。前面学的"可变/不可变"正好解释了它们的区别。</p>
+
   <h3>list — 有序、可变、可重复</h3>
   <pre><code># 创建
 tools = ["search", "calculator", "weather"]
@@ -204,7 +206,16 @@ messages = ["msg1", "msg2", "msg3", "msg4", "msg5"]
 recent = messages[-3:]          # 最近 3 条消息
 except_last = messages[:-1]     # 除最后一条外的所有消息</code></pre>
 
+  <p><strong>切片怎么读？</strong>方括号里写 <code>[起点:终点]</code>，取出从"起点"到"终点前一个"的一段（含头不含尾），两边都能省略。再加上<strong>负数下标从末尾倒数</strong>（<code>-1</code> 是最后一个、<code>-2</code> 是倒数第二……），就能读懂上面两行：</p>
+  <ul>
+    <li><code>messages[-3:]</code> — 从"倒数第 3 个"取到末尾 → <strong>最后 3 条</strong>（终点省略=一直到底）</li>
+    <li><code>messages[:-1]</code> — 从头取到"最后一个之前" → <strong>去掉末尾那条</strong>（起点省略=从头开始）</li>
+  </ul>
+  <p style="font-size:.92rem;color:var(--fg-soft);">Agent 里常用它裁剪对话历史（如"只保留最近 N 轮"来省 token）。切片对 str、tuple 同样适用。</p>
+
   <h3>dict — 键值对、有序（Python 3.7+）、可变</h3>
+  <p><strong>dict（字典）是"用名字查值"的容器。</strong>list 靠位置下标（<code>tools[0]</code>）取值，dict 则靠一个<strong>键（key）</strong>取到对应的<strong>值（value）</strong>——就像查字典：给一个词（key），翻到它的释义（value）。每一对就叫一个"键值对"，写成 <code>"键": 值</code>。</p>
+  <p>为什么 Agent 开发离不开它？因为 LLM 的响应、模型配置、工具参数<strong>全都是</strong> dict：<code>config["model"]</code> 比"配置里的第 0 个"直观得多。</p>
   <pre><code># 创建（Agent 的核心数据结构）
 config = {
     "model": "gpt-4",
@@ -246,6 +257,7 @@ locations = {
 }</code></pre>
 
   <h3>set — 无序、不可重复</h3>
+  <p><strong>set（集合）是一袋"不重复的东西"。</strong>它有两个特点：<strong>自动去重</strong>（同一个值放两次也只留一个）、<strong>无序</strong>（不记录先后顺序，所以不能用下标取值）。它的拿手好戏是两件事：<strong>去重</strong>（把一串有重复的值变成不重复的），以及<strong>集合运算</strong>——判断"哪些在 A 不在 B"、"A 和 B 共有哪些"。Agent 里常用它做工具去重、权限白名单检查。</p>
   <pre><code># 去重（Agent 中用于去除重复工具调用）
 calls = ["search", "calc", "search", "weather", "calc"]
 unique_calls = set(calls)       # {"search", "calc", "weather"}
@@ -266,6 +278,22 @@ approved = requested & allowed  # {"search", "weather"}</code></pre>
       <li><strong>set</strong>：去重、权限检查、已处理记录</li>
     </ul>
   </div>
+
+  <div class="quiz" data-quiz="q4">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      下面哪个对象可以作为 dict 的 key？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="wrong">[1, 2, 3]</button>
+      <button data-answer="wrong">{"a": 1}</button>
+      <button data-answer="correct">(1, 2, 3)</button>
+      <button data-answer="wrong">{1, 2, 3}</button>
+    </div>
+    <div class="quiz-explanation">
+      dict 的 key 必须是"可哈希（hashable）"的——通俗说就是<strong>不可变</strong>。tuple <code>(1,2,3)</code> 不可变，能当 key；list、dict、set 都可变，不行。<br>（记忆钩子：能不能当 key，看它<strong>会不会变</strong>。这也呼应第 2 节的可变/不可变。）注意：含可变元素的 tuple 如 <code>(1, [2,3])</code> 也不行。
+    </div>
+  </div>
 </div>
 
 <!-- ==================== 知识点 5 ==================== -->
@@ -273,6 +301,20 @@ approved = requested & allowed  # {"search", "weather"}</code></pre>
   <h2>5. 推导式：Python 的数据转换利器</h2>
 
   <p>推导式是 Python 最强大的语法特性之一，Agent 开发中大量使用。</p>
+
+  <p><strong>先看懂它怎么读。</strong>推导式就是把"建一个空列表 → for 循环 → 满足条件就 append"这三步，<strong>压成一行</strong>。它的骨架是：</p>
+  <pre><code>[  表达式   for 变量 in 可迭代对象   if 条件  ]
+   └拿什么┘  └───── 遍历谁 ──────┘  └筛选┘</code></pre>
+  <p>三块对照普通循环，一一对应：</p>
+  <pre><code># 普通写法（三步）
+result = []                    #  []        ← 建列表
+for x in items:                #  for x in items
+    if x > 0:                  #      if x > 0   ← 筛选
+        result.append(x * 2)   #          x * 2  ← 拿什么
+
+# 推导式（一行，顺序：先写"拿什么"，再写 for，最后 if）
+result = [x * 2 for x in items if x > 0]</code></pre>
+  <p>读的时候<strong>从中间的 <code>for</code> 起</strong>：先看"遍历谁"，再看右边"筛不筛"，最后回到左边"每个拿出来做什么"。<code>if</code> 可省略（不筛选时）。掌握这个骨架，下面几种推导式都是同一个模子。</p>
 
   <h3>列表推导式</h3>
   <pre><code># 传统写法
@@ -287,7 +329,7 @@ results = [tool["name"] for tool in tools if tool["enabled"]]
 # 带条件转换
 statuses = ["success", "error", "success", "pending"]
 icons = ["✅" if s == "success" else "❌" for s in statuses]
-# ["✅", "❌", "✅", "⏳"]</code></pre>
+# ["✅", "❌", "✅", "❌"]   ← 三元只有两个分支：不是 success 的都归 ❌</code></pre>
 
   <h3>字典推导式</h3>
   <pre><code># 从 LLM 响应中提取工具调用
@@ -320,6 +362,7 @@ flat = [x for sublist in nested for x in sublist]
   <h2>6. dict 深度操作</h2>
 
   <h3>嵌套访问：安全取值</h3>
+  <p>LLM 的响应往往是"套娃"式的多层 dict/list。取深处的值时，最直接的写法是一层层用 <code>[]</code> 点进去——但只要中间<strong>任何一层缺失或结构不符</strong>，就会当场报错、程序崩掉。而 LLM 的输出并不总是稳定的，所以我们需要"取不到就返回默认值、绝不崩"的安全写法。</p>
   <pre><code># LLM 响应通常有多层嵌套
 response = {
     "choices": [{
@@ -334,23 +377,37 @@ response = {
     }]
 }
 
-# ❌ 危险的写法（任何一层缺失就报错）
-name = response["choices"][0]["message"]["tool_calls"][0]["function"]["name"]
+# ❌ 危险的写法（任何一层缺失就报错 KeyError / IndexError）
+name = response["choices"][0]["message"]["tool_calls"][0]["function"]["name"]</code></pre>
 
-# ✅ 安全的写法（封装为函数）
+  <p><strong>第一步：朴素的安全写法</strong>——把每层的 <code>[]</code> 换成 <code>.get(键, {})</code>（第 4 节讲过 <code>.get</code> 带默认值不会报错）。取不到就一路返回空 dict，最后再取值：</p>
+  <pre><code>name = (response.get("choices", [{}])[0]
+                .get("message", {})
+                .get("tool_calls", [{}])[0]
+                .get("function", {})
+                .get("name"))
+# 任何一层缺失，最终得到 None，而不是崩溃</code></pre>
+  <p>能用，但每层都手写 <code>.get(..., {})</code> 太啰嗦。<strong>第二步：封装成一个通用函数</strong> <code>safe_get</code>，把"要走的路径"当参数传进去。这里会用到两个新东西，先建立印象即可：</p>
+  <ul>
+    <li><code>isinstance(d, dict)</code>——判断 <code>d</code> <strong>是不是</strong>某种类型（这里问"它还是个 dict 吗"）。本课第 7 节会细讲。</li>
+    <li><code>*keys</code>——让函数<strong>接收任意多个</strong>路径参数，收集成一个元组。这是 <a href="0009-L05-functions-and-parameters.html">L05 · 函数参数</a> 的内容，这里知道"它能一次收一串 key"就够了。</li>
+  </ul>
+  <pre><code># ✅ 通用的安全访问函数（一次处理任意深度、dict 和 list 都支持）
 def safe_get(d, *keys, default=None):
-    for key in keys:
-        if isinstance(d, dict):
+    for key in keys:               # 沿着路径一层层往里走
+        if isinstance(d, dict):            # 当前是 dict → 用 .get 安全取
             d = d.get(key, default)
-        elif isinstance(d, list) and isinstance(key, int):
+        elif isinstance(d, list) and isinstance(key, int):  # 是 list 且 key 是下标
             d = d[key] if 0 <= key < len(d) else default
-        else:
+        else:                              # 走不下去了 → 返回默认值
             return default
     return d
 
-name = safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "name")</code></pre>
+name = safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "name")
+# "search"；任何一层不对，返回 None，不崩</code></pre>
 
   <h3>defaultdict：自动创建默认值</h3>
+  <p style="margin-bottom:.6rem;"><code>defaultdict</code>、<code>Counter</code>、<code>ChainMap</code> 都来自 Python 自带的 <strong><code>collections</code> 标准库</strong>——它是官方提供的一组"加强版容器"，不用另外安装，<code>import</code> 就能用。它们本质还是 dict，只是各自多了一个贴心的小能力，专治普通 dict 用起来啰嗦的场景。</p>
   <pre><code>from collections import defaultdict
 
 # 统计工具调用次数
@@ -642,6 +699,11 @@ collections 模块
       <li>dict 深度操作（safe_get/defaultdict/ChainMap）是处理 LLM 响应的必备技能</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经会用 dict/list 组织数据了。<strong>下一课</strong>用流程控制让数据「流动」起来——分支、循环，以及把数据拼成 Prompt 喂给 LLM。 <a href="0008-L04-control-flow-and-prompt.html">L04 · 流程控制与 Prompt 构造 →</a></span>
+  </div>
+
 </div>
 
 

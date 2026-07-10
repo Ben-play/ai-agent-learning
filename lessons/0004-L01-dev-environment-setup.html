@@ -108,6 +108,11 @@
   <strong>你可能已经有部分环境了</strong>——没关系，按步骤检查，缺什么补什么。不需要全部重装。
 </div>
 
+<div class="card" style="border-left: 4px solid var(--accent-bright);">
+  <strong>💡 为什么这课重要？</strong>
+  <p>写 Agent 之前，得先有一套趁手的工具。这一课不讲编程，讲的是<strong>把地基打平</strong>：装对 Python 版本、用现代包管理器（uv）、把每个项目的依赖隔离开、把 API Key 安全地存起来。这些看似琐碎，但少了任何一环，后面调 LLM API 时就会卡在"包装不上""key 泄露""版本冲突"这类和业务无关的坑里。花 15 分钟把环境理顺，是为后面 15 节课省下无数个抓狂的小时。</p>
+</div>
+
 <h2>本课目标</h2>
 <ul>
   <li>✅ 确认 Python 3.11+ 已安装</li>
@@ -394,6 +399,8 @@ if __name__ == "__main__":
     <li>运行：<code>uv run main.py</code></li>
     <li>看到 3 个 ✅ 就算成功！</li>
   </ol>
+  <p style="font-size:0.9rem;margin-top:0.8rem;">💡 上面这行看不懂没关系：<br>
+  <code>print(... if len(api_key) &gt; 10 else ...)</code> 是<strong>三元表达式</strong>——"条件成立用前者，否则用后者"。这里是说：key 长度超过 10 位（像真 key），就只显示前 10 位 <code>api_key[:10]</code>（<code>[:10]</code> 是<strong>切片</strong>，取前 10 个字符，避免把完整 key 打到屏幕上）；否则原样打印提示你还没配。这两个语法 L03/L04 会正式讲，这里照抄能跑就行。</p>
 </div>
 
 <h2>环境检查清单</h2>
@@ -422,7 +429,7 @@ if __name__ == "__main__":
 <h2>小结</h2>
 <table>
   <tr><th>工具</th><th>作用</th><th>为什么选它</th></tr>
-  <tr><td>Python 3.12</td><td>编程语言</td><td>最新稳定版，性能好</td></tr>
+  <tr><td>Python 3.11+</td><td>编程语言</td><td>课程要求 3.11 或更高（用当时的稳定版即可）</td></tr>
   <tr><td>uv</td><td>包管理</td><td>比 pip 快 10-100 倍，2025 标准</td></tr>
   <tr><td>VS Code</td><td>编辑器</td><td>生态最好，Python 支持最强</td></tr>
   <tr><td>pydantic</td><td>数据验证</td><td>Agent 工具定义的核心</td></tr>

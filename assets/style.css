@@ -1712,3 +1712,27 @@ a.lesson-qa-link { border-bottom: 1px solid color-mix(in srgb, var(--accent-brig
   .think-q-answer { animation: none; }
   .think-q > summary::before { transition: none; }
 }
+
+/* 课末「交棒下一课」过渡卡：承前启后，给新手连贯感 */
+.next-lesson {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1.1rem;
+  background: color-mix(in srgb, var(--accent-light) 30%, var(--card-bg));
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  font-size: 0.94rem;
+  color: var(--fg-soft);
+  line-height: 1.6;
+}
+.next-lesson-icon { font-size: 1.15rem; flex: 0 0 auto; }
+.next-lesson-body { flex: 1 1 auto; }
+.next-lesson-body strong { color: var(--accent); font-weight: 700; }
+.next-lesson a { color: var(--accent-bright); font-weight: 600; text-decoration: none; border-bottom: 1px solid transparent; }
+.next-lesson a:hover { border-bottom-color: var(--accent-bright); }
+[data-theme="dark"] .next-lesson {
+  background: color-mix(in srgb, var(--accent-light) 45%, var(--card-bg));
+}

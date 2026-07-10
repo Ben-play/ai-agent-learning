@@ -148,6 +148,7 @@ tools = [SearchTool(), CalcTool()]
 for tool in tools:
     result = tool(**args)      # 同一接口，各自的实现 —— 这就是多态</code></pre>
   <p><strong>组合优于继承</strong>：能用"把对象装进另一个对象"解决的，就别用深继承。比如 Agent <strong>持有</strong>一组工具（组合），而不是去<strong>继承</strong>工具。继承层级太深会让代码难懂难改。</p>
+  <p style="font-size:.92rem;color:var(--fg-soft);">💡 上面示意用 <code>list</code> 遍历，是为了直观体会"同一循环调用不同工具"的多态。而实战里 Agent 拿到的是 LLM 给的<strong>工具名</strong>，需要"按名字找工具"——所以本课练习会把 <code>tools</code> 存成 <strong><code>dict</code></strong>（<code>{name: tool}</code>），用 <code>tools[call["name"]]</code> 取。结构变了，但"统一接口调用"的多态思想不变。</p>
 </div>
 
 <div class="section">
@@ -296,6 +297,11 @@ for call in calls:
       <li>组合优于继承：Agent 持有工具，而非继承工具</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经懂了工具对象的骨架（多态 + __call__）。<strong>下一课</strong>处理它们进出的数据——文件读写、JSON 序列化，以及流式响应的逐行解析。 <a href="0013-L09-files-json-dict.html">L09 · 文件、JSON 与 Dict 深度操作 →</a></span>
+  </div>
+
 </div>
 
 </main>

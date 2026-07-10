@@ -66,6 +66,7 @@
 
 <div class="section">
   <h2>2. async / await 基础</h2>
+  <p>知道了"async 适合等 I/O"，来看它的两个关键字怎么写。<code>async def</code> 定义的不是普通函数，而是<strong>协程</strong>（一个"可以中途暂停、之后再续"的函数）；<code>await</code> 就是那个暂停点——遇到它就<strong>让出</strong>控制权去干别的，等这件 I/O 完成再回来。最外层用 <code>asyncio.run()</code> 启动整个协程。</p>
   <pre><code>import asyncio
 
 async def call_llm(prompt):          # async def 定义协程
@@ -115,6 +116,7 @@ asyncio.run(main())</code></pre>
 
 <div class="section">
   <h2>4. 限流、超时与异步上下文</h2>
+  <p>上一节的 <code>gather</code> 能一口气并发，但"一口气"太猛也会出事——把对方服务打挂、触发限流、或某个请求卡死拖住全局。所以生产里 <code>gather</code> 之外还要三道护栏：<strong>限流</strong>（Semaphore 控制同时在飞的数量）、<strong>超时</strong>（wait_for 给单个任务设上限）、<strong>异步上下文</strong>（<code>async with</code> 确保连接等资源用完即放）。</p>
   <h3>Semaphore：限制并发数（别把对方打挂 / 别触发限流）</h3>
   <pre><code>sem = asyncio.Semaphore(5)           # 最多同时 5 个
 
@@ -245,9 +247,9 @@ print(asyncio.run(batch(prompts)))
       <details class="think-q">
         <summary><span class="think-q-tag">Q2</span>把 <code>gather</code> 换成逐个 <code>await</code>，7 个请求耗时会变成多少？</summary>
         <div class="think-q-answer">
-          <p><strong>【结论】</strong>会从并发的≈0.2s 变成串行的<strong>≈1.4s</strong>（7 × 0.2s，逐个相加）。</p>
+          <p><strong>【结论】</strong>会从并发的<strong>≈0.6s</strong> 变成串行的<strong>≈1.4s</strong>（7 × 0.2s，逐个相加）。</p>
           <p>逐个 <code>await</code> 是串行：发第 1 个、等它 0.2s 回来，再发第 2 个……7 个就是 7 段 0.2s 首尾相接，总计≈1.4s。这时 <code>async</code> 的并发优势完全没用上。</p>
-          <p><code>await asyncio.gather(*(call_one(p, sem) for p in prompts))</code> 则同时发起所有协程、一起等，总耗时≈最慢的那个≈0.2s（本例限流 3、请求数 7，实际约 3 批≈0.6s）。</p>
+          <p><code>await asyncio.gather(*(call_one(p, sem) for p in prompts))</code> 则同时发起所有协程、一起等——若不限流，总耗时≈最慢的那个≈0.2s；但本例限流 3、请求数 7，要分约 3 批跑，实际 <strong>≈0.6s</strong>。无论哪种，都远快于串行的 1.4s。</p>
           <p>要点：<code>await</code> 单个只是"拿到这个协程的结果"，本身不带来并发；真正的并发来自 <code>gather</code>（或 <code>TaskGroup</code>）把多个协程一起调度。</p>
         </div>
       </details>

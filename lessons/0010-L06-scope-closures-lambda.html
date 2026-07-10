@@ -108,6 +108,7 @@ print(counter(20))   # {'calls': 2, 'total_ms': 30}  ← 状态被记住了</cod
 
 <div class="section">
   <h2>3. Lambda + 高阶函数：处理列表数据</h2>
+  <p>闭包让你看到：在 Python 里<strong>函数本身也是"值"</strong>——能被返回、能被记住。顺着这个思路再进一步：函数既然是值，就能<strong>当参数传给另一个函数</strong>。这一节的 <code>sorted</code>/<code>map</code>/<code>filter</code> 就是这么用的，而 lambda 正是"随手写个小函数当参数"的最简方式。</p>
   <p>lambda 是"一次性的小函数"，最常配 <code>sorted</code> / <code>map</code> / <code>filter</code> 用来处理 LLM 返回的列表：</p>
   <pre><code>tools = [
     {"name": "search", "cost": 10},
@@ -282,6 +283,11 @@ print(track("calc", 15))
       <li>lambda + sorted(key=) / map / filter / reduce / partial 处理列表数据</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经懂了闭包这种「带记忆的函数」。<strong>下一课</strong>用类给数据和行为一个正式的家——用 @dataclass 干净地给 Agent 的消息、工具调用建模。 <a href="0011-L07-classes-and-dataclass.html">L07 · 类、对象与 @dataclass →</a></span>
+  </div>
+
 </div>
 
 </main>

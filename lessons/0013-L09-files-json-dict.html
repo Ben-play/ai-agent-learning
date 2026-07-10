@@ -78,6 +78,7 @@ print(p.read_text(encoding="utf-8"))</code></pre>
 
 <div class="section">
   <h2>2. JSON 序列化与反序列化</h2>
+  <p>会读写文件了，但文件里<strong>存什么格式</strong>？Agent 世界的答案几乎总是 <strong>JSON</strong>——配置、LLM 响应、工具参数都是它。问题是：Python 内存里是 dict/list 对象，文件里是纯文本字符串，两者要互相转换。<strong>对象→字符串叫序列化，字符串→对象叫反序列化</strong>，靠的就是 <code>json</code> 模块：</p>
   <pre><code>import json
 
 obj = {"name": "search", "args": {"q": "python"}, "ok": True}
@@ -111,7 +112,7 @@ with open("c.json", "r", encoding="utf-8") as f:
   <pre><code>import json
 
 # 模拟流：每行一个事件，中间可能有空行或坏行
-stream = '{"tok":"Hel"}\n{"tok":"lo"}\n\n{坏行}\n{"done":true}\n'
+stream = '{"tok":"Hel"}\n{"tok":"lo"}\n\n{oops bad line}\n{"done":true}\n'
 
 tokens = []
 done = False
@@ -306,6 +307,11 @@ print(parse_stream(stream))
       <li>大量序列化才考虑 orjson，别过早优化</li>
     </ul>
   </div>
+  <div class="next-lesson">
+    <span class="next-lesson-icon">🎯</span>
+    <span class="next-lesson-body">你已经会解析 JSON 和流式数据了。<strong>下一课</strong>回答「解析出错了怎么办」——异常处理、分级日志，以及用上下文管理器保证资源清理。 <a href="0014-L10-exceptions-logging-context.html">L10 · 异常处理、日志与上下文管理器 →</a></span>
+  </div>
+
 </div>
 
 </main>
