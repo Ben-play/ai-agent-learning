@@ -189,6 +189,42 @@ print(sys.getrefcount(a))  # 2</code></pre>
 
   <p>前面三节讲的是"单个值"的性质（引用、可变性、回收）。但 Agent 代码里的数据几乎都是<strong>成组</strong>的——一串工具、一组消息、一份配置。Python 用四种容器来装它们，各有各的取舍：<strong>list</strong>（有序可变）、<strong>dict</strong>（键值查找）、<strong>tuple</strong>（不可变、能当 key）、<strong>set</strong>（去重）。前面学的"可变/不可变"正好解释了它们的区别。</p>
 
+  <h3>先学会一眼区分：怎么创建、括号长什么样</h3>
+  <p>四种容器最容易让初学者懵的，是<strong>它们的字面量括号很像</strong>——尤其 <code>{}</code> 到底是 dict 还是 set？下面这张表一次看清「怎么写出来、靠什么认出来」：</p>
+  <table>
+    <tr>
+      <th>容器</th><th>字面量写法</th><th>一眼认出的特征</th><th>有序?</th><th>可变?</th><th>可重复?</th>
+    </tr>
+    <tr>
+      <td><strong>list</strong></td><td><code>[1, 2, 3]</code></td><td>方括号 <code>[]</code></td><td>✅</td><td>✅</td><td>✅</td>
+    </tr>
+    <tr>
+      <td><strong>tuple</strong></td><td><code>(1, 2, 3)</code></td><td>圆括号 <code>()</code>（认<strong>逗号</strong>）</td><td>✅</td><td>❌</td><td>✅</td>
+    </tr>
+    <tr>
+      <td><strong>dict</strong></td><td><code>{"a": 1, "b": 2}</code></td><td>花括号 + <strong>冒号</strong> <code>键:值</code></td><td>✅</td><td>✅</td><td>key 不可重复</td>
+    </tr>
+    <tr>
+      <td><strong>set</strong></td><td><code>{1, 2, 3}</code></td><td>花括号、<strong>无冒号</strong>、只有值</td><td>❌</td><td>✅</td><td>❌</td>
+    </tr>
+  </table>
+  <p><strong>区分口诀：</strong>看括号 → <code>[]</code> 是 list、<code>()</code> 是 tuple；花括号 <code>{}</code> 再看里面——<strong>有冒号 <code>:</code> 是 dict，没冒号只有值是 set</strong>。</p>
+  <pre><code># 除了字面量，也能用「构造函数名」创建（还能做类型转换，见第 7 节）
+list("abc")        # ['a', 'b', 'c']
+tuple([1, 2])      # (1, 2)
+dict(a=1, b=2)     # {'a': 1, 'b': 2}
+set([1, 1, 2])     # {1, 2}   ← 顺带去重</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>⚠️ 两个必踩的坑（初学者 90% 会中）：</strong>
+    <ul>
+      <li><strong><code>{}</code> 是空 dict，不是空 set！</strong>空集合只能写 <code>set()</code>。因为花括号被 dict 占了，Python 没法从空 <code>{}</code> 分辨你要哪个，默认给 dict。<br>
+      <code>type({})</code> → <code>dict</code>；<code>type(set())</code> → <code>set</code>。</li>
+      <li><strong>单元素 tuple 必须带逗号：<code>(1,)</code>。</strong><code>(1)</code> 只是"加了括号的数字 1"，类型是 <code>int</code>——是<strong>逗号</strong>而非括号造就了 tuple。<br>
+      <code>type((1))</code> → <code>int</code>；<code>type((1,))</code> → <code>tuple</code>。</li>
+    </ul>
+  </div>
+
   <h3>list — 有序、可变、可重复</h3>
   <pre><code># 创建
 tools = ["search", "calculator", "weather"]
@@ -292,6 +328,22 @@ approved = requested & allowed  # {"search", "weather"}</code></pre>
     </div>
     <div class="quiz-explanation">
       dict 的 key 必须是"可哈希（hashable）"的——通俗说就是<strong>不可变</strong>。tuple <code>(1,2,3)</code> 不可变，能当 key；list、dict、set 都可变，不行。<br>（记忆钩子：能不能当 key，看它<strong>会不会变</strong>。这也呼应第 2 节的可变/不可变。）注意：含可变元素的 tuple 如 <code>(1, [2,3])</code> 也不行。
+    </div>
+  </div>
+
+  <div class="quiz" data-quiz="q5">
+    <div class="quiz-question">
+      <span class="quiz-q">Q</span>
+      <code>type({})</code> 的结果是什么？
+    </div>
+    <div class="quiz-options">
+      <button data-answer="correct">dict（空字典）</button>
+      <button data-answer="wrong">set（空集合）</button>
+      <button data-answer="wrong">tuple（空元组）</button>
+      <button data-answer="wrong">None（啥都没）</button>
+    </div>
+    <div class="quiz-explanation">
+      <code>{}</code> 是<strong>空 dict</strong>，不是空 set——花括号被 dict 占用了。要建空集合只能写 <code>set()</code>。这是初学者最常踩的坑：<code>type({})</code> → <code>dict</code>，<code>type(set())</code> → <code>set</code>。
     </div>
   </div>
 </div>
@@ -614,7 +666,7 @@ print(safe_get(response, "choices", 99, "message", "content"))      # None</code
 │   └── 默认参数陷阱
 └── 引用计数 → 垃圾回收
 
-四大容器
+四大容器（认括号：[]=list ()=tuple {冒号}=dict {无冒号}=set；空集合=set()）
 ├── list：有序、可变、可重复
 │   └── 切片：messages[-3:]
 ├── dict：键值对、有序（3.7+）
