@@ -93,7 +93,37 @@ print(x)</code></pre>
 <div class="section">
   <h2>2. 可变与不可变类型</h2>
 
-  <p>上一节看到：多个变量可以指向<strong>同一个对象</strong>。那么改动这个对象，会不会"牵连"其他变量？<strong>答案取决于这个对象能不能被改</strong>——这就引出了 Python 类型的一条根本分界：可变 vs 不可变。</p>
+  <p>上一节看到：多个变量可以指向<strong>同一个对象</strong>。那么改动这个对象，会不会"牵连"其他变量？<strong>答案取决于这个对象能不能被改</strong>——这就引出了 Python 类型的一条根本分界：可变 vs 不可变。但在讲可变/不可变之前，先认清楚 Python 最基础的四种"标量"类型——它们都是不可变的，是后面一切容器的地基。</p>
+
+  <h3>四种标量类型：是什么、怎么创建、怎么区分</h3>
+  <table>
+    <tr>
+      <th>类型</th><th>字面量示例</th><th>含义</th>
+    </tr>
+    <tr>
+      <td><code>int</code></td><td><code>42</code></td><td>整数</td>
+    </tr>
+    <tr>
+      <td><code>float</code></td><td><code>3.14</code></td><td>小数（浮点数）</td>
+    </tr>
+    <tr>
+      <td><code>str</code></td><td><code>"42"</code></td><td>文本（字符串）</td>
+    </tr>
+    <tr>
+      <td><code>bool</code></td><td><code>True</code></td><td>真/假</td>
+    </tr>
+  </table>
+  <p><strong>创建：</strong>直接写字面量即可——<code>42</code> 是 int，<code>3.14</code> 是 float，<code>"42"</code>（带引号）是 str，<code>True</code>/<code>False</code>（注意<strong>首字母大写</strong>，且不带引号）是 bool。</p>
+  <p><strong>怎么区分：</strong><code>42</code> 和 <code>"42"</code> 长得像，但一个是数字一个是文本——加引号就是 str，不加就是数字。区分不确定时，用 <code>type()</code> 或 <code>isinstance()</code> 检查：</p>
+  <pre><code>type(42)          # &lt;class 'int'&gt;
+type("42")        # &lt;class 'str'&gt;
+isinstance(42, int)     # True
+isinstance("42", int)   # False
+
+# 类型之间不会自动"猜"你的意图，转换失败会直接报错
+int("abc")        # ❌ ValueError: invalid literal for int() with base 10: 'abc'
+# 异常处理（try/except）会在后续课系统讲，这里只需要知道"转换可能失败"</code></pre>
+  <p><strong>何时用：</strong>数量、计数用 int；测量值、比例（如 <code>temperature=0.7</code>）用 float；文本、名字、JSON 里的字符串值用 str；开关、条件判断用 bool。四种标量都是<strong>不可变</strong>——这就引出下面的分类：</p>
   <p>Python 的数据类型分为两大阵营：</p>
 
   <table>
@@ -161,7 +191,7 @@ def add_item(item, lst=None):
 <div class="section">
   <h2>3. 引用计数与垃圾回收</h2>
 
-  <p>Python 用引用计数管理内存。每个对象有一个计数器，记录有多少变量指向它：</p>
+  <p><strong>CPython</strong>（最常用的 Python 实现）主要用引用计数管理内存，辅以循环垃圾回收处理循环引用；其他 Python 实现（如 PyPy）不保证对象在引用归零时立即释放。每个对象有一个计数器，记录有多少变量指向它：</p>
 
   <pre><code>import sys
 
@@ -174,12 +204,12 @@ print(sys.getrefcount(a))  # 3
 del b
 print(sys.getrefcount(a))  # 2</code></pre>
 
-  <p>当引用计数降为 0，对象被立即回收。</p>
+  <p>当引用计数降为 0，对象被回收（CPython 下通常是立即回收；这是实现细节，不是语言规范保证）。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
     <p>"Python 的垃圾回收机制是什么？"</p>
-    <p>答：主要靠引用计数，辅以分代回收处理循环引用。不可变对象（int/str）有缓存池优化。</p>
+    <p>答：以 CPython 为例，主要靠引用计数，辅以分代回收处理循环引用。小整数、短字符串等有缓存/驻留优化，但这是 CPython 的实现优化，不是语言保证，其他实现可以不这样做。</p>
   </div>
 </div>
 
@@ -357,7 +387,7 @@ approved = requested & allowed  # {"search", "weather"}</code></pre>
   <p><strong>先看懂它怎么读。</strong>推导式就是把"建一个空列表 → for 循环 → 满足条件就 append"这三步，<strong>压成一行</strong>。它的骨架是：</p>
   <pre><code>[  表达式   for 变量 in 可迭代对象   if 条件  ]
    └拿什么┘  └───── 遍历谁 ──────┘  └筛选┘</code></pre>
-  <p>三块对照普通循环，一一对应：</p>
+  <p>三块对照普通循环，一一对应（<code>for</code>/<code>if</code> 的完整语法会在 <a href="0008-L04-control-flow-and-prompt.html">L04 · 流程控制</a> 系统讲解；这里只需要按图读取"三步对应"，本课不考循环控制细节）：</p>
   <pre><code># 普通写法（三步）
 result = []                    #  []        ← 建列表
 for x in items:                #  for x in items
@@ -439,12 +469,12 @@ name = response["choices"][0]["message"]["tool_calls"][0]["function"]["name"]</c
                 .get("function", {})
                 .get("name"))
 # 任何一层缺失，最终得到 None，而不是崩溃</code></pre>
-  <p>能用，但每层都手写 <code>.get(..., {})</code> 太啰嗦。<strong>第二步：封装成一个通用函数</strong> <code>safe_get</code>，把"要走的路径"当参数传进去。这里会用到两个新东西，先建立印象即可：</p>
+  <p>能用，但每层都手写 <code>.get(..., {})</code> 太啰嗦。<strong>朴素的 <code>.get()</code> 链是本课必学</strong>——请务必掌握上面这种写法。下面再介绍一个更通用的封装 <code>safe_get(d, *keys)</code>，作为<strong>进阶阅读</strong>：它把"要走的路径"当参数传进去，用到了两个新东西：</p>
   <ul>
     <li><code>isinstance(d, dict)</code>——判断 <code>d</code> <strong>是不是</strong>某种类型（这里问"它还是个 dict 吗"）。本课第 7 节会细讲。</li>
-    <li><code>*keys</code>——让函数<strong>接收任意多个</strong>路径参数，收集成一个元组。这是 <a href="0009-L05-functions-and-parameters.html">L05 · 函数参数</a> 的内容，这里知道"它能一次收一串 key"就够了。</li>
+    <li><code>*keys</code>——让函数<strong>接收任意多个</strong>路径参数，收集成一个元组。这是 <a href="0009-L05-functions-and-parameters.html">L05 · 函数参数</a> 的内容，本课<strong>不要求你自己写出</strong> <code>*keys</code> 这种写法，能读懂、会用即可——L05 学完函数参数后再要求独立实现。</li>
   </ul>
-  <pre><code># ✅ 通用的安全访问函数（一次处理任意深度、dict 和 list 都支持）
+  <pre><code># ✅ 通用的安全访问函数（进阶阅读，L05 后再要求独立实现）
 def safe_get(d, *keys, default=None):
     for key in keys:               # 沿着路径一层层往里走
         if isinstance(d, dict):            # 当前是 dict → 用 .get 安全取
@@ -556,9 +586,13 @@ isinstance(42, (int, float))  # True</code></pre>
 
   <div class="card">
     <h3>练习：解析 LLM 响应</h3>
-    <p>给定一段模拟的 LLM JSON 响应，完成以下 5 个任务。<strong>先自己写，再看答案。</strong></p>
+    <p>给定一段模拟的、<strong>已经反序列化成 Python dict/list 的 LLM 响应</strong>，完成以下 5 个任务。<strong>先自己写，再看答案。</strong></p>
+    <p style="font-size:.92rem;color:var(--fg-soft);">注意区分：下面的 <code>response</code> 已经是 Python 对象（可以直接用 <code>[]</code>/<code>.get()</code> 索引），但其中 <code>function.arguments</code> 字段的值仍是一段 <strong>JSON 文本（字符串）</strong>，所以需要 <code>json.loads()</code> 才能变成 Python dict。两者的字面写法也不同：</p>
+    <pre><code>Python: None / True / False
+JSON:   null / true / false</code></pre>
+    <p style="font-size:.92rem;color:var(--fg-soft);"><code>json.loads()</code> 的完整用法会在 <a href="0013-L09-files-json-dict.html">L09</a> 系统讲解；本课任务 2/3 直接调用下面给定的辅助函数 <code>parse_arguments(tc)</code>，只练习 dict/list 与推导式，不要求你独立掌握 JSON 解析。</p>
 
-    <pre><code># 模拟的 LLM 响应
+    <pre><code># 模拟的、已经反序列化成 Python dict/list 的 LLM 响应
 response = {
     "id": "chatcmpl-abc123",
     "object": "chat.completion",
@@ -591,13 +625,19 @@ response = {
     "usage": {"prompt_tokens": 120, "completion_tokens": 45, "total_tokens": 165}
 }</code></pre>
 
+    <p><strong>已提供的 JSON 辅助代码：</strong>直接复制使用，不需要修改。它负责把一个工具调用中的 <code>arguments</code> JSON 文本转成 Python dict。</p>
+    <pre><code>import json
+
+def parse_arguments(tc):
+    return json.loads(tc["function"]["arguments"])</code></pre>
+
     <h4>任务清单</h4>
     <ol>
       <li>提取 <code>response_id</code>、<code>finish_reason</code>、<code>total_tokens</code></li>
-      <li>提取所有工具调用，存为 list of dict（每个包含 call_id, name, arguments）</li>
-      <li>用推导式重写任务 2</li>
+      <li>提取所有工具调用，存为 list of dict（每个包含 call_id、name、arguments）；arguments 直接调用 <code>parse_arguments(tc)</code> 获得</li>
+      <li>用推导式重写任务 2，继续调用 <code>parse_arguments(tc)</code></li>
       <li>用 defaultdict 统计工具调用次数</li>
-      <li>实现 safe_get() 函数，安全访问嵌套 dict</li>
+      <li>使用给定的 <code>safe_get(d, *keys, default=None)</code>（进阶阅读部分已给出实现），补测试用例验证不同路径下的取值行为——不要求你从零实现 <code>*keys</code> 这种写法（L05 学完函数参数后再要求独立实现）</li>
     </ol>
 
     <details>
@@ -609,21 +649,19 @@ finish_reason = response["choices"][0]["finish_reason"]
 total_tokens = response["usage"]["total_tokens"]</code></pre>
 
       <h4>任务 2：提取工具调用</h4>
-      <pre><code>import json
-
-tool_calls = response["choices"][0]["message"]["tool_calls"]
+      <pre><code>tool_calls = response["choices"][0]["message"]["tool_calls"]
 parsed_calls = []
 for tc in tool_calls:
     parsed_calls.append({
         "call_id": tc["id"],
         "name": tc["function"]["name"],
-        "arguments": json.loads(tc["function"]["arguments"])
+        "arguments": parse_arguments(tc)
     })</code></pre>
 
       <h4>任务 3：推导式版本</h4>
       <pre><code>parsed_calls = [
     {"call_id": tc["id"], "name": tc["function"]["name"],
-     "arguments": json.loads(tc["function"]["arguments"])}
+     "arguments": parse_arguments(tc)}
     for tc in tool_calls
 ]</code></pre>
 
@@ -635,9 +673,9 @@ for tc in tool_calls:
     call_count[tc["function"]["name"]] += 1
 print(dict(call_count))</code></pre>
 
-      <h4>任务 5：safe_get 实现</h4>
-      <pre><code>def safe_get(d, *keys, default=None):
-    current = d
+      <h4>任务 5：使用给定的 safe_get，补测试路径</h4>
+      <pre><code># 使用第 6 节已给出的 safe_get 实现（不要求自己写 *keys）
+def safe_get(d, *keys, default=None):
     for key in keys:
         if isinstance(d, dict):
             d = d.get(key, default)
@@ -647,9 +685,11 @@ print(dict(call_count))</code></pre>
             return default
     return d
 
-# 测试
-print(safe_get(response, "choices", 0, "message", "content"))       # None
-print(safe_get(response, "choices", 99, "message", "content"))      # None</code></pre>
+# 测试：覆盖正常路径、越界下标、default 参数
+print(safe_get(response, "choices", 0, "message", "content"))                  # None
+print(safe_get(response, "choices", 99, "message", "content"))                 # None
+print(safe_get(response, "choices", 99, default="N/A"))                        # "N/A"
+print(safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "name"))  # "web_search"</code></pre>
     </details>
   </div>
 </div>

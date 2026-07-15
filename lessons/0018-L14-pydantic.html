@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Pydantic 数据验证</h1>
     <p class="subtitle">Pydantic 把类型变成运行时校验 — 也是生成 Tool Schema 的标准工具</p>
@@ -159,7 +159,19 @@ SearchInput.model_json_schema()
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p><code>model_json_schema()</code> 输出的正是 OpenAI/Anthropic 工具定义里 <code>parameters</code> 字段要的东西。回想 L11 你用 <code>inspect</code> 手写的简易 Schema —— 真实框架就是用 Pydantic 生成这份标准、带校验、带描述的 JSON Schema。<strong>这条线到此闭环。</strong></p>
+    <p><code>model_json_schema()</code> 输出的是模型参数的标准 JSON Schema，但 <strong>OpenAI 和 Anthropic 外层字段不同</strong>（L11 提过）：OpenAI 把它塞进 <code>function.parameters</code>；Anthropic 直接塞进顶层 <code>input_schema</code>。同一份 Schema，两家各自的 adapter 负责套外壳，字段名不能混用。回想 L11 你用 <code>inspect</code> 手写的简易 Schema —— 真实框架就是用 Pydantic 生成这份标准、带校验、带描述的 JSON Schema，再交给各厂商 adapter。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>⚠️ Schema 导出不执行 validator：</strong>
+    <p><code>model_json_schema()</code> 只是读类定义生成一份"参数说明书"，<strong>它不会调用任何 <code>@field_validator</code></strong>——validator 只在真正<strong>构造 BaseModel 实例</strong>时才执行。也就是说：把 Schema 发给 LLM、拿到 LLM 回填的参数后，执行工具前必须显式构造一次模型：</p>
+    <pre><code># 沿用上一节带 must_be_known validator 的 ToolCall
+schema = ToolCall.model_json_schema()    # 正常导出；不会调用 must_be_known
+print(schema["properties"]["name"])
+
+ToolCall(name="hack")                   # 构造实例才调用 must_be_known
+# ❌ ValidationError: 未知工具: hack</code></pre>
+    <p>所以工具 registry 不能只存 <code>input_schema</code> 这份 dict，必须<strong>保存模型类本身（或对应的验证函数）</strong>。把 Schema 发给 LLM、收到原始参数后，执行工具前仍要用 <code>Model(**raw_args)</code> 构造实例，校验通过后才能交给执行器。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -194,10 +206,16 @@ SearchInput.model_json_schema()
     <pre><code>Pydantic v2（pip install pydantic）
 ├── BaseModel → 创建即校验 + 类型转换（失败抛 ValidationError）
 ├── Field(默认/描述/约束 ge le min_length...) → 描述进 Schema
-├── @field_validator + @classmethod → 自定义校验
+├── @field_validator + @classmethod → 自定义校验（仅在构造实例时执行）
 ├── 嵌套模型 → 递归校验
 ├── 序列化：model_dump() / model_dump_json()
-└── model_json_schema() → 导出 Tool Schema 喂 LLM ★
+└── model_json_schema() → 导出参数 Schema（只是描述，不执行 validator）★
+
+Tool Schema 落地到厂商请求
+├── model_json_schema() 结果是"中立"参数 Schema
+├── OpenAI → 塞进 function.parameters
+├── Anthropic → 塞进顶层 input_schema
+└── 执行前必须 Model(**raw_args) 重新构造实例做校验，registry 需保存模型类
 
 dataclass vs Pydantic
 ├── 内部数据 → dataclass（轻、零依赖）
@@ -208,19 +226,21 @@ dataclass vs Pydantic
 <div class="section">
   <h2>实战练习</h2>
   <div class="card">
-    <h3>练习：为 3 个工具设计 Pydantic Schema</h3>
-    <p>为三个真实工具定义 Pydantic 输入模型，并导出 JSON Schema。<strong>先自己写，再看答案。</strong></p>
+    <h3>练习：为 3 个工具设计 Pydantic Schema，并适配两家厂商</h3>
+    <p>为三个真实工具定义 Pydantic 输入模型，导出 JSON Schema，再分别包装成 OpenAI / Anthropic 的工具定义格式。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
       <li><code>SearchInput</code>：query（必填、非空）、max_results（默认 5、1~50）、lang（可选，Literal["zh","en"]，默认 "zh"）</li>
       <li><code>ReadFileInput</code>：path（必填）、encoding（默认 "utf-8"）</li>
-      <li><code>CalcInput</code>：expression（必填、非空）；加 <code>@field_validator</code> 禁止包含 "import"（防注入）</li>
-      <li>对每个模型调用 <code>model_json_schema()</code>，模拟"注册工具清单喂给 LLM"</li>
+      <li><code>CalcInput</code>：<strong>不要</strong>用自由表达式字符串（不安全也难校验）；改用明确字段 <code>a: float</code>、<code>b: float</code>、<code>operation: Literal["add","subtract","multiply","divide"]</code></li>
+      <li>写一个 <code>calculate(validated: CalcInput)</code> 执行器：用 <code>if/elif</code> 按 <code>operation</code> 分支计算，<strong>不使用 <code>eval</code></strong>；除数为 0 时抛业务级 <code>ValueError</code>（这是运行时业务错误，不是 Pydantic 校验错误）</li>
+      <li>对每个模型调用 <code>model_json_schema()</code> 生成中立条目 <code>{"name", "description", "input_schema", "model"}</code>；<code>description</code> 必须显式传入非空工具说明，<code>model</code> 存模型类本身供执行前重新构造校验</li>
+      <li>写 <code>to_openai_schema(entry)</code> / <code>to_anthropic_schema(entry)</code> 两个 adapter，分别对照 L11 的写法</li>
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
       <pre><code>from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 class SearchInput(BaseModel):
     query: str = Field(..., min_length=1, description="搜索关键词")
@@ -232,53 +252,87 @@ class ReadFileInput(BaseModel):
     encoding: str = Field("utf-8", description="文本编码")
 
 class CalcInput(BaseModel):
-    expression: str = Field(..., min_length=1, description="数学表达式")
+    a: float = Field(..., description="第一个操作数")
+    b: float = Field(..., description="第二个操作数")
+    operation: Literal["add", "subtract", "multiply", "divide"] = Field(..., description="运算类型")
 
-    @field_validator("expression")
-    @classmethod
-    def no_import(cls, v: str) -&gt; str:
-        if "import" in v:
-            raise ValueError("表达式不允许包含 import")
-        return v
+def calculate(validated: CalcInput) -&gt; float:
+    a, b, op = validated.a, validated.b, validated.operation
+    if op == "add":
+        return a + b
+    if op == "subtract":
+        return a - b
+    if op == "multiply":
+        return a * b
+    if op == "divide":
+        if b == 0:
+            raise ValueError("除数不能为 0")   # 业务错误，不是 ValidationError
+        return a / b
+    raise ValueError(f"未知运算: {op}")
 
-
-# 模拟"工具清单"喂给 LLM
-import json
+# 每个工具显式提供清晰描述；model 类在执行前用于重新校验
 TOOLS = {
-    "search": SearchInput,
-    "read_file": ReadFileInput,
-    "calc": CalcInput,
+    "search": (SearchInput, "按关键词搜索网页并返回限定条数的结果"),
+    "read_file": (ReadFileInput, "按指定编码读取文本文件"),
+    "calc": (CalcInput, "对两个数执行加、减、乘或除运算"),
 }
-schemas = [
-    {"name": name, "parameters": model.model_json_schema()}
-    for name, model in TOOLS.items()
-]
-print(json.dumps(schemas, ensure_ascii=False, indent=2))
 
-# 校验演示
-print(SearchInput(query="ai", max_results="8").model_dump())
-# {'query': 'ai', 'max_results': 8, 'lang': 'zh'}  ← "8" 自动转 int
-# CalcInput(expression="__import__('os')")  → ValidationError</code></pre>
+def make_entry(name, model, description):
+    description = description.strip()
+    if not description:
+        raise ValueError(f"工具 {name} 缺少 description")
+    return {"name": name, "description": description,
+            "input_schema": model.model_json_schema(), "model": model}
+
+entries = {
+    name: make_entry(name, model, description)
+    for name, (model, description) in TOOLS.items()
+}
+
+def to_openai_schema(entry):
+    return {"type": "function", "function": {
+        "name": entry["name"], "description": entry["description"],
+        "parameters": entry["input_schema"],       # OpenAI 叫 parameters
+    }}
+
+def to_anthropic_schema(entry):
+    return {
+        "name": entry["name"], "description": entry["description"],
+        "input_schema": entry["input_schema"],     # Anthropic 直接叫 input_schema
+    }
+
+# --- 执行链路：Schema 导出 → LLM 回填参数 → 构造模型校验 → 执行 ---
+entry = entries["calc"]
+print(entry["description"])  # 对两个数执行加、减、乘或除运算
+print(to_openai_schema(entry)["function"]["parameters"]["properties"].keys())
+print(to_anthropic_schema(entry)["input_schema"]["properties"].keys())
+
+raw_args = {"a": 3, "b": 4, "operation": "add"}   # 模拟 LLM 回填
+validated = entry["model"](**raw_args)             # ← validator/类型校验在这里执行
+print(calculate(validated))                        # 7.0
+
+# Literal 非法值 → ValidationError（构造模型时拦下）
+# CalcInput(a=1, b=2, operation="power")
+# 除零 → 业务 ValueError（构造校验通过后，执行阶段拦下）
+# calculate(CalcInput(a=1, b=0, operation="divide"))</code></pre>
       <h4>思考题</h4>
       <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
 
       <details class="think-q">
-        <summary><span class="think-q-tag">Q1</span>为什么 <code>CalcInput</code> 的 <code>no_import</code> 校验对 Agent 安全很重要？</summary>
+        <summary><span class="think-q-tag">Q1</span>为什么 <code>CalcInput</code> 改成 <code>a/b/operation</code> 字段，而不是接收一个自由表达式字符串？</summary>
         <div class="think-q-answer">
-          <p><strong>【结论】</strong>因为 <code>expression</code> 的值来自 <strong>LLM 输出，是不可信的</strong>，而这个表达式后续会被 <code>eval</code> 一类的机制执行；<code>no_import</code> 在执行前就拦掉含 <code>import</code> 子串的输入（<code>__import__</code> 因为也含 "import" 会被一并拦下），防止注入和远程代码执行（RCE）。</p>
-          <p>设想 LLM 被诱导生成 <code>__import__("os").system("rm -rf ...")</code> 这样的"表达式"。如果 <code>CalcInput</code> 不校验就直接求值，等于把 shell 交给了模型输出——这是典型的工具注入漏洞。</p>
-          <p><code>no_import</code> 校验器让脏数据在"进门那一刻"（构造模型时）就被 <code>ValidationError</code> 挡下，根本到不了求值那一步。这正是 Pydantic 的价值：把校验放在信任边界上。</p>
-          <p>更一般地：<strong>凡是工具入参来自模型输出，都必须当成不可信输入来校验</strong>。<code>no_import</code> 只是最小示例，真实场景还要限制可用函数、白名单运算符等。</p>
+          <p><strong>【结论】</strong>因为"接收任意表达式字符串再想办法安全求值"这条路本身就很难做对；把参数收窄成<strong>明确的、类型受限的字段</strong>（<code>a: float</code>、<code>b: float</code>、<code>operation: Literal[...]</code>），执行器用 <code>if/elif</code> 分支计算，<strong>完全不需要对任意字符串求值</strong>，安全性和可预测性天然更高。</p>
+          <p>此前有一种常见但站不住脚的做法：字段是 <code>expression: str</code>，靠一个 <code>@field_validator</code> 检查"不包含 import 子串"就宣称"防住了注入/RCE"。这是<strong>虚假的安全承诺</strong>——字符串黑名单挡不住 <code>eval</code> 能触达的全部攻击面（例如不含 "import" 字样的属性链逃逸、内置函数滥用等），本课不采用、也不做这种承诺。</p>
+          <p>字符白名单（只允许数字和 <code>+ - * / . ( )</code>）能在一定程度上收紧输入，但这仍然只是<strong>普通业务校验</strong>，不是通用 Python 沙箱；真正稳妥的做法是<strong>课程推荐方案</strong>：不接收自由表达式，改用 <code>Literal</code> 枚举 + 分支执行，从根上避免"对不可信字符串求值"这件事——本课示例全程<strong>不调用 <code>eval</code></strong>。</p>
         </div>
       </details>
 
       <details class="think-q">
-        <summary><span class="think-q-tag">Q2</span>这三个模型导出的 Schema，和 OpenAI 工具定义里的 <code>parameters</code> 字段是什么关系？</summary>
+        <summary><span class="think-q-tag">Q2</span>这三个模型导出的 Schema，和 OpenAI / Anthropic 工具定义分别是什么关系？</summary>
         <div class="think-q-answer">
-          <p><strong>【结论】</strong>是"直接就是"的关系：<code>model.model_json_schema()</code> 导出的标准 JSON Schema，可以<strong>原样填进</strong>工具定义里 <code>function.parameters</code> 的位置，无需手写第二份。</p>
-          <p>练习里 <code>{"name": name, "parameters": model.model_json_schema()}</code> 就是这个对应关系的雏形——把每个 Pydantic 输入模型转成 Schema，拼成"工具清单"喂给 LLM。LLM 读 <code>properties</code>、<code>required</code>、<code>description</code> 来决定调哪个工具、参数怎么填。</p>
-          <p>关键好处是<strong>单一真源</strong>：同一个 Pydantic 模型既负责运行时校验入参，又负责导出给 LLM 的 Schema。校验规则和 Schema 描述同源，改一处两边一致，不会出现"文档说要 int、代码却收 str"这种漂移。</p>
-          <p>这也正是 L11 手写 <code>@tool</code> 那条线的工业版闭环：真实框架（LangChain、OpenAI SDK、Pydantic AI）就是用 Pydantic 生成这份带校验、带描述的标准 Schema。</p>
+          <p><strong>【结论】</strong><code>model.model_json_schema()</code> 导出的是<strong>厂商中立</strong>的参数 JSON Schema，两家都直接复用这份 Schema 内容，但外层包装字段不同：OpenAI 把它放进 <code>{"type":"function","function":{...,"parameters": schema}}</code> 的 <code>parameters</code>；Anthropic 把它放进 <code>{"name":...,"description":...,"input_schema": schema}</code> 的 <code>input_schema</code>。<strong>不是两家都叫 <code>parameters</code></strong>，也不是随便哪个字段名都能通用。</p>
+          <p>练习里 <code>make_entry(name, model, description)</code> 产出的中立条目 <code>{"name","description","input_schema","model"}</code> 就是这个对应关系的雏形。工具说明由注册者显式传入，去掉首尾空白后若为空就抛 <code>ValueError</code>，避免把缺少用途说明的工具交给 LLM；同一份 <code>input_schema</code> 再交给 <code>to_openai_schema</code> 和 <code>to_anthropic_schema</code> 分别套外壳。这正是 L11 你手写 registry 时讲过的 adapter 模式，这里用 Pydantic 生成的标准 Schema 替换掉手写的简易 Schema。</p>
+          <p>关键好处仍是<strong>单一真源</strong>：同一个 Pydantic 模型既负责运行时校验入参，又负责导出给 LLM 的 Schema。但要注意：<code>model_json_schema()</code> 本身<strong>不会执行</strong>任何 <code>@field_validator</code>；只有在执行工具前用 <code>entry["model"](**raw_args)</code> 重新构造实例，校验才真正发生。这也是为什么中立条目要额外存一份 <code>model</code>（模型类），而不能只存 <code>input_schema</code> 这份静态 dict。</p>
         </div>
       </details>
     </details>
@@ -293,9 +347,13 @@ print(SearchInput(query="ai", max_results="8").model_dump())
     <h3>Q2：Pydantic v2 相比 v1 的方法名有什么变化？</h3>
     <p><strong>答：</strong>主要是 <code>.dict()→.model_dump()</code>、<code>.json()→.model_dump_json()</code>、<code>.schema()→.model_json_schema()</code>、<code>@validator→@field_validator</code>。v2 性能也大幅提升（核心用 Rust 重写）。</p>
     <h3>Q3：Pydantic 在 Agent 里最重要的用途是什么？</h3>
-    <p><strong>答：</strong>两点：① 校验 LLM 的不可控输出（尤其 structured output）；② 用 <code>model_json_schema()</code> 生成工具参数 Schema 喂给 LLM，是 Function Calling 的基础。</p>
+    <p><strong>答：</strong>两点：① 校验 LLM 的不可控输出（尤其 structured output）；② 用 <code>model_json_schema()</code> 生成工具参数的中立 Schema，再由 OpenAI（<code>parameters</code>）/ Anthropic（<code>input_schema</code>）各自 adapter 转成请求格式，是 Function Calling 的基础。</p>
     <h3>Q4：Field 的 description 有什么实际作用？</h3>
     <p><strong>答：</strong>它会进入导出的 JSON Schema，成为 LLM 理解"这个参数是什么、该怎么填"的依据。描述写得好，工具调用准确率更高。</p>
+    <h3>Q5：<code>model_json_schema()</code> 导出的 Schema 会执行 <code>@field_validator</code> 吗？</h3>
+    <p><strong>答：</strong>不会。<code>model_json_schema()</code> 只是读类定义生成描述性 JSON，不构造任何实例，所以 validator 不会跑。validator 只在<strong>真正构造 BaseModel 实例</strong>（如 <code>CalcInput(**raw_args)</code>）时执行。因此工具执行前必须显式用收到的参数重新构造模型做校验，registry 要保存模型类或验证函数，而不能只存一份 Schema dict。</p>
+    <h3>Q6：用字符串黑名单（比如禁止出现 "import"）能防住工具参数被用来做 RCE 吗？</h3>
+    <p><strong>答：</strong>不能，这是虚假的安全承诺。黑名单只能挡住"包含特定子串"的输入，挡不住其他攻击路径；它本质上不是通用的 Python 沙箱。更稳妥的做法是从设计上避免"对不可信字符串求值"——比如把自由表达式参数换成 <code>Literal</code> 枚举字段，执行器用 <code>if/elif</code> 分支处理，全程不使用 <code>eval</code>。</p>
   </div>
 </div>
 
@@ -328,9 +386,11 @@ print(SearchInput(query="ai", max_results="8").model_dump())
     <ul>
       <li>BaseModel 创建即校验、自动转换、失败抛 ValidationError</li>
       <li>Field 加默认值/描述/约束（ge/le/min_length…），描述会进 Schema</li>
-      <li><code>@field_validator</code>（配 <code>@classmethod</code>）写自定义校验；模型可嵌套</li>
+      <li><code>@field_validator</code>（配 <code>@classmethod</code>）写自定义校验；模型可嵌套；<strong>validator 只在构造实例时执行，导出 Schema 时不会跑</strong></li>
       <li>v2 序列化：<code>model_dump()</code> / <code>model_dump_json()</code></li>
-      <li><code>model_json_schema()</code> 导出 Tool Schema —— 闭合 L11 的 @tool 线</li>
+      <li><code>model_json_schema()</code> 导出中立参数 Schema；OpenAI 塞进 <code>parameters</code>、Anthropic 塞进 <code>input_schema</code>，字段名不同，需各自 adapter</li>
+      <li>工具参数应避免自由表达式 + 字符串黑名单（不是通用沙箱、也不是真实的 RCE 防护）；推荐用 <code>Literal</code> 枚举字段 + 分支执行，不使用 <code>eval</code></li>
+      <li>执行工具前必须用收到的参数重新构造模型实例做校验；registry 需保存模型类，而非只存 Schema dict</li>
       <li>跨信任边界的数据用 Pydantic，内部纯数据用 dataclass</li>
     </ul>
   </div>

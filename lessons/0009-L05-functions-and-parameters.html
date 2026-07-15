@@ -68,7 +68,12 @@ search("ai agents", safe=False)  # 关键字传参（跳过中间的默认参数
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p>工具函数的<strong>必填项用位置参数</strong>（如 <code>query</code>），<strong>可选项用默认参数</strong>（如 <code>max_results=5</code>）。这样 LLM 生成调用时，最少只需给一个 <code>query</code> 就能跑，降低出错率。</p>
+    <p>这里其实有<strong>两条互相独立的轴</strong>，别混在一起：</p>
+    <ul>
+      <li><strong>要不要传（必填/可选）</strong>：由「有没有默认值」决定——<code>query</code> 没默认值，因此必填；<code>max_results=5</code> 有默认值，因此可省略。</li>
+      <li><strong>怎么传（位置/关键字）</strong>：默认情况下，任何参数（不管必填还是可选）既可以按位置传，也可以按关键字传——除非专门用 <code>/</code> 或 <code>*</code> 做了限制（下一节讲）。</li>
+    </ul>
+    <p>所以 <code>query</code> 是「必填，但既能位置传也能关键字传」，而不是"必填项=位置参数"。这样 LLM 生成调用时，最少只需给一个 <code>query</code> 就能跑，降低出错率。</p>
   </div>
 
   <div class="quiz" data-quiz="q1">
@@ -92,26 +97,34 @@ search("ai agents", safe=False)  # 关键字传参（跳过中间的默认参数
 <div class="section">
   <h2>2. 仅关键字（*）与仅位置（/）</h2>
 
-  <p>这是写出<strong>健壮工具签名</strong>的关键技巧，很多人不知道，但面试和实战都很有用。</p>
+  <p>这是 Python 参数机制里很有用的一招，很多人不知道，但面试常考。<strong>注意：</strong> <code>/</code> 仅位置语法适合"不希望参数名成为 API 契约"的底层函数；LLM 工具参数来自 JSON 对象、靠 <code>tool(**args)</code> 解包调用，字段名本身就是契约的一部分，所以暴露给 LLM 的 Agent 工具参数<strong>不能设计成仅位置</strong>——下面先用一个纯 Python 函数演示 <code>/</code> 的语法，Agent 工具签名见后面的说明。</p>
 
-  <pre><code>def call_llm(prompt, /, *, model, temperature=0.7):
-    return (prompt, model, temperature)</code></pre>
+  <pre><code>def greet(name, /, *, lang="zh"):
+    return (name, lang)</code></pre>
 
   <ul>
-    <li><code>/</code> <strong>之前</strong>的参数（<code>prompt</code>）：<strong>只能按位置传</strong>，不能写 <code>prompt=</code></li>
-    <li><code>*</code> <strong>之后</strong>的参数（<code>model</code>、<code>temperature</code>）：<strong>只能按关键字传</strong></li>
+    <li><code>/</code> <strong>之前</strong>的参数（<code>name</code>）：<strong>只能按位置传</strong>，不能写 <code>name=</code></li>
+    <li><code>*</code> <strong>之后</strong>的参数（<code>lang</code>）：<strong>只能按关键字传</strong></li>
   </ul>
 
-  <pre><code>call_llm("你好", model="claude")          # ✅ 正确
-call_llm("你好", model="claude", temperature=0.2)  # ✅ 正确
+  <pre><code>greet("小明", lang="en")          # ✅ 正确
+greet("小明")                     # ✅ 正确（lang 用默认值）
 
-call_llm("你好", "claude")                # ❌ TypeError：model 只能关键字传
-call_llm(prompt="你好", model="claude")   # ❌ TypeError：prompt 只能位置传</code></pre>
+greet("小明", "en")               # ❌ TypeError：lang 只能关键字传
+greet(name="小明", lang="en")     # ❌ TypeError：name 只能位置传</code></pre>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 Agent 工具边界：</strong>
+    <p>LLM 生成的工具调用参数是一个 JSON 对象，形如 <code>{"prompt": "hi", "model": "claude"}</code>，执行时靠 <code>tool(**llm_args)</code> 解包成关键字参数喂给函数。如果工具签名里把某个字段设计成仅位置（<code>/</code> 之前），<code>**llm_args</code> 就<strong>永远传不进去</strong>，一定报 <code>TypeError</code>。所以 Agent 工具签名应写成：</p>
+    <pre><code>def call_llm(prompt, *, model, temperature=0.7):
+    return (prompt, model, temperature)</code></pre>
+    <p><code>prompt</code> 保留"位置或关键字都可传"（不加 <code>/</code>），<code>model</code>/<code>temperature</code> 用 <code>*</code> 强制关键字——这与 <code>tool(**llm_args)</code> 完全兼容。</p>
+  </div>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
     <p>"函数签名里的 <code>*</code> 和 <code>/</code> 有什么用？"</p>
-    <p>答：<code>*</code> 强制其后参数只能用关键字传，<code>/</code> 强制其前参数只能用位置传。好处是<strong>把接口约束写进签名</strong>：关键字强制让调用处更可读、也让你日后能安全地调整位置参数顺序而不破坏调用方。</p>
+    <p>答：<code>*</code> 强制其后参数只能用关键字传，<code>/</code> 强制其前参数只能用位置传。<code>*</code> 的好处是把接口约束写进签名、调用更可读；它不依赖参数在签名中的排列顺序，但不能保护已有的位置调用 <code>f(1, 2)</code>——如果你调整了位置参数的顺序，<code>f(1, 2)</code> 的语义仍会跟着变。<code>/</code> 则适合不希望参数名成为契约的场景，但和"参数名即契约"的 Agent 工具（<code>tool(**args)</code>）不兼容，不建议用在工具签名上。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -246,17 +259,18 @@ def good(item, acc=None):
   <h2>知识图谱</h2>
   <div class="card">
     <pre><code>函数参数
-├── 位置参数 → 必填、按顺序（query）
-├── 默认参数 → 可选、有默认值（max_results=5）
-├── 关键字参数 → 名字=值，可读性好
-├── 仅位置 /  → / 之前只能位置传
-├── 仅关键字 * → * 之后只能关键字传
-├── *args   → 收成元组（可变数量位置参数）
-└── **kwargs → 收成字典（可变数量关键字参数）
+├── 要不要传（必填/可选）
+│   ├── 无默认值 → 必填（query）
+│   └── 有默认值 → 可选（max_results=5）
+├── 怎么传（位置/关键字，两者默认都可用）
+│   ├── 仅位置 /  → / 之前只能位置传（不建议用于 Agent 工具）
+│   ├── 仅关键字 * → * 之后只能关键字传
+│   ├── *args   → 收成元组（可变数量位置参数）
+│   └── **kwargs → 收成字典（可变数量关键字参数）
 
 调用处解包
 ├── *列表  → 摊成位置参数
-└── **字典 → 摊成关键字参数（tool(**llm_args)）
+└── **字典 → 摊成关键字参数（tool(**llm_args)，要求字段非仅位置）
 
 返回值
 ├── return a, b → 元组（解包接收）
@@ -274,6 +288,10 @@ def good(item, acc=None):
   <div class="card">
     <h3>练习：设计一个 Agent 搜索工具函数</h3>
     <p>设计一个搜索工具，接收搜索参数并返回结构化结果，重点练习<strong>参数设计</strong>。<strong>先自己写，再看答案。</strong></p>
+
+    <div class="card" style="border-left: 4px solid var(--accent);">
+      <p><code>raise ValueError("...")</code> 会立刻中断当前函数，并把"参数值不合法"这件事交给调用方处理；完整的异常捕获与处理（try/except）留到 L10 学习，这里先知道"抛出即中断"就够了。</p>
+    </div>
 
     <h4>任务清单</h4>
     <ol>
@@ -331,8 +349,8 @@ print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
         <summary><span class="think-q-tag">Q1</span>如果要支持"多个关键词"，你会把 <code>query</code> 改成 <code>*queries</code> 吗？有什么利弊？</summary>
         <div class="think-q-answer">
           <p><strong>大多数情况不建议。作为 Agent 工具，用 <code>queries: list[str]</code> 比 <code>*queries</code> 更合适。</strong></p>
-          <p><code>*queries</code> 的<strong>好处</strong>是人手写调用时清爽：<code>search_tool("a", "b", "c")</code> 不用套一层列表。但它有两个硬伤：其一，<code>*queries</code> 收的是位置参数，它必须排在 <code>max_results</code>、<code>filters</code> 这些参数<strong>前面</strong>，会把原来「query 必填、其余可选」的清晰签名搅乱，<code>max_results</code> 只能被迫改成仅关键字。其二，也是对 Agent 更致命的——LLM 生成的工具调用参数是一个 <strong>JSON 对象（dict）</strong>，形如 <code>{"queries": [...], "max_results": 5}</code>，然后靠 <code>tool(**args)</code> 解包。<code>**args</code> 摊开的是关键字参数，根本喂不进 <code>*queries</code> 这个位置收集器。</p>
-          <p>所以工具函数应写成 <code>search_tool(queries: list[str], max_results=5, *, filters=None)</code>：一个明确的 <code>list[str]</code> 字段，既能被 <code>**args</code> 干净地解包，也能在 L14 直接映射成 Pydantic 字段、导出成工具 Schema。<code>*args</code> 适合「人写的通用函数」，而工具契约要的是「结构化、可被 dict 解包」的参数。</p>
+          <p><code>*queries</code> 的<strong>好处</strong>是人手写调用时清爽：<code>search_tool("a", "b", "c")</code> 不用套一层列表。Python 语法上确实允许 <code>def f(max_results=5, *queries)</code>——<code>*queries</code> 不强制排在最前面，也不会把 <code>max_results</code> 强制变成仅关键字。但对 Agent 工具来说这种接口<strong>难以通过 JSON 对象 + <code>**args</code> 表达</strong>：LLM 生成的工具调用参数是一个 JSON 对象（dict），形如 <code>{"queries": [...], "max_results": 5}</code>，然后靠 <code>tool(**args)</code> 解包。<code>**args</code> 摊开的是关键字参数，根本喂不进 <code>*queries</code> 这个位置收集器——不管它在签名里排第几位。</p>
+          <p>所以工具函数应写成 <code>search_tool(queries: list[str], max_results=5, *, filters=None)</code>：一个明确的 <code>list[str]</code> 字段，既能被 <code>**args</code> 干净地解包，也能在 L14 直接映射成 Pydantic 字段、导出成工具 Schema。<code>*args</code> 适合「人写的通用函数」，而 Agent 工具契约要的是「结构化、可被 dict 解包」的参数。</p>
         </div>
       </details>
 
@@ -356,7 +374,7 @@ print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
     <p><strong>答：</strong><code>*args</code> 把多余的<strong>位置参数</strong>收成元组，<code>**kwargs</code> 把多余的<strong>关键字参数</strong>收成字典。用于接收不定数量的参数，也是装饰器包装任意函数签名的标准写法。</p>
 
     <h3>Q2：函数签名里的 * 和 / 各是什么作用？</h3>
-    <p><strong>答：</strong><code>*</code> 之后的参数只能按关键字传（keyword-only），<code>/</code> 之前的参数只能按位置传（positional-only）。作用是把接口约束写进签名，提升可读性、也让位置参数顺序可以安全演进。</p>
+    <p><strong>答：</strong><code>*</code> 之后的参数只能按关键字传（keyword-only），<code>/</code> 之前的参数只能按位置传（positional-only）。作用是把接口约束写进签名；<code>*</code> 的调用不依赖参数在签名中的排列顺序，但它不能保护已有的位置调用 <code>f(1, 2)</code> 在你调整位置参数顺序后仍保持语义。<code>/</code> 适合不希望参数名成为 API 契约的底层函数，但和 Agent 工具「靠字段名 + <code>tool(**args)</code> 解包」的调用方式不兼容，不建议用在工具签名上。</p>
 
     <h3>Q3：为什么默认参数不能用可变对象？</h3>
     <p><strong>答：</strong>默认值在函数<strong>定义时只创建一次</strong>，之后所有调用共享同一个对象。用可变对象（list/dict）会导致跨调用状态串扰。正确做法是默认写 <code>None</code>，在函数体内创建新对象。</p>
@@ -398,8 +416,8 @@ print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>必填项用位置参数，可选项用默认参数，可读性用关键字参数</li>
-      <li><code>*</code> 强制仅关键字、<code>/</code> 强制仅位置——把约束写进签名</li>
+      <li>必填/可选由「有没有默认值」决定，怎么传（位置/关键字）是另一条独立的轴——默认两者都可用</li>
+      <li><code>*</code> 强制仅关键字、<code>/</code> 强制仅位置——把约束写进签名；<code>/</code> 不适合 Agent 工具（与 <code>tool(**args)</code> 冲突）</li>
       <li><code>*args</code> 收元组、<code>**kwargs</code> 收字典；装饰器的标准写法</li>
       <li>调用处 <code>*列表</code> / <code>**字典</code> 解包，<code>tool(**llm_args)</code> 是执行工具调用的常见写法</li>
       <li><code>return a, b</code> 是元组；可变默认参数一律用 <code>None</code> 兜</li>

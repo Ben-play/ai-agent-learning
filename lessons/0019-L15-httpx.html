@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>用 httpx 发起 HTTP 请求</h1>
     <p class="subtitle">每一次 LLM 调用、每个联网工具，本质都是一个 HTTP 请求</p>
@@ -111,34 +111,45 @@ except httpx.TimeoutException:
     ...                              # 超时：可重试（配合 L10 的 tenacity）
 except httpx.HTTPStatusError as e:
     code = e.response.status_code
+    retry_after = e.response.headers.get("retry-after")
     if code == 429:
-        ...                          # 限流：退避后重试
+        ...                          # 限流：退避后重试，若有 Retry-After 优先按它等
+    elif code == 408:
+        ...                          # 请求超时：通常可重试
     elif 500 &lt;= code &lt; 600:
-        ...                          # 服务端错误：可重试
+        ...                          # 服务端错误：多数可重试(具体看厂商约定)
     else:
-        ...                          # 4xx 客户端错误(如 401 鉴权失败)：别重试，是你的问题
+        ...                          # 其它 4xx(如 401/400)：通常别重试，是你的问题
 except httpx.RequestError:
-    ...                              # 连接层错误(DNS、断网)</code></pre>
+    ...                              # 连接层错误(DNS、断网)：网络类，通常可重试</code></pre>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p>Agent 调 LLM 的可靠性全在这里：<strong>429（限流）和 5xx（服务端）该退避重试，4xx（如 401/400，你自己的问题）不该重试</strong>。这决定了你的 Agent 是"偶尔抽风就崩"还是"扛得住网络抖动"。重试逻辑用 L10 的 tenacity 包一层最省事。</p>
+    <p>429（限流）、408/网络类错误、部分 5xx 通常可重试；400/401 通常不可重试。但这不是绝对规则——<strong>具体能不能重试，要看异常类型、这个操作是否幂等、以及厂商响应里的 <code>Retry-After</code> 头或错误码</strong>（比如同样是 5xx，有的服务会在错误体里标注"不可重试"；一个会产生副作用的非幂等 POST，即便是 5xx 也要谨慎重试，避免重复下单/重复扣费一类问题）。</p>
+    <p>另外注意：如果你用的是 OpenAI/Anthropic 官方 SDK，<strong>SDK 通常已经内置了指数退避重试</strong>（针对 429/5xx/网络错误）。这时不要在自己的代码里再叠加一层 tenacity/自定义重试——两层重试叠加会让真正失败的请求被重试次数远超预期（比如 SDK 重试 3 次、外层又重试 3 次，等效变成 9 次），既浪费配额也可能放大限流。是否需要自己包一层，先确认 SDK 有没有做、做到什么程度。</p>
   </div>
 </div>
 
 <div class="section">
   <h2>4. AsyncClient：异步请求</h2>
-  <p>httpx 的杀手锏是原生异步——把 <code>Client</code> 换成 <code>AsyncClient</code>，请求前加 <code>await</code>。这是下一课"并发调用多个 LLM"的基础：</p>
+  <p>httpx 的杀手锏是原生异步——把 <code>Client</code> 换成 <code>AsyncClient</code>，请求前加 <code>await</code>。这是下一课"并发调用多个 LLM"的基础。<strong>本课只要求认识 <code>async def / await / async with</code> 这几个结构长什么样</strong>，怎么用它们写并发（<code>gather</code>、限流）留给 L16 单独讲。</p>
+  <p><strong>关键：AsyncClient 要在批次/应用生命周期共享，不要每次请求都新建。</strong>正确做法是把 client 作为依赖注入给发请求的函数：</p>
   <pre><code>import httpx, asyncio
 
-async def call(prompt):
-    async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(url, json={"prompt": prompt})   # await 非阻塞
-        return r.json()
+async def call(client, prompt):                 # client 由外部传入(依赖注入)
+    r = await client.post("/v1/chat", json={"prompt": prompt})
+    r.raise_for_status()
+    return r.json()
 
-# 单个
-asyncio.run(call("你好"))</code></pre>
-  <p>同步版会"一个请求干等着"；异步版在等网络时能去干别的——所以能同时发很多请求（L16 详解）。</p>
+async def main():
+    # 一个批次/一个应用生命周期只创建一个 client，复用连接池
+    async with httpx.AsyncClient(base_url="https://api.example.com", timeout=30) as client:
+        result = await call(client, "你好")
+        # 同一批次里的其它请求都传入同一个 client，而不是各自 async with 新建一个
+
+asyncio.run(main())</code></pre>
+  <p style="font-size:.9rem;color:var(--muted);">✗ 反例：如果在一个 hot loop（比如批量处理 100 个 prompt）里，每次调用都 <code>async with httpx.AsyncClient() as client</code> 新建一个客户端，就完全失去了连接池复用的意义，还会因频繁建连拖慢速度。client 的生命周期应该和"这一批任务"或"整个应用"对齐，而不是和"这一个请求"对齐。</p>
+  <p>同步版会"一个请求干等着"；异步版在等网络时能去干别的——所以能同时发很多请求（真正的并发调度、<code>gather</code>、<code>Semaphore</code> 限流留给 L16 详解）。</p>
 
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> 收到状态码 429，Agent 通常应该怎么做？</div>
@@ -154,7 +165,7 @@ asyncio.run(call("你好"))</code></pre>
 
 <div class="section">
   <h2>5. SSE 流式响应（了解）</h2>
-  <p>LLM 的流式输出走的是 <strong>SSE（Server-Sent Events）</strong>：响应不是一次性返回，而是持续推送多行 <code>data: {...}</code>。用 httpx 的流式接口逐行读：</p>
+  <p>LLM 的流式输出走的是 <strong>SSE（Server-Sent Events）</strong>：响应不是一次性返回，而是持续推送多行事件。下面是<strong>简化版的 OpenAI 风格</strong> SSE——每行 <code>data: {...}</code>，以 <code>data: [DONE]</code> 结束。本课只演示怎么用 <code>httpx.stream</code>/<code>iter_lines</code> 逐行读，不是一个能通吃所有厂商的通用 parser：</p>
   <pre><code>import json, httpx
 
 with httpx.stream("POST", url, json={"stream": True}, timeout=None) as r:
@@ -165,6 +176,7 @@ with httpx.stream("POST", url, json={"stream": True}, timeout=None) as r:
                 break
             event = json.loads(chunk)               # 逐块解析(呼应 L09)
             # 取出增量 token 显示...</code></pre>
+  <p style="font-size:.9rem;color:var(--muted);">※ 注意这只是 OpenAI 风格的简化示例。<strong>Anthropic 的 SSE 格式不同</strong>：每条事件带 <code>event: message_start / content_block_delta / message_stop</code> 这类具名事件类型，终止方式也不是 <code>[DONE]</code>，而是 <code>message_stop</code> 事件。实际项目里，不管调哪家的 API，都优先用官方 SDK 提供的流式接口——它已经处理好了具体协议细节、返回结构化的事件对象，不需要自己手写行解析。</p>
   <p>看出来了吗——这正好把前面学的串起来：<strong>生成器思维（L12）+ 字符串处理（L04）+ 流式 JSON 解析（L09）+ HTTP 传输（本课）</strong>。</p>
 </div>
 
@@ -186,10 +198,13 @@ httpx（pip install httpx）
 
 状态码策略
 ├── 2xx 成功
-├── 429 限流 / 5xx 服务端 → 退避重试(tenacity)
-└── 4xx(400/401) 你的问题 → 别重试
+├── 429 / 408 / 网络错误 / 部分5xx → 通常可重试
+├── 400/401 等其它4xx → 通常不可重试
+├── 具体判断看：异常类型 + 是否幂等 + Retry-After/厂商错误码
+└── 官方 SDK 常已自动重试 → 别再叠加一层，避免重试次数翻倍
 
-SSE 流式 → iter_lines + removeprefix("data: ") + json.loads</code></pre>
+SSE 流式(OpenAI风格简化示例) → iter_lines + removeprefix("data: ") + json.loads
+└── Anthropic 用 event: 具名事件+不同终态 → 优先用官方 SDK 的结构化流式接口</code></pre>
   </div>
 </div>
 
@@ -200,11 +215,11 @@ SSE 流式 → iter_lines + removeprefix("data: ") + json.loads</code></pre>
     <p>封装一个健壮的 LLM 调用函数，同步 + 异步两版。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
-      <li><code>chat(prompt)</code>：用 <code>Client</code>，带 Authorization header + JSON body，返回解析后的回答</li>
-      <li>用 <code>raise_for_status</code>，并把 429/5xx 与 4xx 分开处理（自定义 <code>LLMError</code>）</li>
+      <li><code>chat(client, prompt)</code>：接收外部传入的 <code>Client</code>（依赖注入，不在函数内新建），带 Authorization header + JSON body，返回解析后的回答</li>
+      <li>用 <code>raise_for_status</code>，并按状态码/异常类型归类是否可重试（自定义 <code>LLMError</code>）</li>
       <li>超时设 30s，超时抛可重试的错误</li>
-      <li>写异步版 <code>achat(prompt)</code>（<code>AsyncClient</code> + <code>await</code>）</li>
-      <li>（选做）给 <code>chat</code> 叠加 L10 的 tenacity <code>@retry</code></li>
+      <li>写异步版 <code>achat(client, prompt)</code>（同样接收外部传入的 <code>AsyncClient</code>，不在函数内新建；<code>await</code>）——本课只要求补全这个给定骨架，完整的并发调度留给 L16</li>
+      <li>（选做，且需先确认没有和 SDK 自带重试重复）给 <code>chat</code> 叠加 L10 的 tenacity <code>@retry</code></li>
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
@@ -223,30 +238,39 @@ def _parse(r: httpx.Response) -&gt; str:
         r.raise_for_status()
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
-        retryable = code == 429 or 500 &lt;= code &lt; 600
+        # 简化分类：429/408/5xx 通常可重试；生产中还要结合 Retry-After、
+        # 具体错误码、以及这次请求是否幂等来决定
+        retryable = code in (429, 408) or 500 &lt;= code &lt; 600
         raise LLMError(f"HTTP {code}", retryable) from e
     return r.json()["choices"][0]["message"]["content"]
 
-def chat(prompt: str) -&gt; str:
+# client 由外部创建并传入(批次/应用生命周期共享一个，不在这里新建)
+def chat(client: httpx.Client, prompt: str) -&gt; str:
     payload = {"model": "claude", "messages": [{"role": "user", "content": prompt}]}
     try:
-        with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30) as client:
-            r = client.post("/v1/chat", json=payload)
+        r = client.post("/v1/chat", json=payload)
     except httpx.TimeoutException as e:
         raise LLMError("timeout", retryable=True) from e
     return _parse(r)
 
-async def achat(prompt: str) -&gt; str:
+async def achat(client: httpx.AsyncClient, prompt: str) -&gt; str:
     payload = {"model": "claude", "messages": [{"role": "user", "content": prompt}]}
-    async with httpx.AsyncClient(base_url=BASE, headers=HEADERS, timeout=30) as client:
-        r = await client.post("/v1/chat", json=payload)
+    r = await client.post("/v1/chat", json=payload)
     return _parse(r)
 
-# —— 选做：自动重试（只重试 retryable 的）——
+# —— 调用方：一个批次/应用生命周期创建一次 client，反复传入 ——
+# with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30) as client:
+#     answer = chat(client, "你好")
+#
+# async with httpx.AsyncClient(base_url=BASE, headers=HEADERS, timeout=30) as client:
+#     answer = await achat(client, "你好")
+
+# —— 选做：自动重试（只重试 retryable 的；如果用的是官方 SDK 且它已自带重试，
+#          就不要再叠加这一层，避免重试次数翻倍）——
 # from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 # @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8),
 #        retry=retry_if_exception(lambda e: isinstance(e, LLMError) and e.retryable))
-# def chat_with_retry(prompt): return chat(prompt)</code></pre>
+# def chat_with_retry(client, prompt): return chat(client, prompt)</code></pre>
       <h4>思考题</h4>
       <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
 
@@ -255,7 +279,7 @@ async def achat(prompt: str) -&gt; str:
         <div class="think-q-answer">
           <p><strong>【结论】</strong>因为"这个错该不该重试"是<strong>错误本身固有的属性</strong>。把它标在异常上，让这份知识随错误一起传播，重试逻辑只需问 <code>exc.retryable</code>，不用在每个调用点重复判断状态码——错误来源与重试策略就此解耦。</p>
           <p>如果在调用处判断，每个发请求的地方都要重写一遍"429 或 5xx 才重试、4xx 不重试"的逻辑。散落多处，容易写漏、写岔；将来新增一种可重试错误，得逐个地方改。</p>
-          <p>把判断收敛到抛错的 <code>_parse</code> 一处（<code>retryable = code == 429 or 500 &lt;= code &lt; 600</code>），异常带着结论往上冒。tenacity 的重试条件只看 <code>isinstance(e, LLMError) and e.retryable</code>，通用且干净。</p>
+          <p>把判断收敛到抛错的 <code>_parse</code> 一处（<code>retryable = code in (429, 408) or 500 &lt;= code &lt; 600</code>，生产中还要结合 <code>Retry-After</code>、具体错误码、请求是否幂等），异常带着结论往上冒。tenacity 的重试条件只看 <code>isinstance(e, LLMError) and e.retryable</code>，通用且干净。</p>
           <p>好处：新增错误类型只改抛错那一处；重试策略与"哪些错可重试"彻底分离；调用方代码更薄。这就是让语义随对象走、而非散落在流程里的设计思路。</p>
         </div>
       </details>
@@ -279,11 +303,11 @@ async def achat(prompt: str) -&gt; str:
     <h3>Q1：为什么 2026 年选 httpx 而不是 requests？</h3>
     <p><strong>答：</strong>httpx API 和 requests 几乎一样，但<strong>原生支持异步</strong>（AsyncClient），还支持 HTTP/2、连接池、超时更完善。Agent 要并发调 LLM，异步是刚需，所以选 httpx。</p>
     <h3>Q2：HTTP 状态码 4xx 和 5xx 的区别？各怎么处理？</h3>
-    <p><strong>答：</strong>4xx 是客户端错误（400 参数错、401 鉴权失败、429 限流），5xx 是服务端错误。429 和 5xx 通常临时性、可退避重试；其他 4xx 是你自己的问题，重试无用，应修正请求。</p>
+    <p><strong>答：</strong>4xx 是客户端错误（400 参数错、401 鉴权失败、429 限流），5xx 是服务端错误。429、408、部分 5xx 通常临时性、可退避重试；其它 4xx（如 400/401）通常是你自己的问题，重试无用，应修正请求。但这不是绝对规则，具体要看异常类型、请求是否幂等、厂商的 <code>Retry-After</code>/错误码。若用官方 SDK，它常已内置重试，别再自己叠加一层。</p>
     <h3>Q3：调 LLM 的 API Key 放哪里？为什么？</h3>
     <p><strong>答：</strong>放请求头 <code>Authorization: Bearer &lt;key&gt;</code>。放 URL 会被日志和历史泄露；放 header 是标准且相对安全的做法（再配合环境变量管理，别硬编码）。</p>
     <h3>Q4：什么是 SSE？和 LLM streaming 什么关系？</h3>
-    <p><strong>答：</strong>SSE（Server-Sent Events）是服务端持续推送多行 <code>data:</code> 事件的协议。LLM 流式输出就走 SSE——逐行读、剥掉 <code>data: </code> 前缀、解析 JSON、取增量 token 显示。</p>
+    <p><strong>答：</strong>SSE（Server-Sent Events）是服务端持续推送多行事件的协议。OpenAI 风格是简化的 <code>data: {...}</code> + <code>[DONE]</code>；Anthropic 用具名的 <code>event:</code> 类型、终态也不同。LLM 流式输出的传输层原理都是逐行读、解析事件——但具体协议细节因厂商而异，实际项目应优先用官方 SDK 的结构化流式接口，而不是自己手写通用 parser。</p>
   </div>
 </div>
 
@@ -317,9 +341,9 @@ async def achat(prompt: str) -&gt; str:
       <li>HTTP 请求 = 方法 + URL + Headers(鉴权) + Body(JSON)；响应看状态码</li>
       <li>httpx：<code>get/post(headers=, json=, timeout=)</code>，多请求用 <code>Client</code> 复用连接</li>
       <li><code>raise_for_status()</code> + 分类捕获 TimeoutException / HTTPStatusError</li>
-      <li>429/5xx 退避重试，4xx（你的问题）不重试</li>
-      <li><code>AsyncClient</code> + <code>await</code> 是并发调 LLM 的基础（→ L16）</li>
-      <li>SSE 流式 = iter_lines + 剥 <code>data:</code> 前缀 + 解析 JSON（串起 L04/L09/L12）</li>
+      <li>429/408/网络/部分5xx 通常可重试，其它4xx（如400/401）通常不重试；具体看异常类型、是否幂等、Retry-After；官方 SDK 常已自动重试，别重复叠加</li>
+      <li><code>AsyncClient</code> 应在批次/应用生命周期共享、依赖注入给调用函数，不要每请求新建；<code>await</code> 结构是并发调 LLM 的基础（真正并发调度 → L16）</li>
+      <li>SSE 流式（OpenAI风格简化示例）= iter_lines + 剥 <code>data:</code> 前缀 + 解析 JSON（串起 L04/L09/L12）；Anthropic 的 event 类型不同，优先用官方 SDK</li>
     </ul>
   </div>
 </div>

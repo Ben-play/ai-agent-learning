@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">20</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>async/await 与并发</h1>
     <p class="subtitle">同时发 10 个 LLM 请求而不是一个个等 — Agent 提速的关键</p>
@@ -36,10 +36,11 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>说清 GIL，以及为什么 async 适合 I/O 密集任务</li>
+      <li>区分协程函数、协程对象、Task 三者，以及 <code>await</code> 到底在什么时候会挂起当前任务</li>
       <li>区分协程 / 线程 / 进程的适用场景</li>
       <li>写 <code>async def</code> / <code>await</code>，用 <code>asyncio.run</code> 启动</li>
-      <li>用 <code>asyncio.gather</code> 并发、<code>Semaphore</code> 限流、<code>wait_for</code> 超时</li>
-      <li>并发调用多个 LLM 并聚合结果</li>
+      <li>用 <code>asyncio.gather</code> 并发、<code>Semaphore</code> 限制并发数、<code>wait_for</code> 超时——并说清 <strong>Semaphore 不等于限流器</strong></li>
+      <li>并发调用多个 LLM，正确分层 tenacity 重试、共享 <code>AsyncClient</code>，并聚合结果</li>
     </ul>
   </div>
 </div>
@@ -65,29 +66,36 @@
 </div>
 
 <div class="section">
-  <h2>2. async / await 基础</h2>
-  <p>知道了"async 适合等 I/O"，来看它的两个关键字怎么写。<code>async def</code> 定义的不是普通函数，而是<strong>协程</strong>（一个"可以中途暂停、之后再续"的函数）；<code>await</code> 就是那个暂停点——遇到它就<strong>让出</strong>控制权去干别的，等这件 I/O 完成再回来。最外层用 <code>asyncio.run()</code> 启动整个协程。</p>
+  <h2>2. async / await 基础：协程函数、协程对象、Task</h2>
+  <p>知道了"async 适合等 I/O"，来看它的两个关键字怎么写，以及三个容易混的概念：</p>
   <pre><code>import asyncio
 
-async def call_llm(prompt):          # async def 定义协程
-    await asyncio.sleep(1)            # await：在此"让出"，等 I/O(这里模拟耗时)
+async def call_llm(prompt):          # ① async def 定义的是"协程函数"
+    await asyncio.sleep(1)            # await：在此"可能让出"，等 I/O(这里模拟耗时)
     return f"回答: {prompt}"
 
 async def main():
-    result = await call_llm("你好")   # await 调用协程、拿结果
+    coro = call_llm("你好")           # ② 调用协程函数 → 得到"协程对象"，函数体还没执行一行
+    result = await coro               # await 协程对象：驱动它执行，拿到返回值
     print(result)
 
 asyncio.run(main())                  # 用 asyncio.run 启动整个异步程序</code></pre>
   <ul>
-    <li><code>async def</code> 定义的是<strong>协程</strong>，调用它不会立刻执行，要 <code>await</code> 才跑</li>
-    <li><code>await</code> 只能用在 <code>async def</code> 里；遇到它就"让出控制权"，等这件 I/O 完成</li>
+    <li><strong>协程函数（coroutine function）</strong>：<code>async def</code> 定义的函数本身，比如 <code>call_llm</code></li>
+    <li><strong>协程对象（coroutine object）</strong>：调用协程函数得到的对象，比如 <code>coro = call_llm("你好")</code>——这一步<strong>函数体一行都没执行</strong>，只是造出一个"待执行的计划"</li>
+    <li><strong><code>await</code></strong>：驱动协程对象真正执行、直到它返回或抛出。<code>await</code> 只能用在 <code>async def</code> 里</li>
+    <li><strong>Task</strong>：事件循环用来调度协程的包装（由 <code>asyncio.create_task()</code> 或 <code>gather</code> 内部生成）。协程对象本身不会被调度，必须包成 Task（或直接 await）才会真正运行；这里先建立印象，细节不展开</li>
     <li><code>asyncio.run(main())</code> 是同步世界进入异步世界的入口</li>
   </ul>
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>⚠️ <code>await</code> 不等于"一定切换任务"</strong>
+    <p><code>await</code> 等待的对象<strong>尚未完成</strong>时，当前协程才会挂起，事件循环去运行别的可运行任务；如果被 await 的对象<strong>已经完成</strong>（比如结果已经就绪），并不保证真的发生一次任务切换——具体行为取决于事件循环实现细节。记住结论就够了：<strong>出现 <code>await</code> 不等于自动获得并发</strong>。并发需要把多个协程交给事件循环调度；下一节本例使用 <code>gather</code>，也可用 <code>TaskGroup</code> 或 <code>create_task</code> 组织并发。</p>
+  </div>
 </div>
 
 <div class="section">
-  <h2>3. gather：真正的并发</h2>
-  <p>单个 <code>await</code> 还是串行。<code>asyncio.gather</code> 才是并发——<strong>同时</strong>发起多个协程、一起等：</p>
+  <h2>3. 用 gather 并发调度多个协程</h2>
+  <p>逐个 <code>await</code> 通常是串行。本例用 <code>asyncio.gather</code> 将多个协程交给事件循环并发调度、一起等待；<code>TaskGroup</code> 或 <code>create_task</code> 也可以组织并发：</p>
   <pre><code>import asyncio, time
 
 async def call_llm(prompt):
@@ -110,15 +118,15 @@ asyncio.run(main())</code></pre>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p>多工具并行、多路 RAG 检索、批量向 LLM 打分——只要这些子任务互不依赖，就用 <code>gather</code> 并发，Agent 的响应速度立刻数倍提升。这是 Agent 性能优化最直接的一招。</p>
+    <p>多工具并行、多路 RAG 检索、批量向 LLM 打分——只要这些子任务互不依赖，就可用 <code>gather</code>（或 <code>TaskGroup</code> / <code>create_task</code>）组织并发，让等待时间尽量重叠。这是 Agent 常见的性能优化手段。</p>
   </div>
 </div>
 
 <div class="section">
-  <h2>4. 限流、超时与异步上下文</h2>
-  <p>上一节的 <code>gather</code> 能一口气并发，但"一口气"太猛也会出事——把对方服务打挂、触发限流、或某个请求卡死拖住全局。所以生产里 <code>gather</code> 之外还要三道护栏：<strong>限流</strong>（Semaphore 控制同时在飞的数量）、<strong>超时</strong>（wait_for 给单个任务设上限）、<strong>异步上下文</strong>（<code>async with</code> 确保连接等资源用完即放）。</p>
-  <h3>Semaphore：限制并发数（别把对方打挂 / 别触发限流）</h3>
-  <pre><code>sem = asyncio.Semaphore(5)           # 最多同时 5 个
+  <h2>4. 并发限制、超时与异步上下文</h2>
+  <p>上一节的 <code>gather</code> 能一口气并发，但"一口气"太猛也会出事——把本地连接池打满、某个请求卡死拖住全局。所以生产里 <code>gather</code> 之外还要三道护栏：<strong>并发限制</strong>（Semaphore 控制同时在飞的数量）、<strong>超时</strong>（wait_for 给单个任务设上限）、<strong>异步上下文</strong>（<code>async with</code> 确保连接等资源用完即放）。</p>
+  <h3>Semaphore：限制并发数量（不是限流器）</h3>
+  <pre><code>sem = asyncio.Semaphore(5)           # 最多同时 5 个在飞
 
 async def guarded_call(prompt):
     async with sem:                  # 拿到名额才进，超出的排队
@@ -126,6 +134,11 @@ async def guarded_call(prompt):
 
 # 就算 100 个任务，也最多 5 个同时在飞
 await asyncio.gather(*(guarded_call(p) for p in prompts))</code></pre>
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>⚠️ Semaphore 只管"同时有几个在飞"，不等于遵守厂商的 RPM/TPM</strong>
+    <p><code>Semaphore(n)</code> 保护的是<strong>并发资源</strong>：本地连接池、socket、文件描述符——同一时刻最多 n 个请求在处理中。但 LLM 厂商的限流通常是<strong>速率</strong>限制：RPM（每分钟请求数）、TPM（每分钟 token 数）。这是两回事：<code>Semaphore(5)</code> 只要 5 个请求都很快返回，短时间内仍可能打出远超 RPM 的请求量，照样触发 429。</p>
+    <p>要真正遵守 RPM/TPM，需要额外的<strong>速率器</strong>（令牌桶/时间窗口限速，按时间而非"同时几个"节流），并且在收到 429 时优先读取响应里的 <code>Retry-After</code> 头决定等多久，而不是自己瞎猜退避时间。<code>Semaphore</code> 和"限流"是两个不同维度的护栏，都需要、但不能互相替代。</p>
+  </div>
 
   <h3>wait_for：给单个任务加超时</h3>
   <pre><code>try:
@@ -145,7 +158,7 @@ except asyncio.TimeoutError:
       <button data-answer="wrong">自动重试失败项</button>
       <button data-answer="wrong">保证顺序不乱序</button>
     </div>
-    <div class="quiz-explanation"><code>gather</code> <strong>同时</strong>发起所有协程、一起等待，总耗时≈最慢的那个；逐个 <code>await</code> 是串行、耗时≈总和。并发调多个 LLM/工具时差别巨大。（gather 会保持结果顺序，但那不是它相对串行的核心优势。）</div>
+    <div class="quiz-explanation">本例用 <code>gather</code> 将多个协程交给事件循环并发调度、一起等待；在各任务耗时相近且可重叠时，总耗时接近最慢的一批，而逐个 <code>await</code> 通常是串行、耗时近似相加。<code>gather</code> 会保持结果顺序，但那不是它相对逐个等待的核心优势；<code>TaskGroup</code> / <code>create_task</code> 也能组织并发。</div>
   </div>
 </div>
 
@@ -169,16 +182,20 @@ except asyncio.TimeoutError:
 ├── CPU 密集：多线程无用 → 多进程
 └── I/O 密集(等网络)：async 把等待重叠 → 高并发
 
-async/await
-├── async def = 协程；await 让出、等 I/O
+async/await/Task
+├── 协程函数(async def) → 调用得到"协程对象"(函数体未执行)
+├── await 协程对象 → 驱动执行；等待未完成对象才挂起，非绝对切换
+├── Task = 事件循环调度协程的包装(create_task/gather 内部生成)
 ├── asyncio.run(main()) 入口
-└── await 单个 = 仍串行
+└── 单个 await ≠ 并发；出现 await 不代表自动获得并发
 
 并发工具
-├── asyncio.gather(*coros) → 同时发起(总耗时≈最慢)★
-├── Semaphore(n) + async with → 限并发数
+├── gather / TaskGroup / create_task → 可组织多个协程并发调度
+│   └── 本例 gather(*coros) 同时等待并按输入顺序收集结果★
+├── Semaphore(n) + async with → 只限制"同时在飞"的并发数，不是限流器
+├── RPM/TPM 限流 → 需额外令牌桶/时间窗口速率器 + 遵循 Retry-After
 ├── wait_for(coro, timeout) → 超时控制
-└── async with(异步上下文，如 AsyncClient)
+└── async with(异步上下文，如共享的 AsyncClient)
 
 选型：I/O→协程 / 同步库→线程 / CPU→进程</code></pre>
   </div>
@@ -188,17 +205,17 @@ async/await
   <h2>实战练习</h2>
   <div class="card">
     <h3>练习：并发调用多个 LLM</h3>
-    <p>并发向"LLM"发多个 prompt，带限流、超时、重试、结果聚合与成本统计。<strong>先自己写，再看答案。</strong></p>
+    <p>并发向"LLM"发多个 prompt，带并发限制、超时、正确分层的重试、共享 client、结果聚合与成本统计。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
       <li>用 <code>asyncio.gather</code> 并发处理一批 prompt</li>
-      <li>用 <code>Semaphore</code> 限制最多同时 3 个</li>
-      <li>每个调用用 <code>wait_for</code> 加超时；超时/出错记为失败但不拖垮整体</li>
+      <li>用 <code>Semaphore</code> 限制最多同时 3 个在飞（注意：这不等于遵守厂商的 RPM/TPM）</li>
+      <li>每个调用用 <code>wait_for</code> 加超时；fake 版限制单次调用，真实重试版则给<strong>整个重试周期</strong>设置硬总预算——预算到期可能在全部 attempt 完成前取消调用，超时/出错记为失败但不拖垮整体</li>
       <li>聚合：成功的回答列表 + 成功数 + 估算总 token</li>
-      <li>（真实版把 <code>fake_llm</code> 换成 L15 的 <code>httpx.AsyncClient</code> + tenacity 重试）</li>
+      <li>（真实版）把 <code>fake_llm</code> 换成 L15 的 <code>httpx.AsyncClient</code>：<strong>批次共享一个 client</strong>（不每请求新建），并让 tenacity 的 <code>@retry</code> 装饰"只发一次请求"的内层函数，外层 <code>call_one</code> 在重试耗尽后才捕获异常</li>
     </ol>
     <details>
-      <summary>💡 点击查看参考答案（此代码可直接运行）</summary>
+      <summary>💡 点击查看参考答案（fake_llm 版本可直接运行；httpx 版本用 MockTransport 离线验证，见下方说明）</summary>
       <pre><code>import asyncio, time
 
 async def fake_llm(prompt: str) -&gt; dict:
@@ -206,15 +223,15 @@ async def fake_llm(prompt: str) -&gt; dict:
     return {"answer": f"回答:{prompt}", "tokens": len(prompt) + 10}
 
 async def call_one(prompt, sem):
-    async with sem:                               # 限流
+    async with sem:                               # 限制同时在飞数量
         try:
             r = await asyncio.wait_for(fake_llm(prompt), timeout=1.0)
             return {"ok": True, **r}
-        except (asyncio.TimeoutError, Exception) as e:
+        except Exception as e:                       # TimeoutError 也是 Exception 的子类
             return {"ok": False, "error": repr(e)}   # 单个失败不拖垮整体
 
 async def batch(prompts):
-    sem = asyncio.Semaphore(3)                     # 最多同时 3 个
+    sem = asyncio.Semaphore(3)                     # 最多同时 3 个在飞
     t0 = time.perf_counter()
     results = await asyncio.gather(*(call_one(p, sem) for p in prompts))
     ok = [r for r in results if r["ok"]]
@@ -228,19 +245,91 @@ async def batch(prompts):
 
 prompts = [f"问题{i}" for i in range(7)]
 print(asyncio.run(batch(prompts)))
-# 7 个请求、限流 3、每个 0.2s → 约 3 批 ≈ 0.6s，而非串行的 1.4s
+# 7 个请求、Semaphore(3)、每个 0.2s → 约 3 批 ≈ 0.6s，而非串行的 1.4s
 # {'answers': [...7 条...], 'success': 7, 'failed': 0,
 #  'total_tokens': ..., 'elapsed': 0.6}</code></pre>
+
+      <h4>真实版：共享 AsyncClient + tenacity 正确分层</h4>
+      <p>真实调用要接入 httpx 和重试，结构要点：<code>@retry</code> 装饰"只发一次 HTTP 请求"的 <code>request_once</code>，让可重试异常原样往外抛；<code>call_one</code> 在外层用 <code>try/except</code> 包住"整个重试过程"，重试全部耗尽后才把异常转成 <code>{"ok": False, ...}</code>。共享 client 的 <code>httpx.Timeout(3.0)</code> 限制的是 connect/read/write/pool 等<strong>各网络操作的等待</strong>，不是一次 attempt 的墙钟上限；不能据此推导整个重试周期最多多久。<code>wait_for(..., timeout=15.0)</code> 包住整个 tenacity 重试周期，是硬总预算：到期会取消调用，可能发生在全部 attempt 完成之前。生产中应按业务 SLA、客户端各阶段 timeout 和退避策略共同调参。若必须给每个 attempt 设置墙钟上限，可在 <code>request_once</code> 内用 <code>wait_for</code> 单独包住 <code>client.post</code>，并把 <code>asyncio.TimeoutError</code> 纳入 tenacity 的重试异常类型；本例不再增加这层代码。批次内所有请求共享同一个 <code>AsyncClient</code>（依赖注入进来，不在 <code>call_one</code>/<code>request_once</code> 内新建）。</p>
+      <pre><code>import asyncio
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+class LLMError(Exception):
+    """此异常类型代表允许重试的临时 HTTP 状态错误。"""
+
+@retry(
+    retry=retry_if_exception_type((LLMError, httpx.RequestError)),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=8),
+    reraise=True,                          # 重试耗尽后抛"最后一次"的原始异常
+)
+async def request_once(client: httpx.AsyncClient, prompt: str) -&gt; dict:
+    # 只负责发一次请求；可重试的错误(429/5xx/网络)直接向外抛，交给 @retry 处理
+    r = await client.post("/v1/chat", json={"prompt": prompt})
+    if r.status_code == 429 or 500 &lt;= r.status_code &lt; 600:
+        raise LLMError(f"HTTP {r.status_code}")
+    r.raise_for_status()
+    return r.json()
+
+async def call_one(client: httpx.AsyncClient, prompt: str, sem: asyncio.Semaphore) -&gt; dict:
+    async with sem:                        # 包住整个重试周期；退避时仍占用并发名额
+        try:
+            # 15s 是整个 tenacity 重试周期的硬总预算；到期可能提前取消剩余 attempt
+            result = await asyncio.wait_for(request_once(client, prompt), timeout=15.0)
+            return {"ok": True, **result}
+        except Exception as e:             # 重试耗尽(或不可重试)之后才在这里捕获
+            return {"ok": False, "error": repr(e)}
+
+async def batch(prompts, client: httpx.AsyncClient):
+    sem = asyncio.Semaphore(3)
+    return await asyncio.gather(*(call_one(client, p, sem) for p in prompts))
+
+# 调用方负责创建"一个"client 并在整个批次生命周期内共享；3.0 限制各网络操作等待:
+# async with httpx.AsyncClient(base_url=BASE, timeout=httpx.Timeout(3.0)) as client:
+#     results = await batch(prompts, client)</code></pre>
+      <div class="card" style="border-left: 4px solid var(--accent-bright);">
+        <strong>⚠️ 关于 <code>Semaphore</code> 的位置</strong>
+        <p>上面把 <code>async with sem</code> 放在 <code>call_one</code> 里、包住"整次调用（含所有重试尝试）"——这样一个请求从第一次尝试到重试耗尽，全程占用一个并发名额，简单但退避等待期间也占着名额。如果希望退避等待时<strong>释放</strong>名额、让其它请求先用，采用下面的替代版本：把 semaphore 参数传给被 <code>@retry</code> 装饰的 <code>request_once</code>，并在函数体内只包住每一次实际 HTTP 调用；同时删除 <code>call_one</code> 外层的 <code>async with sem</code>。<strong>两种范围不能同时套用</strong>，否则同一个请求会重复获取同一 semaphore，可能造成不必要的阻塞甚至死锁。</p>
+        <pre><code>@retry(
+    retry=retry_if_exception_type((LLMError, httpx.RequestError)),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=8),
+    reraise=True,
+)
+async def request_once(
+    client: httpx.AsyncClient,
+    prompt: str,
+    sem: asyncio.Semaphore,
+) -&gt; dict:
+    async with sem:                    # 每次 attempt 只在实际 HTTP 调用期间占名额
+        r = await client.post("/v1/chat", json={"prompt": prompt})
+    if r.status_code == 429 or 500 &lt;= r.status_code &lt; 600:
+        raise LLMError(f"HTTP {r.status_code}")
+    r.raise_for_status()
+    return r.json()
+
+async def call_one(client, prompt, sem) -&gt; dict:
+    try:                               # 这里不再使用 async with sem
+        result = await asyncio.wait_for(
+            request_once(client, prompt, sem), timeout=15.0
+        )
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}</code></pre>
+        <p>这两个版本都合法，取舍点在于：退避等待期间是否把并发名额让给其它请求。</p>
+      </div>
+      <p style="font-size:.9rem;color:var(--muted);">本机演示环境未安装 <code>tenacity</code>，以上代码结构已按其官方 API（<code>retry_if_exception_type</code> / <code>stop_after_attempt</code> / <code>wait_exponential</code> / <code>reraise</code>，用法同 L10）静态核对，不在此冒充实跑；下方"离线异步验证"用 <code>httpx.MockTransport</code> 实际跑通了协程对象、<code>gather</code>、<code>Semaphore</code> 最大并发、批次耗时、共享 client 这几项，tenacity 部分留给你在本地装好库后自行验证。</p>
       <h4>思考题</h4>
       <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
 
       <details class="think-q">
-        <summary><span class="think-q-tag">Q1</span>为什么要用 <code>Semaphore</code> 限流，而不是一口气 gather 100 个？</summary>
+        <summary><span class="think-q-tag">Q1</span>为什么要用 <code>Semaphore</code> 限制并发，而不是一口气 gather 100 个？</summary>
         <div class="think-q-answer">
-          <p><strong>【结论】</strong>一口气 gather 100 个会<strong>同时</strong>把 100 个请求全发出去，两头都会出事：对方可能因请求太密而返回 <strong>429（限流）</strong>，本地则可能<strong>耗尽 socket / 连接池</strong>。<code>Semaphore(n)</code> 把"同时在飞"的请求数限制在 n 个，平滑并发。</p>
-          <p>并发不是越多越好。服务端有速率限制，短时间打太多请求会被 429 拒绝甚至封禁；客户端的文件描述符、连接池也有上限，开太多连接会报错或急剧变慢。</p>
+          <p><strong>【结论】</strong>一口气 gather 100 个会<strong>同时</strong>把 100 个请求全发出去，本地可能<strong>耗尽 socket / 连接池</strong>，对方也可能因请求太密而返回 <strong>429</strong>。<code>Semaphore(n)</code> 把"同时在飞"的请求数限制在 n 个，缓解这两个问题——但注意它<strong>只管并发数量，不是速率限流器</strong>（见正文护栏说明）。</p>
+          <p>并发不是越多越好。客户端的文件描述符、连接池有上限，开太多连接会报错或急剧变慢；服务端也有各种保护机制。</p>
           <p><code>async with sem:</code> 让每个协程先抢名额、拿到才发请求、发完释放，超出的自动排队。这样即使有 100 个任务，任一时刻也最多 n 个在跑，既快又稳。</p>
-          <p>所以实战里 <code>gather</code>（要并发）几乎总是和 <code>Semaphore</code>（要克制）搭配使用：前者提速，后者防止把对方和自己打挂。</p>
+          <p>但如果厂商限制的是 RPM/TPM（例如每分钟 60 次），<code>Semaphore(n)</code> 只要 n 个请求都很快返回，短时间内仍可能打出远超 RPM 的请求量——这种情况需要额外的速率器（按时间窗口节流），Semaphore 单独并不足够。</p>
         </div>
       </details>
 
@@ -249,18 +338,17 @@ print(asyncio.run(batch(prompts)))
         <div class="think-q-answer">
           <p><strong>【结论】</strong>会从并发的<strong>≈0.6s</strong> 变成串行的<strong>≈1.4s</strong>（7 × 0.2s，逐个相加）。</p>
           <p>逐个 <code>await</code> 是串行：发第 1 个、等它 0.2s 回来，再发第 2 个……7 个就是 7 段 0.2s 首尾相接，总计≈1.4s。这时 <code>async</code> 的并发优势完全没用上。</p>
-          <p><code>await asyncio.gather(*(call_one(p, sem) for p in prompts))</code> 则同时发起所有协程、一起等——若不限流，总耗时≈最慢的那个≈0.2s；但本例限流 3、请求数 7，要分约 3 批跑，实际 <strong>≈0.6s</strong>。无论哪种，都远快于串行的 1.4s。</p>
-          <p>要点：<code>await</code> 单个只是"拿到这个协程的结果"，本身不带来并发；真正的并发来自 <code>gather</code>（或 <code>TaskGroup</code>）把多个协程一起调度。</p>
+          <p><code>await asyncio.gather(*(call_one(p, sem) for p in prompts))</code> 则同时发起所有协程、一起等——若不限制并发，总耗时≈最慢的那个≈0.2s；但本例 Semaphore(3)、请求数 7，要分约 3 批跑，实际 <strong>≈0.6s</strong>。无论哪种，都远快于串行的 1.4s。</p>
+          <p>要点：逐个 <code>await</code> 本身不带来并发；本例由 <code>gather</code> 把多个协程交给事件循环并发调度，也可用 <code>TaskGroup</code> 或 <code>create_task</code> 组织并发。</p>
         </div>
       </details>
 
       <details class="think-q">
-        <summary><span class="think-q-tag">Q3</span>真实版里，单个请求的 429/5xx 重试应该放在 <code>call_one</code> 内层还是外层？</summary>
+        <summary><span class="think-q-tag">Q3</span>真实版里，tenacity 的 <code>@retry</code> 应该装饰哪个函数？异常应该在哪一层被捕获？</summary>
         <div class="think-q-answer">
-          <p><strong>【结论】</strong>放在 <strong><code>call_one</code> 内层</strong>——让每个请求独立重试自己的 429/5xx。这样一个请求失败只重试它自己，不影响其它已经成功的。</p>
-          <p>如果把重试放在外层（把整个 <code>gather</code> 包起来重跑），只要批里有一个失败，就会把所有请求——包括已经成功的——统统重发一遍。既浪费又可能因请求翻倍反而触发更多 429。</p>
-          <p>放内层的正确形态是：在 <code>call_one</code> 里、<code>Semaphore</code> 名额之内，对单个请求叠加 tenacity 的 <code>@retry</code>（只重试 <code>retryable</code> 的错，配指数退避）。失败隔离在单请求粒度，<code>gather</code> 收集的是"每个都尽力重试后的最终结果"。</p>
-          <p>一句话：<strong>重试的粒度应该和失败的粒度一致</strong>。失败是单请求级的，重试就该在单请求级；外层只负责并发与聚合。</p>
+          <p><strong>【结论】</strong><code>@retry</code> 装饰"只发一次 HTTP 请求"的内层函数（如 <code>request_once</code>），让可重试的异常<strong>原样往外抛</strong>；外层 <code>call_one</code> 的 <code>try/except</code> 包住"整个重试过程"，在重试全部耗尽（或遇到不可重试的错误）之后才捕获异常、转成 <code>{"ok": False, ...}</code>。若再用 <code>wait_for</code> 包住它，这个 timeout 是整个重试周期的<strong>硬总预算</strong>，到期可能在全部 attempt 完成前取消调用。注意 <code>httpx.Timeout</code> 限制各网络操作等待，并非每个 attempt 的墙钟上限；如需后者，应在 <code>request_once</code> 内单独用 <code>wait_for</code> 包住 <code>client.post</code>，并将 <code>asyncio.TimeoutError</code> 纳入重试类型。</p>
+          <p>常见的错误写法是反过来：在 <code>call_one</code> 里先 <code>try/except</code> 吞掉异常返回 <code>{"ok": False}</code>，再在外面套一层 <code>@retry</code>。这样 tenacity 永远看不到异常——它只能看到 <code>call_one</code> 正常返回了一个字典，判断"这次调用成功了"，于是<strong>一次都不会重试</strong>。重试装饰器必须放在"会真正抛出异常"的那一层，而不是已经把异常吞成返回值的那一层。</p>
+          <p>另外重试的粒度也要和失败的粒度一致：每个请求独立重试自己的错误（放在单请求级的 <code>call_one</code>/<code>request_once</code>），不要把整个 <code>gather</code> 包起来重跑——否则一个请求失败就会把所有请求（包括已成功的）统统重发一遍。</p>
         </div>
       </details>
     </details>
@@ -273,12 +361,14 @@ print(asyncio.run(batch(prompts)))
     <h3>Q1：什么是 GIL？它对并发有什么影响？</h3>
     <p><strong>答：</strong>全局解释器锁，让 CPython 同一刻只有一个线程执行字节码。导致多线程无法加速 CPU 密集任务；但 I/O 密集任务（等网络）不受影响，可用 async 或多线程并发。CPU 密集要用多进程。</p>
     <h3>Q2：async 和多线程都能做并发，区别在哪？</h3>
-    <p><strong>答：</strong>async 是单线程内协作式切换（遇 await 让出），开销小、适合高并发 I/O；多线程由 OS 调度、有切换开销、受 GIL 限制。调大量 API 首选 async；只有同步库时用线程兜底。</p>
-    <h3>Q3：asyncio.gather 是做什么的？</h3>
-    <p><strong>答：</strong>并发运行多个协程并收集结果，总耗时约等于最慢的一个，而非相加。用于并发调多个 LLM/工具，是 Agent 提速的核心手段。</p>
-    <h3>Q4：并发调 API 时为什么要限流？怎么做？</h3>
-    <p><strong>答：</strong>防止触发对方限流（429）和耗尽本地连接。用 <code>asyncio.Semaphore(n)</code> + <code>async with</code> 控制同时在飞的请求数。</p>
-    <h3>Q5：await 能用在普通函数里吗？</h3>
+    <p><strong>答：</strong>async 是单线程内协作式切换（等待未完成的 I/O 时挂起、换别的任务跑），开销小、适合高并发 I/O；多线程由 OS 调度、有切换开销、受 GIL 限制。调大量 API 首选 async；只有同步库时用线程兜底。</p>
+    <h3>Q3：asyncio.gather 是做什么的？它是唯一的并发方式吗？</h3>
+    <p><strong>答：</strong><code>gather</code> 可把多个协程交给事件循环并发调度，并按输入顺序收集结果；在各子任务耗时相近且可重叠的本例中，总耗时约等于最慢的一批，而非逐个相加。它不是唯一方式，<code>TaskGroup</code> 或 <code>create_task</code> 也能组织并发。</p>
+    <h3>Q4：并发调 API 时 Semaphore 能替代限流吗？</h3>
+    <p><strong>答：</strong>不能。<code>asyncio.Semaphore(n)</code> + <code>async with</code> 只限制"同时在飞"的并发数量，保护本地连接池/socket；厂商的 RPM/TPM 是速率限制，即使 Semaphore 很小，短时间内密集发送仍可能超过速率上限触发 429。真正遵守速率限制需要额外的令牌桶/时间窗口速率器，并在收到 429 时优先按响应的 <code>Retry-After</code> 头退避。Semaphore 和速率器是两个维度的护栏，需要同时具备。</p>
+    <h3>Q5：真实场景里 tenacity 的 <code>@retry</code> 该放在哪一层？</h3>
+    <p><strong>答：</strong>放在"只发一次请求"的内层函数上，让可重试异常原样往外抛；外层函数用 <code>try/except</code> 包住整个重试过程，在重试耗尽之后才捕获转成失败结果。如果先在内层吞异常返回失败字典、再在外面套 <code>@retry</code>，tenacity 看到的永远是"正常返回"，永远不会触发重试。</p>
+    <h3>Q6：await 能用在普通函数里吗？</h3>
     <p><strong>答：</strong>不能。<code>await</code> 只能出现在 <code>async def</code> 协程里。要从同步代码进入异步，用 <code>asyncio.run(coro)</code>。</p>
   </div>
 </div>
@@ -290,7 +380,8 @@ print(asyncio.run(batch(prompts)))
       <li>· <a href="https://docs.python.org/3/library/asyncio.html" target="_blank">Python 官方：asyncio</a> — 权威参考（<strong>首选</strong>）</li>
       <li>· <a href="https://docs.python.org/3/library/asyncio-task.html#asyncio.gather" target="_blank">asyncio.gather 文档</a> — 并发聚合</li>
       <li>· <a href="https://superfastpython.com/python-asyncio/" target="_blank">Super Fast Python: Asyncio</a> — 系统教程</li>
-      <li>· <a href="0019-L15-httpx.html">L15 · httpx</a> — AsyncClient 是并发调 LLM 的载体</li>
+      <li>· <a href="https://tenacity.readthedocs.io/" target="_blank">tenacity</a> — 重试库（呼应 L10）</li>
+      <li>· <a href="0019-L15-httpx.html">L15 · httpx</a> — 共享 AsyncClient 是并发调 LLM 的载体</li>
     </ul>
   </div>
 </div>
@@ -312,10 +403,12 @@ print(asyncio.run(batch(prompts)))
     <ul>
       <li>GIL 让多线程无法加速计算；但 async 能重叠 I/O 等待</li>
       <li>I/O 密集用协程，同步库用线程，CPU 密集用进程</li>
-      <li><code>async def</code> 定义协程，<code>await</code> 让出等 I/O，<code>asyncio.run</code> 启动</li>
-      <li><code>asyncio.gather</code> 并发（总耗时≈最慢），是 Agent 提速核心</li>
-      <li><code>Semaphore</code> 限流、<code>wait_for</code> 超时、<code>async with</code> 异步资源</li>
-      <li>并发调 LLM 时务必限流，避免 429 和连接耗尽</li>
+      <li>协程函数（<code>async def</code>）调用后得到协程对象（函数体未执行），<code>await</code> 驱动执行；Task 是事件循环调度协程的包装</li>
+      <li><code>await</code> 只在等待未完成对象时才挂起当前任务，并不等于自动获得并发</li>
+      <li>本例用 <code>asyncio.gather</code> 并发调度并收集多个协程的结果；<code>TaskGroup</code> / <code>create_task</code> 也能组织并发</li>
+      <li><code>Semaphore</code> 只限制"同时在飞"的并发数量，<strong>不等于</strong>遵守 RPM/TPM；速率限制需要额外的令牌桶/时间窗口速率器 + <code>Retry-After</code></li>
+      <li><code>wait_for</code> 超时、<code>async with</code> 共享的异步资源（如批次内共享一个 <code>AsyncClient</code>）</li>
+      <li>tenacity 的 <code>@retry</code> 要装饰"只发一次请求"的内层函数、让异常原样往外抛；外层在重试耗尽后才捕获，不能先吞异常再套重试</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">

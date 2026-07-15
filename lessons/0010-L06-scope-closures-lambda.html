@@ -94,6 +94,23 @@ counter(10)
 print(counter(20))   # {'calls': 2, 'total_ms': 30}  ← 状态被记住了</code></pre>
   <p>没有 <code>nonlocal</code>，<code>calls += 1</code> 会被当成"新建一个局部 calls"，报 <code>UnboundLocalError</code>。</p>
 
+  <p><strong>只是读取</strong>模块级全局变量，函数内部并不需要 <code>global</code> 声明——直接读就行；只有当你要在函数内<strong>重新绑定</strong>这个全局变量名时，才必须声明 <code>global</code>：</p>
+  <pre><code>total_calls = 0
+
+def peek_global():
+    # 只读，不需要 global
+    return f"目前共调用 {total_calls} 次"
+
+def record_global():
+    global total_calls        # 声明：改的是模块全局变量
+    total_calls += 1
+
+record_global()
+record_global()
+print(total_calls)            # 2
+print(peek_global())          # 目前共调用 2 次</code></pre>
+  <p><code>global</code> 与 <code>nonlocal</code> 对照：<code>global</code> 指向<strong>模块级</strong>变量（不管嵌套多少层函数，都是同一个模块全局）；<code>nonlocal</code> 指向<strong>最近一层外层函数（enclosing）</strong>的变量，与闭包配套使用。两者都只在"函数内要重新绑定外部变量名"时才需要。</p>
+
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
     <p>闭包是"不用类也能保存状态"的轻量方案。Agent 里的<strong>工具调用计数器、令牌桶限流器、重试计数</strong>都能用闭包实现。更重要的是——<strong>装饰器（L11）本质就是返回闭包</strong>，理解这里，L11 会非常顺。</p>
@@ -109,7 +126,17 @@ print(counter(20))   # {'calls': 2, 'total_ms': 30}  ← 状态被记住了</cod
 <div class="section">
   <h2>3. Lambda + 高阶函数：处理列表数据</h2>
   <p>闭包让你看到：在 Python 里<strong>函数本身也是"值"</strong>——能被返回、能被记住。顺着这个思路再进一步：函数既然是值，就能<strong>当参数传给另一个函数</strong>。这一节的 <code>sorted</code>/<code>map</code>/<code>filter</code> 就是这么用的，而 lambda 正是"随手写个小函数当参数"的最简方式。</p>
-  <p>lambda 是"一次性的小函数"，最常配 <code>sorted</code> / <code>map</code> / <code>filter</code> 用来处理 LLM 返回的列表：</p>
+  <p><code>lambda 参数: 表达式</code> 是一种<strong>匿名的单表达式函数</strong>——没有函数名，函数体只能写一个表达式，表达式的结果会被<strong>隐式返回</strong>（不用写 <code>return</code>）。它和 <code>def</code> 定义的函数一样可以被反复调用、赋值给变量：</p>
+  <pre><code>def add_one(x):
+    return x + 1
+
+add_one_lambda = lambda x: x + 1
+
+# 和 def 函数一样，可以重复调用，不是"一次性"的
+assert add_one_lambda(1) == 2
+assert add_one_lambda(10) == 11</code></pre>
+  <p>怎么选：<code>lambda</code> 只能写单个表达式，写不了多语句、多行逻辑，也没法加文档字符串；短小的 key/callback（比如 <code>sorted</code> 的排序依据）适合用 lambda 图个简洁，逻辑稍复杂（分支、多步骤、需要命名复用）就应该用 <code>def</code>。</p>
+  <p>最常配 <code>sorted</code> / <code>map</code> / <code>filter</code> 用来处理 LLM 返回的列表：</p>
   <pre><code>tools = [
     {"name": "search", "cost": 10},
     {"name": "calc", "cost": 3},
@@ -185,6 +212,7 @@ lambda + 高阶函数
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
+      <p style="font-size:0.9rem;color:var(--muted);"><code>defaultdict(int)</code> 回忆（详见 L03）：访问缺失的 key 时，会自动调用 <code>int()</code> 得到 <code>0</code> 作为初始值，因此 <code>per_tool[tool_name] += 1</code> 不会因为 key 不存在而抛 <code>KeyError</code>。</p>
       <pre><code>from collections import defaultdict
 
 def make_tracker():

@@ -194,15 +194,33 @@ mypy → 静态检查，把类型错误挡在运行前
   <h2>实战练习</h2>
   <div class="card">
     <h3>练习：为 Agent 数据加类型</h3>
-    <p>给一段 Agent 相关的代码补上准确的类型注解，用上 Optional / Union / Literal / Callable。<strong>先自己写，再看答案。</strong></p>
+    <p>给一段 Agent 相关的代码加上基础类型注解，用上 Optional / Union / Literal / Callable。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
       <li><code>Role</code>：用 Literal 定义为 system/user/assistant</li>
       <li><code>make_message(role, content)</code>：role 用 <code>Role</code>，返回 <code>dict[str, str]</code></li>
       <li><code>get_tool(name)</code>：按名字查工具，可能查不到 → 返回 <code>Optional[Callable[[dict], dict]]</code></li>
-      <li><code>truncate(x, n)</code>：x 是 <code>str | list</code>，返回同类型的前 n 个</li>
-      <li>（可选）装 mypy 跑一遍，把报错改干净</li>
+      <li><code>truncate(x, n)</code>：x 标注为 <code>str | list</code>，返回值也标注 <code>str | list</code>，取前 n 项（注意：这个注解只表达"输入输出都是 str 或 list 之一"，<strong>不表达</strong>"传 str 就一定返回 str"这种关联——运行时切片确实会保持原类型，但 <code>str | list</code> 这套基础注解本身描述不出这层关联，见下方说明）</li>
+      <li>（可选）用 <code>typing.get_type_hints</code> 看看拿到的类型；若装了 mypy 可以跑一遍对照</li>
     </ol>
+
+    <div class="card" style="border-left: 4px solid var(--accent-bright);">
+      <strong>🔑 老实说：<code>str | list -&gt; str | list</code> 表达不出"同类型"</strong>
+      <p>看下面这段：</p>
+      <pre><code>def truncate(x: str | list, n: int) -&gt; str | list:
+    return x[:n]
+
+truncate("hello", 3)      # 运行时确实返回 'hel'（str）
+truncate([1,2,3,4], 2)    # 运行时确实返回 [1,2]（list）</code></pre>
+      <p><code>x[:n]</code> 这行代码本身、在运行时，切片操作确实会保持容器类型（str 切片还是 str，list 切片还是 list）——这是 Python 语言行为，不是类型注解带来的。</p>
+      <p>但 <code>str | list -&gt; str | list</code> 这个类型签名，只是分别声明"参数可能是 str 或 list 之一""返回值可能是 str 或 list 之一"，<strong>它没有能力表达"这两者必须是同一种"</strong>。可以先用运行时内省查看注解元数据：</p>
+      <pre><code>from typing import get_type_hints
+print(get_type_hints(truncate))
+# {'x': str | list, 'n': &lt;class 'int'&gt;, 'return': str | list}</code></pre>
+      <p><code>get_type_hints</code> 是<strong>运行时内省</strong>，这里只展示函数保存的注解元数据，不能代替 mypy 静态检查。mypy 会读取同一个签名；按类型系统语义，参数和返回值是两个独立的 Union，因此它也无法从这个签名推出"传 str 进去就一定拿到 str"。本机没有安装 mypy，所以这里没有做真实的 mypy 实测。</p>
+      <p style="font-size:.9rem;color:var(--muted);">要让静态检查器保留这种"输入决定输出"的关联，需要 <code>TypeVar</code> + <code>overload</code>，或 PEP 695 泛型函数语法等进阶工具。具体写法放到 Phase 5（Agent 状态管理）需要精确类型推断时再讲；这里先如实说清楚基础 Union 注解的局限，不要求你现在实现。</p>
+    </div>
+
     <details>
       <summary>💡 点击查看参考答案</summary>
       <pre><code>from typing import Optional, Literal, Callable

@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>装饰器 — Agent 框架的基石</h1>
     <p class="subtitle">@tool、@chain、@agent 都是装饰器 — 看懂它，你就看懂了半个框架源码</p>
@@ -26,7 +26,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>翻开任何 Agent 框架，满眼都是 <code>@tool</code>、<code>@chain</code>、<code>@agent</code>、<code>@retry</code>——它们全是<strong>装饰器</strong>。装饰器让你"给函数加一层包装"而不改函数本身：加日志、加重试、加计时、把普通函数注册成工具。</p>
-    <p>本课是 Part B 的收官，也是<strong>闭包（L06）的实战出口</strong>：装饰器 = 返回闭包的高阶函数。学完你会亲手写一个 <code>@tool</code>，从函数签名自动生成工具 Schema——这正是框架在幕后做的事。</p>
+    <p>本课是 Part B 的收官，也是<strong>闭包（L06）的实战出口</strong>：<strong>本课聚焦函数装饰器</strong>——接收一个 callable、返回一个替代对象，最常见的实现是返回记住了原函数的闭包 wrapper。但这不是绝对定义：装饰器也能作用在类上（如 <code>@dataclass</code>），返回值也不一定是"新函数"或闭包。学完你会亲手写一个 <code>@tool</code>，从函数签名自动生成工具 Schema——这正是框架在幕后做的事。</p>
   </div>
 </div>
 
@@ -45,8 +45,8 @@
 </div>
 
 <div class="section">
-  <h2>1. 装饰器的本质</h2>
-  <p>装饰器就是一个"接收函数、返回新函数"的函数。<code>@deco</code> 只是 <code>fn = deco(fn)</code> 的语法糖：</p>
+  <h2>1. 装饰器的本质（本课聚焦函数装饰器）</h2>
+  <p><strong>本课聚焦函数装饰器</strong>：接收一个 callable、返回一个替代对象；最常见的实现是返回一个记住了原函数的 wrapper 闭包。<code>@deco</code> 只是 <code>fn = deco(fn)</code> 的语法糖：</p>
   <pre><code>import functools
 
 def timed(fn):
@@ -68,6 +68,7 @@ def search(query):
 search("ai")                # search 耗时 0.0000s
 print(search.__name__)      # search  ← 因为用了 wraps，否则会变成 'wrapper'</code></pre>
   <p><strong>三个要点：</strong>① <code>wrapper</code> 是闭包（记住了外层的 <code>fn</code>）；② 用 <code>*args/**kwargs</code> 才能包装任意函数；③ 一定加 <code>@functools.wraps(fn)</code>，否则被装饰函数的 <code>__name__</code>、<code>__doc__</code> 会被 wrapper 覆盖。</p>
+  <p><strong>装饰器不止能装饰函数：</strong>装饰器语法（<code>@X</code>）本质上只是"把下面这个对象传给 X、再把返回值绑回同一个名字"，X 可以作用于函数，也可以作用于类。例如 <code>@dataclass</code> 装饰的是一个类，返回的也是（改造过的）类本身，而不是函数或闭包。本课后续例子都聚焦"函数装饰器"这一种最常见的形态，但请记住这不是装饰器的全部定义。</p>
 
   <div class="quiz" data-quiz="q1">
     <div class="quiz-question"><span class="quiz-q">Q</span> <code>@deco</code> 写在 <code>def f</code> 上方，等价于什么？</div>
@@ -126,24 +127,43 @@ def call():
 
 <div class="section">
   <h2>4. @tool：从函数生成工具 Schema</h2>
-  <p>这是装饰器在 Agent 里最经典的用法——把普通函数<strong>注册成工具</strong>，并<strong>读取它的类型注解自动生成参数 Schema</strong>（喂给 LLM）：</p>
+  <p>这是装饰器在 Agent 里最经典的用法——把普通函数<strong>注册成工具</strong>，并<strong>读取它的类型注解自动生成参数 Schema</strong>（喂给 LLM）。</p>
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>📌 先说清楚类型注解：</strong>
+    <p>类型注解（<code>query: str</code> 这种写法）是什么、能写多复杂，是 L13 才系统学的内容。本课直接给你写好的函数签名，<strong>重点是装饰器怎么在导入阶段读签名、把函数注册进表里</strong>，不考察复杂 typing（<code>Optional</code>、<code>Literal</code>、泛型等）。下面的简易 Schema 也刻意只覆盖最基础的四种类型。</p>
+  </div>
   <pre><code>import functools, inspect
 
 REGISTRY = {}
 
+TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}  # 简易 Schema 只认这 4 种
+
+def _param_schema(name, annotation):
+    if annotation is inspect.Parameter.empty:
+        raise TypeError(f"参数 `{name}` 缺少类型注解，本课简易 Schema 不支持无注解参数（L13 会系统讲类型注解）")
+    if annotation not in TYPE_MAP:
+        raise TypeError(
+            f"参数 `{name}` 的类型 {annotation!r} 超出本课支持范围（仅 str/int/float/bool）。"
+            f"list/Optional/Literal/嵌套模型等复杂类型需要 L13 类型提示 + L14 Pydantic 才能正确处理。"
+        )
+    return TYPE_MAP[annotation]
+
 def tool(fn):
-    sig = inspect.signature(fn)                  # 读函数签名（L05 的签名在这里被"消费"）
-    params = {}
-    for pname, p in sig.parameters.items():
-        params[pname] = {
-            "type": getattr(p.annotation, "__name__", "any"),
-            "required": p.default is inspect.Parameter.empty,
-        }
-    REGISTRY[fn.__name__] = {
+    sig = inspect.signature(fn)
+    properties, required = {}, []
+    for name, p in sig.parameters.items():
+        properties[name] = {"type": _param_schema(name, p.annotation)}
+        if p.default is inspect.Parameter.empty:
+            required.append(name)
+    input_schema = {"type": "object", "properties": properties, "required": required}
+
+    REGISTRY[fn.__name__] = {                    # registry 保存"中立"信息，不绑定任何厂商格式
+        "fn": fn,
         "name": fn.__name__,
-        "doc": (fn.__doc__ or "").strip(),
-        "params": params,
+        "description": (fn.__doc__ or "").strip(),
+        "input_schema": input_schema,
     }
+
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         return fn(*args, **kwargs)
@@ -155,13 +175,49 @@ def web_search(query: str, max_results: int = 5) -> dict:
     return {"query": query, "n": max_results}
 
 print(REGISTRY["web_search"])
-# {'name': 'web_search', 'doc': '搜索网页并返回结果',
-#  'params': {'query': {'type': 'str', 'required': True},
-#             'max_results': {'type': 'int', 'required': False}}}</code></pre>
+# {'fn': &lt;function web_search ...&gt;, 'name': 'web_search',
+#  'description': '搜索网页并返回结果',
+#  'input_schema': {'type': 'object',
+#                    'properties': {'query': {'type': 'string'},
+#                                   'max_results': {'type': 'integer'}},
+#                    'required': ['query']}}
+
+# 无注解 / 复杂类型：明确拒绝，不静默瞎猜
+@tool
+def bad(x):            # TypeError：缺少类型注解
+    ...
+@tool
+def bad2(items: list): # TypeError：list 超出 str/int/float/bool 范围
+    ...</code></pre>
+  <p><strong>无注解不会退化成 <code>"any"</code> 或 <code>"_empty"</code>，而是直接 <code>TypeError</code>；</strong>不在 <code>str/int/float/bool</code> 内的类型（<code>list[str]</code>、<code>Optional[int]</code>、<code>Literal</code>、嵌套 Pydantic 模型等）同样拒绝并指向 L13/L14——宁可拒绝，也不能给 LLM 一份错的 Schema。</p>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>🔑 厂商边界：registry 是中立的，请求格式要适配</strong>
+    <p>上面 <code>REGISTRY</code> 里存的 <code>name/description/input_schema</code> 是<strong>厂商无关</strong>的中立信息。真正发给 LLM 时，OpenAI 和 Anthropic 的字段结构并不一样，需要各自的 adapter 转换：</p>
+    <pre><code>def to_openai_schema(entry):
+    return {"type": "function", "function": {
+        "name": entry["name"],
+        "description": entry["description"],
+        "parameters": entry["input_schema"],       # OpenAI 叫 parameters
+    }}
+
+def to_anthropic_schema(entry):
+    return {
+        "name": entry["name"],
+        "description": entry["description"],
+        "input_schema": entry["input_schema"],     # Anthropic 直接叫 input_schema
+    }</code></pre>
+    <p>不是"两家都塞进 <code>parameters</code>"——字段名、嵌套层级都不同，adapter 要分开写。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>⚠️ Schema ≠ 运行时校验：</strong>
+    <p>本课的 <code>@tool</code> 只做了两件事——<strong>注册</strong>（存进 <code>REGISTRY</code>）和<strong>描述</strong>（生成喂给 LLM 看的 Schema）。它<strong>不会</strong>在调用 <code>web_search(...)</code> 时校验实参类型对不对——LLM 传个字符串当 <code>max_results</code>，这段代码照样会往下执行，出错与否取决于函数体自己怎么处理。L14 会用 Pydantic <code>BaseModel</code> 在构造实例时自动校验；届时注册表应保存模型类 / validator，执行前先构造模型得到已验证参数。</p>
+  </div>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p>这就是 LangChain 的 <code>@tool</code>、Pydantic AI 的工具注册在幕后做的事：<strong>装饰器读取你的函数签名（L05）+ 类型注解（L13）+ docstring，自动生成 LLM 能理解的工具描述</strong>。到 L14 用 Pydantic 后，这个 Schema 会更严谨（带校验、可导出标准 JSON Schema）。Part B 到这里闭环了。</p>
+    <p>这就是 LangChain 的 <code>@tool</code>、Pydantic AI 的工具注册在幕后做的事：<strong>装饰器读取你的函数签名（L05）+ 类型注解（L13 会系统学）+ docstring，自动生成中立的工具描述，再由各家 SDK 转成自己的请求格式</strong>。到 L14 用 Pydantic 后，Schema 会更严谨（自动导出标准 JSON Schema，且真的带运行时校验）。Part B 到这里闭环了。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -172,27 +228,32 @@ print(REGISTRY["web_search"])
       <button data-answer="wrong">解析函数的源代码文本</button>
       <button data-answer="wrong">运行函数观察其返回值</button>
     </div>
-    <div class="quiz-explanation">用 <code>inspect.signature(fn)</code> 读取函数的参数名、类型注解、默认值——这是"反射"。装饰器据此自动生成工具 Schema，无需你手写。这也是为什么 L05 强调"函数签名就是工具契约"、以及为什么装饰器必须用 <code>functools.wraps</code> 保住元信息。</div>
+    <div class="quiz-explanation">用 <code>inspect.signature(fn)</code> 读取函数的参数名、类型注解、默认值——这是"反射"。装饰器据此生成中立的工具描述（registry），发送前再由 OpenAI/Anthropic 各自的 adapter 转成对应请求格式；这份 Schema 本身不做运行时校验。这也是为什么 L05 强调"函数签名就是工具契约"、以及为什么装饰器必须用 <code>functools.wraps</code> 保住元信息。</div>
   </div>
 </div>
+
 
 <div class="section">
   <h2>知识图谱</h2>
   <div class="card">
-    <pre><code>装饰器本质
+    <pre><code>装饰器本质（本课聚焦函数装饰器）
 ├── @deco 等价 f = deco(f)（语法糖）
-├── 返回闭包 wrapper（记住 fn，← L06）
+├── 常见实现：返回闭包 wrapper（记住 fn，← L06）
+├── 但也可作用于类（如 @dataclass），返回值不一定是新函数/闭包
 ├── wrapper(*args, **kwargs) 接任意签名（← L05）
 └── @functools.wraps(fn) 保留 __name__/__doc__/签名（必写）
 
 带参数装饰器 → 三层（外层收参数）
 多层装饰器 → 离函数近的先套；调用自外向内
 
-@tool（Agent 经典用法）
+@tool（Agent 经典用法，本课示范）
 ├── inspect.signature 读签名（反射）
-├── 类型注解 → 参数 type（← L13）
+├── 类型注解 → 参数 type（类型注解本身 → L13 系统学）
+├── 简易 Schema 只映射 str/int/float/bool；无注解/复杂类型 → TypeError
 ├── docstring → 工具描述
-└── 生成 Schema 喂 LLM（→ L14 Pydantic 更严谨）</code></pre>
+├── registry 存中立信息：fn/name/description/input_schema
+├── OpenAI（parameters）/ Anthropic（input_schema）→ 各自 adapter 转换
+└── Schema 只是描述，不等于运行时校验（L14：构造 Pydantic BaseModel 实例得到已验证参数）</code></pre>
   </div>
 </div>
 
@@ -200,37 +261,42 @@ print(REGISTRY["web_search"])
   <h2>实战练习</h2>
   <div class="card">
     <h3>练习：手写 @tool 装饰器</h3>
-    <p>实现一个工具注册装饰器，自动收集函数名、参数 Schema（从 type hints 提取）、描述，构建工具注册表。<strong>先自己写，再看答案。</strong></p>
+    <p>实现一个工具注册装饰器，自动收集函数名、参数 Schema（仅 str/int/float/bool，从类型注解提取）、描述，构建工具注册表，并分别导出 OpenAI / Anthropic 两种请求格式。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
       <li><code>tool</code> 装饰器：用 <code>inspect.signature</code> 读参数</li>
-      <li>每个参数记录：类型名（从注解）、是否必填（有无默认值）、默认值</li>
+      <li>每个参数记录 JSON Schema 类型：<code>str→string / int→integer / float→number / bool→boolean</code>；无注解或类型不在这 4 种之内，<strong>抛 <code>TypeError</code></strong>（不要静默给个 <code>"any"</code> 或 <code>"_empty"</code>）</li>
       <li>从 docstring 取工具描述</li>
-      <li>存进全局 <code>REGISTRY</code>（工具名 → 描述+schema）</li>
+      <li>存进全局 <code>REGISTRY</code>：中立信息 <code>fn/name/description/input_schema</code>（不绑定任何厂商格式）</li>
       <li>用 <code>functools.wraps</code>，保证被装饰函数仍可正常调用</li>
-      <li>加一个 <code>get_schemas()</code> 返回所有工具的 schema 列表（模拟"喂给 LLM 的工具清单"）</li>
+      <li>加 <code>to_openai_schema(entry)</code> / <code>to_anthropic_schema(entry)</code> 两个 adapter，分别转成各家请求体格式</li>
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
-      <pre><code>import functools, inspect
+      <pre><code>import functools, inspect, json
 
 REGISTRY = {}
+TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
+
+def _param_schema(name, annotation):
+    if annotation is inspect.Parameter.empty:
+        raise TypeError(f"参数 `{name}` 缺少类型注解（本课简易 Schema 不支持，见 L13）")
+    if annotation not in TYPE_MAP:
+        raise TypeError(f"参数 `{name}` 类型 {annotation!r} 不在 str/int/float/bool 内（见 L13/L14）")
+    return TYPE_MAP[annotation]
 
 def tool(fn):
     sig = inspect.signature(fn)
-    params = {}
+    properties, required = {}, []
     for name, p in sig.parameters.items():
-        ann = p.annotation
-        has_default = p.default is not inspect.Parameter.empty
-        params[name] = {
-            "type": getattr(ann, "__name__", "any"),
-            "required": not has_default,
-            "default": None if not has_default else p.default,
-        }
+        properties[name] = {"type": _param_schema(name, p.annotation)}
+        if p.default is inspect.Parameter.empty:
+            required.append(name)
     REGISTRY[fn.__name__] = {
+        "fn": fn,
         "name": fn.__name__,
         "description": (fn.__doc__ or "").strip(),
-        "parameters": params,
+        "input_schema": {"type": "object", "properties": properties, "required": required},
     }
 
     @functools.wraps(fn)
@@ -238,8 +304,15 @@ def tool(fn):
         return fn(*args, **kwargs)
     return wrapper
 
-def get_schemas():
-    return list(REGISTRY.values())
+def to_openai_schema(entry):
+    return {"type": "function", "function": {
+        "name": entry["name"], "description": entry["description"],
+        "parameters": entry["input_schema"],
+    }}
+
+def to_anthropic_schema(entry):
+    return {"name": entry["name"], "description": entry["description"],
+            "input_schema": entry["input_schema"]}
 
 
 @tool
@@ -248,17 +321,26 @@ def web_search(query: str, max_results: int = 5) -> dict:
     return {"query": query, "n": max_results}
 
 @tool
-def calculator(expression: str) -> float:
+def calculator(expression: str, precise: bool = True) -> float:
     "计算一个数学表达式"
-    return eval(expression)     # 教学用；生产别用 eval
+    return 0.0
 
 # 被装饰后照常调用
 print(web_search("ai agents"))          # {'query': 'ai agents', 'n': 5}
 print(web_search.__name__)              # web_search（wraps 生效）
 
-# 模拟"喂给 LLM 的工具清单"
-import json
-print(json.dumps(get_schemas(), ensure_ascii=False, indent=2))</code></pre>
+# 分别导出两家请求格式
+entry = REGISTRY["web_search"]
+print(json.dumps(to_openai_schema(entry), ensure_ascii=False, indent=2))
+print(json.dumps(to_anthropic_schema(entry), ensure_ascii=False, indent=2))
+
+# 无注解 / 复杂类型 → 明确拒绝
+try:
+    @tool
+    def bad(x):
+        ...
+except TypeError as e:
+    print("拒绝：", e)</code></pre>
       <h4>思考题</h4>
       <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
 
@@ -275,9 +357,9 @@ print(json.dumps(get_schemas(), ensure_ascii=False, indent=2))</code></pre>
         <summary><span class="think-q-tag">Q2</span>到 L14，如果用 Pydantic 的模型来描述参数，这个 Schema 会多出什么能力？（提示：校验 + 标准 JSON Schema 导出）</summary>
         <div class="think-q-answer">
           <p><strong>比手写的 dict Schema 多出三样：运行时自动校验、一键导出标准 JSON Schema、以及字段级的描述/默认值/嵌套建模。</strong></p>
-          <p>① <strong>运行时校验</strong>：Pydantic 模型在实例化时会按类型和约束（如 <code>int</code>、<code>gt=0</code>、<code>max_length</code>）自动校验入参，不符合就抛 <code>ValidationError</code>。而我们手写的 <code>{"type": "str", "required": True}</code> 只是一份"描述"，本身并不会真正拦截非法参数——LLM 传错类型也照样进来。</p>
-          <p>② <strong>标准 JSON Schema 导出</strong>：调 <code>Model.model_json_schema()</code> 就能得到符合 JSON Schema 规范的结构，可以直接塞进 OpenAI / Anthropic tools 定义里的 <code>parameters</code> 字段，不用自己拼 <code>type</code>/<code>required</code>/<code>properties</code>，也不怕拼错格式。</p>
-          <p>③ <strong>更丰富的表达力</strong>：每个字段能带 <code>Field(description=...)</code> 描述（LLM 看得懂）、默认值、可选/必填、以及嵌套模型和复杂类型（<code>list[Item]</code>、枚举等）。这就是为什么 L14 之后工具 Schema 会比本课手写版严谨得多——校验和导出都交给 Pydantic，人只负责声明。</p>
+          <p>① <strong>运行时校验</strong>：Pydantic <code>BaseModel</code> 在构造实例时会按类型和约束（如 <code>int</code>、<code>gt=0</code>、<code>max_length</code>）自动校验入参，不符合就抛 <code>ValidationError</code>。而本课手写的 <code>{"type": "string"}</code> 只是一份"描述"，<strong>本身并不会真正拦截非法参数</strong>——LLM 传错类型也照样调用到函数体。L14 会用 Pydantic <code>BaseModel</code> 在构造实例时自动校验；届时注册表应保存模型类 / validator，执行前先构造模型得到已验证参数。</p>
+          <p>② <strong>标准 JSON Schema 导出</strong>：调 <code>Model.model_json_schema()</code> 就能得到符合 JSON Schema 规范的结构，直接作为 <code>input_schema</code> 塞进 OpenAI/Anthropic 各自的 adapter，不用自己拼 <code>type</code>/<code>required</code>/<code>properties</code>，也不怕拼错格式，还能覆盖 <code>list</code>/<code>Optional</code>/嵌套模型等本课拒绝的复杂类型。</p>
+          <p>③ <strong>更丰富的表达力</strong>：每个字段能带 <code>Field(description=...)</code> 描述（LLM 看得懂）、默认值、可选/必填、以及嵌套模型和复杂类型（<code>list[Item]</code>、枚举等）。这就是为什么 L14 之后工具注册表会比本课手写版严谨得多——校验和导出都交给 Pydantic，registry 也该保存"模型类"而不只是 dict Schema。</p>
         </div>
       </details>
     </details>
@@ -288,7 +370,7 @@ print(json.dumps(get_schemas(), ensure_ascii=False, indent=2))</code></pre>
   <h2>面试常见问题</h2>
   <div class="card interview">
     <h3>Q1：装饰器的本质是什么？</h3>
-    <p><strong>答：</strong>一个"接收函数、返回新函数"的高阶函数，返回值通常是记住了原函数的闭包。<code>@deco</code> 等价于 <code>f = deco(f)</code>，用来在不改原函数的前提下增强它。</p>
+    <p><strong>答：</strong>本课聚焦函数装饰器——接收一个 callable、返回一个替代对象；常见实现是返回记住了原函数的闭包 wrapper。<code>@deco</code> 等价于 <code>f = deco(f)</code>，用来在不改原函数的前提下增强它。但装饰器不止能用于函数：作用于类（如 <code>@dataclass</code>）时返回值也是类本身，不是函数或闭包。</p>
     <h3>Q2：为什么装饰器要用 functools.wraps？</h3>
     <p><strong>答：</strong>否则内层 wrapper 会覆盖原函数的 <code>__name__</code>/<code>__doc__</code>/签名，破坏调试、文档和依赖反射的框架（如从函数生成工具 Schema）。wraps 把元信息复制回来。</p>
     <h3>Q3：带参数的装饰器和不带参数的结构差别？</h3>
@@ -297,6 +379,8 @@ print(json.dumps(get_schemas(), ensure_ascii=False, indent=2))</code></pre>
     <p><strong>答：</strong>等价 <code>f = a(b(f))</code>。装饰时离函数近的 <code>b</code> 先套上（内层），<code>a</code> 后套（外层）；调用时从外层 <code>a</code> 往里穿过。</p>
     <h3>Q5：装饰器 wrapper 为什么常写成 <code>(*args, **kwargs)</code>？</h3>
     <p><strong>答：</strong>为了能包装<strong>任意签名</strong>的函数——原样接收所有位置/关键字参数再转发给原函数，不限制被装饰函数长什么样。</p>
+    <h3>Q6：工具 Schema 存进 registry 后，能直接发给 OpenAI 和 Anthropic 吗？</h3>
+    <p><strong>答：</strong>不能直接混用。registry 里存的是厂商中立信息（<code>name/description/input_schema</code>）；OpenAI 要包成 <code>{"type":"function","function":{...,"parameters":schema}}</code>，Anthropic 要用 <code>{"name":...,"input_schema":schema}</code>，字段名和嵌套层级不同，需要各自的 adapter 转换。而且这份 Schema 只是描述，不会在调用时自动做运行时校验。</p>
   </div>
 </div>
 
@@ -327,12 +411,13 @@ print(json.dumps(get_schemas(), ensure_ascii=False, indent=2))</code></pre>
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>装饰器 = 接收函数、返回新函数的高阶函数（<code>@deco</code> 即 <code>f=deco(f)</code>）</li>
+      <li>本课聚焦函数装饰器：接收 callable、返回替代对象（常见实现是返回闭包 wrapper）；<code>@deco</code> 即 <code>f=deco(f)</code>；装饰器也可作用于类（如 <code>@dataclass</code>），返回值不一定是新函数/闭包</li>
       <li>wrapper 是闭包（L06）、用 <code>*args/**kwargs</code> 接任意签名（L05）</li>
       <li>永远加 <code>@functools.wraps(fn)</code> 保留元信息</li>
       <li>带参数的装饰器是三层结构</li>
       <li>多层装饰器：离函数近的先套，调用自外向内</li>
-      <li><code>@tool</code> 用 inspect 读签名 + 类型注解自动生成工具 Schema —— 框架的核心套路</li>
+      <li><code>@tool</code> 用 inspect 读签名生成中立的 registry（<code>fn/name/description/input_schema</code>），简易 Schema 只映射 str/int/float/bool，无注解/复杂类型明确拒绝</li>
+      <li>OpenAI（<code>parameters</code>）与 Anthropic（<code>input_schema</code>）请求格式不同，需要各自 adapter；Schema 只是描述，不等于运行时校验（校验留给 L14 Pydantic）</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">

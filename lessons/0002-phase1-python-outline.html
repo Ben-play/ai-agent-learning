@@ -205,19 +205,19 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L09</span><span class="lesson-num-time">20min</span>
+      <span class="lesson-num">L09</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0013-L09-files-json-dict.html">文件、JSON 与 Dict 深度操作</a></div>
-        <div class="lesson-desc">open() 与 with 语句、Pathlib 路径处理、JSON 序列化/反序列化、json vs orjson 性能对比、嵌套 dict 操作、LLM 响应解析模式（工具调用提取、流式 JSON 拼接）</div>
-        <div class="exercise">处理 LLM 流式响应 — 模拟 LLM 返回的 JSON Lines 流，逐行解析、拼接完整 JSON、处理错误格式和截断</div>
+        <div class="lesson-desc">open() 与 with 语句（w/a/r 边界）、Pathlib 路径处理、JSON 序列化/反序列化、Python/JSON 字面量映射、JSON Lines 解析（坏记录 vs 网络半行）、json vs orjson 性能对比</div>
+        <div class="exercise">解析 JSON Lines 流 — 模拟本地日志/自定义事件的 JSON Lines 流，逐行解析、拼接完整内容、区分坏行与半行截断</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L10</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L10</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0014-L10-exceptions-logging-context.html">异常处理、日志与上下文管理器</a></div>
-        <div class="lesson-desc">try/except/else/finally、自定义异常（AgentError、ToolError）、异常链（raise from）、with 语句与 __enter__/__exit__、contextlib（@contextmanager、async 上下文管理器）；<strong>logging 结构化日志</strong>（logger/level/handler/格式化，生产 Agent 从第一天就该用，而非 print 调试）；<strong>tenacity</strong> —— 重试/指数退避的标准库（别重复造轮子）</div>
-        <div class="exercise">实现一个 API 调用上下文管理器 — 自动处理超时、用 tenacity 做重试、用 logging 记录每次调用与失败原因、退出时清理资源，模拟 LLM API 调用场景</div>
+        <div class="lesson-desc">try/except/else/finally、自定义异常（AgentError、ToolError）、异常链（raise from）、with 语句与 __enter__/__exit__、contextlib（@contextmanager，仅负责进入/退出与清理，超时/重试是另外的职责）；<strong>logging 结构化日志</strong>（logger/level/handler/格式化，logger.exception 只用于真实 except 块，生产 Agent 从第一天就该用，而非 print 调试）；<strong>tenacity</strong> —— 只对临时性异常重试的标准库（stop_after_attempt 总尝试次数、reraise=True 抛原始异常，别重复造轮子）</div>
+        <div class="exercise">实现一个 API 调用上下文管理器 — 记录进入/退出与耗时、用 logging 记录每次调用与失败原因、退出时清理资源并重抛异常，选做叠加 tenacity 对临时异常做重试，模拟 LLM API 调用场景</div>
       </div>
     </div>
   </div>
@@ -231,11 +231,11 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L11</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L11</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0015-L11-decorators.html">装饰器</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">函数装饰器原理（闭包+高阶函数）、带参数装饰器、类装饰器、functools.wraps、多层装饰器、Agent 框架中的 @tool/@chain/@agent 模式</div>
-        <div class="exercise">手写 @tool 装饰器 — 实现工具注册装饰器，自动收集函数名、参数 Schema（从 type hints 提取）、描述，构建工具注册表</div>
+        <div class="lesson-desc">函数装饰器原理（闭包+高阶函数，装饰器不限于函数）、带参数装饰器、functools.wraps、多层装饰器、@tool 简易 Schema（str/int/float/bool）与 OpenAI/Anthropic 适配边界</div>
+        <div class="exercise">手写 @tool 装饰器 — 实现工具注册装饰器，收集函数名、简易参数 Schema（str/int/float/bool，无注解/复杂类型拒绝）、描述，构建中立 registry 并导出 OpenAI/Anthropic 两种格式</div>
       </div>
     </div>
   </div>
@@ -253,11 +253,11 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L12</span><span class="lesson-num-time">20min</span>
+      <span class="lesson-num">L12</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0016-L12-generators-streaming.html">生成器基础与 Agent Streaming</a></div>
-        <div class="lesson-desc">yield 工作原理、生成器表达式、send() 基础、迭代器协议、在 Agent 中的应用：LLM Streaming 响应处理、惰性数据处理、token-by-token 输出</div>
-        <div class="exercise">实现 LLM Streaming 模拟器 — 用生成器逐 token 输出响应，支持暂停/恢复，练习 Streaming 处理模式</div>
+        <div class="lesson-desc">yield 工作原理、生成器表达式、send() 基础、迭代器协议、在 Agent 中的应用：LLM Streaming 响应处理、惰性数据处理、字符级流式模拟与真实 SDK chunk/delta 的边界</div>
+        <div class="exercise">实现逐字符流式模拟器 — 用生成器逐字符 yield 模拟"回答"，支持提前停止，练习 Streaming 处理模式（并理解它与真实 token/chunk 的差别）</div>
       </div>
     </div>
   </div>
@@ -279,7 +279,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L14</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L14</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0018-L14-pydantic.html">Pydantic 数据验证</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">BaseModel、Field（默认值、描述、约束）、Validator、嵌套模型、序列化（model_dump/model_dump_json）、自定义类型、Agent Tool Schema 定义、JSON Schema 导出、dataclass vs Pydantic 对比（面试常问）</div>
@@ -297,7 +297,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L15</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L15</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0019-L15-httpx.html">用 httpx 发起 HTTP 请求</a></div>
         <div class="lesson-desc">HTTP 基础（方法、状态码、headers、JSON body、超时）、httpx 同步与异步客户端（Client/AsyncClient）、为什么 Agent 时代选 httpx 而非 requests（原生 async）、鉴权头与 API Key、错误分类（4xx/5xx/超时）、SSE 流式响应读取（LLM streaming 的传输层本质）</div>
@@ -315,11 +315,11 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L16</span><span class="lesson-num-time">20min</span>
+      <span class="lesson-num">L16</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0020-L16-async-concurrency.html">async/await 与并发</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">GIL 概念与对异步的影响（面试常问）、协程 vs 线程 vs 进程、async/await 语法、asyncio.run()、asyncio.gather（并发 LLM 调用）、Semaphore 限流、异步上下文管理器、事件循环工作原理（衔接 L15 的 httpx.AsyncClient）</div>
-        <div class="exercise">并发 LLM 调用 — 用 httpx.AsyncClient + asyncio.gather 并发调用 3 个 API，实现超时控制（asyncio.wait_for）、用 tenacity 做指数退避重试、结果聚合、Token 成本统计</div>
+        <div class="lesson-desc">GIL 概念与对异步的影响（面试常问）、协程函数/协程对象/Task 的区分、await 挂起语义、协程 vs 线程 vs 进程、asyncio.gather（并发 LLM 调用）、Semaphore 并发限制（区分速率限流）、异步上下文管理器、共享 AsyncClient（衔接 L15）</div>
+        <div class="exercise">并发 LLM 调用 — 共享一个 httpx.AsyncClient + asyncio.gather 并发调用多个 API，Semaphore 限制并发、asyncio.wait_for 超时控制、tenacity 正确分层重试（内层抛异常/外层耗尽后捕获）、结果聚合、Token 成本统计</div>
       </div>
     </div>
   </div>

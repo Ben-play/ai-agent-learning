@@ -129,8 +129,13 @@
     <div class="step-title">检查 & 安装 Python</div>
   </div>
 
-  <p>打开终端（Mac: Terminal / Windows: PowerShell），运行：</p>
-  <pre><code>python3 --version</code></pre>
+  <p>打开终端，按平台运行对应命令：</p>
+  <pre><code># Windows PowerShell（优先用 py，Python 官方安装器自带的启动器）
+py --version
+# 如果 py 不可用，再试
+python --version</code></pre>
+  <pre><code># macOS / Linux
+python3 --version</code></pre>
 
   <p>应该看到类似 <code>Python 3.11.x</code> 或 <code>3.12.x</code> 的输出。</p>
 
@@ -138,24 +143,26 @@
     <tr><th>结果</th><th>操作</th></tr>
     <tr><td>3.11 或更高</td><td>✅ 跳到下一步</td></tr>
     <tr><td>3.10 或更低</td><td>⬇️ 需要升级</td></tr>
-    <tr><td>command not found</td><td>⬇️ 需要安装</td></tr>
+    <tr><td>Windows：<code>py</code>/<code>python</code> 均无输出</td><td>⬇️ 还没装 Python，需要安装（注意 Windows 通常没有 <code>python3</code> 命令，看到 <code>python3</code> 报错不代表没装 Python）</td></tr>
+    <tr><td>macOS/Linux：<code>python3</code> 提示 command not found</td><td>⬇️ 需要安装</td></tr>
   </table>
 
   <p><strong>安装/升级 Python：</strong></p>
-  <pre><code># Mac（推荐用 Homebrew）
-brew install python@3.12
-
-# 或者用 pyenv 管理多版本（推荐）
+  <p>全平台最稳的路径是官网安装包：从 <a href="https://www.python.org/downloads/" target="_blank">python.org/downloads</a> 下载安装，Windows 安装时务必勾选 "Add python.exe to PATH"。</p>
+  <p>macOS / Linux 上如果想同时管理多个 Python 版本，可以选用 <code>pyenv</code>（可选，非必需）：</p>
+  <pre><code># macOS / Linux 可选：用 pyenv 管理多版本
 curl https://pyenv.run | bash
+# 安装脚本结束后会打印 PATH 配置提示——按提示改好 shell 配置文件后
+# 重新打开一个新终端窗口，让配置生效，再继续下面的命令
 pyenv install 3.12
-pyenv global 3.12
-
-# Windows
-# 从 https://www.python.org/downloads/ 下载安装
-# 安装时勾选 "Add Python to PATH"</code></pre>
+pyenv global 3.12</code></pre>
+  <p>（pyenv 的 shell 初始化细节不在本课展开，跟着安装脚本输出的提示操作即可。）</p>
 
   <p>安装后重新检查版本：</p>
-  <pre><code>python3 --version
+  <pre><code># Windows PowerShell
+py --version</code></pre>
+  <pre><code># macOS / Linux
+python3 --version
 # 应该输出 Python 3.11.x 或 3.12.x</code></pre>
 </div>
 
@@ -188,6 +195,8 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code></pre>
     <tr><td><code>uv sync</code></td><td>同步所有依赖</td></tr>
     <tr><td><code>uv pip list</code></td><td>查看已安装的包</td></tr>
   </table>
+
+  <p><code>--dev</code> 表示把依赖记录进 dev 依赖组；<code>uv sync</code> / <code>uv run</code> 默认仍会同步 dev 组。生产环境要显式使用 <code>--no-dev</code> 等选项排除。</p>
 </div>
 
 <!-- Step 3 -->
@@ -239,19 +248,19 @@ code --install-extension ms-python.debugpy</code></pre>
 
   <p>虚拟环境让每个项目的依赖互相隔离，避免版本冲突。这是 Python 开发的<strong>基本纪律</strong>。</p>
 
-  <pre><code># 创建项目目录
-mkdir my-first-agent
+  <pre><code>mkdir my-first-agent
 cd my-first-agent
-
-# 用 uv 初始化项目（自动创建虚拟环境）
 uv init
+# 此时生成 main.py；.venv 尚未创建
+uv run main.py
+# 首次 uv run 会创建 .venv 并同步项目环境</code></pre>
 
-# 你会看到这样的目录结构：
-# my-first-agent/
+  <p><code>uv init</code> 之后你会看到这样的目录结构（还没有 <code>.venv</code>）：</p>
+  <pre><code># my-first-agent/
 # ├── .python-version    # Python 版本
 # ├── pyproject.toml     # 项目配置
 # ├── README.md
-# └── hello.py           # 示例文件</code></pre>
+# └── main.py            # 示例文件</code></pre>
 
   <p>查看 <code>pyproject.toml</code>：</p>
   <pre><code>[project]
@@ -259,9 +268,7 @@ name = "my-first-agent"
 version = "0.1.0"
 requires-python = ">=3.11"</code></pre>
 
-  <p>运行第一个脚本：</p>
-  <pre><code>uv run hello.py
-# 应该输出: Hello from my-first-agent!</code></pre>
+  <p>运行 <code>uv run main.py</code> 后，会看到输出 <code>Hello from my-first-agent!</code>，同时目录下多出一个 <code>.venv</code>（首次 <code>uv run</code> 才会创建虚拟环境并同步依赖，这一步之前是不存在的）。</p>
 </div>
 
 <!-- Step 5 -->
@@ -297,8 +304,11 @@ uv add --dev mypy      # 类型检查</code></pre>
 
   <p>LLM API 需要 API Key。我们用 <code>.env</code> 文件管理，<strong>永远不要把 key 写在代码里</strong>。</p>
 
-  <pre><code># 创建 .env 文件
+  <pre><code># Windows PowerShell
+New-Item .env -ItemType File</code></pre>
+  <pre><code># macOS / Linux
 touch .env</code></pre>
+  <p>也可以直接在 VS Code 资源管理器里右键 → New File，新建一个名为 <code>.env</code> 的文件。</p>
 
   <p>在 <code>.env</code> 中添加（后续课程会用到）：</p>
   <pre><code># .env（不要提交到 Git！）
@@ -345,10 +355,10 @@ print(f"Key loaded: {api_key[:10]}...")  # 只打印前10位</code></pre>
 
 <div class="quiz-q" id="q3">
   <p>Q3: <code>uv add --dev pytest</code> 中的 <code>--dev</code> 表示什么？</p>
-  <span class="quiz-option" onclick="check('q3', this, false)">安装开发版（不稳定版）</span>
-  <span class="quiz-option" onclick="check('q3', this, true)">仅在开发时使用，不会打包到生产环境</span>
-  <span class="quiz-option" onclick="check('q3', this, false)">需要开发者权限才能安装</span>
-  <span class="quiz-option" onclick="check('q3', this, false)">安装到系统 Python 而非虚拟环境</span>
+  <span class="quiz-option" onclick="check('q3', this, false)">记录到测试依赖组，普通同步时会自动排除</span>
+  <span class="quiz-option" onclick="check('q3', this, true)">记录到开发依赖组，生产同步时可显式排除</span>
+  <span class="quiz-option" onclick="check('q3', this, false)">记录到全局依赖组，所有项目中都会自动同步</span>
+  <span class="quiz-option" onclick="check('q3', this, false)">记录到系统依赖组，虚拟环境中不会进行同步</span>
   <div class="quiz-feedback" id="q3-fb"></div>
 </div>
 
@@ -372,16 +382,20 @@ import os
 # 加载环境变量
 load_dotenv()
 
+# 下面的 BaseModel、函数定义、类型注解不是本课考点
+# 当前只需要照抄运行，验证环境是否搭好就行
+# BaseModel 会在 L02 讲，函数在 L05 讲，类型注解在 L13 讲
 class Message(BaseModel):
     """消息模型 - 后续 Agent 的基础数据结构"""
     role: str
     content: str
 
 def main():
-    # 验证环境
-    api_key = os.getenv("OPENAI_API_KEY", "not-set")
-    print(f"✅ 项目初始化成功！")
-    print(f"✅ API Key: {api_key[:10]}..." if len(api_key) > 10 else f"⚠️ API Key: {api_key}")
+    # 验证 .env 是否成功加载
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("未从 .env 读取到 OPENAI_API_KEY")
+    print(f"✅ .env 加载成功，Key 前缀：{api_key[:6]}...")
 
     # 验证 Pydantic
     msg = Message(role="user", content="Hello, Agent!")
@@ -393,14 +407,14 @@ def main():
 
     print(f"✅ {greet('同学')}")
 
+# __name__ == "__main__" 这行也不是本课考点，L14 会讲，这里照抄能跑就行
 if __name__ == "__main__":
     main()</code></pre>
   <ol start="5">
     <li>运行：<code>uv run main.py</code></li>
-    <li>看到 3 个 ✅ 就算成功！</li>
+    <li>看到输出里出现 <strong><code>.env 加载成功</code></strong> 这几个字，就算成功！（如果抛出 <code>RuntimeError</code>，说明 <code>.env</code> 没建对或 <code>OPENAI_API_KEY</code> 没写）</li>
   </ol>
-  <p style="font-size:0.9rem;margin-top:0.8rem;">💡 上面这行看不懂没关系：<br>
-  <code>print(... if len(api_key) &gt; 10 else ...)</code> 是<strong>三元表达式</strong>——"条件成立用前者，否则用后者"。这里是说：key 长度超过 10 位（像真 key），就只显示前 10 位 <code>api_key[:10]</code>（<code>[:10]</code> 是<strong>切片</strong>，取前 10 个字符，避免把完整 key 打到屏幕上）；否则原样打印提示你还没配。这两个语法 L03/L04 会正式讲，这里照抄能跑就行。</p>
+  <div class="tip"><strong>Windows PowerShell 故障提示：</strong>如果运行时出现 <code>UnicodeEncodeError</code>，先执行 <code>$env:PYTHONIOENCODING="utf-8"</code>，再运行 <code>uv run main.py</code>。这个设置只影响当前终端会话。</div>
 </div>
 
 <h2>环境检查清单</h2>
@@ -412,7 +426,7 @@ if __name__ == "__main__":
   <li>能用 <code>uv add</code> 安装依赖</li>
   <li>能用 <code>uv run</code> 运行脚本</li>
   <li><code>.env</code> 文件能正常加载</li>
-  <li>实战任务完成（3 个 ✅）</li>
+  <li>实战任务完成（看到 <code>.env 加载成功</code>）</li>
 </ul>
 
 <div class="section">

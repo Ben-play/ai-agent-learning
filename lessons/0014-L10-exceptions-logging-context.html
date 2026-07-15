@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>异常处理、日志与上下文管理器</h1>
     <p class="subtitle">Agent 会失败 — 优雅地处理错误、记录日志、管理资源，是生产级的分水岭</p>
@@ -26,7 +26,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>Agent 天生脆弱：LLM API 会超时、返回会格式错误、工具会抛异常、网络会抖动。<strong>怎么处理失败</strong>，是"能跑的 demo"和"能上线的系统"的分水岭。</p>
-    <p>三件生产级基本功：<strong>异常处理</strong>（分类捕获、别吞错）、<strong>logging</strong>（结构化日志，而非 print 调试）、<strong>上下文管理器</strong>（保证超时/清理/重试）。从第一天就养成，后面每一课都受益。</p>
+    <p>三件生产级基本功：<strong>异常处理</strong>（分类捕获、别吞错）、<strong>logging</strong>（结构化日志，而非 print 调试）、<strong>上下文管理器</strong>（保证进入/退出和清理机会）。超时该交给客户端超时参数/<code>asyncio.wait_for</code>，重试该交给 tenacity/SDK 自带的重试机制——上下文管理器本身不自动做超时或重试。从第一天就养成，后面每一课都受益。</p>
   </div>
 </div>
 
@@ -38,8 +38,9 @@
       <li>用 try/except/else/finally 精准处理错误</li>
       <li>定义自定义异常，用 <code>raise ... from</code> 保留异常链</li>
       <li>用 <code>logging</code> 记录结构化日志</li>
-      <li>写上下文管理器（<code>with</code>）保证资源清理</li>
-      <li>知道 <code>tenacity</code> 是重试的标准工具</li>
+      <li>写上下文管理器（<code>with</code>）保证进入/退出与清理执行</li>
+      <li>知道超时、重试不是上下文管理器的职责，而是客户端/<code>wait_for</code>/tenacity 的职责</li>
+      <li>用 tenacity 只对临时性异常重试，理解 <code>stop_after_attempt</code> 与 <code>reraise</code> 的语义</li>
     </ul>
   </div>
 </div>
@@ -116,8 +117,16 @@ logger = logging.getLogger("agent")
 logger.debug("详细调试信息")        # 开发时看
 logger.info("工具 search 调用成功")  # 正常事件
 logger.warning("重试第 2 次")        # 需要注意
-logger.error("LLM 调用失败", exc_info=True)  # 出错（带堆栈）</code></pre>
+
+try:
+    result = call_llm(prompt)
+except TimeoutError:
+    logger.exception("LLM 调用失败")  # 只在 except 块里用，自动带 traceback</code></pre>
   <p>为什么不用 print：logging 能<strong>分级</strong>（生产只输出 INFO 以上）、能<strong>带时间/模块名</strong>、能<strong>输出到文件/收集系统</strong>、能<strong>关掉</strong>。print 全靠手删，且没有结构。</p>
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>⚠️ <code>logger.exception</code> 只能在真实 except 块里用：</strong>
+    <p><code>logger.exception(msg)</code> 等价于 <code>logger.error(msg, exc_info=True)</code>——它靠 <code>sys.exc_info()</code> 拿"当前正在处理的异常"来打印 traceback。如果在没有活动异常的地方调用（比如 <code>except</code> 块外，或异常已经处理完），<code>exc_info=True</code> 拿不到异常对象，只会打出 <code>NoneType: None</code>，看起来像日志失败了。牢记：<strong>exception 属于 except，不属于别处</strong>。</p>
+  </div>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
@@ -146,6 +155,10 @@ with timed("llm-call"):
 # [llm-call] 开始
 # [llm-call] 结束，耗时 0.052s</code></pre>
   <p>用 <code>@contextmanager</code> + <code>yield</code> 是写上下文管理器最简单的方式：<code>yield</code> 前是进入逻辑，<code>finally</code> 里是退出清理（无论是否异常都执行）。</p>
+  <div class="card">
+    <strong>📎 关于 <code>@name</code> 这一行：</strong>
+    <p>本课的 <code>@contextmanager</code>、下一节的 <code>@retry</code> 都是<strong>装饰器</strong>：写在函数定义上方的 <code>@xxx</code>，会在函数定义完成后把这个函数交给 <code>xxx</code> 处理、返回一个新对象。这里先直接把它们当"标准组件"使用即可，不需要弄懂内部机制——装饰器是怎么写、怎么工作的，L11 会系统讲。</p>
+  </div>
 
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> <code>@contextmanager</code> 函数里，<code>yield</code> 之后的代码相当于？</div>
@@ -160,16 +173,30 @@ with timed("llm-call"):
 </div>
 
 <div class="section">
-  <h2>5. 重试：用 tenacity，别手写</h2>
+  <h2>5. 重试：用 tenacity，只重试临时性异常</h2>
   <div class="card">
-    <p>LLM API 会因限流/网络临时失败，需要<strong>指数退避重试</strong>。原理你要懂，但生产别手写——用 <a href="https://tenacity.readthedocs.io/" target="_blank">tenacity</a>：</p>
-    <pre><code>from tenacity import retry, stop_after_attempt, wait_exponential
+    <p>LLM API 会因限流/网络<strong>临时</strong>失败，需要指数退避重试；但参数错误（400）、鉴权失败（401）这类<strong>确定性错误</strong>重试也没用，只会浪费时间和配额。原理你要懂，工程上别手写——用 <a href="https://tenacity.readthedocs.io/" target="_blank">tenacity</a>：</p>
+    <pre><code># 安装：uv add tenacity  或  pip install tenacity
 
-@retry(stop=stop_after_attempt(3),
-       wait=wait_exponential(min=1, max=10))
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+class TemporaryAPIError(Exception):
+    """网络抖动/限流等临时性错误，值得重试"""
+
+class InvalidRequestError(Exception):
+    """参数错误、鉴权失败等确定性错误，重试没用"""
+
+@retry(
+    retry=retry_if_exception_type(TemporaryAPIError),  # 只对临时异常重试
+    stop=stop_after_attempt(3),                          # 总共最多尝试 3 次
+    wait=wait_exponential(multiplier=1, min=1, max=10),  # 等 1s、2s...
+    reraise=True,                                        # 耗尽重试后抛出最后一次的原始异常
+)
 def call_llm(prompt):
-    return api.chat(prompt)    # 失败会自动重试：等 1s、2s、4s…，最多 3 次</code></pre>
-    <p>tenacity 还支持"只对特定异常重试""重试前记日志""到点抛出最后一次错误"——这些自己写又臭又长。</p>
+    return api.chat(prompt)</code></pre>
+    <p><strong><code>retry_if_exception_type(TemporaryAPIError)</code></strong>：只有抛出 <code>TemporaryAPIError</code> 才会重试；抛 <code>InvalidRequestError</code> 会立刻向上传播，只调用一次，不重试——避免对"注定失败"的请求做无意义重试。</p>
+    <p><strong><code>stop_after_attempt(3)</code></strong>：语义是<strong>总共尝试 3 次</strong>（第 1 次 + 最多 2 次重试），不是"重试 3 次"；两次重试之间按 <code>wait_exponential</code> 退避等待。</p>
+    <p><strong><code>reraise=True</code></strong>：3 次都失败后，直接抛出<strong>最后一次调用的原始异常</strong>（这里是 <code>TemporaryAPIError</code>）；不设为 <code>True</code> 的话，tenacity 默认会包一层 <code>RetryError</code>，掩盖原始异常类型，排查更麻烦。</p>
   </div>
 </div>
 
@@ -189,9 +216,15 @@ logging（可观测性第一层）
 上下文管理器 with
 ├── __enter__ / __exit__
 ├── @contextmanager + yield（前=进，后=清理）
+├── 只负责进入/退出与清理机会，不自动做超时/重试
 └── 保证清理/计时/关闭
 
-重试 → tenacity（指数退避，别手写）</code></pre>
+logger.exception 只能用在真实 except 块里（靠当前异常上下文）
+
+重试 → tenacity（超时用客户端/wait_for，重试用 tenacity，职责分开）
+├── retry_if_exception_type：只对临时异常重试
+├── stop_after_attempt(n)：总尝试 n 次
+└── reraise=True：耗尽后抛最后一次原始异常</code></pre>
   </div>
 </div>
 
@@ -284,7 +317,7 @@ except APIError as e:
     <h3>Q4：上下文管理器（with）解决什么？怎么自己实现？</h3>
     <p><strong>答：</strong>保证"成对操作"的收尾一定执行（关文件/连接、释放锁、计时）。实现方式：类里写 <code>__enter__</code>/<code>__exit__</code>，或用 <code>@contextmanager</code> + <code>yield</code>（前进后清理）。</p>
     <h3>Q5：LLM API 调用的重试该怎么做？</h3>
-    <p><strong>答：</strong>对临时性错误（限流 429、超时）做指数退避重试。原理要懂，工程上用 <code>tenacity</code>（<code>stop_after_attempt</code> + <code>wait_exponential</code>），别手写。</p>
+    <p><strong>答：</strong>对临时性错误（限流 429、超时）做指数退避重试，且只应重试临时异常（如自定义 <code>TemporaryAPIError</code>），400/401 类确定性错误重试没有意义。工程上用 <code>tenacity</code>（<code>retry_if_exception_type</code> + <code>stop_after_attempt</code> + <code>wait_exponential</code> + <code>reraise=True</code>），别手写。超时用客户端参数/<code>wait_for</code>处理，和重试是两个职责。</p>
   </div>
 </div>
 
@@ -318,9 +351,10 @@ except APIError as e:
       <li>按类型 except，别裸 except、别 <code>except Exception: pass</code> 吞错</li>
       <li>自定义异常 + <code>raise ... from e</code> 保留根因（__cause__）</li>
       <li>用 logging 分级记录，替代 print —— 可观测性的第一层</li>
-      <li>上下文管理器（with / @contextmanager+yield）保证清理一定执行</li>
+      <li><code>logger.exception</code> 只能写在真实 <code>except</code> 块内，否则拿不到异常上下文</li>
+      <li>上下文管理器（with / @contextmanager+yield）保证清理一定执行，但不负责超时/重试</li>
       <li>记录错误后要重抛，别让调用方误以为成功</li>
-      <li>重试用 tenacity 做指数退避，别手写</li>
+      <li>重试用 tenacity 只对临时异常做，<code>stop_after_attempt</code> 是总尝试次数，<code>reraise=True</code> 抛原始异常</li>
     </ul>
   </div>
   <div class="next-lesson">

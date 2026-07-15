@@ -61,9 +61,11 @@ if finish_reason == "tool_calls":
 elif finish_reason == "stop":
     action = "返回最终答案"
 elif finish_reason == "length":
-    action = "上下文超限，需要压缩"
+    action = "输出达到生成上限，当前回答可能被截断"
 else:
     action = "未知状态，记录日志"</code></pre>
+
+  <p style="font-size:0.9rem;color:var(--muted);">注：<code>finish_reason</code> 及其取值是 OpenAI 风格的简化字段，不同厂商命名和取值都不一样。<code>"length"</code> 只表示<strong>输出</strong>达到了生成长度上限，不等同于"上下文超限"——上下文窗口超限通常在请求阶段就报错，或由框架提前裁剪，二者不要混为一谈。</p>
 
   <h3>for / while — Agent Loop 的两种循环</h3>
   <pre><code># for：遍历已知集合（比如多个工具调用）
@@ -72,11 +74,13 @@ for call in tool_calls:
 
 # while：Agent 主循环，直到完成或到达步数上限
 step = 0
+done = False
 MAX_STEPS = 10
 while not done and step &lt; MAX_STEPS:   # ← 一定要有上限，否则可能无限循环
     response = llm(messages)
-    done = (response.finish_reason == "stop")
+    done = response.finish_reason == "stop"
     step += 1</code></pre>
+  <p style="font-size:0.9rem;color:var(--muted);"><code>response.finish_reason</code> 同样是 OpenAI 风格的简化字段；真实项目里字段名和取值因厂商而异，通常由 provider adapter 统一归一化后再交给 Agent Loop 处理。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
@@ -136,7 +140,7 @@ match action:
     case _:                                   # 兜底，相当于 else
         raise ValueError(f"未知动作: {action}")</code></pre>
 
-  <p>关键能力：<strong>match 可以一边匹配结构、一边把字段解构出来</strong>（上面的 <code>name</code>、<code>args</code>、<code>content</code>），这是 if/elif 做不到的。</p>
+  <p>关键能力：<strong>match 可以一边匹配结构、一边把字段解构出来</strong>（上面的 <code>name</code>、<code>args</code>、<code>content</code>）。if/elif 也能先判断类型再手动取字段，只是要多写几行；match-case 的优势是把"结构匹配"和"变量绑定"合并写在同一个声明式分支里，更紧凑、更好扩展。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
@@ -168,6 +172,7 @@ match action:
 
   <h3>基础：嵌入表达式</h3>
   <pre><code>model = "claude-opus-4-8"
+MAX_RESULTS = 10
 n = 5
 prompt = f"用模型 {model} 搜索，返回 {n} 条结果"
 # 表达式也行（不只是变量）
@@ -242,10 +247,10 @@ text = "search, calc , weather"
 [t.strip() for t in text.split(",")]   # ['search', 'calc', 'weather']  切分+去空格
 
 "TOOL_CALL".lower()         # "tool_call"   归一化
-"error" in response.lower() # 子串判断（先转小写更稳）
 ", ".join(["a", "b", "c"])  # "a, b, c"   用分隔符把列表拼成一个字符串
 
 resp = "Final Answer: 42"
+"error" in resp.lower()     # 子串判断（先转小写更稳）
 resp.startswith("Final")    # True
 resp.split(":", 1)[1].strip()  # "42"   按第一个冒号切一刀</code></pre>
 
@@ -262,8 +267,10 @@ resp.split(":", 1)[1].strip()  # "42"   按第一个冒号切一刀</code></pre>
 
   <p>把前面的零件组合起来，就是 Agent 开发里最高频的活：<strong>动态构造 Prompt</strong>。三种基本模式：</p>
 
+  <p style="font-size:0.9rem;color:var(--muted);">下面的例子已经用到了 <code>def</code> 函数和参数——函数的定义方式、参数设计会在 <a href="0009-L05-functions-and-parameters.html">L05</a> 正式讲，这里先把它们当"现成容器"来看，只关注函数体里的分支、字符串和列表操作。</p>
+
   <h3>模式一：变量替换</h3>
-  <pre><code>def build_prompt(question: str, context: str) -&gt; str:
+  <pre><code>def build_prompt(question, context):
     return f"""根据下面的资料回答问题。
 
 资料：
@@ -273,7 +280,7 @@ resp.split(":", 1)[1].strip()  # "42"   按第一个冒号切一刀</code></pre>
 """</code></pre>
 
   <h3>模式二：条件拼接（按需加入片段）</h3>
-  <pre><code>def build_system(role: str, tools: list[str], strict: bool) -&gt; str:
+  <pre><code>def build_system(role, tools, strict):
     parts = [f"你是一个{role}。"]
 
     if tools:                                    # 有工具才加这段
@@ -293,7 +300,8 @@ print(build_system("搜索助手", ["search", "calc"], strict=True))</code></pre
 ]
 
 # 把结构化历史渲染成文本上下文
-context = "\n".join(f"{m['role']}: {m['content']}" for m in history)
+lines = [f"{m['role']}: {m['content']}" for m in history]
+context = "\n".join(lines)
 prompt = f"对话历史：\n{context}\n\n请继续。"</code></pre>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
@@ -352,9 +360,13 @@ Prompt 构造模式（核心）
 
   <div class="card">
     <h3>练习：构建一个 Prompt 模板引擎</h3>
-    <p>用 f-string + 字典实现一个动态 Prompt 模板系统，支持变量替换和条件拼接。<strong>先自己写，再看答案。</strong></p>
+    <p>用 f-string + 条件分支 + 片段列表实现一个动态 Prompt 模板系统，支持变量替换和条件拼接。函数签名已经给好（参数设计留到 L05 讲），你只需要补全函数体。<strong>先自己写，再看答案。</strong></p>
 
-    <pre><code># 目标：实现 render_prompt()，满足下面的调用
+    <pre><code># 目标：补全 render_prompt() 的函数体，满足下面的调用
+def render_prompt(role, question, context="", tools=None, strict=False):
+    tools = tools or []          # 防可变默认参数陷阱（见 L03）
+    # 在这里完成条件拼接：用 parts 列表 + if + append + join
+
 result = render_prompt(
     role="客服助手",
     question="怎么退货？",
@@ -366,7 +378,7 @@ print(result)</code></pre>
 
     <h4>任务清单</h4>
     <ol>
-      <li>函数签名：<code>render_prompt(role, question, context="", tools=None, strict=False)</code></li>
+      <li>函数签名已给定：<code>render_prompt(role, question, context="", tools=None, strict=False)</code>，不需要自己设计参数</li>
       <li>第一行固定是 <code>f"你是一个{role}。"</code></li>
       <li>只有 <code>tools</code> 非空时，加一行 <code>"可用工具：xxx, yyy"</code></li>
       <li>只有 <code>context</code> 非空时，加一段 <code>"参考资料：\n{context}"</code></li>

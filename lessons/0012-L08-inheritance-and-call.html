@@ -46,6 +46,7 @@
 
 <div class="section">
   <h2>1. 继承与 super()</h2>
+  <p>看下面的 <code>class SearchTool(Tool)</code>：括号里的 <code>Tool</code> 就是<strong>父类（基类）</strong>，<code>SearchTool</code> 是<strong>子类</strong>——子类自动拥有父类的属性和方法，还能<strong>覆盖（override）</strong>同名方法写自己的实现。<code>super()</code> 是子类调用父类实现的入口：它按方法解析顺序（MRO）找到父类版本并调用，让子类"先复用父类逻辑，再补充自己的差异"。复杂的多继承 MRO 属于进阶话题，本课不展开。</p>
   <pre><code>class Tool:
     def __init__(self, name):
         self.name = name
@@ -125,7 +126,7 @@ print(tool)                # &lt;Tool search&gt;         ← __repr__ 生效</co
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p>这就是 Agent 执行工具的标准姿势：Agent 拿到 LLM 给的参数字典 <code>args</code>，直接 <code>tool(**args)</code> 调用（呼应 L05 的解包）。工具作为对象还能携带 <code>name</code>、参数 schema、权限等元信息——纯函数做不到这些。</p>
+    <p>这就是 Agent 执行工具的标准姿势：Agent 拿到 LLM 给的参数字典 <code>args</code>，直接 <code>tool(**args)</code> 调用（呼应 L05 的解包）。Python 函数本身也是对象，能读取 <code>__name__</code>/<code>__doc__</code>/<code>__annotations__</code> 等元信息，也能挂到注册表里——并非纯函数绝对做不到元信息。可调用对象真正的优势是：能把<strong>可变状态、配置项和行为</strong>一起封装进同一个实例（比如 <code>self.api_key</code>、<code>self.max_retries</code>），这是单个函数不方便做到的。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -182,7 +183,7 @@ __call__ → 对象可像函数调用
       <li>实现 <code>__call__</code>：转发到 <code>run</code></li>
       <li>实现 <code>__repr__</code>：形如 <code>&lt;Tool search: 搜索网页&gt;</code></li>
       <li>实现 <code>SearchTool</code> 和 <code>CalcTool</code> 两个子类</li>
-      <li>把它们放进列表，用统一循环 <code>tool(**args)</code> 调用（体会多态）</li>
+      <li>把工具实例放进注册表 <code>{name: tool}</code>，按 <code>call["name"]</code> 查到工具后统一 <code>tool(**args)</code> 调用（体会多态；正文第 4 节的 <code>list</code> 只是入门示意，练习用 <code>dict</code> 是因为真实场景要按名字找工具）</li>
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
@@ -210,16 +211,16 @@ class SearchTool(BaseTool):
 
 class CalcTool(BaseTool):
     name = "calc"
-    description = "计算表达式"
-    def run(self, expression):
-        return {"tool": self.name, "result": eval(expression)}   # 教学用；生产别用 eval
+    description = "计算两个数之和"
+    def run(self, a, b):
+        return {"tool": self.name, "result": a + b}   # 明确的数值参数，不对字符串做 eval
 
 tools = {t.name: t for t in [SearchTool(), CalcTool()]}
 
 # 模拟 Agent 执行：LLM 给出工具名 + 参数
 calls = [
     {"name": "search", "args": {"query": "ai agents"}},
-    {"name": "calc", "args": {"expression": "1500 * 0.8"}},
+    {"name": "calc", "args": {"a": 1500, "b": -300}},
 ]
 for call in calls:
     tool = tools[call["name"]]
@@ -241,7 +242,7 @@ for call in calls:
         <div class="think-q-answer">
           <p><strong>因为 Agent 和工具是「has-a（有）」关系，不是「is-a（是）」关系；组合灵活、可运行时增删，继承则僵硬且会爆炸。</strong></p>
           <p>从语义看，「Agent <strong>拥有</strong>一组工具」是自然的，而「Agent <strong>是</strong>一个搜索工具、同时又<strong>是</strong>一个计算工具」根本讲不通——这正是 is-a 与 has-a 的区别，用错就是把继承当箩筐。</p>
-          <p>从工程看，组合的好处非常实在：工具集是一个 <code>dict</code>，能在<strong>运行时动态增删</strong>（按用户权限、按场景开关工具），一个 Agent 可以持有任意多个工具；而继承是编译期就定死的静态结构。更要命的是，「继承各种工具」意味着<strong>多继承</strong>，工具一多就组合爆炸、方法解析顺序（MRO）混乱、耦合严重、难以维护。所以各大框架都是「Agent 持有工具集合」这套组合设计——这就是本课「组合优于继承」的落地。</p>
+          <p>从工程看，组合的好处非常实在：工具集是一个 <code>dict</code>，能在<strong>运行时动态增删</strong>（按用户权限、按场景开关工具），一个 Agent 可以持有任意多个工具；而 Python 在执行 <code>class</code> 语句时创建类，继承关系通常在类创建的那一刻就确定下来，之后不会像组合那样按实例、按运行时去替换持有的对象，明显不如组合灵活。更要命的是，「继承各种工具」意味着<strong>多继承</strong>，工具一多就组合爆炸、方法解析顺序（MRO）混乱、耦合严重、难以维护。所以各大框架都是「Agent 持有工具集合」这套组合设计——这就是本课「组合优于继承」的落地。</p>
         </div>
       </details>
     </details>

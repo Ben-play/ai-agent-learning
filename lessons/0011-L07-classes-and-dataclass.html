@@ -46,14 +46,16 @@
 
 <div class="section">
   <h2>1. 类的基础：属性与方法</h2>
-  <p><strong>类是"把数据和操作它的函数打包在一起"的模板。</strong>前面学的函数是零散的动作，而一个 Agent 既有状态（名字、配置、对话历史）又有行为（回复、调工具）——用类正好把两者收在一处。先认清一个类的"三件套"：<strong>类属性</strong>（所有实例共享）、<strong>实例属性</strong>（每个实例独有，在 <code>__init__</code> 里设）、<strong>方法</strong>（第一个参数永远是 <code>self</code>，指向实例自己）。</p>
+  <p><strong>类是"把数据和操作它的函数打包在一起"的模板</strong>——它本身不是数据，只是造数据的图纸。前面学的函数是零散的动作，而一个 Agent 既有状态（名字、配置、对话历史）又有行为（回复、调工具）——用类正好把两者收在一处。</p>
+  <p>写 <code>class Agent:</code> 只是定义模板；真正产生一个能用的对象要靠<strong>实例化</strong>——调用类本身，像函数一样传参：<code>Agent("bot")</code>。这一步会先造出一块空白的实例，再自动调用 <code>__init__</code>，把传进来的参数写成这个实例自己的属性。<code>a = Agent("bot")</code> 之后，<code>a</code> 就是指向这个具体实例的变量；同一个类可以实例化出无数个互不影响的对象。<code>__init__</code> 里第一个参数 <code>self</code>，指的就是"正在被创建、正在被初始化的那个实例"——之后每次通过 <code>a.xxx</code> 调用方法，Python 都会把 <code>a</code> 自动传进去，绑定成方法内的 <code>self</code>。</p>
+  <p>认清一个类的"三件套"：<strong>类属性</strong>（定义在类体里，默认所有实例共享读取）、<strong>实例属性</strong>（每个实例独有，通常在 <code>__init__</code> 里用 <code>self.xxx = ...</code> 设置）、<strong>方法</strong>（类里定义的函数，按用途分三种，不是"第一个参数永远是 self"）。</p>
   <pre><code>class Agent:
-    default_model = "claude"          # 类属性：所有实例共享
+    default_model = "claude"          # 类属性：定义在类体里
 
     def __init__(self, name):
         self.name = name              # 实例属性：每个实例独有
 
-    def greet(self):                  # 实例方法：第一个参数永远是 self
+    def greet(self):                  # 实例方法：约定第一个参数是 self
         return f"{self.name}@{self.default_model}"
 
     @classmethod
@@ -61,18 +63,26 @@
         return cls("default")
 
     @staticmethod
-    def is_valid(name):               # 静态方法：不碰 self/cls，就是个归属到类的工具函数
+    def is_valid(name):               # 静态方法：不接收隐式的 self/cls
         return bool(name)
 
-a = Agent("bot")
+a = Agent("bot")              # 实例化：调用类 → 创建实例 → 自动执行 __init__
 print(a.greet())              # bot@claude
 print(Agent.make_default().name)   # default
 print(Agent.is_valid(""))    # False</code></pre>
   <ul>
-    <li><strong>self</strong>：指向"当前这个实例"，实例方法必带</li>
-    <li><strong>@classmethod</strong>：第一个参数是类 <code>cls</code>，常用来写"另一种构造方式"（工厂方法）</li>
-    <li><strong>@staticmethod</strong>：既不要 self 也不要 cls，只是逻辑上归属这个类的函数</li>
+    <li><strong>实例化</strong>：<code>Agent("bot")</code> 这一步——调用类本身，产出一个新实例，并自动触发 <code>__init__</code> 初始化字段</li>
+    <li><strong>self</strong>：实例方法里指向"当前这个实例"；只是约定俗成的命名，不是语法关键字</li>
+    <li><strong>实例方法</strong>：惯例上第一个参数是 <code>self</code>，Python 调用 <code>a.greet()</code> 时自动把 <code>a</code> 传进去</li>
+    <li><strong>@classmethod</strong>：第一个参数是类本身 <code>cls</code>，常用来写"另一种构造方式"（工厂方法）</li>
+    <li><strong>@staticmethod</strong>：不接收隐式的 self/cls，只是逻辑上归属这个类的普通函数</li>
   </ul>
+
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>⚠️ 类属性遮蔽与共享陷阱：</strong>
+    <p>访问 <code>a.default_model</code> 时，Python 先找实例自己有没有这个属性，没有才去类上找——所以类属性其实是"默认从类上读取"。写 <code>a.default_model = "gpt"</code> 并不会修改类属性，只是给 <code>a</code> 这个实例新建了一个同名的实例属性，把类属性<strong>遮蔽</strong>掉了；其他实例和类本身都不受影响。</p>
+    <p>真正危险的是<strong>可变类属性</strong>：如果类属性是 <code>list</code>/<code>dict</code> 这类可变对象，比如 <code>history = []</code>，那么所有没有遮蔽它的实例都在共享同一个对象——一个实例 <code>a.history.append(x)</code> 会让 <code>b.history</code> 也看到这条记录。这才是"共享状态陷阱"，和 L03 讲的可变默认参数是同一类坑。</p>
+  </div>
 
   <div class="quiz" data-quiz="q1">
     <div class="quiz-question"><span class="quiz-q">Q</span> <code>@classmethod</code> 的第一个参数是什么？</div>
@@ -110,15 +120,28 @@ print(m1 == m2)    # True  ← 自动 __eq__（按字段比较）</code></pre>
 
 <div class="section">
   <h2>3. frozen 不可变模型</h2>
-  <p>加 <code>frozen=True</code>，实例就不可修改——适合表示"一旦产生就不该变"的数据，比如一次工具调用记录：</p>
+  <p>加 <code>frozen=True</code>，实例的字段就<strong>不能被重新绑定</strong>——适合表示"一旦产生就不该变"的数据，比如一次工具调用记录：</p>
   <pre><code>@dataclass(frozen=True)
 class ToolCall:
     name: str
     args: dict
 
 tc = ToolCall("search", {"q": "python"})
-tc.name = "calc"     # ❌ FrozenInstanceError：不能改</code></pre>
-  <p>不可变的好处：可 hash（能进 set / 当 dict key）、线程安全、语义清晰。</p>
+tc.name = "calc"          # ❌ FrozenInstanceError：字段不能重新赋值
+tc.args["q"] = "changed"  # ✅ 能成功！args 指向的 dict 本身还是可变的
+print(tc.args["q"])       # changed</code></pre>
+  <div class="card" style="border-left: 4px solid var(--accent-bright);">
+    <strong>⚠️ frozen 只是"浅层不可变"：</strong>
+    <p><code>frozen=True</code> 阻止的是<strong>字段重新绑定</strong>（<code>tc.name = ...</code> 这种赋值），并不会递归冻结字段内部的对象。如果字段本身是 <code>list</code>/<code>dict</code> 这类可变容器，容器<strong>内部的内容照样可以修改</strong>——上面例子里 <code>tc.args</code> 这个 dict 就被原地改了，<code>tc</code> 本身"没变"，但它引用的数据变了。</p>
+    <p>连带的后果：<code>ToolCall</code> 带了 <code>dict</code> 字段，试图 <code>hash(tc)</code> 会直接抛 <code>TypeError</code>（dict 本身不可 hash），并不会因为加了 <code>frozen=True</code> 就自动可 hash。<strong>frozen 也不等于自动线程安全</strong>——它只保证字段不会被重新赋值，多线程同时修改内部可变字段依然不安全。</p>
+    <p>如果确实需要一个可 hash、能进 set/当 dict key 的 <code>ToolCall</code>，字段本身也要换成不可变类型，比如把 <code>args: dict</code> 换成 <code>args_json: str</code>（先序列化）：</p>
+    <pre><code>@dataclass(frozen=True)
+class ToolCallKey:
+    name: str
+    args_json: str      # 不可变字段 → 整个实例才真正可 hash
+
+print(hash(ToolCallKey("search", '{"q": "python"}')))  # 正常输出一个整数</code></pre>
+  </div>
 
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> dataclass 里给 <code>list</code>/<code>dict</code> 默认值，正确写法是？</div>
@@ -150,7 +173,7 @@ tc.name = "calc"     # ❌ FrozenInstanceError：不能改</code></pre>
   <h2>知识图谱</h2>
   <div class="card">
     <pre><code>类基础
-├── 实例属性(self.x) vs 类属性(共享)
+├── 实例属性(self.x) vs 类属性(默认从类读取，实例可遮蔽)
 ├── 实例方法(self)
 ├── @classmethod(cls) → 工厂方法
 └── @staticmethod → 归属类的工具函数
@@ -158,7 +181,7 @@ tc.name = "calc"     # ❌ FrozenInstanceError：不能改</code></pre>
 @dataclass
 ├── 自动 __init__ / __eq__ / __repr__
 ├── field(default_factory=...) → 可变默认值正解
-└── frozen=True → 不可变、可 hash
+└── frozen=True → 禁止字段重绑定（浅层），非深度不可变/非自动可 hash
 
 dataclass vs Pydantic
 ├── dataclass：内部数据、不校验、零依赖
@@ -223,11 +246,11 @@ print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q'
       </details>
 
       <details class="think-q">
-        <summary><span class="think-q-tag">Q2</span>为什么 <code>ToolCall</code> 适合 frozen，而 <code>AgentState</code> 不适合？</summary>
+        <summary><span class="think-q-tag">Q2</span>为什么 <code>ToolCall</code> 适合 frozen，而 <code>AgentState</code> 不适合？frozen 的 <code>AgentState</code> 会发生什么？</summary>
         <div class="think-q-answer">
           <p><strong>因为 <code>ToolCall</code> 是「一旦发生就不该再变」的历史记录，而 <code>AgentState</code> 天生要随对话不断被修改。</strong></p>
-          <p><code>ToolCall</code> 记录的是「某一刻用某参数调了某工具」这一既成事实，把它设成 <code>frozen=True</code> 有三重好处：语义上宣告「这是不可篡改的日志」；防止代码不小心改写调用历史；而且 frozen 实例<strong>可 hash</strong>，能放进 <code>set</code> 去重、或当 dict 的 key 做缓存。这类不可变值对象正是 frozen 的典型用武之地。</p>
-          <p><code>AgentState</code> 恰恰相反——它的 <code>add()</code> 方法要 <code>messages.append(msg)</code>、要 <code>step += 1</code>，本质就是一个<strong>随 Agent Loop 逐轮累积、持续变化</strong>的状态对象。若强行 frozen，任何一次追加消息、推进步数都会抛 <code>FrozenInstanceError</code>，方法根本没法工作。<strong>不可变适合「记录事实」，可变适合「承载过程」</strong>——这就是二者的分野。</p>
+          <p><code>ToolCall</code> 记录的是「某一刻用某参数调了某工具」这一既成事实，把它设成 <code>frozen=True</code> 有两重好处：语义上宣告「这是不可篡改的日志」；防止代码不小心把 <code>tc.name</code> 这类字段整个重新赋值。但要注意，<code>ToolCall</code> 现在带 <code>args: dict</code> 字段——frozen 只挡得住字段重绑定，挡不住 <code>tc.args["q"] = ...</code> 这种内部修改，<code>hash(tc)</code> 也依然会因为 dict 不可 hash 而报错。真正「记录事实且可 hash」需要把可变字段换成不可变类型（如上面的 <code>ToolCallKey</code>）。</p>
+          <p><code>AgentState</code> 恰恰相反——它的 <code>add()</code> 方法要 <code>messages.append(msg)</code>、要 <code>step += 1</code>，本质就是一个<strong>随 Agent Loop 逐轮累积、持续变化</strong>的状态对象。若把 <code>AgentState</code> 设为 <code>frozen=True</code>：<code>self.step += 1</code> 是对字段 <code>step</code> 重新赋值，会直接抛 <code>FrozenInstanceError</code>，方法跑不通；但 <code>self.messages.append(msg)</code> 只是修改 <code>messages</code> 这个 list 内部的内容、没有重新绑定字段本身，即使 frozen 也<strong>可能执行成功</strong>——这正说明 frozen 只挡字段重绑定，不是真正的深度不可变。想要 <code>AgentState</code> 整体真正不可变，需要连 <code>messages</code> 也换成不可变类型（如 tuple）并且每次「修改」都返回一个新实例。<strong>不可变适合「记录事实」，可变适合「承载过程」</strong>——这就是二者的分野。</p>
         </div>
       </details>
     </details>
@@ -238,7 +261,7 @@ print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q'
   <h2>面试常见问题</h2>
   <div class="card interview">
     <h3>Q1：@dataclass 帮你自动生成了哪些方法？</h3>
-    <p><strong>答：</strong>主要是 <code>__init__</code>、<code>__repr__</code>、<code>__eq__</code>（按字段比较）；加 <code>frozen=True</code> 还会让实例可 hash。省掉大量样板代码。</p>
+    <p><strong>答：</strong>主要是 <code>__init__</code>、<code>__repr__</code>、<code>__eq__</code>（按字段比较）；加 <code>frozen=True</code> 会阻止字段重新绑定（浅层不可变），但不会递归冻结内部对象——若字段本身是 dict/list，实例本身仍可能不可 hash，也仍需注意内部可变。省掉大量样板代码。</p>
     <h3>Q2：dataclass 和 Pydantic 有什么区别？怎么选？</h3>
     <p><strong>答：</strong>dataclass 是标准库、<strong>不做校验</strong>，适合内部纯数据；Pydantic <strong>自动校验并转换类型</strong>、能导出 JSON Schema，适合外部输入/输出和工具 Schema。数据来自外部或需要 Schema 就用 Pydantic。</p>
     <h3>Q3：dataclass 里怎么正确给列表/字典默认值？</h3>
@@ -275,11 +298,11 @@ print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q'
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>实例属性归各实例，类属性被共享；实例方法带 self</li>
-      <li>@classmethod 拿 cls（写工厂方法），@staticmethod 归属类的工具函数</li>
+      <li>实例属性归各实例；类属性默认从类上读取，实例可用同名属性遮蔽（可变类属性才是共享陷阱）</li>
+      <li>实例方法惯例第一个参数是 self；@classmethod 拿 cls（写工厂方法），@staticmethod 归属类的工具函数</li>
       <li>@dataclass 自动生成 __init__/__eq__/__repr__，写数据模型神器</li>
       <li>可变默认值用 <code>field(default_factory=...)</code>，别写 = []</li>
-      <li>frozen=True → 不可变、可 hash；适合工具调用记录这类数据</li>
+      <li>frozen=True → 禁止字段重新绑定（浅层不可变），非深度不可变、非自动可 hash、非自动线程安全</li>
       <li>内部数据用 dataclass，外部输入/Schema 用 Pydantic（→ L14）</li>
     </ul>
   </div>
