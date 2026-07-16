@@ -1,11 +1,15 @@
 /**
- * 交互测验 · 「即答即批」精致版（v3）
+ * 交互测验 · 「即答即批」精致版（v4 · 无障碍加强版）
  *
- * 变化（相对 v2）：
- *   · 去掉「核对答案」两步确认 —— 点选项即判分（更直接）
- *   · 手滑补救交给「再试一次」
- *   · 配色改为编辑风的克制表达：不再整块填色，而是「柔和底色 + 左侧强调条 + 字母徽章变 ✓/✗」，
- *     非答案项淡出，让正确答案自然聚焦。暖赭代替刺眼红，全程走课程设计 token，深浅色皆宜。
+ * 变化（相对 v3）：
+ *   · radiogroup 通过生成的唯一 ID 与 .quiz-question 建立 aria-labelledby 关联
+ *   · 真正的 roving tabindex：首个可聚焦选项 tabindex=0，其余为 -1；
+ *     方向键 / Home / End 只移动焦点，不做选择；Enter/Space 走原生 click 判分
+ *   · 通过生成的稳定 ID 将题目与 radiogroup、解析与已判分组关联
+ *   · 判分结果不仅靠颜色：为作答项和揭示的正确答案追加仅供屏幕阅读器读取的状态文本，
+ *     同时保留 aria-checked 仅表示用户实际选择的单个 radio
+ *   · 避免重复播报：q-key/q-mark 装饰性符号 aria-hidden，动态结果只由 verdict 播报一次
+ *   · 重试重置所有状态与 tabindex，并聚焦回第一个选项
  *
  * 不改任何课程 HTML —— 复用 DOM 契约：
  *   .quiz > .quiz-question / .quiz-options > button[data-answer="correct|wrong"] / .quiz-explanation
@@ -76,6 +80,10 @@
     border-radius:8px;transition:background .2s, color .2s, transform .25s cubic-bezier(.34,1.56,.64,1);
   }
   .quiz-option .q-text{flex:1 1 auto;}
+  .quiz-option .q-status{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+  }
   /* 右侧箭头提示（未答时 hover 显现） */
   .quiz-option .q-mark{
     flex:none;margin-left:.25rem;font-size:1rem;color:var(--muted,#78716C);
@@ -155,6 +163,15 @@
   document.head.appendChild(styleEl);
 
   var LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+  var uidCounter = 0;
+  function uid(prefix) {
+    var id;
+    do {
+      uidCounter += 1;
+      id = prefix + '-' + uidCounter;
+    } while (document.getElementById(id));
+    return id;
+  }
 
   document.querySelectorAll('.quiz').forEach(function (quiz) {
     var optWrap = quiz.querySelector('.quiz-options');
@@ -162,18 +179,28 @@
     var options = Array.prototype.slice.call(optWrap.querySelectorAll('button'));
     if (!options.length) return;
     var explanation = quiz.querySelector('.quiz-explanation');
+    var question = quiz.querySelector('.quiz-question');
+
+    // 生成/沿用稳定 ID，供 aria 关联使用
+    if (question && !question.id) question.id = uid('quiz-question');
+    if (explanation && !explanation.id) explanation.id = uid('quiz-explanation');
 
     optWrap.setAttribute('role', 'radiogroup');
+    if (question) optWrap.setAttribute('aria-labelledby', question.id);
 
     options.forEach(function (btn, i) {
       btn.classList.add('quiz-option');
       btn.setAttribute('type', 'button');
       btn.setAttribute('role', 'radio');
       btn.setAttribute('aria-checked', 'false');
+      if (!btn.id) btn.id = uid('quiz-option');
+      // roving tabindex：仅第一个可聚焦，其余移出 Tab 顺序
+      btn.setAttribute('tabindex', i === 0 ? '0' : '-1');
       var label = btn.innerHTML;
       btn.innerHTML =
         '<span class="q-key" aria-hidden="true">' + (LETTERS[i] || (i + 1)) + '</span>' +
         '<span class="q-text">' + label + '</span>' +
+        '<span class="q-status"></span>' +
         '<span class="q-mark" aria-hidden="true"></span>';
     });
 
@@ -189,6 +216,7 @@
     foot.className = 'quiz-foot';
     var verdict = document.createElement('span');
     verdict.className = 'quiz-verdict';
+    verdict.id = uid('quiz-verdict');
     verdict.setAttribute('role', 'status');
     verdict.setAttribute('aria-live', 'polite');
     var retryBtn = document.createElement('button');
@@ -200,6 +228,10 @@
     if (explanation) quiz.insertBefore(foot, explanation);
     else quiz.appendChild(foot);
 
+    function setOptionStatus(option, text) {
+      option.querySelector('.q-status').textContent = text ? '，' + text : '';
+    }
+
     function grade(picked) {
       if (quiz.classList.contains('graded')) return;
       quiz.classList.add('graded');
@@ -208,18 +240,27 @@
       picked.classList.add(right ? 'correct' : 'wrong');
       picked.setAttribute('aria-checked', 'true');
       picked.querySelector('.q-key').textContent = right ? '✓' : '✗';
+      setOptionStatus(picked, right ? '你的选择，正确' : '你的选择，错误');
 
       if (!right) {
         options.forEach(function (b) {
           if (b.getAttribute('data-answer') === 'correct') {
             b.classList.add('correct');
             b.querySelector('.q-key').textContent = '✓';
+            setOptionStatus(b, '正确答案');
           }
         });
       }
 
+      // 解析描述整个已判分组；选项自身的隐藏状态文字避免逐项重复播报解析。
+      if (explanation) optWrap.setAttribute('aria-describedby', explanation.id);
+
       verdict.classList.add(right ? 'ok' : 'no');
-      verdict.textContent = right ? '✓ 答对了，干得漂亮' : '再想想 —— 正确答案已标出，看看解析';
+      verdict.textContent = right
+        ? '✓ 答对了，干得漂亮'
+        : explanation
+          ? '✗ 再想想 —— 正确答案已标出，看看解析'
+          : '✗ 不对，正确答案已标出';
 
       if (explanation) {
         explanation.style.setProperty('--exp-rule', right ? 'var(--success, #16A34A)' : '#B4530E');
@@ -231,22 +272,37 @@
       options.forEach(function (b, i) {
         b.classList.remove('correct', 'wrong');
         b.setAttribute('aria-checked', 'false');
+        b.removeAttribute('aria-describedby');
         b.querySelector('.q-key').textContent = LETTERS[i] || (i + 1);
+        setOptionStatus(b, '');
+        b.setAttribute('tabindex', i === 0 ? '0' : '-1');
       });
+      optWrap.removeAttribute('aria-describedby');
       verdict.className = 'quiz-verdict';
       verdict.textContent = '';
       options[0].focus();
     }
 
+    function moveFocus(from, to) {
+      options[from].setAttribute('tabindex', '-1');
+      options[to].setAttribute('tabindex', '0');
+      options[to].focus();
+    }
+
     options.forEach(function (btn, i) {
       btn.addEventListener('click', function () { grade(btn); });
-      // 键盘：方向键移动焦点（不判分），Enter/Space 由按钮原生触发 click 判分
+      // 键盘：方向键 / Home / End 移动焦点（不判分），Enter/Space 由按钮原生触发 click 判分
       btn.addEventListener('keydown', function (e) {
         if (quiz.classList.contains('graded')) return;
-        var next = null;
-        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = options[(i + 1) % options.length];
-        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = options[(i - 1 + options.length) % options.length];
-        if (next) { e.preventDefault(); next.focus(); }
+        var nextIndex = null;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') nextIndex = (i + 1) % options.length;
+        else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') nextIndex = (i - 1 + options.length) % options.length;
+        else if (e.key === 'Home') nextIndex = 0;
+        else if (e.key === 'End') nextIndex = options.length - 1;
+        if (nextIndex !== null) {
+          e.preventDefault();
+          moveFocus(i, nextIndex);
+        }
       });
     });
     retryBtn.addEventListener('click', reset);

@@ -36,9 +36,10 @@
   --deploy-bg: #EEF2FF;
   --deploy-fg: #3730A3;
 
-  --font-display: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', Georgia, serif;
-  --font-body: 'Inter', 'Noto Sans SC', 'PingFang SC', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+  /* 字体栈：系统自带 CJK/拉丁/等宽字体优先，不依赖任何远程字体文件，离线环境下也稳定生效 */
+  --font-display: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", SimSun, Georgia, "Times New Roman", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Noto Sans Mono CJK SC", "Source Han Mono SC", Menlo, monospace;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -56,6 +57,39 @@
   --toggle-bg: #E7E5E4;
   --toggle-fg: #78716C;
   --toggle-hover: #D6D3D1;
+
+  /* --- 布局 / 固定控件 命名 token（结构性，浅深色共用） --- */
+  --shell-max-width: 52rem;          /* 全站正文外壳宽度，勿在响应式断点中打破 */
+  --shell-pad-x: 2rem;
+  --shell-pad-x-tablet: 1.5rem;
+  --shell-pad-x-phone: 1rem;
+
+  --scroll-anchor-offset: 5rem;      /* 锚点跳转时预留的顶部安全区（避免被 sticky 顶栏遮挡） */
+  --course-bar-height: 3rem;
+
+  /* 安全区适配（刘海屏/手势条） */
+  --safe-x: env(safe-area-inset-right, 0px);
+  --safe-y: env(safe-area-inset-bottom, 0px);
+
+  /* 悬浮控件（主题切换 / 回到顶部）统一尺寸与间距，二者位置在各自组件中基于这些 token 叠算 */
+  --control-size: 3rem;
+  --control-size-tablet: 2.8rem;
+  --control-size-phone: 2.6rem;
+  --control-gap: 0.85rem;            /* 两个悬浮控件之间的堆叠间距 */
+  --control-offset-x: 2rem;
+  --control-offset-x-tablet: 1.5rem;
+  --control-offset-x-phone: 1.2rem;
+  --control-offset-y: 2rem;
+  --control-offset-y-tablet: 1.6rem;
+  --control-offset-y-phone: 1.2rem;
+
+  /* --- Callout 边框 / 反馈色（浅深色主题化，替代硬编码 hex） --- */
+  --tip-border: #BBF7D0;
+  --info-border: #BFDBFE;
+  --warning-border: #FDE68A;
+  --danger: #DC2626;
+  --danger-bg: #FEF2F2;
+  --danger-border: #FCA5A5;
 }
 
 /* --- 系统偏好自动检测（JS 加载前生效） --- */
@@ -96,6 +130,13 @@
     --toggle-bg: #3A3A3E;
     --toggle-fg: #A8A29E;
     --toggle-hover: #4A4A4E;
+
+    --tip-border: #16A34A;
+    --info-border: #3B82F6;
+    --warning-border: #F59E0B;
+    --danger: #F87171;
+    --danger-bg: #2A1414;
+    --danger-border: #EF4444;
   }
 }
 
@@ -138,6 +179,13 @@
   --toggle-bg: #3A3A3E;
   --toggle-fg: #A8A29E;
   --toggle-hover: #4A4A4E;
+
+  --tip-border: #16A34A;
+  --info-border: #3B82F6;
+  --warning-border: #F59E0B;
+  --danger: #F87171;
+  --danger-bg: #2A1414;
+  --danger-border: #EF4444;
 }
 
 /* --- Reset & Base --- */
@@ -159,9 +207,15 @@ body {
   font-family: var(--font-body);
   color: var(--fg);
   background: var(--bg);
-  max-width: 52rem;
+  max-width: var(--shell-max-width);
   margin: 0 auto;
-  padding: 2.5rem 2rem 5rem;
+  padding: 2.5rem var(--shell-pad-x) 5rem;
+  text-wrap: pretty;
+}
+
+p, li {
+  /* 中文长文测度：略窄于英文默认值，减少一行内的汉字数，降低视觉密度；不影响卡片/导航等已自带宽度约束的组件 */
+  max-width: 42em;
 }
 
 /* --- Typography --- */
@@ -191,6 +245,7 @@ h2 {
   padding-bottom: 0.5rem;
   border-bottom: 2px solid var(--accent);
   letter-spacing: 0.02em;
+  scroll-margin-top: var(--scroll-anchor-offset);
 }
 
 h3 {
@@ -199,6 +254,13 @@ h3 {
   margin-top: 1.2rem;
   margin-bottom: 0.4rem;
   color: var(--fg);
+  scroll-margin-top: var(--scroll-anchor-offset);
+}
+
+/* 任何被当作锚点跳转目标的元素（带 id，或课程脚本动态赋 id 的标题/小节）都预留顶部安全区，
+   避免被 sticky 顶栏（.course-bar）遮住标题首行 */
+[id] {
+  scroll-margin-top: var(--scroll-anchor-offset);
 }
 
 p {
@@ -519,7 +581,7 @@ blockquote {
    Components: Module (for detailed outlines)
    ============================================ */
 .module {
-  margin-bottom: 1.8rem;
+  margin-bottom: 2rem;
 }
 .module-header {
   display: flex;
@@ -584,6 +646,21 @@ blockquote {
   line-height: 1.5;
 }
 
+/* Batch 3：大纲页练习提示条 —— 由 0002/0029/0044 内联 <style> 合并而来（三份逐字节相同） */
+.exercise {
+  background: var(--accent-light);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.8rem;
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--fg-soft);
+}
+.exercise .callout-label {
+  font-weight: 600;
+  color: var(--accent-bright);
+}
+
 /* Lesson badges */
 .badge {
   display: inline-block;
@@ -613,45 +690,46 @@ blockquote {
 }
 
 /* ============================================
-   Components: Tip / Info / Warning
+   Components: 统一 Callout 视觉家族
+   —— .tip/.info/.warning/.interview-box 及可复用的 why/task/exercise 变体
+   共享同一套形状 token（圆角/内边距/行高），仅背景色/边框色随语义切换。
+   装饰性图标与 interview-box 的真实 DOM 标签由 content-tools.js 渐进注入
+   （见 .callout-icon / .callout-label），此处不再用 CSS ::before 塞入有含义的内容。
    ============================================ */
-.tip {
-  background: var(--success-bg);
-  border: 1px solid #BBF7D0;
+.tip,
+.info,
+.warning,
+.why-box,
+.task-box,
+.exercise-box {
   border-radius: var(--radius-md);
   padding: 1rem 1.2rem;
   margin: 1.2rem 0;
   font-size: 0.93rem;
   line-height: 1.65;
+  border: 1px solid transparent;
 }
-.tip::before {
-  content: "💡 ";
+.tip     { background: var(--success-bg); border-color: var(--tip-border); }
+.info    { background: var(--python-bg);  border-color: var(--info-border); }
+.warning { background: var(--accent-light); border-color: var(--warning-border); }
+/* Why：解释「为什么」的补充说明，沿用 agent 语义色，与 tip/info 区分开 */
+.why-box { background: var(--agent-bg); border-color: color-mix(in srgb, var(--agent-fg) 35%, transparent); }
+/* Task：动手任务/操作步骤，沿用 rag 语义色 */
+.task-box { background: var(--rag-bg); border-color: color-mix(in srgb, var(--rag-fg) 35%, transparent); }
+.task-box .callout-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+  color: var(--rag-fg);
 }
+/* Exercise：练习/思考延伸，沿用 llm 语义色 */
+.exercise-box { background: var(--llm-bg); border-color: color-mix(in srgb, var(--llm-fg) 35%, transparent); }
 
-.info {
-  background: var(--python-bg);
-  border: 1px solid #BFDBFE;
-  border-radius: var(--radius-md);
-  padding: 1rem 1.2rem;
-  margin: 1.2rem 0;
-  font-size: 0.93rem;
-  line-height: 1.65;
-}
-.info::before {
-  content: "ℹ️ ";
-}
-
-.warning {
-  background: var(--accent-light);
-  border: 1px solid #FDE68A;
-  border-radius: var(--radius-md);
-  padding: 1rem 1.2rem;
-  margin: 1.2rem 0;
-  font-size: 0.93rem;
-  line-height: 1.65;
-}
-.warning::before {
-  content: "⚠️ ";
+/* 装饰性图标（由 content-tools.js 注入，aria-hidden，纯视觉不承载语义） */
+.callout-icon {
+  display: inline-block;
+  margin-right: 0.4em;
+  font-style: normal;
 }
 
 /* ============================================
@@ -659,44 +737,23 @@ blockquote {
    ============================================ */
 .interview-box {
   background: var(--interview-bg);
-  border: 1px solid #FDE68A;
+  border: 1px solid var(--warning-border);
   border-radius: var(--radius-md);
   padding: 0.8rem 1rem;
   margin: 0.8rem 0;
   font-size: 0.88rem;
 }
-.interview-box::before {
-  content: "🎯 面试覆盖：";
+/* 真实 DOM 标签（由 content-tools.js 注入到内容最前，供屏幕阅读器朗读），替代原先塞在 ::before 里的文字 */
+.interview-box .callout-label {
   font-weight: 600;
   color: var(--interview);
 }
 
 /* ============================================
    Components: Quiz
+   —— 基础占位交由各页面自带样式（quiz.js 注入的 <style>，或 0003/0004 等课的内联 <style>）覆盖，
+   两者在文档中都晚于本表加载，天然获胜；此处不再重复维护一份必被覆盖的死代码。
    ============================================ */
-.quiz-option {
-  display: block;
-  padding: 0.7rem 1rem;
-  margin: 0.35rem 0;
-  border: 2px solid var(--border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: var(--card-bg);
-  font-size: 0.93rem;
-}
-.quiz-option:hover {
-  border-color: var(--accent-bright);
-  background: var(--accent-light);
-}
-.quiz-option.correct {
-  border-color: var(--success);
-  background: var(--success-bg);
-}
-.quiz-option.wrong {
-  border-color: #DC2626;
-  background: #FEF2F2;
-}
 
 /* ============================================
    Components: Navigation
@@ -749,6 +806,8 @@ footer {
 
 /* ============================================
    Components: Part Header (lesson outlines)
+   —— Batch 3：由视觉 div 升级为真正的 <h2 class="part-header" id="...">，
+   语义与既有大纲视觉（含下方 2px 强调下划线）保持不变
    ============================================ */
 .part-header {
   font-family: var(--font-display);
@@ -758,6 +817,76 @@ footer {
   margin: 2.5rem 0 1rem;
   padding-bottom: 0.5rem;
   border-bottom: 2px solid var(--accent-bright);
+  scroll-margin-top: var(--scroll-anchor-offset);
+}
+
+/* ============================================
+   Components: Phase Header Button（总览页阶段折叠控件）
+   —— Batch 3：由 div[onclick] 升级为 <button type="button" class="phase-header">，
+   这里清空按钮默认外观，使其在视觉上与原 div 完全一致
+   ============================================ */
+button.phase-header {
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+/* ============================================
+   Components: Table of Contents（侧边目录，toc.js 注入内容）
+   —— Batch 3：样式从 toc.js 内联 <style> 迁移到这里统一维护
+   ============================================ */
+.toc {
+  position: fixed;
+  top: 50%;
+  right: 1rem;
+  transform: translateY(-50%);
+  max-width: 220px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card-bg) 90%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+}
+.toc-title {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.toc nav a {
+  display: block;
+  padding: 0.2rem 0 0.2rem 0.6rem;
+  color: var(--muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toc nav a:hover { color: var(--accent-bright); border-bottom: none; }
+.toc nav a.active {
+  color: var(--accent-bright);
+  border-left-color: var(--accent-bright);
+  font-weight: 600;
+}
+
+/* 中等宽度（含平板/窄桌面）下让位于正文，避免与内容重叠 */
+@media (max-width: 1100px) {
+  .toc { display: none; }
+}
+@media print {
+  .toc { display: none !important; }
 }
 
 /* ============================================
@@ -770,17 +899,17 @@ footer {
   background: color-mix(in srgb, var(--card-bg) 82%, transparent);
   border-bottom: 1px solid var(--border-light);
   padding: 0;
-  margin: 0 -2rem;
+  margin: 0 calc(var(--shell-pad-x) * -1);
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
 .course-bar-inner {
-  max-width: 52rem;
+  max-width: var(--shell-max-width);
   margin: 0 auto;
   display: flex;
   align-items: center;
-  height: 3rem;
-  padding: 0 2rem;
+  height: var(--course-bar-height);
+  padding: 0 var(--shell-pad-x);
   gap: 0.5rem;
 }
 .course-bar-side {
@@ -949,12 +1078,19 @@ footer {
 
 /* 移动端 */
 @media (max-width: 640px) {
-  .course-bar-inner { padding: 0 1rem; }
-  .course-bar { margin: 0 -1rem; }
+  .course-bar-inner { padding: 0 var(--shell-pad-x-phone); }
+  .course-bar { margin: 0 calc(var(--shell-pad-x-phone) * -1); }
   .course-bar-nav-label { max-width: 80px; }
   .course-bar-title { max-width: 120px; }
   .course-bar-center { border: none; padding: 0; }
   .course-bar-track { display: none; }
+}
+
+/* 平板端：正文外壳内边距略收，但保留双区（数轨、坐标）布局 */
+@media (min-width: 641px) and (max-width: 900px) {
+  .course-bar-inner { padding: 0 var(--shell-pad-x-tablet); }
+  .course-bar { margin: 0 calc(var(--shell-pad-x-tablet) * -1); }
+  .course-bar-title { max-width: 160px; }
 }
 
 /* ============================================
@@ -1153,12 +1289,13 @@ footer {
   line-height: 1;
 }
 
-/* 移动端 */
+/* 移动端：中间的大纲入口保留（提供紧凑的大纲跳转入口），仅收窄样式而非隐藏 */
 @media (max-width: 640px) {
-  .bottom-nav-inner { gap: 0.5rem; }
+  .bottom-nav-inner { gap: 0.5rem; flex-wrap: wrap; }
   .bottom-nav-card { padding: 0.6rem 0.8rem; }
   .bottom-nav-title { font-size: 0.82rem; }
-  .bottom-nav-center { display: none; }
+  .bottom-nav-center { flex: 0 0 100%; order: 3; justify-content: center; margin-top: 0.4rem; }
+  .bottom-nav-outline { padding: 0.35rem 0.9rem; }
 }
 
 /* 打印时隐藏 */
@@ -1175,6 +1312,17 @@ a:focus-visible,
   outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+
+/* 通用交互控件 focus-visible：覆盖 summary（含 details/summary 折叠控件）及其余未显式声明的可交互元素，
+   保证键盘导航在所有页面/组件上都有一致可见的焦点环 */
+:is(button, a, summary, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+summary:focus-visible {
+  outline-offset: -2px;   /* summary 常紧贴容器边缘，收内避免溢出裁切 */
 }
 
 .phase-header:active {
@@ -1242,9 +1390,24 @@ a:focus-visible,
 /* ============================================
    Utility: Responsive
    ============================================ */
+
+/* 平板端：8~13" 平板与小型笔记本常见宽度区间。收窄外壳内边距、字号与卡片密度，
+   但不套用手机端的大幅折叠（保留双栏元数据、时间线数字圈等） */
+@media (min-width: 641px) and (max-width: 900px) {
+  body { padding: 2rem var(--shell-pad-x-tablet) 4rem; }
+
+  .hero { padding: 2rem 1.3rem; }
+  .hero h1 { font-size: 1.9rem; }
+
+  .phase-timeline { padding-left: 2.5rem; }
+  .phase::before { left: -2.5rem; }
+
+  pre { padding: 1.15rem 1.3rem; font-size: 0.8rem; }
+}
+
 @media (max-width: 640px) {
   html { font-size: 15px; }
-  body { padding: 1.2rem 1rem 3rem; }
+  body { padding: 1.2rem var(--shell-pad-x-phone) 3rem; }
 
   .hero { padding: 1.5rem 1rem; }
   .hero h1 { font-size: 1.6rem; }
@@ -1278,8 +1441,34 @@ a:focus-visible,
 @media print {
   body { max-width: 100%; padding: 1rem; }
   .phase.collapsed .phase-body { max-height: none; opacity: 1; }
-  .hero { background: var(--accent) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hero { background: var(--accent) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-shadow: none; }
   .phase::before { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* 仅保留可打印的正文内容：导航壳、悬浮控件、目录、代码复制按钮在纸面上无意义甚至会截断布局 */
+  .course-bar,
+  .bottom-nav,
+  .toc,
+  .theme-toggle,
+  .to-top,
+  .copy-btn,
+  .code-copy,
+  [data-copy-button] {
+    display: none !important;
+  }
+
+  /* 避免标题/卡片/代码块被硬生生切在跨页边界上 */
+  h1, h2, h3, .card, .qa-lesson, .think-q, pre, table, .phase {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  h2, h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  /* 纸面上阴影无意义且可能被渲染成灰底，统一清除 */
+  .card, .tip, .info, .warning, .interview-box, table, .total-bar, .roadmap, .qa-lesson, .think-q {
+    box-shadow: none !important;
+  }
 }
 
 /* ============================================
@@ -1297,10 +1486,10 @@ a:focus-visible,
    ============================================ */
 .theme-toggle {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  width: 3rem;
-  height: 3rem;
+  bottom: calc(var(--control-offset-y) + var(--safe-y));
+  right: calc(var(--control-offset-x) + var(--safe-x));
+  width: var(--control-size);
+  height: var(--control-size);
   border-radius: 50%;
   background: var(--toggle-bg);
   color: var(--toggle-fg);
@@ -1309,7 +1498,6 @@ a:focus-visible,
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
   box-shadow: var(--shadow-md);
   transition: all 0.25s ease;
   z-index: 100;
@@ -1323,16 +1511,22 @@ a:focus-visible,
 .theme-toggle:active {
   transform: scale(0.95);
 }
+.theme-toggle svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  stroke: currentColor;
+  fill: none;
+}
 .theme-toggle .icon-sun,
 .theme-toggle .icon-moon {
   display: none;
 }
 [data-theme="light"] .theme-toggle .icon-sun,
 :root:not([data-theme]) .theme-toggle .icon-sun {
-  display: block;
+  display: flex;
 }
 [data-theme="dark"] .theme-toggle .icon-moon {
-  display: block;
+  display: flex;
 }
 :root:not([data-theme]) .theme-toggle .icon-moon {
   display: none;
@@ -1344,14 +1538,14 @@ a:focus-visible,
   border: 1px solid var(--border);
 }
 
-/* 深色模式下的 quiz 选项 */
+/* 深色模式下的 quiz 选项（仅对未被 quiz.js / 页面内联样式接管的旧版 .quiz-option 生效） */
 [data-theme="dark"] .quiz-option.correct {
-  background: #14261A;
-  border-color: #4ADE80;
+  background: var(--success-bg);
+  border-color: var(--success);
 }
 [data-theme="dark"] .quiz-option.wrong {
-  background: #2A1414;
-  border-color: #EF4444;
+  background: var(--danger-bg);
+  border-color: var(--danger);
 }
 
 /* 深色模式下的 timeline dot 边框 */
@@ -1402,18 +1596,29 @@ a:focus-visible,
   background: var(--bg-warm);
 }
 
+/* 平板端适配：控件略缩，仍保持右下角安全边距 */
+@media (min-width: 641px) and (max-width: 900px) {
+  .theme-toggle {
+    bottom: calc(var(--control-offset-y-tablet) + var(--safe-y));
+    right: calc(var(--control-offset-x-tablet) + var(--safe-x));
+    width: var(--control-size-tablet);
+    height: var(--control-size-tablet);
+  }
+  .theme-toggle svg { width: 1.15rem; height: 1.15rem; }
+}
+
 /* 移动端适配 */
 @media (max-width: 640px) {
   .theme-toggle {
-    bottom: 1.2rem;
-    right: 1.2rem;
-    width: 2.6rem;
-    height: 2.6rem;
-    font-size: 1.1rem;
+    bottom: calc(var(--control-offset-y-phone) + var(--safe-y));
+    right: calc(var(--control-offset-x-phone) + var(--safe-x));
+    width: var(--control-size-phone);
+    height: var(--control-size-phone);
   }
+  .theme-toggle svg { width: 1.05rem; height: 1.05rem; }
 }
 
-/* 打印时隐藏切换按钮 */
+/* 打印时隐藏切换按钮（亦见上方统一 @media print 规则，此处保留作双重保险） */
 @media print {
   .theme-toggle { display: none !important; }
 }
@@ -1454,7 +1659,7 @@ a:focus-visible,
   border-radius: var(--radius-md);
   padding: 1.1rem 1.3rem 0.5rem;
   margin-bottom: 1.1rem;
-  scroll-margin-top: 5rem;      /* 锚点跳转时不被顶栏遮住 */
+  scroll-margin-top: var(--scroll-anchor-offset);      /* 锚点跳转时不被顶栏遮住 */
 }
 .qa-lesson-head {
   display: flex;
@@ -1735,4 +1940,172 @@ a.lesson-qa-link { border-bottom: 1px solid color-mix(in srgb, var(--accent-brig
 .next-lesson a:hover { border-bottom-color: var(--accent-bright); }
 [data-theme="dark"] .next-lesson {
   background: color-mix(in srgb, var(--accent-light) 45%, var(--card-bg));
+}
+
+/* ============================================
+   Components: 技术块（代码/表格增强，由 content-tools.js 渐进注入）
+   —— 纯结构性外壳样式；不改变 pre/table 原有视觉，只加头部工具条与横向滚动容器
+   ============================================ */
+.tech-block {
+  margin: 1.2rem 0;
+}
+.tech-block pre {
+  margin: 0;
+}
+.tech-block-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  font-size: 0.78rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.tech-block-head + pre {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  margin-top: 0;
+}
+.tech-block-label {
+  opacity: 0.75;
+  letter-spacing: 0.02em;
+  font-family: var(--font-mono);
+}
+.copy-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  margin-left: auto;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.035);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  overflow: hidden;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.copy-action:has(.copy-btn:hover) {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.34);
+}
+.copy-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, var(--code-fg) 78%, transparent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.copy-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.copy-btn:hover { color: var(--code-fg); }
+.copy-btn:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -2px;
+}
+.copy-btn:active { transform: scale(0.88); }
+.copy-btn.copied {
+  color: #86EFAC;
+}
+.copy-action:has(.copy-btn.copied) {
+  background: color-mix(in srgb, var(--success) 12%, rgba(255,255,255,0.035));
+  border-color: color-mix(in srgb, var(--success) 48%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--success) 20%, transparent);
+}
+.copy-toast {
+  display: block;
+  max-width: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: #BBF7D0;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 650;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(0.35rem);
+  pointer-events: none;
+  transition: max-width 0.22s cubic-bezier(0.22,1,0.36,1), opacity 0.16s ease, transform 0.22s cubic-bezier(0.22,1,0.36,1), padding 0.22s ease;
+}
+.copy-toast.show {
+  max-width: 4rem;
+  padding-left: 0.65rem;
+  opacity: 1;
+  transform: none;
+}
+.copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 横向滚动容器：仅在内容真正溢出时由 content-tools.js 打上 data-scrollable，
+   才会获得 tabindex 与 aria-label；样式本身始终安全（不影响未溢出内容的布局） */
+.scroll-region {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.scroll-region:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+.table-scroll-region {
+  border-radius: var(--radius-md);
+}
+.table-scroll-region table {
+  margin: 1.2rem 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copy-action,
+  .copy-btn,
+  .copy-toast { transition: none; }
+}
+
+@media print {
+  .tech-block-head,
+  .copy-btn,
+  .copy-toast { display: none !important; }
+  .tech-block pre {
+    border-radius: var(--radius-md);
+  }
+
+  /* 打印介质没有横向滚动：解除屏幕端裁切，并让超宽表格按纸张宽度重排。 */
+  .scroll-region {
+    overflow: visible !important;
+    max-width: none;
+  }
+  .table-scroll-region table {
+    width: 100%;
+    table-layout: fixed;
+    font-size: 0.72rem;
+  }
+  .table-scroll-region th,
+  .table-scroll-region td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 }

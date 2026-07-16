@@ -77,8 +77,8 @@
   if (cur && cur.phase === '第二阶段') outlineFile = '0029-phase2-ai-knowledge-outline.html';
   else if (cur && cur.phase === '第三阶段') outlineFile = '0044-phase3-api-engineering-outline.html';
   html += '<div class="bottom-nav-center">';
-  html += '<a href="' + outlineFile + '" class="bottom-nav-outline">';
-  html += '<span class="bottom-nav-outline-icon">☰</span>';
+  html += '<a href="' + outlineFile + '" class="bottom-nav-outline" aria-label="查看本阶段课程大纲（紧凑目录入口）">';
+  html += '<span class="bottom-nav-outline-icon" aria-hidden="true">☰</span>';
   html += '<span class="bottom-nav-outline-text">大纲</span>';
   html += '</a>';
   html += '</div>';
@@ -97,6 +97,7 @@
 
   const nav = document.createElement('nav');
   nav.className = 'bottom-nav';
+  nav.setAttribute('aria-label', '课程页脚导航（上一课 / 大纲 / 下一课）');
   nav.innerHTML = html;
 
   // 插入到 body 末尾（footer 之前）

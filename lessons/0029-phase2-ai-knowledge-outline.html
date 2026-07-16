@@ -5,67 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>阶段 2 详细大纲 · AI 知识与模型选型</title>
   <link rel="stylesheet" href="../assets/style.css">
-  <style>
-    .module { margin-bottom: 2rem; }
-    .module-header {
-      display: flex;
-      align-items: center;
-      gap: 0.7rem;
-      margin-bottom: 0.6rem;
-    }
-    .module-num {
-      width: 2rem;
-      height: 2rem;
-      background: var(--accent);
-      color: white;
-      border-radius: var(--radius-sm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 0.82rem;
-      font-family: var(--font-mono);
-      flex-shrink: 0;
-    }
-    .lesson-item {
-      display: flex;
-      align-items: baseline;
-      padding: 0.45rem 0;
-      border-bottom: 1px solid var(--border-light);
-      gap: 0.6rem;
-    }
-    .lesson-item:last-child { border-bottom: none; }
-    .lesson-num {
-      color: var(--muted);
-      font-size: 0.8rem;
-      font-family: var(--font-mono);
-      min-width: 2.5rem;
-      flex-shrink: 0;
-    }
-    .lesson-title { font-weight: 600; font-size: 0.95rem; }
-    .lesson-desc {
-      font-size: 0.85rem;
-      color: var(--muted);
-      margin-top: 0.1rem;
-      line-height: 1.5;
-    }
-    .exercise {
-      background: var(--accent-light);
-      border: 1px solid #FDE68A;
-      border-radius: var(--radius-sm);
-      padding: 0.5rem 0.8rem;
-      margin-top: 0.4rem;
-      font-size: 0.82rem;
-      color: var(--fg-soft);
-    }
-    .exercise::before {
-      content: "🏋️ 练习：";
-      font-weight: 600;
-      color: var(--accent-bright);
-    }
-  </style>
 </head>
 <body>
+
+<main>
+<aside class="toc" id="toc" aria-label="页面目录"></aside>
 
 <h1>阶段 2 · AI 知识与模型选型</h1>
 <p>从"调 API 的人"升级为"懂 LLM 的人"——<strong>看透模型的本质、局限、选型与成本</strong>，覆盖 9+ 道面试高频题。</p>
@@ -86,7 +30,7 @@
 </div>
 
 <!-- ==================== Module 2.1 ==================== -->
-<div class="part-header">Module 2.1 · LLM 本质与核心概念</div>
+<h2 class="part-header" id="part-1">Module 2.1 · LLM 本质与核心概念</h2>
 <p>抛开神秘感，把 LLM 拆成"下一个 Token 预测机"，并掌握你每天都在设的旋钮。</p>
 
 <div class="module">
@@ -115,7 +59,7 @@
 </div>
 
 <!-- ==================== Module 2.2 ==================== -->
-<div class="part-header">Module 2.2 · 模型能力、局限与选型 <span class="badge-interview">面试重灾区</span></div>
+<h2 class="part-header" id="part-2">Module 2.2 · 模型能力、局限与选型 <span class="badge-interview">面试重灾区</span></h2>
 <p>模型能做什么、做不到什么、怎么在几十个模型里选对——资深面试的核心战场。</p>
 
 <div class="module">
@@ -160,7 +104,7 @@
 </div>
 
 <!-- ==================== Module 2.3 ==================== -->
-<div class="part-header">Module 2.3 · Token 经济学</div>
+<h2 class="part-header" id="part-3">Module 2.3 · Token 经济学</h2>
 <p>生产级 Agent 的必修课——把成本从"随便烧"变成"精打细算"，并综合实战收官。</p>
 
 <div class="module">
@@ -212,6 +156,8 @@
   <span class="lesson-qa-arrow">→</span>
 </a>
 
+</main>
+
 <div class="nav">
   <a href="0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
   <a href="0021-L17-llm-essence-and-parameters.html">开始第一课：LLM 本质与生成参数 →</a>
@@ -221,9 +167,11 @@
   AI Agent 高级开发工程师课程 · 阶段 2 详细大纲 · 如有疑问，随时问我
 </footer>
 
+<script src="../assets/content-tools.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
 </body>
 </html>

@@ -17,8 +17,12 @@
 
   var CSS = `
   .to-top{
-    position:fixed; right:2rem; bottom:5.5rem;   /* 叠在主题切换(bottom:2rem)之上 */
-    width:3rem; height:3rem; z-index:60;
+    /* 与主题切换共用同一套 offset/size token，二者堆叠时用 --control-size + --control-gap 精确算出叠放高度，
+       避免各自硬编码数字导致间距在响应式断点上跑偏；同时叠加安全区，兼容刘海屏/手势条 */
+    position:fixed;
+    right:calc(var(--control-offset-x, 2rem) + var(--safe-x, env(safe-area-inset-right, 0px)));
+    bottom:calc(var(--control-offset-y, 2rem) + var(--safe-y, env(safe-area-inset-bottom, 0px)) + var(--control-size, 3rem) + var(--control-gap, .85rem));
+    width:var(--control-size, 3rem); height:var(--control-size, 3rem); z-index:60;
     display:grid; place-items:center;
     border:none; padding:0; cursor:pointer;
     background:transparent;
@@ -79,9 +83,24 @@
 
   @keyframes tt-bob{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2.5px)} }
 
-  @media (max-width:768px){
-    .to-top{ right:1.2rem; bottom:4.4rem; width:2.6rem; height:2.6rem; }
+  @media (min-width:641px) and (max-width:900px){
+    .to-top{
+      right:calc(var(--control-offset-x-tablet, 1.5rem) + var(--safe-x, env(safe-area-inset-right, 0px)));
+      bottom:calc(var(--control-offset-y-tablet, 1.6rem) + var(--safe-y, env(safe-area-inset-bottom, 0px)) + var(--control-size-tablet, 2.8rem) + var(--control-gap, .85rem));
+      width:var(--control-size-tablet, 2.8rem); height:var(--control-size-tablet, 2.8rem);
+    }
+    .to-top .disc{ width:2.15rem; height:2.15rem; }
+  }
+  @media (max-width:640px){
+    .to-top{
+      right:calc(var(--control-offset-x-phone, 1.2rem) + var(--safe-x, env(safe-area-inset-right, 0px)));
+      bottom:calc(var(--control-offset-y-phone, 1.2rem) + var(--safe-y, env(safe-area-inset-bottom, 0px)) + var(--control-size-phone, 2.6rem) + var(--control-gap, .85rem));
+      width:var(--control-size-phone, 2.6rem); height:var(--control-size-phone, 2.6rem);
+    }
     .to-top .disc{ width:2rem; height:2rem; }
+  }
+  @media print{
+    .to-top{ display:none !important; }
   }
   @media (prefers-reduced-motion:reduce){
     .to-top, .to-top .disc, .to-top .ring-fill{ transition:none; }

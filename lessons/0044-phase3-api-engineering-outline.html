@@ -5,67 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>阶段 3 详细大纲 · LLM API 工程实践</title>
   <link rel="stylesheet" href="../assets/style.css">
-  <style>
-    .module { margin-bottom: 2rem; }
-    .module-header {
-      display: flex;
-      align-items: center;
-      gap: 0.7rem;
-      margin-bottom: 0.6rem;
-    }
-    .module-num {
-      width: 2rem;
-      height: 2rem;
-      background: var(--accent);
-      color: white;
-      border-radius: var(--radius-sm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 0.82rem;
-      font-family: var(--font-mono);
-      flex-shrink: 0;
-    }
-    .lesson-item {
-      display: flex;
-      align-items: baseline;
-      padding: 0.45rem 0;
-      border-bottom: 1px solid var(--border-light);
-      gap: 0.6rem;
-    }
-    .lesson-item:last-child { border-bottom: none; }
-    .lesson-num {
-      color: var(--muted);
-      font-size: 0.8rem;
-      font-family: var(--font-mono);
-      min-width: 2.5rem;
-      flex-shrink: 0;
-    }
-    .lesson-title { font-weight: 600; font-size: 0.95rem; }
-    .lesson-desc {
-      font-size: 0.85rem;
-      color: var(--muted);
-      margin-top: 0.1rem;
-      line-height: 1.5;
-    }
-    .exercise {
-      background: var(--accent-light);
-      border: 1px solid #FDE68A;
-      border-radius: var(--radius-sm);
-      padding: 0.5rem 0.8rem;
-      margin-top: 0.4rem;
-      font-size: 0.82rem;
-      color: var(--fg-soft);
-    }
-    .exercise::before {
-      content: "🏋️ 练习：";
-      font-weight: 600;
-      color: var(--accent-bright);
-    }
-  </style>
 </head>
 <body>
+
+<main>
+<aside class="toc" id="toc" aria-label="页面目录"></aside>
 
 <h1>阶段 3 · LLM API 工程实践</h1>
 <p>从"会调 API"到"能上生产"——<strong>把 LLM 调用做成健壮、可观测、低成本的工程系统</strong>，覆盖 14+ 道面试高频题。</p>
@@ -87,7 +31,7 @@
 </div>
 
 <!-- ==================== Module 3.1 ==================== -->
-<div class="part-header">Module 3.1 · API 基础</div>
+<h2 class="part-header" id="part-1">Module 3.1 · API 基础</h2>
 <p>把三大厂商的 API 用一套心智模型拿下，并让回复像 ChatGPT 一样流式蹦出来。</p>
 
 <div class="module">
@@ -116,7 +60,7 @@
 </div>
 
 <!-- ==================== Module 3.2 ==================== -->
-<div class="part-header">Module 3.2 · 核心能力（Agent 必备）</div>
+<h2 class="part-header" id="part-2">Module 3.2 · 核心能力（Agent 必备）</h2>
 <p>让 LLM 能"用工具"、能"输出可靠结构"、能"看图听声"——Agent 的三大基础能力。</p>
 
 <div class="module">
@@ -153,7 +97,7 @@
 </div>
 
 <!-- ==================== Module 3.3 ==================== -->
-<div class="part-header">Module 3.3 · 工程实践（生产级） <span class="badge-interview">生产必修</span></div>
+<h2 class="part-header" id="part-3">Module 3.3 · 工程实践（生产级） <span class="badge-interview">生产必修</span></h2>
 <p>让调用"扛得住真实世界"——上下文管理、错误重试、高可用、可观测。</p>
 
 <div class="module">
@@ -198,7 +142,7 @@
 </div>
 
 <!-- ==================== Module 3.4 ==================== -->
-<div class="part-header">Module 3.4 · 工具工程与 Function Calling <span class="badge-agent">P0 实战必修</span></div>
+<h2 class="part-header" id="part-4">Module 3.4 · 工具工程与 Function Calling <span class="badge-agent">P0 实战必修</span></h2>
 <p>工具是 Agent 的"手"——把工具设计、调用循环、健壮性、可扩展注册做扎实。</p>
 
 <div class="module">
@@ -235,7 +179,7 @@
 </div>
 
 <!-- ==================== Module 3.5 ==================== -->
-<div class="part-header">Module 3.5 · 成本工程与综合实战</div>
+<h2 class="part-header" id="part-5">Module 3.5 · 成本工程与综合实战</h2>
 <p>把成本从"随便烧"变成"精打细算"，并用一个项目串起整个 Phase 3。</p>
 
 <div class="module">
@@ -289,6 +233,8 @@
   <span class="lesson-qa-arrow">→</span>
 </a>
 
+</main>
+
 <div class="nav">
   <a href="0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
   <a href="0030-L25-llm-api-basics.html">开始第一课：主流 LLM API 上手 →</a>
@@ -298,9 +244,11 @@
   AI Agent 高级开发工程师课程 · 阶段 3 详细大纲 · 如有疑问，随时问我
 </footer>
 
+<script src="../assets/content-tools.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
 </body>
 </html>

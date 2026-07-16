@@ -5,67 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>阶段 1 详细大纲 · Python 基础与 Agent 导向工程素养</title>
   <link rel="stylesheet" href="../assets/style.css">
-  <style>
-    .module { margin-bottom: 2rem; }
-    .module-header {
-      display: flex;
-      align-items: center;
-      gap: 0.7rem;
-      margin-bottom: 0.6rem;
-    }
-    .module-num {
-      width: 2rem;
-      height: 2rem;
-      background: var(--accent);
-      color: white;
-      border-radius: var(--radius-sm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 0.82rem;
-      font-family: var(--font-mono);
-      flex-shrink: 0;
-    }
-    .lesson-item {
-      display: flex;
-      align-items: baseline;
-      padding: 0.45rem 0;
-      border-bottom: 1px solid var(--border-light);
-      gap: 0.6rem;
-    }
-    .lesson-item:last-child { border-bottom: none; }
-    .lesson-num {
-      color: var(--muted);
-      font-size: 0.8rem;
-      font-family: var(--font-mono);
-      min-width: 2.5rem;
-      flex-shrink: 0;
-    }
-    .lesson-title { font-weight: 600; font-size: 0.95rem; }
-    .lesson-desc {
-      font-size: 0.85rem;
-      color: var(--muted);
-      margin-top: 0.1rem;
-      line-height: 1.5;
-    }
-    .exercise {
-      background: var(--accent-light);
-      border: 1px solid #FDE68A;
-      border-radius: var(--radius-sm);
-      padding: 0.5rem 0.8rem;
-      margin-top: 0.4rem;
-      font-size: 0.82rem;
-      color: var(--fg-soft);
-    }
-    .exercise::before {
-      content: "🏋️ 练习：";
-      font-weight: 600;
-      color: var(--accent-bright);
-    }
-  </style>
 </head>
 <body>
+
+<main>
+<aside class="toc" id="toc" aria-label="页面目录"></aside>
 
 <h1>阶段 1 · Python 基础与 Agent 导向工程素养</h1>
 <p>从基础语法到 Agent 开发必备的工程技能，<strong>系统性夯实 Python 功底</strong>。</p>
@@ -86,7 +30,7 @@
 </div>
 
 <!-- ==================== Part A ==================== -->
-<div class="part-header">Part A · Python 基础快速复习</div>
+<h2 class="part-header" id="part-1">Part A · Python 基础快速复习</h2>
 <p>你有基础，这部分快速查漏补缺。每课 20-30 分钟，重点看不熟悉的部分。</p>
 
 <!-- Module 1.1 -->
@@ -142,7 +86,7 @@
 </div>
 
 <!-- ==================== Part B ==================== -->
-<div class="part-header">Part B · Python 进阶特性 <span class="badge-agent">Agent 开发核心</span></div>
+<h2 class="part-header" id="part-2">Part B · Python 进阶特性 <span class="badge-agent">Agent 开发核心</span></h2>
 <p>这些是 Agent 开发的硬技能，必须掌握。</p>
 
 <!-- Module 2.1 -->
@@ -242,7 +186,7 @@
 </div>
 
 <!-- ==================== Part C ==================== -->
-<div class="part-header">Part C · Agent 导向工程技能</div>
+<h2 class="part-header" id="part-3">Part C · Agent 导向工程技能</h2>
 <p>每个知识点都关联 Agent 场景，学完就能用。</p>
 
 <!-- Module 3.1 -->
@@ -349,6 +293,8 @@
   <span class="lesson-qa-arrow">→</span>
 </a>
 
+</main>
+
 <div class="nav">
   <a href="0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
   <a href="0004-L01-dev-environment-setup.html">开始第一课：环境搭建 →</a>
@@ -358,9 +304,11 @@
   AI Agent 高级开发工程师课程 · 阶段 1 详细大纲 · 如有疑问，随时问我
 </footer>
 
+<script src="../assets/content-tools.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
 </body>
 </html>

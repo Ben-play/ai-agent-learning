@@ -8,6 +8,9 @@
 </head>
 <body>
 
+<main>
+<aside class="toc" id="toc" aria-label="页面目录"></aside>
+
 <!-- Hero -->
 <div class="hero">
   <h1>AI Agent 高级开发工程师</h1>
@@ -72,19 +75,19 @@
 
 <!-- ============ 阶段 1 ============ -->
 <div class="phase" data-num="1">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-1-body">
     <h3>Python 基础与 Agent 导向工程素养</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">16 课</span>
       <span class="phase-meta-item">2-3 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-python">Python</span>
     <span class="tag tag-deploy">工程</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-1-body">
     <div class="card">
       <strong>Part A · Python 基础快速复习：</strong>环境搭建 + Agent 项目结构、模块系统、变量/类型/数据结构（Dict 深度操作）、流程控制 + Prompt 构造模式<br><br>
       <strong>Part B · Python 进阶特性：</strong>函数与闭包、@dataclass（与 Pydantic 对比）、继承与 __call__、JSON/Dict 深度操作、异常处理 + logging 日志 + tenacity 重试、上下文管理器、装饰器（@tool/@chain 模式）<br><br>
@@ -102,19 +105,19 @@
 
 <!-- ============ 阶段 2 ============ -->
 <div class="phase" data-num="2">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-2-body">
     <h3>AI 知识与模型选型</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">8 课</span>
       <span class="phase-meta-item">1.5 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-llm">AI</span>
     <span class="tag tag-interview">面试</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-2-body">
     <div class="card">
       <strong>Module 2.1 · LLM 本质与核心概念：</strong><br>
       · <strong>LLM 是什么</strong> — 语言模型本质（概率预测）、Transformer 直觉（不写代码）、注意力机制的作用<br>
@@ -137,19 +140,19 @@
 
 <!-- ============ 阶段 3 ============ -->
 <div class="phase" data-num="3">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-3-body">
     <h3>LLM API 工程实践</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">14 课</span>
       <span class="phase-meta-item">3 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-llm">API</span>
     <span class="tag tag-interview">面试</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-3-body">
     <div class="card">
       <strong>Module 3.1 · API 基础：</strong>主流 API 快速上手（OpenAI/Anthropic/Google）、Streaming 流式输出<br><br>
       <strong>Module 3.2 · 核心能力（Agent 必备）：</strong><br>
@@ -177,19 +180,19 @@
 
 <!-- ============ 阶段 4 ============ -->
 <div class="phase" data-num="4">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-4-body">
     <h3>Prompt Engineering 与 Context Engineering 基础</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">6-8 课</span>
       <span class="phase-meta-item">2 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-llm">Prompt</span>
     <span class="tag tag-agent">Context</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-4-body">
     <div class="card">
       <strong>Prompt Engineering：</strong>System Prompt 设计、Few-shot Learning、Chain-of-Thought 推理、Structured Output 结构化输出、Prompt 模板化与复用、版本管理与 A/B 测试<br><br>
       <strong>Context Engineering 基础（2026 核心技能 · 对齐 Anthropic 官方术语）：</strong>什么是上下文工程（Prompt Engineering 的自然延伸，管理推理时的<strong>全部</strong> token 而非只有提示词）、<strong>context rot</strong>（token 越多召回越差）与 <strong>attention budget</strong>（注意力预算有限）、"right altitude" 系统提示、动态上下文组装、RAG 检索结果作为上下文注入<br><br>
@@ -200,19 +203,19 @@
 
 <!-- ============ 阶段 5 ============ -->
 <div class="phase" data-num="5">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-5-body">
     <h3>Agent 核心架构：Loop、Harness 与工具设计</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">10-12 课</span>
       <span class="phase-meta-item">3-4 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-agent">Agent</span>
     <span class="tag tag-deploy">Harness</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-5-body">
     <div class="card">
       <strong>Agent Loop（核心执行循环）：</strong>Observe → Think → Act → Observe 循环、循环控制、错误恢复与重试策略<br><br>
       <strong>Agent Harness（2026 主导架构）：</strong>Anthropic 发布 3 篇工程论文定义的新范式。"好模型 + 好 harness > 好模型 + 差 harness"：<br>
@@ -230,19 +233,19 @@
 
 <!-- ============ 阶段 6 ============ -->
 <div class="phase" data-num="6">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-6-body">
     <h3>Agent 框架入门与 MCP 实战</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">5-6 课</span>
       <span class="phase-meta-item">1-2 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-agent">框架</span>
     <span class="tag tag-llm">MCP</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-6-body">
     <div class="card">
       <strong>轻量框架实战（选一个深入）：</strong><br>
       · <strong>Pydantic AI</strong> — 类型安全的 Agent 框架，与 Pydantic 技能完美衔接<br>
@@ -255,19 +258,19 @@
 
 <!-- ============ 阶段 7 ============ -->
 <div class="phase" data-num="7">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-7-body">
     <h3>数据基础与 RAG</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">10-12 课</span>
       <span class="phase-meta-item">3-4 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-python">数据</span>
     <span class="tag tag-rag">RAG</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-7-body">
     <div class="card">
       <strong>数据基础（精简版）：</strong>PostgreSQL + SQLAlchemy ORM、Redis 缓存、PDF/HTML/Markdown 解析、数据清洗与分块策略、httpx/Crawl4AI<br><br>
       <strong>向量数据库：</strong>Embedding 原理与模型选型、Chroma/Pinecone/Weaviate/Milvus 实战、HNSW/IVF 索引、混合检索<br><br>
@@ -284,19 +287,19 @@
 
 <!-- ============ 阶段 8 ============ -->
 <div class="phase" data-num="8">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-8-body">
     <h3>Agent 工程实践：可观测性、评估、安全、成本与系统设计</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">10-12 课</span>
       <span class="phase-meta-item">3 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-agent">工程</span>
     <span class="tag tag-deploy">生产级</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-8-body">
     <div class="card">
       <strong>可观测性（Observability）：</strong>LangSmith/Langfuse/Phoenix/Helicone 链路追踪、结构化日志、告警机制；<strong>OpenTelemetry GenAI 语义约定</strong>（标准化方向，避免厂商锁定）<br><br>
       <strong>评估体系（Evaluation · v7 升级为评估驱动开发）：</strong>LLM-as-Judge（2026 标准，并验证 Judge 与人工标注一致性）、<strong>Agentic Metrics</strong>（Tool Correctness / Plan Quality / Step Efficiency / 过度代理）、回归测试、工具（promptfoo / Braintrust / DeepEval / RAGAS）、公开基准（SWE-bench Verified / τ-bench / GAIA）<br><br>
@@ -316,18 +319,18 @@
 
 <!-- ============ 阶段 9 ============ -->
 <div class="phase" data-num="9">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-9-body">
     <h3>高级 Agent 能力</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">5-6 课</span>
       <span class="phase-meta-item">1-2 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-agent">高级</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-9-body">
     <div class="card">
       <strong>Extended Thinking：</strong>Claude 深度推理能力、思维链、思考预算管理<br><br>
       <strong>Computer Use & Browser Agent：</strong>Claude Computer Use、<strong>browser-use</strong>（开源、模型无关，社区活跃）、Playwright MCP、GUI 自动化<br><br>
@@ -340,19 +343,19 @@
 
 <!-- ============ 阶段 10 ============ -->
 <div class="phase" data-num="10">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-10-body">
     <h3>生产级框架与多智能体系统</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">8-10 课</span>
       <span class="phase-meta-item">2-3 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-agent">框架</span>
     <span class="tag tag-llm">协议</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-10-body">
     <div class="card">
       <strong>生产级框架：</strong>LangGraph（状态机编排，图结构、条件分支、持久化检查点，2026 生产首选）、CrewAI（角色协作 + 事件驱动 Flows）<br>
       <span style="font-size:0.85rem; color:var(--muted);">※ AutoGen 已进入维护模式，作为历史了解；其后继为 Microsoft Agent Framework。</span><br><br>
@@ -371,19 +374,19 @@
 
 <!-- ============ 阶段 11 ============ -->
 <div class="phase" data-num="11">
-  <div class="phase-header" onclick="this.parentElement.classList.toggle('collapsed')">
+  <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-11-body">
     <h3>生产部署与持续迭代</h3>
     <div class="phase-meta">
       <span class="phase-meta-item">6-8 课</span>
       <span class="phase-meta-item">2 周</span>
     </div>
     <div class="phase-toggle">▼</div>
-  </div>
+  </button>
   <div class="phase-tags">
     <span class="tag tag-deploy">生产</span>
     <span class="tag tag-agent">迭代</span>
   </div>
-  <div class="phase-body">
+  <div class="phase-body" id="phase-11-body">
     <div class="card">
       <strong>部署：</strong>FastAPI 服务化、Docker 容器化、Serverless、CI/CD、限流与容错、灰度发布；<strong>持久执行</strong>（Temporal，长流程自动重试 / 检查点）；<strong>云托管 Agent 服务</strong>（AWS Bedrock AgentCore、Google Vertex AI Agent Engine、Azure AI Foundry Agent Service、LangGraph Platform）—— 含「原型 / MVP / 规模期」选型决策矩阵<br><br>
       <strong>生产安全加固：</strong>越狱攻击检测、间接注入防御、过度代理限制、合规性、审计日志<br><br>
@@ -473,6 +476,8 @@
   · <a href="0007-curriculum-audit-2026.html">大纲审核报告（v7 建议）</a> — 本次更新的依据与逐阶段体检
 </div>
 
+</main>
+
 <div class="nav">
   <span></span>
   <a href="0002-phase1-python-outline.html">下一课：Phase 1 Python 详细大纲 →</a>
@@ -482,9 +487,12 @@
   AI Agent 高级开发工程师课程 · 如有疑问，随时问我
 </footer>
 
+<script src="../assets/content-tools.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/overview-toggle.js"></script>
 </body>
 </html>

@@ -50,46 +50,6 @@
       content: "☑";
       color: var(--success);
     }
-    .quiz-q { margin: 1.5rem 0; }
-    .quiz-q p { font-weight: 600; margin-bottom: 0.6rem; }
-    .quiz-option {
-      display: block;
-      padding: 0.7rem 1rem;
-      margin: 0.35rem 0;
-      border: 2px solid var(--border);
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.15s;
-      background: var(--card-bg);
-      font-size: 0.92rem;
-    }
-    .quiz-option:hover { border-color: var(--accent); background: var(--accent-light); }
-    .quiz-option.correct { border-color: var(--success); background: #f0fdf4; }
-    .quiz-option.wrong { border-color: #dc2626; background: #fef2f2; }
-    .quiz-feedback {
-      margin-top: 0.5rem;
-      padding: 0.6rem 0.8rem;
-      border-radius: 6px;
-      font-size: 0.88rem;
-      display: none;
-    }
-    .quiz-feedback.show { display: block; }
-    .quiz-feedback.pass { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
-    .quiz-feedback.fail { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-    .task-box {
-      background: #fffbeb;
-      border: 1px solid #fcd34d;
-      border-radius: 8px;
-      padding: 1rem 1.2rem;
-      margin: 1rem 0;
-    }
-    .task-box::before {
-      content: "🎯 实战任务";
-      display: block;
-      font-weight: 700;
-      color: #92400e;
-      margin-bottom: 0.5rem;
-    }
   </style>
 </head>
 <body>
@@ -335,31 +295,43 @@ print(f"Key loaded: {api_key[:10]}...")  # 只打印前10位</code></pre>
 <!-- Quiz -->
 <h2>自测练习</h2>
 
-<div class="quiz-q" id="q1">
-  <p>Q1: 虚拟环境的作用是什么？</p>
-  <span class="quiz-option" onclick="check('q1', this, false)">让 Python 运行更快</span>
-  <span class="quiz-option" onclick="check('q1', this, true)">隔离项目依赖，避免版本冲突</span>
-  <span class="quiz-option" onclick="check('q1', this, false)">自动生成 requirements.txt</span>
-  <span class="quiz-option" onclick="check('q1', this, false)">提供在线编程环境</span>
-  <div class="quiz-feedback" id="q1-fb"></div>
+<div class="quiz" data-quiz="q1">
+  <div class="quiz-question">
+    <span class="quiz-q">Q1:</span>
+    虚拟环境的作用是什么？
+  </div>
+  <div class="quiz-options">
+    <button data-answer="wrong">让 Python 运行更快</button>
+    <button data-answer="correct">隔离项目依赖，避免版本冲突</button>
+    <button data-answer="wrong">自动生成 requirements.txt</button>
+    <button data-answer="wrong">提供在线编程环境</button>
+  </div>
 </div>
 
-<div class="quiz-q" id="q2">
-  <p>Q2: 为什么 API Key 不能写在代码里？</p>
-  <span class="quiz-option" onclick="check('q2', this, false)">代码会变长</span>
-  <span class="quiz-option" onclick="check('q2', this, false)">Python 不支持</span>
-  <span class="quiz-option" onclick="check('q2', this, true)">提交到 Git 后别人能看到，造成安全风险</span>
-  <span class="quiz-option" onclick="check('q2', this, false)">会影响代码运行速度</span>
-  <div class="quiz-feedback" id="q2-fb"></div>
+<div class="quiz" data-quiz="q2">
+  <div class="quiz-question">
+    <span class="quiz-q">Q2:</span>
+    为什么 API Key 不能写在代码里？
+  </div>
+  <div class="quiz-options">
+    <button data-answer="wrong">代码会变长</button>
+    <button data-answer="wrong">Python 不支持</button>
+    <button data-answer="correct">提交到 Git 后别人能看到，造成安全风险</button>
+    <button data-answer="wrong">会影响代码运行速度</button>
+  </div>
 </div>
 
-<div class="quiz-q" id="q3">
-  <p>Q3: <code>uv add --dev pytest</code> 中的 <code>--dev</code> 表示什么？</p>
-  <span class="quiz-option" onclick="check('q3', this, false)">记录到测试依赖组，普通同步时会自动排除</span>
-  <span class="quiz-option" onclick="check('q3', this, true)">记录到开发依赖组，生产同步时可显式排除</span>
-  <span class="quiz-option" onclick="check('q3', this, false)">记录到全局依赖组，所有项目中都会自动同步</span>
-  <span class="quiz-option" onclick="check('q3', this, false)">记录到系统依赖组，虚拟环境中不会进行同步</span>
-  <div class="quiz-feedback" id="q3-fb"></div>
+<div class="quiz" data-quiz="q3">
+  <div class="quiz-question">
+    <span class="quiz-q">Q3:</span>
+    <code>uv add --dev pytest</code> 中的 <code>--dev</code> 表示什么？
+  </div>
+  <div class="quiz-options">
+    <button data-answer="wrong">记录到测试依赖组，普通同步时会自动排除</button>
+    <button data-answer="correct">记录到开发依赖组，生产同步时可显式排除</button>
+    <button data-answer="wrong">记录到全局依赖组，所有项目中都会自动同步</button>
+    <button data-answer="wrong">记录到系统依赖组，虚拟环境中不会进行同步</button>
+  </div>
 </div>
 
 <!-- Task -->
@@ -467,28 +439,12 @@ if __name__ == "__main__":
   AI Agent 高级开发工程师课程 · L01 开发环境搭建 · 如有疑问，随时问我
 </footer>
 
-<script>
-function check(qId, el, correct) {
-  const parent = document.getElementById(qId);
-  const options = parent.querySelectorAll('.quiz-option');
-  const fb = document.getElementById(qId + '-fb');
-  options.forEach(o => { o.classList.remove('correct', 'wrong'); o.style.pointerEvents = 'none'; });
-  if (correct) {
-    el.classList.add('correct');
-    fb.textContent = '✅ 正确！';
-    fb.className = 'quiz-feedback show pass';
-  } else {
-    el.classList.add('wrong');
-    options.forEach(o => { if (o.getAttribute('onclick').includes('true')) o.classList.add('correct'); });
-    fb.textContent = '❌ 不对，看看正确答案。';
-    fb.className = 'quiz-feedback show fail';
-  }
-}
-</script>
-
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/quiz.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
+
 </body>
 </html>

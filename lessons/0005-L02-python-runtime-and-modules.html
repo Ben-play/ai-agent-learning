@@ -368,7 +368,7 @@ from agent.core import create_response  # tools 又导入 core → 💥 ImportEr
 $ python -c 'import a'
 Traceback (most recent call last):
   ...
-  File "b.py", line 1, in <module>
+  File "b.py", line 1, in &lt;module&gt;
     from a import x
 ImportError: cannot import name 'x' from partially initialized module 'a'
 # 说明：不是"检测到循环就报错"，而是 b 想要 a.x 时，a 还没执行到定义 x 的那一行</code></pre>
@@ -681,6 +681,7 @@ import 机制
 <!-- 侧边目录 -->
 <aside class="toc" id="toc"></aside>
 
+<script src="../assets/content-tools.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>

@@ -96,9 +96,9 @@
 
     html += '<span class="course-bar-title">' + cur.title + '</span>';
 
-    // 一根连续进度条（整门课总进度）+ 游标，凹槽内发光
+    // 一根连续进度条（整门课的顺序位置，非完成度）+ 游标，凹槽内发光
     html += '<div class="course-bar-track" role="progressbar" aria-valuenow="' + (courseIdx + 1) +
-            '" aria-valuemin="1" aria-valuemax="' + TOTAL + '" aria-label="课程进度 ' + (courseIdx + 1) + ' / ' + TOTAL + '">';
+            '" aria-valuemin="1" aria-valuemax="' + TOTAL + '" aria-label="课程顺序位置：第 ' + (courseIdx + 1) + ' 课，共 ' + TOTAL + ' 课">';
     html += '<span class="course-bar-track-fill" style="width:' + overallPct + '%"></span>';
     html += '<span class="course-bar-track-cursor" style="left:' + overallPct + '%"></span>';
     html += '</div>';
