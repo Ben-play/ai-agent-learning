@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Phase 2 综合实战：模型对比 · 幻觉测试 · 成本核算</h1>
     <p class="subtitle">把 L17–L23 学的全部串成一个能跑的"模型体检报告"脚本</p>
@@ -36,8 +36,8 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>把"选哪个模型"拆成<strong>能力 / 幻觉 / 成本</strong>三个可测量的维度</li>
-      <li>用 <code>tiktoken</code> 在发请求前<strong>本地估算</strong>每个 prompt 的 token 与成本（复用 <a href="0022-L18-tokenization.html">L18</a>）</li>
-      <li>写出结构正确的 <code>async</code> 并发调用骨架，<strong>用环境变量读 key</strong>、设低温复现（复用 <a href="0019-L15-httpx.html">L15</a>/<a href="0020-L16-async-concurrency.html">L16</a>/<a href="0021-L17-llm-essence-and-parameters.html">L17</a>）</li>
+      <li>区分 OpenAI tokenizer 估算与 Claude 官方 <code>count_tokens</code> / response usage（复用 <a href="0022-L18-tokenization.html">L18</a>）</li>
+      <li>设计中立 Provider Adapter：Claude 使用官方 Anthropic SDK，不把 OpenAI 响应字段伪装成通用协议</li>
       <li>设计"陷阱问题"+ Self-Consistency 做<strong>幻觉测试</strong>并打分（复用 <a href="0023-L19-hallucination.html">L19</a>）</li>
       <li>把三维汇总成一张综合报告，用<strong>决策框架</strong>给出选型结论（复用 <a href="0026-L22-benchmarks-and-selection.html">L22</a>/<a href="0027-L23-token-economics.html">L23</a>）</li>
     </ul>
@@ -59,22 +59,22 @@
     <p>整体数据流很简单，四步串起来：</p>
     <pre><code>一批任务(prompts) + 一组模型(models)
         │
-        ├─ Step 1  用 tiktoken 数 token → 估算成本         (本地、真能跑)
-        ├─ Step 2  async 并发调各模型 → 收集输出            (骨架、标 key 位置)
+        ├─ Step 1  用目标厂商计数方式 → 估算并核对成本
+        ├─ Step 2  Provider Adapter → 统一结果结构 → async 并发
         ├─ Step 3  陷阱问题多次采样 → 判定是否幻觉           (Self-Consistency)
         └─ Step 4  汇总 能力/幻觉/成本 → 一张对比报告
                         │
                         └─ 选型结论：这个场景该选谁、为什么</code></pre>
   </div>
   <div class="tip">
-    <strong>设计原则：一次只测一个变量。</strong> 想公平对比模型，就要让<strong>除模型外的一切都相同</strong>——同样的 prompt、同样的 temperature、同样的评分标准。这跟 <a href="0021-L17-llm-essence-and-parameters.html">L17</a> 的"设低温可复现"是同一个道理：把随机性摁住，差异才归因得清。
+    <strong>设计原则：记录并控制可控变量。</strong> 固定 prompt、系统指令、工具、输出上限、rubric、运行次数和预算；厂商参数不一定相同，不能强求同一 temperature。对非确定系统要重复运行，报告分布与失败案例，而不是把一次结果全归因给模型。
   </div>
 </div>
 
 <div class="section">
   <h2>2. Step 1 · Token 计数与成本估算（复用 L18）</h2>
   <div class="card">
-    <p>先算钱。<strong>这一段完全在本地跑，不需要任何 API key</strong>——因为 <a href="https://github.com/openai/tiktoken" target="_blank"><code>tiktoken</code></a> 是本地库。我们数出每个 prompt 的 token 数，套上单价公式，就能在<strong>发请求前</strong>估出这批任务大概要花多少钱。</p>
+    <p>先算钱，但不能用一个 tokenizer 假装精确覆盖所有厂商。<a href="https://github.com/openai/tiktoken" target="_blank"><code>tiktoken</code></a> 可在本地对匹配 OpenAI 编码计数；Claude 请求应调用官方 <code>messages.count_tokens</code> 估算完整消息结构，真正调用后再用 response usage 对账。下面本地示例只演示 OpenAI 编码下的估算算法。</p>
     <pre><code>pip install tiktoken        # 或 uv pip install tiktoken
 
 import tiktoken
@@ -82,8 +82,8 @@ import tiktoken
 # 取一个编码器（o200k_base 对应较新的 OpenAI 系模型）
 enc = tiktoken.get_encoding("o200k_base")
 
-def count_tokens(text: str) -&gt; int:
-    """本地精确计数：发请求前就知道这段有多少 token。"""
+def count_openai_tokens(text: str) -&gt; int:
+    """对 o200k_base 编码本地计数；不代表 Claude/Google 账单。"""
     return len(enc.encode(text))
 
 # 单价用「示例」值：真实价格请查各厂商官网，这里只演示算法
@@ -97,196 +97,194 @@ PRICE = {
 def estimate_cost(prompt: str, model: str, est_output_tokens: int = 300) -&gt; float:
     """估算单次调用成本：输入按实际数，输出按经验预估。"""
     in_price, out_price = PRICE[model]
-    in_tokens = count_tokens(prompt)
+    in_tokens = count_openai_tokens(prompt)
     cost = (in_tokens * in_price + est_output_tokens * out_price) / 1_000_000
     return cost
 
 # —— 试跑 ——
 prompt = "用一句话解释什么是向量数据库。"
 for m in PRICE:
-    print(m, "输入token=", count_tokens(prompt),
+    print(m, "输入token=", count_openai_tokens(prompt),
           "单次≈$", round(estimate_cost(prompt, m), 6))</code></pre>
     <p>这段代码<strong>直接可运行</strong>。输出会长这样（token 数是本地 <code>tiktoken</code> 实算的，金额是示例单价算出来的；不同 tiktoken 版本可能有 ±1 的差异）：</p>
     <pre><code>model-a 输入token= 10 单次≈$ 0.00453
 model-b 输入token= 10 单次≈$ 0.000455</code></pre>
-    <p>看到了吗——同一个 prompt，光算法本身就让 <code>model-b</code> 便宜了一个数量级。<strong>输出 token 通常比输入贵好几倍</strong>（<a href="0027-L23-token-economics.html">L23</a>），所以 <code>est_output_tokens</code> 这个预估值对总成本影响很大；真实场景里你应该用几次实测的平均输出长度来校准它。</p>
+    <p>同一段文本在两个示例价目下成本不同；真正比较厂商时，必须先换成各自的计数方式与单价。Claude 的请求前计数形状如下（会调用免费计数端点，因此需要有效认证，但不产生模型输出费用）：</p>
+    <pre><code>import anthropic
+
+client = anthropic.Anthropic()
+count = client.messages.count_tokens(
+    model="claude-opus-4-8",
+    messages=[{"role": "user", "content": prompt}],
+)
+print(count.input_tokens)  # 请求前估算；实际调用后再看 response.usage</code></pre>
   </div>
   <div class="tip">
-    ⚠️ 两个提醒（都来自 <a href="0022-L18-tokenization.html">L18</a>）：①<code>tiktoken</code> 是 OpenAI 的分词器，对 Anthropic/Google 只是<strong>近似</strong>——跨厂商比成本时它给的是"同一把尺子下的相对值"，够用；②真实账单还含聊天格式的固定开销（role、分隔符），以及多轮历史会累加。所以这里算的是<strong>估算</strong>，用于横向对比，不是逐分逐厘对齐账单。
+    ⚠️ 三层边界：①匹配 OpenAI 编码时，<code>tiktoken</code> 可离线计数；②Claude <code>count_tokens</code> 按指定模型和完整请求结构估算，但官方仍允许与实际用量有小幅差异；③最终成本以真实响应的 usage、缓存字段和厂商账单为准。
   </div>
 
   <div class="quiz" data-quiz="q1">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 为什么 Step 1 的 token 计数不需要 API key 就能跑？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 跨厂商估算 Token 时，哪种做法最可靠？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">因为它偷偷调了免费接口</button>
-      <button data-answer="correct">分词在本地库里完成</button>
-      <button data-answer="wrong">因为 token 数是随便估的</button>
-      <button data-answer="wrong">因为计数不算真实用量</button>
+      <button data-answer="wrong">统一用 o200k 作为所有模型的精确账单</button>
+      <button data-answer="wrong">只统计纯文本字符数并忽略消息结构</button>
+      <button data-answer="correct">分别使用目标厂商计数方式并用 usage 对账</button>
+      <button data-answer="wrong">假设所有模型使用完全相同的 tokenizer</button>
     </div>
-    <div class="quiz-explanation"><code>tiktoken</code> 把分词规则打包在<strong>本地库</strong>里，<code>enc.encode(text)</code> 完全在你机器上算，不发任何网络请求，所以不需要 key。这正是它的价值：<strong>发请求前就估好成本</strong>。真正要花钱、要 key 的是 Step 2 的模型调用。</div>
+    <div class="quiz-explanation">OpenAI 匹配编码可用 tiktoken；Claude 用 <code>messages.count_tokens</code> 估算完整请求，调用后再看 <code>response.usage</code>。跨厂商共用一个 tokenizer 只能粗估，不能冒充精确账单。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>3. Step 2 · 调用模型对比（复用 L15 / L16 / L17）</h2>
   <div class="card">
-    <p>现在要真调模型了。因为<strong>不假设你手上有 key</strong>，下面的代码写成<strong>结构正确、原则上可运行</strong>的骨架：真实调用的位置、endpoint、key 都清楚标出，并给一个"没 key 就用 mock"的降级写法，让你现在就能跑通整条流水线。</p>
-    <p>三个关键设计，每个都呼应前面的课：</p>
-    <ul>
-      <li><strong>key 用环境变量读，绝不写死</strong>（写死会泄露）——<code>os.environ["..."]</code>；</li>
-      <li><strong>temperature 设低（如 0）</strong>——对比要<strong>可复现</strong>，把随机性摁住，差异才归因得清（<a href="0021-L17-llm-essence-and-parameters.html">L17</a>）；</li>
-      <li><strong>用 async 并发</strong>跑多个模型 × 多个 prompt——I/O 密集就该并发，别一个个串行等（<a href="0020-L16-async-concurrency.html">L16</a>）。</li>
-    </ul>
-    <pre><code>pip install httpx        # 传输层，见 L15
+    <p>“统一调用模型”不等于“所有厂商共用同一 JSON”。正确做法是给每个 provider 写 adapter，统一的是<strong>你自己的返回结构</strong>，厂商认证、请求字段和 usage 解析留在各自 adapter 内。</p>
+    <p><strong>Claude adapter（官方 Anthropic SDK）：</strong></p>
+    <pre><code>pip install anthropic
 
-import os, asyncio, httpx
+from anthropic import AsyncAnthropic
 
-# key 从环境变量读，不写死。运行前：export MODEL_API_KEY="sk-..."
-API_KEY  = os.environ.get("MODEL_API_KEY")      # 没有就走 mock
-API_URL  = "https://api.example.com/v1/chat"    # ← 换成你厂商的真实 endpoint
+async def call_claude(client: AsyncAnthropic, prompt: str) -&gt; dict:
+    response = await client.messages.create(
+        model="claude-opus-4-8",
+        max_tokens=1_024,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "medium"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = "".join(block.text for block in response.content if block.type == "text")
+    return {
+        "provider": "anthropic",
+        "model": response.model,
+        "prompt": prompt,
+        "output": text,
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }</code></pre>
+    <p>若接 OpenAI 风格 API，应在<strong>另一个 adapter</strong> 中使用它自己的官方 SDK，并在那里解析 <code>choices</code> / 对应 usage；不要让中立业务层知道这些厂商字段，也不要把它们当成 Anthropic Messages API 的响应结构。</p>
+    <p><strong>无 key 的离线 adapter：</strong></p>
+    <pre><code>import asyncio
 
-USE_MOCK = API_KEY is None                       # 没 key → 降级为 mock
-
-async def call_model(client: httpx.AsyncClient, prompt: str, model: str, temperature: float = 0) -&gt; dict:
-    """调一次模型。没 key 时返回 mock，方便先跑通流程。"""
-    if USE_MOCK:
-        await asyncio.sleep(0.1)                  # 模拟网络耗时
-        return {"model": model, "prompt": prompt,
-                "output": f"[MOCK-{model}] 对「{prompt[:12]}…」的回答",
-                "output_tokens": 42}
-
-    # —— 真实调用（有 key 时走这里）——
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,   # 默认 0（对比可复现，L17）；采样一致性检测时传高值
-        "max_tokens": 512,
+async def mock_call(prompt: str, model: str) -&gt; dict:
+    await asyncio.sleep(0)
+    output = f"[MOCK-{model}] {prompt[:12]}"
+    return {
+        "provider": "mock", "model": model, "prompt": prompt,
+        "output": output,
+        "input_tokens": len(prompt),   # 仅为 mock 占位，不是模型 token
+        "output_tokens": len(output),
     }
-    headers = {"Authorization": f"Bearer {API_KEY}"}   # ← key 只在这里用
-    r = await client.post(API_URL, json=payload, headers=headers, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-    return {"model": model, "prompt": prompt,
-            "output": data["choices"][0]["message"]["content"],
-            "output_tokens": data["usage"]["completion_tokens"]}
 
-async def run_matrix(prompts: list[str], models: list[str]) -&gt; list[dict]:
-    """并发跑 models × prompts 的所有组合 (L16 的 gather 思路)。"""
-    sem = asyncio.Semaphore(5)                    # 限流，别打挂对方 / 触发 429
-    async with httpx.AsyncClient() as client:     # async with = 异步资源 (L15/L16)
-        async def one(p, m):
-            async with sem:
-                return await call_model(client, p, m)
-        tasks = [one(p, m) for m in models for p in prompts]
-        return await asyncio.gather(*tasks)       # 同时发起、一起等
-
-# —— 试跑（无 key 也能跑，走 mock）——
-prompts = ["解释什么是幻觉。", "写一个 Python 快排。"]
-models  = ["model-a", "model-b"]
-results = asyncio.run(run_matrix(prompts, models))
-for r in results:
-    print(r["model"], "|", r["output"][:30], "| out_tok=", r["output_tokens"])</code></pre>
-    <p>这段的方法名、async 模式、限流、<code>async with</code> 都是<strong>结构正确</strong>的（对照 <a href="0020-L16-async-concurrency.html">L16</a> 的 <code>gather</code>/<code>Semaphore</code>）。有 key 时把 <code>API_URL</code> 换成真实 endpoint 即可；没 key 时它自动走 mock，你现在就能跑通"矩阵调用 → 收集结果"这一步。</p>
+async def run_matrix(prompts, models, call) -&gt; list[dict]:
+    sem = asyncio.Semaphore(5)
+    async def one(prompt, model):
+        async with sem:
+            return await call(prompt, model)
+    return await asyncio.gather(*[
+        one(prompt, model) for model in models for prompt in prompts
+    ])</code></pre>
+    <p>这里的 <code>call</code> 就是 adapter 接口。离线练习传 <code>mock_call</code>；真实 Claude 环境可包装 <code>call_claude</code>。并发器只依赖统一 dict，因此增加 provider 时不需要改评测流程。</p>
   </div>
   <div class="tip">
-    为什么 temperature 设 0 而不是默认值？因为<strong>对比实验要控制变量</strong>。默认温度下同一个 prompt 每次输出都不同，你就分不清"这次差是模型不行，还是这次运气不好"。设 0（或很低）让输出尽量确定，模型间的差异才是<strong>真差异</strong>。这跟 <a href="0021-L17-llm-essence-and-parameters.html">L17</a> 讲的"低温更可复现、适合确定性任务"完全一致。（注意：低温≠完全确定，但足够公平对比。）
+    公平对比要固定 prompt、系统指令、工具、最大输出、effort/采样策略和重复次数。若某模型不支持另一个模型的参数（当前 Claude Opus 4.8 就不接受 temperature），记录差异并比较各自推荐配置，不能为了“字段一样”发送无效请求。
   </div>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 做模型对比时，为什么把 temperature 设得很低？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 跨厂商模型评测中，Provider Adapter 应统一什么？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">低温能让回答更有创意</button>
-      <button data-answer="correct">压住随机性、便于归因</button>
-      <button data-answer="wrong">低温可以省 token 费用</button>
-      <button data-answer="wrong">高温会触发接口限流</button>
+      <button data-answer="correct">统一业务结果结构，隔离厂商请求响应</button>
+      <button data-answer="wrong">强迫所有厂商接受同一采样参数</button>
+      <button data-answer="wrong">把 choices 字段当作所有 API 标准</button>
+      <button data-answer="wrong">把所有认证都改成同一种 Bearer key</button>
     </div>
-    <div class="quiz-explanation">对比实验要<strong>控制变量</strong>：默认温度下同一 prompt 每次输出都不同，你分不清差异来自模型还是来自随机采样。设低温（如 0）让输出尽量确定，模型间的差异才归因得清（<a href="0021-L17-llm-essence-and-parameters.html">L17</a>）。温度和省钱、限流都无关。</div>
+    <div class="quiz-explanation">Adapter 隔离认证、请求字段、响应内容块和 usage 差异，向评测流程返回统一的中立结构。统一厂商原始 JSON 会让代码在换 provider 时直接出错。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>4. Step 3 · 幻觉测试（复用 L19）</h2>
   <div class="card">
-    <p>能力测完，测<strong>可靠性</strong>：谁在一本正经地编造？<a href="0023-L19-hallucination.html">L19</a> 讲过，幻觉是<strong>流畅、自信、但事实错误或无依据</strong>的生成。我们要主动去<strong>钓</strong>它出来。方法是设计一批"陷阱问题"，专挑模型容易编的三类：</p>
-    <ul>
-      <li><strong>问不存在的事</strong>：一个查无此人/查无此物的对象（好模型应答"不知道/查无此……"，坏模型会编出细节）；</li>
-      <li><strong>问最新事件</strong>：超出训练截止的事（好模型应承认不确定，坏模型会瞎猜）；</li>
-      <li><strong>问需要精确计算的</strong>：一个必须算对的数（考它是真算还是"看起来对"）。</li>
-    </ul>
-    <p>怎么判定是不是幻觉？用 <a href="0023-L19-hallucination.html">L19</a> 的 <strong>Self-Consistency（自洽性检测）</strong>：<strong>同一个问题，用较高温度采样多次</strong>，看几次答案是否一致。如果模型对某事有真知，多次采样会稳定收敛到同一个答案；如果是在<strong>瞎编</strong>，多次采样往往互相矛盾——<strong>答案越发散，越可能是幻觉</strong>。再配合人工核对标注对错。</p>
+    <p>能力测完，再测<strong>可靠性</strong>。题库必须有可核对的 ground truth 或证据：不存在对象由权威检索确认，实时问题用带时间戳的来源，精确计算交给代码工具。Self-Consistency 只观察输出是否稳定；发散是风险信号，一致仍可能一致地错。</p>
+    <p>下面的 mock 故意为三个模型安排稳定、部分一致和发散样本，因此无 key 也能真正跑到三条分支：</p>
     <pre><code>import asyncio
-# 复用 Step 2 的 call_model；这里注意：Self-Consistency 要「较高温度」采样，
-# 与 Step 2 的对比（低温）目的不同——一个求确定，一个求发散看一致性。
 
-# 陷阱问题库：每题标注类型，便于分析模型在哪类上更容易翻车
-TRAP_QUESTIONS = [
-    {"q": "介绍一下学者「张无极」在拓扑量子场论上的代表作。",
-     "type": "不存在的对象", "expect": "应表示查无此人/不确定"},
-    {"q": "请列出本月刚发布的所有大模型及其参数量。",
-     "type": "超训练截止", "expect": "应承认信息可能过时/不确定"},
-    {"q": "17389 × 20563 等于多少？只给最终数字。",
-     "type": "精确计算", "expect": "应给出可核对的确定数值"},
-]
+SCRIPTED = {
+    "model-stable": ["查无可靠资料"] * 5,
+    "model-mixed": ["查无资料", "查无资料", "论文A", "查无资料", "论文B"],
+    "model-unstable": ["论文A", "论文B", "论文C", "论文D", "论文E"],
+}
 
-async def self_consistency(client, question: str, model: str, n: int = 5) -&gt; list[str]:
-    """同一问题采样 n 次（较高温度），返回 n 个答案看一致性。"""
-    async def one():
-        # 高温采样才看得出发散：真实调用把 temperature 调高（如 0.8）；mock 恒定返回
-        return (await call_model(client, question, model, temperature=0.8))["output"]
-    return await asyncio.gather(*[one() for _ in range(n)])
+async def mock_sample(question: str, model: str, sample_index: int) -&gt; dict:
+    await asyncio.sleep(0)
+    output = SCRIPTED[model][sample_index]
+    return {"provider": "mock", "model": model, "prompt": question,
+            "output": output, "input_tokens": len(question),
+            "output_tokens": len(output)}
 
-def judge_hallucination(answers: list[str]) -&gt; str:
-    """极简判定：答案高度发散 → 疑似幻觉；高度一致 → 可能有真知（仍需人工核对）。"""
-    unique = set(a.strip() for a in answers)
-    if len(unique) &gt;= max(2, len(answers) - 1):
-        return "疑似幻觉(答案发散)"
+async def self_consistency(question: str, model: str, n: int = 5) -&gt; list[str]:
+    rows = await asyncio.gather(*[
+        mock_sample(question, model, i) for i in range(n)
+    ])
+    return [row["output"] for row in rows]
+
+def normalize_answer(text: str) -&gt; str:
+    return "".join(ch.lower() for ch in text.strip() if ch.isalnum())
+
+def judge_consistency(answers: list[str]) -&gt; str:
+    unique = {normalize_answer(answer) for answer in answers}
     if len(unique) == 1:
-        return "一致(需人工核对是否为真)"
-    return "部分一致(存疑)"</code></pre>
-    <p>评分表建议这样组织（每个模型 × 每个陷阱问题一格），最后统计每个模型的<strong>幻觉率</strong>：</p>
-    <pre><code>模型      | 陷阱题类型     | Self-Consistency | 人工核对 | 判定
-----------|----------------|------------------|----------|--------
-model-a   | 不存在的对象   | 5/5 一致「查无此人」 | 正确弃权 | ✅ 未幻觉
-model-a   | 精确计算       | 3/5 数字不一       | 算错     | ❌ 幻觉
-model-b   | 不存在的对象   | 2/5 各编了细节     | 编造     | ❌ 幻觉
-...       | ...            | ...              | ...      | ...
-→ 幻觉率 = 幻觉格子数 / 总格子数</code></pre>
-    <p>注意：<code>judge_hallucination</code> 是<strong>粗筛</strong>——一致不代表就对（可能一致地错），所以"一致"这一档仍要人工核对；但"发散"是很强的幻觉信号。而且这里用 <code>set</code> 精确匹配对格式很敏感（"3.14" 与 "3.14。" 会算作发散），工程里应<strong>先归一化再比</strong>（去标点/小写/抽关键值）。Self-Consistency 的价值是<strong>低成本地把可疑项筛出来</strong>，让人工只盯少数格子。</p>
+        return "一致（仍需核对真伪）"
+    if len(unique) &gt;= max(2, len(answers) - 1):
+        return "发散（高风险）"
+    return "部分一致（需复核）"
+
+async def demo():
+    question = "介绍学者张无极在拓扑量子场论上的代表作。"
+    for model in SCRIPTED:
+        answers = await self_consistency(question, model)
+        print(model, judge_consistency(answers))
+
+asyncio.run(demo())</code></pre>
+    <pre><code>model-stable 一致（仍需核对真伪）
+model-mixed 部分一致（需复核）
+model-unstable 发散（高风险）</code></pre>
+    <p>评分表要把<strong>稳定性</strong>和<strong>事实正确性</strong>分成两列：</p>
+    <pre><code>模型     | 题型       | 一致性筛查       | 真值/证据核对 | 最终标签
+---------|------------|------------------|---------------|---------
+model-a  | 不存在对象 | 一致             | 正确弃权      | 正确
+model-a  | 精确计算   | 部分一致         | 数值错误      | 错误
+model-b  | 不存在对象 | 发散             | 多次编造      | 错误
+
+发散率 = 发散样本数 / 总样本数       （稳定性指标）
+错误率 = ground truth 判错数 / 总样本数（事实指标）</code></pre>
+    <p>归一化只能减少“3.14”与“3.14。”这类格式差异，不能把语义不同的回答自动判成同一事实。生产评测应按题型使用解析器、业务数据库、检索证据或人工 rubric，并保留原始回答方便复核。</p>
   </div>
   <div class="tip">
-    ⚠️ 回顾 <a href="0023-L19-hallucination.html">L19</a> 的核心洞见：幻觉<strong>无法根除</strong>，因为评估机制在<strong>奖励瞎猜</strong>（诚实弃权反而扣分）。所以体检的目标<strong>不是找到"零幻觉"的模型</strong>（不存在），而是量化<strong>各模型幻觉率的高低</strong>，并看它在<strong>你关心的那类问题</strong>上表现如何。一个在闲聊上很稳的模型，可能在精确计算上频繁翻车。
+    ⚠️ 回顾 L19：预训练统计错误与评估激励是重要机制，但不是所有错误的唯一来源。体检要按题型报告发散率、事实错误率、拒答率和证据覆盖；一个模型可能很稳定，却稳定地给出错误答案。
   </div>
 </div>
 
 <div class="section">
   <h2>5. Step 4 · 生成综合报告</h2>
   <div class="card">
-    <p>三项检查都做完了，把<strong>能力、幻觉、成本</strong>汇总成一个结构，输出一张能拍板的表。数据结构很简单——每个模型一条记录：</p>
-    <pre><code>def build_report(models, quality_scores, halluc_rates, cost_per_1k) -&gt; list[dict]:
-    """把三维汇总成一张表。三个入参分别来自 Step2/Step3/Step1。"""
-    report = []
-    for m in models:
-        report.append({
-            "模型": m,
-            "平均质量": quality_scores[m],   # 0~10，来自能力对比(可人工/LLM-as-judge)
-            "幻觉率":   halluc_rates[m],     # % ，来自 Step 3 评分表
-            "每千次成本": cost_per_1k[m],    # $ ，来自 Step 1 估算 × 1000
-        })
-    return report
+    <p>把质量、ground-truth 错误率、成本和运行信息汇总。每个指标必须说明样本数和评测方法，不能把一次 toy run 当成模型排名：</p>
+    <pre><code>def build_report(models, quality, error_rate, cost_per_1k, runs) -&gt; list[dict]:
+    return [
+        {"model": model,
+         "quality": quality[model],
+         "error_rate": error_rate[model],
+         "cost_per_1k": cost_per_1k[model],
+         "runs": runs[model]}
+        for model in models
+    ]</code></pre>
+    <p>示例表只演示形态；所有模型名、分数和价格都是虚构值：</p>
+    <pre><code>模型      | 平均质量(0~10) | 事实错误率 | 每千次成本($) | 运行数
+----------|----------------|------------|---------------|-------
+model-a   | 8.6            | 12%        | 4.54          | 30
+model-b   | 7.4            | 21%        | 0.46          | 30
+model-c   | 9.1            |  9%        | 9.80          | 30
 
-# —— 示例输出（数字均为演示，非真实 benchmark/报价）——</code></pre>
-    <p>最终报告长这样（<strong>下面所有数字都是"示例"，用来演示报告形态，不是真实评测/报价</strong>）：</p>
-    <pre><code>┌───────────┬──────────┬────────┬──────────────┐
-│ 模型      │ 平均质量 │ 幻觉率 │ 每千次成本($) │   ← 均为示例值
-├───────────┼──────────┼────────┼──────────────┤
-│ model-a   │   8.6    │  12%   │    4.54      │
-│ model-b   │   7.4    │  21%   │    0.46      │
-│ model-c   │   9.1    │   9%   │    9.80      │
-└───────────┴──────────┴────────┴──────────────┘
-
-读表：model-c 质量最高、幻觉最低，但最贵；
-      model-b 最便宜，但质量与可靠性都最弱；
-      model-a 三项都居中。 —— 没有"全赢"，只有权衡。</code></pre>
+这些数值不是任何真实模型的 benchmark 或报价，不能用于生产选型。</code></pre>
     <p>这张表把三门课变成了<strong>一眼能比</strong>的东西。关键是它逼你<strong>同时</strong>看三列——只看质量会选最贵的，只看成本会选最不靠谱的。真正的决策发生在下一节：怎么<strong>综合</strong>这三列做选择。</p>
   </div>
 
@@ -300,13 +298,14 @@ JUDGE_PROMPT = """你是评审。请按以下标准给「回答」打 0~10 分�
 问题：{q}
 回答：{a}"""
 
-async def llm_judge(client, question, answer, judge_model) -&gt; float:
-    p = JUDGE_PROMPT.format(q=question, a=answer)
-    out = (await call_model(client, p, judge_model))["output"]
+async def llm_judge(question, answer, judge_model, call) -&gt; float | None:
+    prompt = JUDGE_PROMPT.format(q=question, a=answer)
+    out = (await call(prompt, judge_model))["output"]
     try:
-        return float(out.strip().split()[0])
-    except ValueError:
-        return 0.0        # 裁判没给出数字，记 0 并人工复核</code></pre>
+        score = float(out.strip().split()[0])
+        return score if 0 &lt;= score &lt;= 10 else None
+    except (ValueError, IndexError):
+        return None       # 解析失败是“待复核”，不能伪装成 0 分</code></pre>
       <p>三个坑要记住：①裁判本身也会幻觉/有偏好，别把它当绝对真理，重要结论仍要抽样人工核对；②<strong>别让模型给自己打分</strong>（自评偏高），用不同/更强的模型当裁判；③rubric 要<strong>固定且明确</strong>，否则分数不可比——这跟 <a href="0026-L22-benchmarks-and-selection.html">L22</a> 说的"benchmark 要看评测方法"是一个道理。（另一个可选进阶：给 Step 1 加上 Prompt Caching 前后成本对比，把长 system prompt 缓存起来看省多少——见 <a href="0027-L23-token-economics.html">L23</a>。）</p>
     </div>
   </details>
@@ -321,39 +320,50 @@ async def llm_judge(client, question, answer, judge_model) -&gt; float:
       <tbody>
         <tr>
           <td><strong>医疗/法律问答</strong></td>
-          <td>幻觉率 ≫ 成本</td>
-          <td>编错一条信息代价极高，贵一点无所谓。选幻觉率最低、质量最高的。</td>
-          <td>model-c</td>
+          <td>事实可靠性硬门槛</td>
+          <td>先设事实错误率、引用覆盖和人工升级硬门槛；示例中 model-c 仅进入下一轮验证。</td>
+          <td>model-c（候选）</td>
         </tr>
         <tr>
           <td><strong>海量内容分类</strong></td>
           <td>成本 ≫ 质量</td>
-          <td>任务简单、调用量巨大，单次成本被放大 100 万倍；分类容错高。选最便宜的。</td>
-          <td>model-b</td>
+          <td>先满足类别准确率/召回率门槛；若 model-b 通过，再利用低成本优势。</td>
+          <td>model-b（达标后）</td>
         </tr>
         <tr>
           <td><strong>通用客服助手</strong></td>
           <td>三者平衡</td>
-          <td>质量要够用、成本要可控、别频繁编造。选三项都居中、没有明显短板的。</td>
-          <td>model-a</td>
+          <td>先定义满意度、事实错误和升级人工阈值；示例权重下 model-a 可继续 A/B。</td>
+          <td>model-a（候选）</td>
         </tr>
       </tbody>
     </table>
     <p>看出来了吗——<strong>同一张体检表，选出了三个不同的模型</strong>。这正是选型的本质：<strong>没有"最好的模型"，只有"最适合这个场景的模型"</strong>。</p>
-    <p>把决策逻辑写成代码也很直接——按场景给三维不同权重，算加权分：</p>
-    <pre><code>def pick_model(report, w_quality, w_low_halluc, w_low_cost):
-    """按场景权重打分选型。权重体现你对三维的敏感度 (L22)。"""
-    def score(row):
-        # 幻觉率、成本越低越好 → 取反向；质量越高越好
-        return (w_quality     * row["平均质量"]
-              - w_low_halluc  * row["幻觉率"]
-              - w_low_cost    * row["每千次成本"])
-    return max(report, key=score)
+    <p>质量是 0–10、错误率是百分比、成本是美元，不能直接相加。先在候选集合内 min-max 归一化，再加权：</p>
+    <pre><code>def minmax(value, values, *, lower_is_better=False):
+    low, high = min(values), max(values)
+    score = 1.0 if high == low else (value - low) / (high - low)
+    return 1.0 - score if lower_is_better else score
 
-# 医疗场景：极度看重「低幻觉」，成本权重给低
-best = pick_model(report, w_quality=1, w_low_halluc=2.0, w_low_cost=0.1)
-# 分类场景：极度看重「低成本」
-cheap = pick_model(report, w_quality=0.5, w_low_halluc=0.5, w_low_cost=2.0)</code></pre>
+def pick_model(report, weights):
+    qualities = [row["quality"] for row in report]
+    errors = [row["error_rate"] for row in report]
+    costs = [row["cost_per_1k"] for row in report]
+    scores = {}
+    for row in report:
+        scores[row["model"]] = (
+            weights["quality"] * minmax(row["quality"], qualities)
+            + weights["reliability"] * minmax(
+                row["error_rate"], errors, lower_is_better=True)
+            + weights["cost"] * minmax(
+                row["cost_per_1k"], costs, lower_is_better=True)
+        )
+    return max(scores, key=scores.get), scores
+
+best, scores = pick_model(
+    report, {"quality": 0.4, "reliability": 0.5, "cost": 0.1}
+)</code></pre>
+    <p>归一化只解决量纲问题：候选集合变化会改变分数，极端值也会扭曲尺度。生产中还应先设置硬门槛（如法律问答错误率不得超过阈值），淘汰不合格候选后再加权。</p>
   </div>
   <div class="tip">
     <strong>最容易犯的错：只看一个维度。</strong> 只看 benchmark 分数 → 可能选了个贵到用不起、还爱编造的模型；只看价格 → 可能选了个便宜但不靠谱、返工成本更高的。<a href="0027-L23-token-economics.html">L23</a> 提醒过：真正的成本是<strong>"总拥有成本"</strong>——包括幻觉导致的返工、人工复核。<strong>永远把能力 + 幻觉 + 成本放在一起权衡</strong>，这就是这份体检报告存在的意义。
@@ -363,35 +373,22 @@ cheap = pick_model(report, w_quality=0.5, w_low_halluc=0.5, w_low_cost=2.0)</cod
 <div class="section">
   <h2>🎯 速查卡：Phase 2 一页复习</h2>
   <div class="card">
-    <pre><code>【L17 本质与参数】LLM = 预测下一个 token 的概率机器
-  优化「像人话」≠「事实正确」；temperature 低=确定/可复现, 高=多样
-  对比实验设低温控变量；创意任务才调高
+    <pre><code>【L17】解码概念 ≠ 通用 API 字段；当前 Claude 新模型不接受 sampling 参数
+【L18】tiktoken 对匹配 OpenAI 编码计数；Claude 用 count_tokens + usage
+【L19】统计错误使幻觉产生，评估可能鼓励猜测；一致不证明正确
+【L20】推理能力 / Adaptive Thinking / effort 是三层；display ≠ 计费开关
+【L21】Base/Instruct 是行为与训练倾向；SFT、RLHF、DPO 路线不同
+       直接文档输入 ≠ RAG；API 无状态 ≠ 应用不能保存记忆
+【L22】榜单属于模型 + scaffold + 工具 + 预算
+       开发集调参、隔离测试集验收；开放权重 ≠ 必须自托管
+【L23】先测成本构成；缓存、路由、压缩、输出控制、Batch 各有边界
 
-【L18 token / 计数】token = 子词片段，不是字/词/字母
-  tiktoken 本地精确计数：enc.encode(text) → len 就是 token 数
-  中文更费 token? 取决于分词器(o200k 已大幅抹平)；跨厂商只是近似
-
-【L19 幻觉】流畅+自信+事实错/无依据；根源是评估「奖励瞎猜」
-  无法根除，只能缓解：RAG / CoT / Self-Consistency / 允许弃权
-  检测：多次采样看一致(发散=疑似幻觉) / LLM-as-judge / 要出处
-
-【L20 推理模型】用「思考 token」换准确率，适合难推理/规划
-  代价是更慢更贵；简单任务用它 = 杀鸡用牛刀
-
-【L21 能力边界 / Base vs Instruct】Base=续写, Instruct=听指令(对齐后)
-  知道模型「不能」做什么，比知道它能做什么更重要
-
-【L22 benchmark / 选型】分数要看评测方法、别只看榜单数字
-  选型框架：先定场景对 能力/幻觉/成本/延迟 的敏感度 → 再加权
-
-【L23 token 经济学】输出通常 3~5× 输入；成本=(in×in价+out×out价)/1e6
-  降本杠杆：Prompt Caching / Model Routing / 压缩历史
-  真正成本 = 总拥有成本(含幻觉返工 + 人工复核)
-
-【本课 体检报告】能力 + 幻觉 + 成本 三维一起看
-  Step1 tiktoken 估成本(本地) → Step2 async 并发调模型(低温/env读key)
-  → Step3 陷阱问题 + Self-Consistency 测幻觉 → Step4 汇总选型
-  结论：没有最好的模型，只有最适合这个场景的模型</code></pre>
+【本课】
+  Step1 各厂商计数方式 + usage 对账
+  Step2 Provider Adapter 隔离请求/响应差异，统一业务结果
+  Step3 一致性筛风险 + ground truth/证据判事实错误
+  Step4 记录样本数/重复运行，指标归一化后再加权
+  结论：没有脱离场景和评测配置的“最好模型”</code></pre>
   </div>
 </div>
 
@@ -399,7 +396,7 @@ cheap = pick_model(report, w_quality=0.5, w_low_halluc=0.5, w_low_cost=2.0)</cod
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken" target="_blank"><strong>OpenAI Cookbook: How to count tokens with tiktoken</strong></a></p>
-    <p>本课 Step 1 的成本估算就建立在它之上——官方、可直接跑的计数教程，含不同编码对比与聊天消息的 token 计算。把它跑通，你对"钱花在哪、发请求前怎么估"就有了扎实体感；再配合 <a href="0027-L23-token-economics.html">L23</a> 的降本杠杆，就是一套完整的成本工程能力。</p>
+    <p>这份资料只对应 OpenAI tokenizer。Claude 计数应同时阅读 <a href="https://platform.claude.com/docs/en/build-with-claude/token-counting" target="_blank">Anthropic Token Counting</a>，调用官方 <code>messages.count_tokens</code> 并用 response usage 对账。跨厂商评测的关键不是找“一把通用 tokenizer”，而是由每个 adapter 负责正确计数和解析。</p>
   </div>
 </div>
 
@@ -415,11 +412,11 @@ cheap = pick_model(report, w_quality=0.5, w_low_halluc=0.5, w_low_cost=2.0)</cod
     <div class="qa-related-label">🔗 关联课程</div>
     <ul>
       <li>· <a href="0027-L23-token-economics.html">上一课 · L23 · Token 经济学</a> — 成本核算与降本杠杆，本课 Step 1/4 的地基</li>
-      <li>· <a href="0021-L17-llm-essence-and-parameters.html">L17 · 本质与参数</a> — 对比时"设低温可复现"的来源</li>
-      <li>· <a href="0022-L18-tokenization.html">L18 · tiktoken 计数</a> — Step 1 本地估算成本直接复用</li>
-      <li>· <a href="0023-L19-hallucination.html">L19 · 幻觉测试</a> — Step 3 的 Self-Consistency / 陷阱问题</li>
-      <li>· <a href="0019-L15-httpx.html">L15 · httpx</a> — Step 2 的传输层（AsyncClient / post）</li>
-      <li>· <a href="0020-L16-async-concurrency.html">L16 · async 并发</a> — Step 2 的 gather / Semaphore 并发调用</li>
+      <li>· <a href="0021-L17-llm-essence-and-parameters.html">L17 · 本质与参数</a> — 解码概念与厂商参数边界</li>
+      <li>· <a href="0022-L18-tokenization.html">L18 · Token 计数</a> — tiktoken 与 Claude count-tokens 的边界</li>
+      <li>· <a href="0023-L19-hallucination.html">L19 · 幻觉测试</a> — 一致性只筛风险，真值仍需证据</li>
+      <li>· <a href="0019-L15-httpx.html">L15 · HTTP 客户端</a> — 理解 SDK 底层的连接、超时与错误边界</li>
+      <li>· <a href="0020-L16-async-concurrency.html">L16 · async 并发</a> — Step 2 的 gather / Semaphore 并发组织</li>
     </ul>
   </div>
   </div>
@@ -430,17 +427,17 @@ cheap = pick_model(report, w_quality=0.5, w_low_halluc=0.5, w_low_cost=2.0)</cod
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>选型不是"哪个模型最好"，而是把问题拆成<strong>能力 / 幻觉 / 成本</strong>三维一起权衡</li>
-      <li><strong>Step 1</strong>：<code>tiktoken</code> 本地数 token、套单价估成本——发请求前就算好，不需 key（<a href="0022-L18-tokenization.html">L18</a>）</li>
-      <li><strong>Step 2</strong>：<code>async</code> 并发调各模型，<strong>env 读 key、设低温复现</strong>，没 key 用 mock 兜底（<a href="0019-L15-httpx.html">L15</a>/<a href="0020-L16-async-concurrency.html">L16</a>/<a href="0021-L17-llm-essence-and-parameters.html">L17</a>）</li>
-      <li><strong>Step 3</strong>：陷阱问题 + Self-Consistency 测幻觉，答案越发散越可疑，粗筛后人工核对（<a href="0023-L19-hallucination.html">L19</a>）</li>
-      <li><strong>Step 4</strong>：汇总成一张表，用决策框架按场景加权——<strong>同一张表能选出不同模型</strong>（<a href="0026-L22-benchmarks-and-selection.html">L22</a>/<a href="0027-L23-token-economics.html">L23</a>）</li>
-      <li>最大的坑是<strong>只看一个维度</strong>；真正的成本是含返工与复核的"总拥有成本"</li>
+      <li>选型评的是<strong>模型 + adapter + scaffold + 工具 + 预算</strong>在你的场景中的表现，不是脱离配置找“最强模型”</li>
+      <li><strong>Step 1</strong>：各 provider 用自己的计数方式；Claude 用 <code>messages.count_tokens</code>，调用后以 usage 对账</li>
+      <li><strong>Step 2</strong>：Provider Adapter 隔离厂商认证、请求和响应，async 并发器只依赖统一业务结构</li>
+      <li><strong>Step 3</strong>：Self-Consistency 只筛稳定性风险；事实错误率必须通过 ground truth、证据或人工 rubric 判断</li>
+      <li><strong>Step 4</strong>：记录样本数和重复运行；不同量纲先归一化，硬门槛通过后再加权</li>
+      <li>总拥有成本还包括重试、误路由、人工复核和错误影响；toy 表格不能直接用于生产拍板</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
     🎉🎉 <strong>恭喜！你已完成整个 Phase 2（AI 知识与模型选型，L17–L24）。</strong><br>
-    从"LLM 到底在做什么、Token 为什么等于钱、幻觉为什么无法根除"，到推理模型、能力边界、看懂 benchmark、Token 经济学，再到这一课把它们<strong>拼成一个能跑的选型工具</strong>——你已经建立起对 LLM 的<strong>底层认知</strong>，以及<strong>选型 + 成本工程</strong>的实战能力。你现在能回答那个真正重要的问题：<strong>"这个场景该用哪个模型，为什么，贵不贵，靠不靠谱。"</strong><br>
+    从解码参数的厂商边界、模型特定 Token 计数、幻觉的多因素解释，到 Adaptive Thinking、系统级 benchmark 与成本工程，再到本课把它们拼成可离线验证的评测骨架——你已经能回答更专业的问题：<strong>“在固定 adapter、scaffold、工具与预算下，哪个候选在我的隔离评测集上达标，证据是什么？”</strong><br>
     <strong>下一站 Phase 3：LLM API 工程实践</strong>——把这些认知落成真正调得动、扛得住的生产代码。一路有任何疑问，随时问我(agent)！
   </div>
 </div>

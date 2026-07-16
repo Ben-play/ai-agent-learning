@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>模型能力边界与 Base vs Instruct</h1>
     <p class="subtitle">搞懂 LLM 天生做不到什么——因为 Agent 架构，本质就是来补这些短板的</p>
@@ -25,7 +25,7 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>你调的 API 背后，是一个<strong>会聊天、会听指令</strong>的模型。但它并不是天生就会——<strong>纯预训练出来的 base model 根本不听指令</strong>，你问它问题，它可能反手给你续写更多问题。它是怎么变成今天这个"助手"的？这是第一个必须搞懂的分水岭。</p>
+    <p>你调的助手 API 背后，是一个经过指令与偏好优化的模型。纯预训练的 base model 主要学习续写分布，没有被专门训练成稳定的对话助手；它可能回答问题，也可能继续补全文本。理解它如何变成今天的“助手”，是第一个必须搞懂的分水岭。</p>
     <p>更关键的是它的<strong>能力边界</strong>：知识会过时、不会精确算术、会一本正经地幻觉、上下文有限还会"迷失在中间"、默认没有记忆……这些不是 bug，是 LLM 的<strong>先天局限</strong>。而这，正是 <strong>Agent 存在的全部意义</strong>——<strong>用工具、检索、记忆去补 LLM 的先天短板</strong>。学完这课，你会明白 Agent 每个组件到底在"救"哪条局限。这也是面试最爱问的一类问题。</p>
   </div>
 </div>
@@ -36,7 +36,8 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>说清 <strong>Base Model</strong> 和 <strong>Instruction-Tuned Model</strong> 的本质差别</li>
-      <li>用一句话解释 <strong>RLHF</strong> 在做什么、以及"指令微调不增加知识"这个关键洞察</li>
+      <li>区分 <strong>SFT</strong> 与偏好优化（RLHF / DPO 类方法），知道训练路线并不唯一</li>
+      <li>解释为什么不能假设指令微调会可靠注入事实知识，以及它与 RAG 的适用边界</li>
       <li>列出 LLM <strong>能做</strong>的核心任务清单</li>
       <li>准确说出 LLM 的 <strong>6 大局限</strong>（面试常考），并解释每条为什么发生</li>
       <li>把每条局限映射到 <strong>Agent 用什么能力去补</strong>——建立贯穿全课程的主线</li>
@@ -51,42 +52,43 @@
     <table>
       <thead><tr><th></th><th>Base Model（基座）</th><th>Instruction-Tuned（指令模型）</th></tr></thead>
       <tbody>
-        <tr><td>怎么来的</td><td>纯<strong>预训练</strong>：海量文本上学"预测下一个 Token"</td><td>base 之上做<strong>指令微调 + RLHF</strong></td></tr>
-        <tr><td>会干什么</td><td>只会<strong>续写 / 补全</strong>文本</td><td>能<strong>听懂并执行指令</strong>、对齐人类偏好</td></tr>
-        <tr><td>你问它问题</td><td>可能<strong>续写出更多问题</strong>（它以为你在列清单）</td><td>直接<strong>回答</strong>你的问题</td></tr>
+        <tr><td>怎么来的</td><td>主要经过<strong>预训练</strong>：在海量数据上学习预测 Token</td><td>通常在 base 之上做 <strong>SFT（监督式指令微调）+ 偏好/安全优化</strong></td></tr>
+        <tr><td>行为倾向</td><td>主要擅长<strong>续写 / 补全</strong>，也可能展现问答能力，但未专门对齐助手行为</td><td>更稳定地<strong>理解并执行指令</strong>、遵循对话与安全规范</td></tr>
+        <tr><td>你问它问题</td><td>可能回答，也可能继续补全类似文本</td><td>通常按助手角色直接回答</td></tr>
         <tr><td>典型代表</td><td>Llama-3-Base、各家 <code>-base</code> 权重</td><td>GPT / Claude / Gemini 的 chat 版</td></tr>
       </tbody>
     </table>
     <p>直觉例子：给 base model 输入"中国的首都是"，它可能补全成"中国的首都是北京，日本的首都是……"——它在<strong>模仿文本分布</strong>，不是在<strong>应答</strong>。指令模型才会理解成"你在问我，我该回答'北京'"。差别来自训练方式（见 <a href="https://toloka.ai/blog/base-llm-vs-instruction-tuned-llm" target="_blank">Toloka: Base LLM vs Instruction-Tuned LLM</a>）。</p>
-    <p><strong>关键洞察（务必记住）：指令微调主要 refine 的是"任务执行 / 对齐"，并不显著增加模型的知识——知识几乎全部来自预训练阶段。</strong>有 arXiv 研究专门指出这点（<a href="https://arxiv.org/html/2402.05119v3" target="_blank">arXiv 2402.05119</a>）：指令微调教会模型"如何回应、如何对齐偏好"，而不是"知道更多事实"。所以你想让模型<strong>知道</strong>它训练时没见过的东西（你的私有数据、最新新闻），微调不是首选——<strong>该上检索（RAG）</strong>。</p>
+    <p><strong>关键洞察：</strong>指令微调通常首先改变“如何回应、如何执行任务”，<strong>不能默认它会可靠注入新的事实知识</strong>。研究《<a href="https://arxiv.org/html/2402.05119v3" target="_blank">A Closer Look at the Limitations of Instruction Tuning</a>》在特定模型、数据集与单轮开放问答实验中发现：LoRA 微调主要改变格式与风格；全参数微调虽可能吸收信息，却可能损害事实质量。它不证明所有微调都不能学习知识——领域/任务微调仍可教授技能或模式。</p>
+    <p><strong>怎么选：</strong>需要可更新、可引用的私有/最新事实时，RAG 往往更合适；需要改变行为、格式、领域术语或特定任务能力时，可考虑微调。两者可以组合，不是“只能二选一”。</p>
     <p><strong>对 Agent 开发者的意义</strong>：你日常调的 API（GPT / Claude / Gemini 的 chat / instruct 版）<strong>都是 instruction-tuned</strong> 的——正因为它们听得懂指令，你才能用自然语言下达任务、写 system prompt、做 function calling。base model 一般不直接拿来做 Agent。</p>
   </div>
 
   <div class="quiz" data-quiz="q1">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 关于 base model 和 instruction-tuned model，哪句最准确？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于 base 与 instruction-tuned 模型，哪句最准确？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">base 模型知道的事实更少</button>
-      <button data-answer="correct">指令微调主要提升对齐与执行</button>
-      <button data-answer="wrong">指令微调会大量注入新知识</button>
-      <button data-answer="wrong">两者训练流程完全相同</button>
+      <button data-answer="wrong">base 模型永远无法回答任何问题</button>
+      <button data-answer="wrong">指令微调必然注入大量可靠新事实</button>
+      <button data-answer="wrong">所有指令模型都只使用经典 RLHF</button>
+      <button data-answer="correct">指令训练主要改善响应与任务执行</button>
     </div>
-    <div class="quiz-explanation">知识几乎全部来自<strong>预训练</strong>；指令微调 + RLHF 主要 refine 的是"<strong>听懂并执行指令、对齐人类偏好</strong>"，并不显著增加知识（<a href="https://arxiv.org/html/2402.05119v3" target="_blank">arXiv 2402.05119</a>）。所以想让模型"知道"训练时没见过的东西，靠 RAG 而不是靠微调。base 与 instruct 的知识量大体相当，差别在"会不会应答"。</div>
+    <div class="quiz-explanation">指令训练通常首先改善<strong>响应范式、任务执行和偏好对齐</strong>；不能把它当成可靠更新事实知识的保证。Base 也可能回答问题，训练路线也不只经典 RLHF。需要最新、私有且可引用的事实时通常优先考虑 RAG，但领域微调和 RAG 可以组合。</div>
   </div>
 </div>
 
 <div class="section">
-  <h2>2. RLHF 一句话</h2>
+  <h2>2. SFT、RLHF、DPO：别把训练路线混成一步</h2>
   <div class="card">
-    <p><strong>RLHF = Reinforcement Learning from Human Feedback（基于人类反馈的强化学习）。</strong>一句话讲清它的三步：</p>
+    <p>从 base 走向助手模型，常见但并不唯一的路线是：</p>
     <ol>
-      <li>让人类<strong>对模型的多个回答排序</strong>（哪个更好）；</li>
-      <li>用这些偏好数据训练一个<strong>奖励模型（reward model）</strong>，学会给回答打分；</li>
-      <li>用奖励模型作为信号，<strong>对齐（强化学习微调）LLM</strong>，让它的输出更<strong>有用（helpful）、无害（harmless）、诚实（honest）</strong>。</li>
+      <li><strong>SFT（监督式指令微调）</strong>：用“指令 → 理想回答”示范教模型按任务作答。</li>
+      <li><strong>偏好数据</strong>：让人类或其他评审比较多个回答，得到“哪个更好”的信号。</li>
+      <li><strong>偏好优化</strong>：经典 RLHF 会训练奖励模型，再用强化学习优化；DPO 类方法则可直接用偏好对训练策略，不必走同一套奖励模型 + PPO 流程。</li>
     </ol>
-    <p>这就是为什么 chat 版模型会礼貌应答、会拒绝有害请求、会尽量给你想要的格式——它被"人类偏好"对齐过。数学细节这里点到即止，你只需记住：<strong>RLHF 让"会续写的 base model"变成"会当好助手的 instruct model"</strong>。</p>
+    <p>因此“指令模型 = SFT + RLHF”只是常见概括，不是所有厂商的统一配方。训练细节可能还包含安全微调、规则反馈、蒸馏和其他专有方法。</p>
   </div>
   <div class="tip">
-    记忆钩子：<strong>预训练</strong>给模型<strong>知识</strong>，<strong>指令微调 + RLHF</strong>给模型<strong>教养（听话、对齐、有用无害诚实）</strong>。知识 vs 教养，分得清就不会误以为"微调能让它知道最新新闻"。
+    记忆钩子：<strong>预训练</strong>建立广泛能力与知识基础，<strong>SFT</strong>教任务响应范式，<strong>偏好优化</strong>让输出更符合人类/产品目标。三者边界不是绝对的，但不要把 RLHF 当成唯一对齐方法。
   </div>
 </div>
 
@@ -136,32 +138,32 @@
         </tr>
         <tr>
           <td><strong>没有持久记忆</strong></td>
-          <td>默认<strong>无状态</strong>，跨对话不记得你是谁、上次说了啥</td>
-          <td><strong>外部记忆系统</strong>：把历史 / 偏好存库，需要时检索回来（Phase 5）</td>
+          <td>Messages API 默认<strong>无状态</strong>：服务端不会自动替应用维护完整业务会话</td>
+          <td><strong>应用层状态 / 外部记忆</strong>：保存并重发必要历史，或按需检索长期偏好（Phase 5）</td>
         </tr>
         <tr>
           <td><strong>不知私有 / 实时数据</strong></td>
           <td>训练语料里<strong>没有</strong>你的内部文档、数据库、当下状态</td>
-          <td><strong>RAG</strong>：把你的私有数据检索进上下文再作答</td>
+          <td><strong>直接上下文 / RAG / 工具</strong>：小文件可直接提供，知识库先检索，实时状态调 API</td>
         </tr>
       </tbody>
     </table>
     <p>两个高频细节值得展开：</p>
     <ul>
       <li><strong>"迷失在中间"(lost in the middle)</strong>：当相关信息被放在超长上下文的<strong>中间</strong>位置时，模型的利用率明显低于放在<strong>开头或结尾</strong>。这意味着"上下文窗口大"不等于"信息就一定被用上"——工程上要把最关键的资料放到头尾。</li>
-      <li><strong>知识截止是硬边界</strong>：无论模型多强，它对截止日之后的世界一无所知。<strong>别去让 LLM"记住日期"或猜"现在最新版本是几"</strong>——那种问题必须走工具。（本课也刻意不写死任何模型的具体截止日期，因为它随版本变、且很快过时。）</li>
+      <li><strong>参数知识有截止与覆盖边界</strong>：模型不能仅凭参数可靠知道训练后事件或实时状态；但应用可以在当前请求里提供新资料、调用搜索/API，部分平台也可能提供服务器工具。问“现在最新版本”时应查询当前来源，而不是让模型凭记忆猜。</li>
     </ul>
   </div>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 用户问"今天的天气怎么样"，纯 LLM 答不好的<strong>根本原因</strong>是？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 用户问“今天的天气怎么样”，若请求没有工具或实时上下文，主要缺什么？</div>
     <div class="quiz-options">
       <button data-answer="wrong">模型的参数总规模还不够大</button>
+      <button data-answer="correct">请求里没有当前天气数据源</button>
       <button data-answer="wrong">采样温度没有调到最低值</button>
-      <button data-answer="correct">知识截止且无实时数据源</button>
       <button data-answer="wrong">上下文窗口被输入撑爆了</button>
     </div>
-    <div class="quiz-explanation">"今天天气"是<strong>实时 / 训练后</strong>的信息，落在模型的<strong>知识截止</strong>之外，模型内部也没有实时数据源——硬答只会过时或幻觉。正解是让 Agent 调<strong>联网 / 天气 API 工具</strong>把实时数据取回，再交给 LLM 组织语言。这和参数量、温度、窗口大小都无关。</div>
+    <div class="quiz-explanation">当前天气不是仅靠模型参数就能可靠回答的内容。本次请求需要天气 API、搜索工具或用户提供的实时数据，再由模型解释。关键是<strong>请求中有没有当前数据源</strong>，不是参数量、采样温度或上下文窗口大小。</div>
   </div>
 </div>
 
@@ -171,12 +173,12 @@
     <p>把第 4 节反过来读，你就理解了 <strong>Agent 架构存在的全部意义</strong>——它不是给 LLM"加聪明"，而是<strong>用外部能力补齐 LLM 的先天短板</strong>。一一对应：</p>
     <pre><code>LLM 先天短板          →   Agent 补的能力
 ─────────────────────────────────────────
-知识截止 / 不知实时     →   联网工具 / 检索（RAG）
-不会精确算术           →   代码 / 计算器工具
-幻觉                   →   RAG + 引用校验
-上下文有限 + 迷失中间   →   检索 + 压缩 + 头尾摆放
-没有持久记忆           →   外部记忆系统
-不知私有数据           →   RAG（私有知识库）</code></pre>
+参数知识过时 / 缺实时数据 →   搜索 / 业务 API / 当前上下文
+不会精确算术            →   代码 / 计算器工具
+幻觉                    →   外部证据 + 引用 / 工具核验
+上下文有限 + 迷失中间    →   检索 + 压缩 + 证据编排
+API 默认无状态           →   应用保存并重发 / 外部记忆
+未见过私有数据           →   直接文档输入 / RAG / 业务工具</code></pre>
     <p>换句话说：<strong>LLM 是 Agent 的"大脑"，但大脑没有手、没有笔记本、也不上网。工具是它的手，记忆是它的笔记本，检索是它的联网。</strong>之后学到的每一个 Agent 组件——tool use、RAG、memory、planning——你都可以问自己一句："这是在补哪条局限？"这条主线会一直贯穿到课程结束。</p>
   </div>
 
@@ -193,28 +195,28 @@
       <ul>
         <li><strong>① 今天的股价</strong> → 局限：<strong>知识截止 + 无实时数据</strong>。补：<strong>联网 / 行情 API 工具</strong>拉当前价，再让 LLM 组织语言。</li>
         <li><strong>② 1234 × 5678</strong> → 局限：<strong>不会精确计算</strong>（概率预测，大数易错）。补：<strong>代码 / 计算器工具</strong>执行算式，返回精确结果。</li>
-        <li><strong>③ 还记得我的偏好吗</strong> → 局限：<strong>没有持久记忆</strong>（默认无状态，跨对话不记得）。补：<strong>外部记忆系统</strong>——把偏好存库，本轮检索回来注入上下文。</li>
-        <li><strong>④ 总结刚上传的 PDF</strong> → 局限：<strong>不知私有数据</strong>（训练语料里没有你的文件），若 PDF 很长还会撞上<strong>上下文有限 / 迷失中间</strong>。补：<strong>RAG</strong>——把 PDF 切块检索相关段落放进上下文，再让 LLM 总结。</li>
+        <li><strong>③ 还记得我的偏好吗</strong> → API 默认无状态，不会自动保留上周会话。应用应保存偏好；短期可重发必要历史，长期可用外部记忆按需检索。</li>
+        <li><strong>④ 总结刚上传的 PDF</strong> → 如果平台支持文档输入且文件能放入上下文，可<strong>直接把 PDF 作为本轮输入</strong>，不需要模型预训练见过它；若文档库很大、只需局部证据或反复查询，再使用切块 + 检索（RAG）。</li>
       </ul>
-      <p>发现没：这 4 个再普通不过的请求，纯 LLM <strong>没有一个能独立答好</strong>——而配上工具 / 记忆 / RAG 的 Agent 全都能。这就是 Agent 的价值。</p>
+      <p>这 4 个请求需要的补充能力并不相同：实时股价要工具，计算要确定性执行，跨会话偏好要应用状态，上传 PDF 可能直接作为上下文或在大规模知识库中走 RAG。Agent 的价值是<strong>按缺口选择正确外部能力</strong>，不是所有问题都统一套 RAG。</p>
     </details>
   </div>
 
   <div class="quiz" data-quiz="q3">
-    <div class="quiz-question"><span class="quiz-q">Q</span> "让 Agent 记住用户的跨对话偏好"，主要是在补 LLM 的哪条局限？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 让应用跨会话记住用户偏好，主要需要补哪一层？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">知识发生截止导致信息过时</button>
-      <button data-answer="correct">默认无状态没有持久记忆</button>
-      <button data-answer="wrong">不太擅长做精确的算术题</button>
-      <button data-answer="wrong">很容易产生编造出的幻觉</button>
+      <button data-answer="wrong">提高模型参数规模来保存每位用户</button>
+      <button data-answer="wrong">降低采样温度来恢复历史会话</button>
+      <button data-answer="correct">应用层保存并按需重放或检索状态</button>
+      <button data-answer="wrong">扩大输出上限来自动获得长期记忆</button>
     </div>
-    <div class="quiz-explanation">LLM 默认<strong>无状态</strong>：一轮请求只看得到本次上下文，跨对话<strong>不记得</strong>你是谁、说过什么。要"记住偏好"就得靠<strong>外部记忆系统</strong>——把信息存库，需要时检索回来注入上下文（Phase 5 主题）。这与知识截止、算术、幻觉是各自独立的另外几条局限。</div>
+    <div class="quiz-explanation">Messages API 默认不替应用维护跨会话业务状态。应用可保存偏好，在后续请求中直接重发必要内容，或从外部记忆检索后注入上下文。这里补的是<strong>应用状态管理</strong>，不是模型参数、温度或输出长度。</div>
   </div>
 </div>
 
 <div class="section">
   <div class="tip">
-    ⭐ 面试高频：<strong>"LLM 有哪些做不到的事？"</strong> 满分答法一次答全 6 条、并说清 Agent 怎么各个击破：<strong>① 知识截止 → 联网/检索工具；② 不擅精确计算 → 代码工具；③ 幻觉（无法根除）→ RAG + 引用校验；④ 上下文有限 + lost in the middle → 检索/压缩/头尾摆放；⑤ 无持久记忆 → 外部记忆系统；⑥ 不知私有/实时数据 → RAG。</strong>结尾点睛一句："<strong>Agent 架构的意义，就是用工具、检索、记忆去补 LLM 这些先天短板</strong>"——这句能让面试官眼前一亮。
+    ⭐ 面试高频：<strong>“LLM 系统有哪些能力边界？”</strong> 不要只背“六条天生缺陷”，要说明边界属于哪一层：参数知识过时/缺实时数据 → 搜索或业务 API；精确计算 → 代码工具；幻觉 → 外部证据与核验；长上下文利用不足 → 检索/压缩/证据编排；API 默认无状态 → 应用保存并重发或外部记忆；私有文件 → 直接文档输入、RAG 或业务工具。Agent 的意义是<strong>按缺口接入合适能力</strong>。
   </div>
 </div>
 
@@ -222,25 +224,26 @@
   <h2>🎯 速查卡：能力边界与 Base vs Instruct</h2>
   <div class="card">
     <pre><code>【Base vs Instruct】
-  Base      = 纯预训练，只会续写/补全，不听指令
-  Instruct  = base + 指令微调 + RLHF，会听懂并执行、对齐人类
-  你调的 API（GPT/Claude/Gemini chat）都是 instruction-tuned
-  关键洞察：微调 refine "执行/对齐"，几乎不加知识 → 想加知识用 RAG
+  Base      = 主要学习续写分布，未专门对齐助手行为
+  Instruct  = 通常经过 SFT + 偏好/安全优化，更稳定执行指令
+  Base 也可能回答；训练路线与知识量不能用二元标签概括
 
-【RLHF 一句话】
-  人类对回答排序 → 训奖励模型 → 对齐 LLM
-  目标：helpful / harmless / honest（有用/无害/诚实）
+【训练路线】
+  预训练 → SFT(指令示范) → 偏好优化
+  经典 RLHF：奖励模型 + 强化学习
+  DPO 类方法：直接用偏好对优化，不走同一套 RL 流程
+  微调常改行为/技能；最新可引用事实通常优先 RAG，可组合
 
 【能做】理解生成·总结翻译改写·抽取分类·代码
        ·基于给定上下文的问答·遵循复杂指令·调用工具(function calling)
 
 【六大局限 → Agent 怎么补】★背下来
-  知识截止        → 联网/检索工具(RAG)
-  不会精确算       → 代码/计算器工具
-  幻觉(无法根除)    → RAG + 引用校验
-  上下文有限+迷失中间 → 检索/压缩/关键信息放头尾
-  无持久记忆       → 外部记忆系统(Phase 5)
-  不知私有/实时数据  → RAG
+  参数知识过时/缺实时数据 → 搜索/业务 API/当前上下文
+  不会精确算            → 代码/计算器工具
+  幻觉                  → 外部证据 + 引用/工具核验
+  上下文有限+迷失中间    → 检索/压缩/证据编排
+  API 默认无状态         → 应用保存并重发/外部记忆
+  未见私有数据           → 直接文档输入/RAG/业务工具
 
 【一句话主线】
   LLM 是大脑；工具=手，记忆=笔记本，检索=联网。
@@ -252,7 +255,7 @@
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://toloka.ai/blog/base-llm-vs-instruction-tuned-llm" target="_blank"><strong>Toloka: Base LLM vs Instruction-Tuned LLM</strong></a></p>
-    <p>把"续写型 base"到"会应答的 instruct"讲得直观清楚，含训练流程与直觉例子。想深挖"指令微调不增加知识"这个关键结论，配合精读 <a href="https://arxiv.org/html/2402.05119v3" target="_blank">arXiv 2402.05119</a>——它用实验说明知识来自预训练、微调负责对齐与执行。</p>
+    <p>这篇文章适合建立 base / instruct 的行为直觉。进一步阅读 <a href="https://arxiv.org/html/2402.05119v3" target="_blank">A Closer Look at the Limitations of Instruction Tuning</a> 时要保留实验边界：它观察到特定模型和数据上的 LoRA 指令微调主要改变格式/风格，全参数微调虽可能吸收信息却可能损害事实质量；不能外推成“任何微调都学不到知识”。偏好优化的另一条路线可参考 <a href="https://arxiv.org/abs/2305.18290" target="_blank">Direct Preference Optimization</a>。</p>
   </div>
 </div>
 
@@ -280,15 +283,15 @@
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li><strong>Base</strong> 只会续写、不听指令；<strong>Instruct</strong> = base + 指令微调 + RLHF，才会应答对齐——你调的 API 都是后者</li>
-      <li>关键洞察：<strong>知识来自预训练，微调主要负责"执行 / 对齐"，几乎不加知识</strong> → 想让它"知道"新东西该上 RAG</li>
-      <li><strong>RLHF</strong>：人类排序 → 训奖励模型 → 对齐 LLM，让输出有用 / 无害 / 诚实</li>
-      <li><strong>六大局限</strong>：知识截止、不会精确算、幻觉、上下文有限 + 迷失中间、无持久记忆、不知私有 / 实时数据</li>
+      <li><strong>Base</strong> 主要学习续写分布；<strong>Instruct</strong> 通常经过 SFT 与偏好/安全优化，更稳定地执行指令——这是行为倾向，不是绝对能力开关</li>
+      <li>指令微调通常先改善响应与任务适配，不能假设会可靠更新事实；<strong>微调与 RAG 可组合</strong>，按行为/技能还是可更新知识来选</li>
+      <li>偏好优化不只经典 <strong>RLHF</strong>；DPO 类方法可直接使用偏好对，不需要相同的奖励模型 + PPO 流程</li>
+      <li>能力边界要按系统看：参数知识、实时数据、计算、幻觉、上下文和 API 状态分别由当前上下文、工具、检索、校验与应用存储补齐</li>
       <li><strong>贯穿主线</strong>：Agent 架构的意义，正是用<strong>工具 / 检索 / 记忆</strong>去补 LLM 这些先天短板——之后每个组件都能对号入座</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    现在你手里有一张"LLM 做不到清单"了。试着挑一个你想做的 Agent，把它会遇到的用户请求逐条对照六大局限——你会立刻看清<strong>该配哪些工具</strong>。哪条局限对你的场景最致命？Agent 又该怎么补？想到哪卡住了，随时来问我或你的老师。下一课我们学<strong>怎么看懂 Benchmark、按需求选对模型</strong>：<a href="0026-L22-benchmarks-and-selection.html">L22</a>。</p>
+    现在你手里有一张“LLM 系统能力边界”清单了。挑一个 Agent 场景，逐条判断缺的是当前数据、确定性工具、证据、上下文编排还是应用状态，再选择对应能力。下一课学习<strong>怎么看懂 Benchmark、按需求选对模型</strong>：<a href="0026-L22-benchmarks-and-selection.html">L22</a>。
   </div>
 </div>
 

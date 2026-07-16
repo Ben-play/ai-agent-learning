@@ -119,16 +119,16 @@
       <strong>Module 2.1 · LLM 本质与核心概念：</strong><br>
       · <strong>LLM 是什么</strong> — 语言模型本质（概率预测）、Transformer 直觉（不写代码）、注意力机制的作用<br>
       · <strong>Token 深度理解</strong> — Tokenization 原理、BPE 算法、中文 vs 英文 Token 差异、tiktoken 计数、Token 与成本关系<br>
-      · <strong>生成参数解密</strong> — Temperature（创造力控制）、Top-P（采样范围）、频率惩罚、不同任务的参数组合<br><br>
+      · <strong>生成参数解密</strong> — Temperature / Top-P 的解码原理与厂商字段边界；当前 Claude 新模型不接受这些 sampling 参数<br><br>
       <strong>Module 2.2 · 模型能力、局限与选型：</strong><br>
-      · <strong>幻觉问题全解</strong> — 什么是幻觉、<strong>为什么发生（校准视角：训练/评估激励"猜"而非"弃权"，见 OpenAI/arXiv《Why Language Models Hallucinate》）</strong>、检测方法、缓解策略（RAG/CoT/Self-Consistency）<br>
+      · <strong>幻觉问题全解</strong> — 预训练统计错误、评估鼓励猜测与其他工程成因；Self-Consistency/RAG/引用核验的能力边界<br>
       · <strong>模型能力边界</strong> — 能做什么 vs 不能做什么、Base Model vs Instruction-Tuned Model<br>
-      · <strong>推理模型与 Extended Thinking</strong> — 标准模型 vs 推理模型、何时用哪个<br>
-      · <strong>看懂 Benchmark</strong> — MMLU-Pro（广度知识）/ GPQA（专家推理）/ SWE-bench（真实工程）/ ARC-AGI（抽象推理）各测什么、榜单为何会失真（污染/过拟合），学会用 benchmark 佐证选型而非迷信单一分数<br>
-      · <strong>2026 模型选型实战</strong> — 主流模型族（OpenAI / Anthropic Claude / Google Gemini / DeepSeek / Qwen / xAI Grok）能力对比、开源 vs 闭源权衡（自托管成本拐点）、与<strong>选型决策框架</strong>。<em>注：具体版本号迭代极快，学习时以各厂商当时最新版为准，重点掌握「怎么选」而非记死某个版本。</em><br><br>
-      <strong>Module 2.3 · Token 经济学：</strong>各主流模型价格对比（输出通常 3–5× 输入）、隐藏成本、成本计算公式、Token 预算制定；<strong>两大降本杠杆——Prompt Caching（缓存读 ~0.1×、写 ~1.25×，官方文档实锤）与 Model Routing（便宜模型兜底、贵模型只接难题）</strong>，真实案例降本 59–70%<br><br>
-      <div class="interview-box">"LLM 工作原理" / "为什么中文消耗更多 Token" / "Temperature 0 vs 1" / "为什么会幻觉（校准视角）" / "推理模型是什么、何时用" / "MMLU/SWE-bench 各测什么" / "如何选模型" / "Prompt Caching 与 Routing 如何降本" — 共 9+ 道高频题</div><br>
-      <strong>实战项目：</strong>用 API 对比不同模型 + 幻觉测试 + 成本计算（含 Prompt Caching 前后对比），输出综合报告<br><br>
+      · <strong>推理能力与 Adaptive Thinking</strong> — 区分模型能力、adaptive thinking、effort，并按质量/延迟/Token 实测路由<br>
+      · <strong>看懂 Benchmark</strong> — 不只看模型分数，还核对数据污染、Agent scaffold、工具与预算；用开发集调参、隔离测试集验收<br>
+      · <strong>模型选型实战</strong> — 区分开放权重、托管服务与自托管；合规看地域/合同/保留策略，总成本用真实负载测算，不按“开源/闭源”标签拍板<br><br>
+      <strong>Module 2.3 · Token 经济学：</strong>理解多轮累计成本；按静态前缀占比和命中率评估 Prompt Caching，按业务质量评测 Model Routing；案例降幅不作保证，Batch/压缩/输出控制均按厂商和场景验证<br><br>
+      <div class="interview-box">“解码概念与厂商参数如何区分” / “不同模型怎样准确计数 Token” / “幻觉有哪些机制与检测边界” / “Adaptive Thinking 与 effort 怎么用” / “Benchmark 为什么不是模型真值” / “开放权重与自托管有何区别” / “如何按证据优化成本” — 共 9+ 道高频题</div><br>
+      <strong>实战项目：</strong>用 Provider Adapter 对比候选系统，离线验证一致性筛查、ground truth 错误率、成本数学与归一化选型，输出带样本数和评测配置的综合报告<br><br>
       <a href="0029-phase2-ai-knowledge-outline.html" style="font-weight:600;">📋 查看 Phase 2 详细大纲（L17–L24）→</a><br>
       <a href="../qa/phase2-qa.html" style="font-weight:600;">❓ Phase 2 疑难解答 Q&amp;A →</a>
     </div>

@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>看懂 Benchmark 与模型选型</h1>
     <p class="subtitle">厂商都吹自己第一——你得会自己判断，因为"跑分高≠适合你的场景"</p>
@@ -37,7 +37,7 @@
     <ul>
       <li>说清 <strong>MMLU / GPQA / SWE-bench / ARC-AGI</strong> 各测的是什么能力</li>
       <li>理解为什么"跑分高≠适合你"——尤其是<strong>数据污染</strong>和<strong>过拟合榜单</strong></li>
-      <li>权衡<strong>开源 vs 闭源</strong>：托管便利 vs 数据主权 / 成本拐点</li>
+      <li>区分<strong>开放权重、自托管与托管 API</strong>，从部署、合规和总成本而非标签做选择</li>
       <li>用一套<strong>可落地的决策框架</strong>为具体项目选模型</li>
       <li>回答面试高频题："你怎么给项目选模型？""跑分高就是最好吗？"</li>
     </ul>
@@ -68,23 +68,23 @@
         <tr><td><strong>MMLU</strong></td><td>广度学术知识</td><td>覆盖多学科的选择题；测"知道多少"。<strong>注意：已高度饱和 + 是数据污染的典型案例</strong>——正因如此才有了 MMLU-Pro</td></tr>
         <tr><td><strong>MMLU-Pro</strong></td><td>广度知识（更难）</td><td>MMLU 升级版：<strong>更难、更抗猜</strong>（选项更多、更需推理）</td></tr>
         <tr><td><strong>GPQA</strong></td><td>专家级科学推理</td><td>研究生级物理/化学/生物，<strong>Google 都难搜到答案</strong>，必须真推理</td></tr>
-        <tr><td><strong>SWE-bench</strong><br>(含 Verified)</td><td>软件工程 / Agent 编码</td><td>真实 GitHub issue，能否<strong>真修 bug / 写 PR</strong>；Agent 硬指标，无背题捷径</td></tr>
+        <tr><td><strong>SWE-bench</strong><br>(含 Verified)</td><td>软件工程 / Agent 编码</td><td>真实 GitHub issue 上生成补丁并通过测试；结果同时受模型、Agent 版本、scaffold、工具与预算影响</td></tr>
         <tr><td><strong>ARC-AGI</strong></td><td>抽象推理 / 举一反三</td><td>对训练里<strong>没见过的新模式</strong>的泛化能力</td></tr>
         <tr><td>Chatbot Arena<br>(Elo)</td><td>人类偏好</td><td>人类盲评两两对比→ Elo 排名；但偏爱"长而自信"的回答，可被"讨好"</td></tr>
       </tbody>
     </table>
-    <p><strong>对 Agent 开发者最关键的是 SWE-bench（尤其 Verified）</strong>：它直接测"能不能真的干活修代码"，比"选择题得高分"更贴近 Agent 的真实工作。而 MMLU/GPQA 高，说明模型"知识广、会推理"，但不代表它会用工具、会规划。<strong>看 benchmark 先问：它测的维度是我 Agent 需要的那个吗？</strong></p>
+    <p>如果你在做编码 Agent，SWE-bench（尤其 Verified）比学术选择题更贴近“在仓库中生成补丁并通过测试”的目标。但它评的是<strong>整个系统</strong>：同一个模型搭配不同 Agent 版本、scaffold、工具、上下文和预算，结果可能不同。MMLU/GPQA 高也不代表会使用你的工具或适应你的仓库。<strong>看 benchmark 先问：它测的任务、系统配置和资源预算，是否像我的场景？</strong></p>
   </div>
 
   <div class="quiz" data-quiz="q1">
     <div class="quiz-question"><span class="quiz-q">Q</span> 你在做一个自动修 bug、提 PR 的编码 Agent，最该重点看哪个 benchmark？</div>
     <div class="quiz-options">
       <button data-answer="wrong">MMLU：多学科知识广度</button>
-      <button data-answer="correct">SWE-bench：真实修码</button>
+      <button data-answer="correct">SWE-bench：仓库补丁测试</button>
       <button data-answer="wrong">ARC-AGI：抽象模式推理</button>
       <button data-answer="wrong">Arena：人类偏好盲评</button>
     </div>
-    <div class="quiz-explanation"><strong>SWE-bench（含 Verified）</strong>用真实 GitHub issue 考"能否真正修 bug / 写 PR"，没有背题捷径，是 Agent 编码能力最贴切的硬指标。MMLU 测知识广度、ARC-AGI 测抽象泛化、Chatbot Arena 测人类偏好——都不直接反映"会不会动手改代码"。选型第一问永远是：<strong>这个 benchmark 测的维度，是我的 Agent 真正需要的吗？</strong></div>
+    <div class="quiz-explanation"><strong>SWE-bench（含 Verified）</strong>使用真实 GitHub issue 和测试来评估生成补丁的能力，比知识选择题更接近编码 Agent。但公开 issue/补丁存在污染风险，成绩还依赖 Agent scaffold、工具与预算，因此它是相关证据，不是脱离配置的“模型真值”。</div>
   </div>
 </div>
 
@@ -94,44 +94,45 @@
     <p>这一节是初级和资深的分水岭。<strong>"跑分高"和"真的强"之间，隔着三道坑</strong>：</p>
     <p><strong>① 数据污染 / 泄漏（contamination / data leakage）</strong>——最隐蔽、也最要命。如果 benchmark 的<strong>题目和答案混进了模型的训练数据</strong>，那模型就是"背过答案"，而非真会做——分数虚高。学界有专门的 survey 综述这个问题（<a href="https://arxiv.org/html/2406.04244v1" target="_blank">A Survey on Data Contamination for LLMs</a>），核心结论一句话：模型"无意中在训练里见过测试题"，会产出<strong>不能反映真实能力</strong>的成绩。也有会议论文系统研究其影响（<a href="https://openreview.net/forum?id=TuvDxubEfE" target="_blank">OpenReview: Data Contamination</a>）。</p>
     <p><strong>② 过拟合榜单（benchmark gaming）</strong>——厂商<strong>针对性优化去刷分</strong>：专门在类似题型上训练、调 prompt、挑对自己有利的评测方式。结果是"应试能力"上去了，通用能力未必。</p>
-    <p><strong>③ 与你的场景不匹配</strong>——benchmark 测的是通用任务（学术题、公开 issue），<strong>≠ 你的业务任务</strong>（你公司的内部合同、你特定领域的黑话）。榜单第一，到你这儿可能水土不服。</p>
-    <p>所以业界的判断是：benchmark <strong>有用，但"不足以"单独决定选型</strong>。有分析指出实验室跑分和真实部署表现之间存在明显落差，光看静态榜单不可靠，生产上线需要<strong>分层评测</strong>（自动指标 + LLM 评审 + 人工把关）（<a href="https://kili-technology.com/blog/ai-benchmarks-guide-the-top-evaluations-in-2026-and-why-theyre-not-enough" target="_blank">Kili: Why Benchmarks Are Not Enough</a>）。</p>
+    <p><strong>③ 与你的场景不匹配</strong>——benchmark 测的是通用任务（学术题、公开 issue），不等于你的业务任务（内部合同、领域黑话、特定工具链）。榜单第一，到你这里可能水土不服。</p>
+    <p><strong>④ Harness / scaffold 与预算不一致</strong>——Agent benchmark 测的不只是底座模型。系统提示词、工具、重试次数、上下文管理、推理 effort、时间和 Token 预算都会改变结果。比较榜单时必须核对配置，不能把“Agent A + 模型 X”的成绩直接归因给模型 X。</p>
+    <p>因此 benchmark 有用，但不足以单独决定选型。生产评测至少要分层：确定性任务用程序指标；开放回答用固定 rubric 的人工/模型评审；高风险样本由人工把关；非确定系统还要重复运行并报告均值、失败案例或方差。</p>
   </div>
   <div class="tip">
-    ⚠️ 一句话记住失真的三坑：<strong>污染（背过答案，分数虚高）、过拟合（针对性刷分）、不匹配（考卷≠你的业务）</strong>。看到某模型"某榜第一"，先问：这榜有没有被污染？是不是被专门优化过？它测的任务像不像我的任务？
+    ⚠️ 一句话记住四坑：<strong>污染、针对性优化、场景不匹配、harness/预算不同</strong>。看到“某榜第一”，先问测试是否公开、系统配置是否可比、运行是否重复、任务是否像你的业务。
   </div>
 
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> 某模型 benchmark 分数虚高，最隐蔽的原因通常是？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">模型的参数量实在太大</button>
-      <button data-answer="correct">测试题混进训练数据</button>
-      <button data-answer="wrong">评测时算力供给不足</button>
-      <button data-answer="wrong">上下文窗口开得太小</button>
+      <button data-answer="correct">测试题或答案进入训练语料</button>
+      <button data-answer="wrong">模型的参数规模显得比较大</button>
+      <button data-answer="wrong">评测时提供的算力相对不足</button>
+      <button data-answer="wrong">上下文窗口设置得比较短</button>
     </div>
     <div class="quiz-explanation">这是<strong>数据污染 / 泄漏（data contamination / leakage）</strong>：benchmark 的题目或答案无意中进入了训练语料，模型是"背过答案"而非真会做，于是分数虚高、不反映真实能力（见 <a href="https://arxiv.org/html/2406.04244v1" target="_blank">contamination survey</a>）。参数量、算力、上下文窗口都不是"虚高"的成因。防坑办法：优先用<strong>自建的、外部拿不到的小评测集</strong>去实测。</div>
   </div>
 </div>
 
 <div class="section">
-  <h2>4. 开源 vs 闭源：怎么权衡</h2>
+  <h2>4. 开放权重、托管 API 与自托管：三个维度别混在一起</h2>
   <div class="card">
-    <p>选型的第二个大决策：用<strong>闭源托管 API</strong>，还是<strong>开源自托管</strong>？（下面用"…系"表述，不写死具体版本号——版本天天变，决策逻辑不变。）</p>
+    <p>“开源模型 vs 闭源模型”经常把<strong>许可证、权重可得性和部署方式</strong>混成一件事。很多常被称为“开源”的 LLM 更准确地说是<strong>开放权重（open weights）</strong>：可以下载权重，但训练数据、训练代码或许可证未必满足完整开源定义；开放权重也可以由云厂商托管，并不等于必须自建 GPU。</p>
     <table>
-      <thead><tr><th>维度</th><th>闭源（GPT / Claude / Gemini 系）</th><th>开源（Llama / Qwen / DeepSeek 系）</th></tr></thead>
+      <thead><tr><th>维度</th><th>托管 API</th><th>开放权重 / 自托管候选</th></tr></thead>
       <tbody>
-        <tr><td>接入</td><td>简单，调 API 即用，官方托管</td><td>要自己部署、搭推理服务</td></tr>
-        <tr><td>能力</td><td>前沿闭源模型在部分高难维度<strong>常暂时领先</strong></td><td>差距快速收窄，部分场景已够用甚至反超</td></tr>
-        <tr><td>数据</td><td><strong>要出境</strong>（发到厂商服务器）</td><td><strong>可自托管，数据不出境</strong></td></tr>
-        <tr><td>可控性</td><td>不可微调底座，随厂商更新</td><td><strong>可微调、可固定版本</strong>，完全可控</td></tr>
-        <tr><td>成本</td><td>按 token 付费，用多少付多少</td><td>自己扛 <strong>GPU 运维</strong>；<strong>只有高用量才划算</strong></td></tr>
+        <tr><td>接入</td><td>厂商维护服务，按 API 使用</td><td>可自己部署，也可选择第三方托管</td></tr>
+        <tr><td>能力</td><td>按具体模型和任务评测，不能只看“闭源”标签</td><td>同样按模型、量化、推理框架和任务评测</td></tr>
+        <tr><td>合规</td><td>看部署地域、合同、数据保留、训练使用、访问控制</td><td>自托管可增强数据控制，但安全与合规责任转给自己</td></tr>
+        <tr><td>可控性</td><td>版本和功能由服务方管理，可通过版本固定能力降低漂移</td><td>通常可固定权重、量化或微调，但受许可证约束</td></tr>
+        <tr><td>成本</td><td>按 Token / 请求付费，少运维</td><td>GPU、闲置率、峰值容量、能耗、工程与值班都计入总成本</td></tr>
       </tbody>
     </table>
-    <p><strong>关键的"成本拐点"概念</strong>：自托管有固定的 GPU / 运维成本。<strong>低于某个月用量，闭源 API 反而更便宜</strong>（你没把机器跑满，固定成本摊不下去）；<strong>只有当月调用量足够大、把机器吃满，自托管的单位成本才低于 API</strong>。所以"开源省钱"是有条件的——先估用量，再谈划算。（成本的详细算法见下一课 <a href="0027-L23-token-economics.html">L23 · Token 经济学</a>。）</p>
-    <p>对 Agent 开发者的落地判断：<strong>数据敏感 / 不能出境 / 用量大 / 要微调 → 倾向开源自托管</strong>；<strong>追求最强能力 / 快速起步 / 用量不大 / 不想养运维 → 倾向闭源 API</strong>。</p>
+    <p><strong>合规不能简化为“托管 = 出境”。</strong>同一厂商可能提供不同地域、云平台、保留策略和合同条款；“不能出境”也要先定义适用司法辖区与组织要求。反过来，自托管并不会自动合规——身份权限、日志、补丁、备份和供应链都由你负责。</p>
+    <p><strong>成本拐点必须测量。</strong>估算真实吞吐、上下文长度、峰谷流量、GPU 利用率、延迟目标、运维人力和故障冗余，再与 API 账单比较。高用量可能有利于自托管，但量化模型、批处理 API、预留容量或低利用率都可能改变结论。</p>
   </div>
   <div class="tip">
-    💡 "开源一定更省钱"是新手常见误区。真相：<strong>自托管有成本拐点</strong>——用量不够大时，闭源 API 更便宜（省下你养 GPU 和运维的钱）。开源的核心优势其实是<strong>数据主权 + 可控 + 可微调</strong>，"省钱"只在<strong>高用量</strong>时才成立。
+    💡 满分判断不是“敏感数据就开源、高用量就自托管”，而是：先列<strong>不可违反的合规/部署约束</strong>，再在可行候选里比较任务质量、总拥有成本和运维风险。
   </div>
 </div>
 
@@ -155,7 +156,14 @@
         ▼
 ⑤ 小规模 A/B 实测 ► 用候选模型跑真实流量的一小部分，比数据再定
                     (别凭跑分拍板，凭你自己的实测结果拍板)</code></pre>
-    <p>整个框架的灵魂是<strong>第③步和第⑤步</strong>：<strong>自建评测集 + 小规模 A/B</strong>。厂商的榜单会污染、会过拟合，但<strong>你用真实业务样本、亲手跑出来的数据不会骗你</strong>。这也是为什么资深工程师从不"背模型排名"——他们背的是<strong>这套方法</strong>。</p>
+    <p>整个框架的灵魂是<strong>自建评测集 + 小规模 A/B</strong>，但自建集也会被你自己过拟合。最低限度要做到：</p>
+    <ul>
+      <li><strong>开发集 / 测试集分开：</strong>用开发集调 prompt、阈值和路由；最终测试集保持隔离，不边看答案边修改。</li>
+      <li><strong>固定版本与预算：</strong>记录模型 ID、系统提示词、工具、scaffold、effort、Token/时间上限。</li>
+      <li><strong>固定 rubric：</strong>先写清正确性、完整性、引用、格式怎样计分；高风险项单独设硬门槛。</li>
+      <li><strong>重复运行：</strong>非确定任务至少多跑几次，报告均值与失败案例，别把一次好运当能力。</li>
+    </ul>
+    <p>真实业务样本更相关，但只有遵守这些规则，结果才比公开榜单更可信。</p>
     <p style="margin-top:1rem;"><strong>核心口号（贴墙上）：</strong>「<strong>别信榜单，信你自己的评测集；别记版本号，记决策方法。</strong>」模型版本三个月一换，但这套框架永远适用。</p>
   </div>
 
@@ -163,11 +171,11 @@
     <div class="quiz-question"><span class="quiz-q">Q</span> 按本课决策框架，为项目定模型最可靠的"临门一脚"是？</div>
     <div class="quiz-options">
       <button data-answer="wrong">直接选综合榜单排名最高的</button>
-      <button data-answer="correct">用自建评测集做实测</button>
       <button data-answer="wrong">跟随社区里最热门的那个</button>
       <button data-answer="wrong">挑参数量规模最大的模型</button>
+      <button data-answer="correct">用隔离业务测试集反复实测</button>
     </div>
-    <div class="quiz-explanation">框架的灵魂是<strong>自建评测集 + 小规模 A/B 实测</strong>：用你真实业务样本（外部拿不到、不会被污染的题）亲手跑候选模型、比数据再拍板。榜单排名会被污染/过拟合、也未必匹配你的场景；"最热门""参数最大"都不等于最适合你。口号：<strong>别信榜单，信你自己的评测集。</strong></div>
+    <div class="quiz-explanation">用真实业务样本建立<strong>开发集 + 隔离测试集</strong>，固定模型版本、scaffold、工具、预算和 rubric，并对非确定任务重复运行。这样才能减少调参泄漏和一次好运的影响；榜单、热度和参数量只能帮助初筛。</div>
   </div>
 </div>
 
@@ -189,13 +197,13 @@
       <div style="margin-top:.7rem;">
         <p><strong>参考决策（走五步框架）：</strong></p>
         <ul>
-          <li><strong>数据合规是硬约束 →</strong> 敏感合同不能出境，直接<strong>排除闭源托管 API</strong>，倾向<strong>开源自托管</strong>（Llama / Qwen / DeepSeek 系），数据留在自己机房。</li>
-          <li><strong>用量大 → 成本拐点站在开源这边：</strong>月调用量很大能把 GPU 吃满，自托管的<strong>单位成本低于按 token 付费</strong>；正好也契合"预算有限"。（用量若很小，结论会反过来。）</li>
-          <li><strong>任务是合同问答（有领域黑话）→</strong> 通用 benchmark 参考价值有限，<strong>必须自建评测集</strong>：拿真实合同问答样本（外部拿不到）当考卷，才测得准。可考虑在开源底座上<strong>微调 / RAG</strong> 贴合合同领域。</li>
-          <li><strong>别忘了其他约束：</strong> 上下文窗口要够（合同长）、延迟可接受、以及验证数据确实不出境。</li>
-          <li><strong>临门一脚：</strong> 选 2~3 个开源候选，用自建评测集做<strong>小规模 A/B</strong>，比准确率 + 成本 + 延迟，再拍板。</li>
+          <li><strong>先把“不能出境”写成可验证约束：</strong>适用地域、允许的云/机房、数据保留与日志要求、哪些字段必须脱敏。不要先用“闭源/开源”标签替代合规审查。</li>
+          <li><strong>建立可行部署候选：</strong>若合同明确禁止外部托管，就比较内部自托管方案；若允许合规地域或私有云托管，也可纳入满足合同与保留要求的 API / 托管开放权重方案。</li>
+          <li><strong>合同问答必须自建评测集：</strong>划分开发集与隔离测试集，固定引用准确率、漏答率、幻觉率和拒答策略。RAG 通常用于提供合同证据，是否微调取决于领域行为/格式需求。</li>
+          <li><strong>成本用真实负载测：</strong>对 2~3 个可行候选压测吞吐、P95 延迟、GPU 利用率、API Token、运维人力与冗余；月调用量大只是自托管可能占优的信号，不是结论。</li>
+          <li><strong>小规模 A/B 再拍板：</strong>只有同时满足合规硬门槛，才比较质量、总拥有成本与运维风险。</li>
         </ul>
-        <p>一句话结论：<strong>倾向开源自托管 + 自建合同评测集 + 认真核算成本拐点</strong>——敏感数据 + 高用量 + 有限预算，几乎就是开源自托管的教科书场景。</p>
+        <p>一句话结论：<strong>先满足可审计的合规硬约束，再用隔离评测集与真实负载比较可行部署</strong>。自托管可能胜出，但必须由证据得出，而不是由“敏感 + 高用量”标签自动推出。</p>
       </div>
     </details>
   </div>
@@ -209,24 +217,23 @@
 【benchmark 地图 · 各测什么】
   MMLU / MMLU-Pro …… 广度学术知识 (Pro=更难更抗猜)
   GPQA ……………… 专家级科学推理 (Google 都搜不到答案)
-  SWE-bench(Verified) 真实 GitHub issue → Agent 编码硬指标
+  SWE-bench(Verified) 真实 GitHub issue + 测试；成绩依赖模型+scaffold+工具+预算
   ARC-AGI ………… 抽象推理 / 举一反三 (没见过的新模式)
   Chatbot Arena … 人类盲评偏好 Elo (偏爱"长而自信")
 
-【榜单为什么失真 · 三坑】
-  ① 数据污染   题/答混进训练 → 背过答案 → 分数虚高
-  ② 过拟合榜单 厂商针对性刷分
-  ③ 场景不匹配 通用考卷 ≠ 你的业务任务
-  → benchmark 有用但"不足以"单独定选型
+【榜单为什么失真 · 四坑】
+  ① 数据污染  ② 针对性优化  ③ 场景不匹配
+  ④ harness/scaffold/工具/预算不同
+  → benchmark 是系统在特定配置下的证据，不是模型真值
 
-【开源 vs 闭源】
-  闭源(GPT/Claude/Gemini系) 简单+托管+常领先｜数据出境+按token付费
-  开源(Llama/Qwen/DeepSeek系) 自托管+数据不出境+可微调｜要扛GPU运维
-  ⚠️ 成本拐点：用量不够大 → API 更便宜；高用量才轮到自托管划算
+【开放权重 / 托管 / 自托管】
+  开放权重描述权重可得性，不自动等于完整开源或自托管
+  托管合规看地域/合同/保留/访问；自托管责任转给自己
+  成本拐点必须测 GPU 利用率、峰值、能耗、运维与冗余
 
 【选型五步】
-  ①明确任务 → ②看相关benchmark(警惕污染) → ③自建小评测集
-  → ④估成本(token×单价)+延迟/窗口/合规/自托管? → ⑤小规模A/B再定
+  ①明确任务 → ②相关 benchmark 初筛 → ③开发集调参+隔离测试集
+  → ④固定版本/scaffold/预算/rubric → ⑤重复运行 + 小规模 A/B
 
 【口号】别信榜单信你自己的评测集；别记版本记决策方法
 【Agent】选型=能力上限+成本+延迟；贵模型做规划,便宜模型做简单步骤</code></pre>
@@ -237,7 +244,7 @@
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://kili-technology.com/blog/ai-benchmarks-guide-the-top-evaluations-in-2026-and-why-theyre-not-enough" target="_blank"><strong>Kili: AI Benchmarks Guide — The Top Evaluations in 2026 (and Why They're Not Enough)</strong></a></p>
-    <p>系统讲清主流 benchmark 各测什么，以及<strong>为什么光看榜单不够</strong>（污染、饱和、刷分、实验室↔真实落差）——正好覆盖本课的"读榜 + 失真 + 分层评测"三条主线。配合 benchmark 分类文（<a href="https://lumichats.com/blog/ai-benchmarks-explained-mmlu-arc-agi-swe-bench-2026" target="_blank">Lumichats</a> / <a href="https://nanonets.com/blog/ai-benchmarks-explained-gpqa-swe-bench-chatbot-arena" target="_blank">Nanonets</a>）和污染综述（<a href="https://arxiv.org/html/2406.04244v1" target="_blank">contamination survey</a>）一起读，就成体系了。</p>
+    <p>聚合指南适合快速建立地图，但具体结论应回到原始来源：<a href="https://www.swebench.com/" target="_blank">SWE-bench 官方榜单</a>可查看 agent、model、scaffold 等筛选维度；《<a href="https://arxiv.org/html/2406.04244v1" target="_blank">Benchmark Data Contamination of Large Language Models: A Survey</a>》系统解释公开测试集为何容易污染。阅读任何榜单时，都要记录任务、版本、harness、预算和评测日期。</p>
   </div>
 </div>
 
@@ -266,14 +273,14 @@
   <div class="card">
     <ul>
       <li><strong>跑分高 ≠ 适合你</strong>——会读 benchmark，是为了不被营销牵着走，也为了不盲信榜单</li>
-      <li>不同 benchmark 测<strong>不同维度</strong>：MMLU 广度、GPQA 专家推理、<strong>SWE-bench 编码(Agent 硬指标)</strong>、ARC-AGI 抽象泛化</li>
-      <li>榜单会失真：<strong>数据污染（背过答案）、过拟合刷分、场景不匹配</strong>——benchmark "不足以"单独定选型</li>
-      <li>开源 vs 闭源：闭源省事常领先但数据出境；开源可控不出境，但<strong>只有高用量才越过成本拐点</strong></li>
-      <li>选型五步：任务 → 相关 benchmark → <strong>自建评测集</strong> → 成本/延迟/合规 → <strong>小规模 A/B</strong></li>
+      <li>不同 benchmark 测不同维度；SWE-bench 更贴近仓库修复，但成绩属于<strong>模型 + Agent scaffold + 工具 + 预算</strong>的组合</li>
+      <li>榜单会受<strong>污染、针对性优化、场景不匹配和 harness 差异</strong>影响，不能单独决定选型</li>
+      <li>开放权重、托管服务和自托管是不同维度；合规看地域/合同/保留策略，成本看真实负载与总拥有成本</li>
+      <li>自建评测要分开发集/隔离测试集，固定版本、工具、预算与 rubric，并重复运行后再 A/B</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    🎤 <strong>面试高频</strong>：<strong>"你怎么给一个项目选模型？"</strong> 满分回答走框架——<em>明确任务 → 看相关 benchmark（警惕污染）→ 自建评测集实测 → 权衡成本/延迟/合规/上下文窗口 → 小规模 A/B 再定</em>。<strong>"benchmark 高就是最好吗？"</strong> → <em>不。可能有数据污染、针对性过拟合，或测的任务根本不匹配你的业务；要以自己的评测集实测为准。</em><br><br>
+    🎤 <strong>面试高频</strong>：<strong>“你怎么给项目选模型？”</strong> 满分回答要覆盖：明确任务与硬约束 → 用相关 benchmark 初筛并核对 harness → 建开发集和隔离测试集 → 固定 rubric、版本、工具和预算 → 重复运行 → 权衡质量、延迟、合规和总拥有成本 → 小规模 A/B。<strong>“benchmark 高就是最好吗？”</strong> 不；它只是特定系统配置在特定考卷上的证据。<br><br>
     想练手？挑一个你想做的 Agent，走一遍五步框架、列出你会自建哪些评测样本——写完发我，我帮你逐条 review。有任何拿不准的选型题，随时问我或你的导师。
   </div>
 </div>

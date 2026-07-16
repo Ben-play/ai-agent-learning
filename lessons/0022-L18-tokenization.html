@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">15</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Token 与 Tokenization 深入</h1>
     <p class="subtitle">模型眼里没有"字"，只有 Token——而 Token 直接等于钱</p>
@@ -37,7 +37,7 @@
     <ul>
       <li>说清 Token 是<strong>子词单元（subword）</strong>，不是字/词/字母</li>
       <li>用直觉解释 BPE（字节对编码）怎么把文本切成 Token</li>
-      <li>用 <code>tiktoken</code> 在发请求前<strong>精确计数</strong> Token</li>
+      <li>区分 <code>tiktoken</code> 的 OpenAI 编码计数与 Claude 官方 <code>count_tokens</code> 估算</li>
       <li>解释"中文更费 Token"<strong>取决于分词器</strong>，并用数据证明</li>
       <li>把 Token 数换算成 API 成本，做预算估算</li>
     </ul>
@@ -60,8 +60,8 @@
     <div class="quiz-question"><span class="quiz-q">Q</span> LLM 里的一个 Token 最准确的描述是？</div>
     <div class="quiz-options">
       <button data-answer="wrong">永远是一个单词</button>
-      <button data-answer="wrong">永远是一个字符</button>
       <button data-answer="correct">一个子词的片段</button>
+      <button data-answer="wrong">永远是一个字符</button>
       <button data-answer="wrong">一个句子的成分</button>
     </div>
     <div class="quiz-explanation">Token 是<strong>子词单元（subword）</strong>：常用词可能是 1 个 Token，长词/生僻词/非拉丁文字会被拆成多个片段（甚至字节碎片）。它既不等于单词，也不等于字符——这就是为什么必须用分词器实际计数，不能靠数字数。</div>
@@ -71,7 +71,7 @@
 <div class="section">
   <h2>2. BPE：Token 是怎么被"合并"出来的</h2>
   <div class="card">
-    <p>现代 LLM 几乎都用 <strong>BPE（Byte Pair Encoding，字节对编码）</strong>切词。它的思路出奇简单（原是 1994 年的数据压缩算法）：</p>
+    <p><strong>BPE（Byte Pair Encoding，字节对编码）</strong>是现代 LLM 常见的分词家族之一；不同厂商会使用不同 tokenizer、词表和训练算法，不能把下面这套合并过程当成所有模型的唯一实现。BPE 的基础思路出奇简单（原是 1994 年的数据压缩算法）：</p>
     <ol>
       <li>从最小单位（字节 / 字符）开始；</li>
       <li>统计语料里<strong>相邻出现最频繁的一对</strong>，把它<strong>合并</strong>成一个新符号；</li>
@@ -86,9 +86,9 @@
 </div>
 
 <div class="section">
-  <h2>3. 用 tiktoken 精确计数（发请求前就算好）</h2>
+  <h2>3. 计数工具要和模型匹配：tiktoken vs Claude count_tokens</h2>
   <div class="card">
-    <p>猜 Token 数会算错成本。<a href="https://github.com/openai/tiktoken" target="_blank"><code>tiktoken</code></a> 是 OpenAI 官方分词器，能在<strong>本地、发请求前</strong>精确计数：</p>
+    <p>猜 Token 数会算错成本，但计数工具必须和目标模型匹配。<a href="https://github.com/openai/tiktoken" target="_blank"><code>tiktoken</code></a> 是 OpenAI 官方分词器，能在<strong>本地、发请求前</strong>对匹配的 OpenAI 编码精确计数；拿它估算 Claude / Gemini 只能得到近似值：</p>
     <pre><code>pip install tiktoken   # 或 uv pip install tiktoken
 
 import tiktoken
@@ -104,18 +104,28 @@ print([enc.decode([t]) for t in tokens])  # 还原每个 token 的样子
 
 # 也可以按模型名自动选编码：
 # enc = tiktoken.encoding_for_model("gpt-4o")</code></pre>
-    <p>官方示例见 <a href="https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken" target="_blank">OpenAI Cookbook: How to count tokens with tiktoken</a>。<strong>注意</strong>：这只数纯文本 Token；真实 API 账单里还会加上聊天格式的固定开销（role、分隔符等），以及 Anthropic/Google 有各自的分词器——数值会略有出入。<code>tiktoken</code> 的价值是<strong>estimate和相对比较</strong>，够用了。</p>
+    <p>OpenAI 示例见 <a href="https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken" target="_blank">OpenAI Cookbook: How to count tokens with tiktoken</a>。对 Claude，应把同一份请求结构交给官方计数端点：</p>
+    <pre><code>import anthropic
+
+client = anthropic.Anthropic()
+count = client.messages.count_tokens(
+    model="claude-opus-4-8",
+    system="你是一个简洁的助手。",
+    messages=[{"role": "user", "content": "解释什么是 Token。"}],
+)
+print(count.input_tokens)</code></pre>
+    <p><strong>怎么区分：</strong><code>tiktoken</code> 是本地 OpenAI tokenizer；<code>messages.count_tokens</code> 会按你指定的 Claude 模型和完整消息结构估算输入 Token。官方也提醒计数结果仍可能与真正创建消息时的计费量有小幅差异，因此请求前用它做预算，调用后再以 <code>response.usage</code> 对账。不要拿一个厂商的 tokenizer 冒充所有模型的精确账单。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> 关于用 <code>tiktoken</code> 计数，正确的说法是？</div>
     <div class="quiz-options">
       <button data-answer="wrong">必须联网才能算</button>
-      <button data-answer="correct">发请求前本地算</button>
       <button data-answer="wrong">对所有厂商精确</button>
       <button data-answer="wrong">只能数英文字符</button>
+      <button data-answer="correct">匹配编码时本地算</button>
     </div>
-    <div class="quiz-explanation"><code>tiktoken</code> 在<strong>本地、发请求前</strong>就能算 Token，用于成本estimate。但它是 OpenAI 的分词器——对 Anthropic/Google 只是近似；且真实账单还含聊天格式开销。它的价值在于"发请求前估算 + 相对比较"，不是逐 token 对齐账单。</div>
+    <div class="quiz-explanation"><code>tiktoken</code> 能在<strong>本地、发请求前</strong>计算 Token，但只有目标模型使用匹配的 OpenAI 编码时才是精确计数；对 Claude / Gemini 只能近似。Claude 应使用官方 <code>messages.count_tokens</code> 估算完整请求，调用后再看 <code>response.usage</code> 对账。</div>
   </div>
 </div>
 
@@ -132,7 +142,7 @@ print([enc.decode([t]) for t in tokens])  # 还原每个 token 的样子
       </tbody>
     </table>
     <p>看这组对比的冲击力：同一句"我喜欢学习语言。"在旧的 <code>cl100k</code> 分词器下要 <strong>11 个 Token</strong>，换到 <code>o200k</code>（GPT-4o 系）<strong>只要 5 个</strong>——和那句英文一样多！<strong>"中文贵一倍"的说法，主要是旧分词器的产物</strong>；新分词器扩充了中文词表、把常见中文组合合并成了单个 Token，差距被大幅抹平。</p>
-    <p>这也有实证研究支持：有 arXiv 论文专门"辟谣"（<a href="https://arxiv.org/html/2604.14210v1" target="_blank">Chinese Language Is Not More Efficient Than English in Vibe Coding</a>，一项初步研究），指出 Token 效率是<strong>分词器词表分配</strong>的结果，而非语言本身的固有属性。<strong>正确姿势：别记结论，去 <code>tiktoken</code> 实测你要用的那个模型</strong>。</p>
+    <p>一项 2026 年的初步研究（<a href="https://arxiv.org/html/2604.14210v1" target="_blank">arXiv 2604.14210 · Chinese Language Is Not More Efficient Than English in Vibe Coding</a>）也观察到：中文的 Token 成本比会随模型变化，并不存在“换成中文就稳定更省”的通用结论。它研究的是特定编程任务和模型，不能外推成所有语言/模型的定律。<strong>正确姿势：别记“中文一定贵/便宜”，用目标模型自己的计数工具实测。</strong></p>
   </div>
   <div class="tip">
     ⚠️ 面试高频陷阱：<strong>"为什么中文消耗更多 Token？"</strong> 满分回答不是"因为中文复杂"，而是：<strong>"取决于分词器——旧的如 cl100k 对中文按字节回退、切得碎；新的如 o200k 扩了中文词表、差距已很小。Token 效率是词表设计问题，不是语言问题。"</strong>
@@ -161,13 +171,29 @@ print([enc.decode([t]) for t in tokens])  # 还原每个 token 的样子
   <div class="quiz" data-quiz="q3">
     <div class="quiz-question"><span class="quiz-q">Q</span> 关于 API 的输入与输出 Token 定价，通常是？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">输入比输出更贵</button>
-      <button data-answer="correct">输出比输入更贵</button>
-      <button data-answer="wrong">两者价格总相同</button>
-      <button data-answer="wrong">输出完全不收费</button>
+      <button data-answer="correct">输出通常比输入更贵</button>
+      <button data-answer="wrong">输入总是比输出更贵</button>
+      <button data-answer="wrong">两者价格必然相同</button>
+      <button data-answer="wrong">所有输出都完全免费</button>
     </div>
     <div class="quiz-explanation">主流 API <strong>输出 Token 通常是输入的 3~5 倍价</strong>（生成比读取更耗算力）。所以省钱既要压输入（长 system prompt、累积历史用缓存/压缩），也要控输出（别让模型啰嗦）。算成本时务必<strong>输入、输出分开算</strong>。</div>
   </div>
+</div>
+
+<div class="section">
+  <h2>6. 实战：该用哪一种计数方式</h2>
+  <details>
+    <summary><strong>🧪 Agent 成本预估练习：</strong>OpenAI 与 Claude 请求分别怎么数（先自己判断）</summary>
+    <div class="card" style="margin-top:.8rem;">
+      <p><strong>场景：</strong>同一段 system prompt 将分别发给一个使用 <code>o200k_base</code> 的 OpenAI 模型和 Claude Opus 4.8。你要在请求前估算输入，并在请求后核对账单。</p>
+      <p><strong>参考答案：</strong></p>
+      <ul>
+        <li><strong>OpenAI 模型：</strong>请求前可用匹配编码的 <code>tiktoken</code> 本地计数；完整聊天请求仍需考虑角色、工具等格式开销，调用后查看该厂商 usage。</li>
+        <li><strong>Claude：</strong>不要把 o200k 数字当精确值。用 <code>client.messages.count_tokens(model="claude-opus-4-8", ...)</code> 估算完整结构；请求完成后以 <code>response.usage.input_tokens</code> / <code>output_tokens</code> 等字段核对实际用量。</li>
+        <li><strong>跨厂商横向比较：</strong>先使用各自官方计数方式，再乘各自输入/输出单价。用同一个 tokenizer 数所有模型只能做粗略代理，不能冒充账单。</li>
+      </ul>
+    </div>
+  </details>
 </div>
 
 <div class="section">
@@ -176,13 +202,15 @@ print([enc.decode([t]) for t in tokens])  # 还原每个 token 的样子
     <pre><code>【Token 是什么】子词片段(subword)，不是字/词/字母
   英文常用词≈1 token；长词/中文/生僻会被拆多段
 
-【BPE】从 256 字节起，反复合并"最高频的一对"→ 新 token
-  byte-level：中文字=3 UTF-8 字节，不够高频就 byte fallback 成碎片
+【BPE】常见 tokenizer 家族之一，不是所有模型的唯一实现
+  byte-level BPE 可从 256 字节起学习合并规则
+  中文字若未完整合并，可能 byte fallback 成碎片
 
-【tiktoken 计数】本地、发请求前
-  enc = tiktoken.get_encoding("o200k_base")  # 或 cl100k_base
-  len(enc.encode(text))          # token 数
-  仅 OpenAI 精确；Anthropic/Google 近似；账单另加格式开销
+【计数工具要匹配模型】
+  OpenAI 匹配编码：tiktoken 本地计数
+  Claude：client.messages.count_tokens(...) 请求前估算
+         response.usage 调用后对账
+  跨厂商拿 tiktoken 一把尺子量 → 只能粗估，不能冒充账单
 
 【"中文更费 token"？】取决于分词器！(实测)
   "我喜欢学习语言。"  cl100k=11  →  o200k=5
@@ -229,14 +257,14 @@ print([enc.decode([t]) for t in tokens])  # 还原每个 token 的样子
   <div class="card">
     <ul>
       <li>Token 是<strong>子词片段</strong>，不是字/词/字母；必须用分词器实际数，不能靠数字数</li>
-      <li><strong>BPE</strong> 从字节起步，反复合并最高频的一对；byte-level 下中文可能回退成字节碎片</li>
-      <li><code>tiktoken</code> 能<strong>本地、发请求前</strong>精确计数（OpenAI 精确，他厂近似）</li>
+      <li><strong>BPE</strong> 是常见 tokenizer 家族；byte-level BPE 学习高频合并规则，中文可能回退成字节碎片</li>
+      <li><code>tiktoken</code> 对匹配 OpenAI 编码本地计数；Claude 请求前用 <code>messages.count_tokens</code>，请求后看 <code>response.usage</code></li>
       <li>"中文更费 Token"<strong>取决于分词器</strong>——同句中文 cl100k 要 11、o200k 只要 5</li>
       <li>成本 = 输入输出<strong>分开</strong>算，输出通常 3~5× 输入；历史与 system prompt 会累加计费</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    想动手？装上 <code>tiktoken</code>，把你自己的 system prompt 丢进去数一数，再换 <code>cl100k</code> / <code>o200k</code> 对比——你会对"钱花在哪"有全新体感。有疑问随时问我。下一课起我们进入模型的<strong>能力与局限</strong>：先从人人都踩过的坑——<a href="0023-L19-hallucination.html">幻觉</a>开始。</p>
+    想动手？装上 <code>tiktoken</code>，把你自己的 system prompt 丢进去数一数，再换 <code>cl100k</code> / <code>o200k</code> 对比——你会对“钱花在哪”有全新体感。有疑问随时问我。下一课起我们进入模型的<strong>能力与局限</strong>：先从人人都踩过的坑——<a href="0023-L19-hallucination.html">幻觉</a>开始。
   </div>
 </div>
 

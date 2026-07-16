@@ -96,19 +96,19 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L17</span><span class="lesson-num-time">15min</span>
+      <span class="lesson-num">L17</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0021-L17-llm-essence-and-parameters.html">LLM 本质与生成参数</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">语言模型本质（基于概率的下一个 Token 预测）、注意力机制直觉（不写代码）、Transformer 直觉；生成参数解密：Temperature（缩放分布）、Top-P（核采样裁剪）、frequency/presence 惩罚、不同任务的参数组合；<strong>反直觉真相：temperature=0 也不保证逐字节可复现</strong>（浮点非结合 + 硬件差异）</div>
-        <div class="exercise">给同一个 Prompt 设不同 temperature/top_p，观察输出如何从"稳定"变"发散"，并为抽取/创作/代码三类任务各选一组参数</div>
+        <div class="lesson-desc">语言模型本质、注意力与生成直觉；区分 Temperature / Top-P / 重复惩罚的<strong>解码概念</strong>与厂商 API 字段——当前 Claude 新模型不接受这些 sampling 参数；理解低温/seed 也不能保证逐字节复现</div>
+        <div class="exercise">为抽取、创作、代码审查选择控制方式：支持 sampling 的 provider 如何调参，当前 Claude 如何用提示约束、结构化校验与 effort</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L18</span><span class="lesson-num-time">15min</span>
+      <span class="lesson-num">L18</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0022-L18-tokenization.html">Token 与 Tokenization 深入</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">Token 是子词片段（非字/词/字母）、BPE 算法与 byte-level 原理、中文 vs 英文 Token 差异（<strong>取决于分词器</strong>：同句中文 cl100k=11、o200k=5）、用 tiktoken 精确计数、Token 与成本关系（输出通常 3~5× 输入）</div>
-        <div class="exercise">用 tiktoken 数自己的 system prompt，切换 cl100k / o200k 编码对比，再把 Token 数换算成 API 成本</div>
+        <div class="lesson-desc">Token 是子词片段；BPE 是常见 tokenizer 家族而非唯一实现；中文/英文效率取决于目标 tokenizer；<code>tiktoken</code> 对匹配 OpenAI 编码计数，Claude 用官方 <code>messages.count_tokens</code> 估算并以 response usage 对账</div>
+        <div class="exercise">对同一段 system prompt：用 tiktoken 比较 cl100k/o200k，再说明 Claude 为什么必须改用自己的 count-tokens 端点</div>
       </div>
     </div>
   </div>
@@ -125,35 +125,35 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L19</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L19</span><span class="lesson-num-time">30min</span>
       <div>
-        <div class="lesson-title"><a href="0023-L19-hallucination.html">幻觉全解（校准视角）</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">什么是幻觉、<strong>为什么发生（校准视角：训练/评估激励"猜"而非"弃权"，见 OpenAI/arXiv《Why Language Models Hallucinate》）</strong>、检测方法（Self-Consistency / LLM-as-judge / 引用核查）、缓解策略（RAG / CoT / Self-Consistency，且无法根除）</div>
+        <div class="lesson-title"><a href="0023-L19-hallucination.html">幻觉全解（多因素视角）</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-desc">什么是幻觉；两层重要机制（预训练统计错误如何产生、评估为何鼓励猜测）与其他工程成因；Self-Consistency 发散只作风险信号，一致不证明正确；RAG / 引用 / 工具 / 人工组合兜底</div>
         <div class="exercise">为一个客服 Agent 设计幻觉检测方案——用多次采样一致性 + 要求引用来源，标注哪些回答高风险</div>
       </div>
     </div>
     <div class="lesson-item">
       <span class="lesson-num">L20</span><span class="lesson-num-time">45min</span>
       <div>
-        <div class="lesson-title"><a href="0024-L20-reasoning-models.html">推理模型与 Extended Thinking</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">标准模型 vs 推理模型、long CoT（先"想"再答）、Extended Thinking 与 thinking budget（用 Token 预算换推理深度）、何时用哪个（OpenAI 官方决策规则：简单明确用标准、困难多步用推理）、成本/延迟权衡、推理模型的提示词差异</div>
-        <div class="exercise">给一批任务（抽取字段 / 解多步数学题 / 总结长合同风险）判断各该用标准还是推理模型，并说明理由</div>
+        <div class="lesson-title"><a href="0024-L20-reasoning-models.html">推理能力与 Adaptive Thinking</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
+        <div class="lesson-desc">区分模型推理能力、Adaptive Thinking 与 effort；当前 Claude 用 <code>thinking: adaptive</code> + <code>output_config.effort</code>，固定 <code>budget_tokens</code> 仅属旧模型兼容；理解 display、计费、max_tokens 与 overthinking 边界</div>
+        <div class="exercise">给抽取、数学、合同分析和规划任务选择起始模型/effort，并写出质量、延迟、Token 与外部核验指标</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L21</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L21</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0025-L21-model-capabilities.html">模型能力边界与 Base vs Instruct</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">Base Model vs Instruction-Tuned（<strong>指令微调 refine 执行/对齐，不显著增加知识</strong>）、RLHF 一句话；能做什么 vs 六大局限（知识截止、不擅精确计算、幻觉、上下文有限 + lost-in-the-middle、无持久记忆、不知私有/实时数据）→ Agent 如何用工具/RAG/记忆各个击破</div>
-        <div class="exercise">给几个用户请求（今日股价 / 大数运算 / 记得我的偏好吗 / 总结刚上传的 PDF），指出各触碰了哪条局限、Agent 该用什么能力补</div>
+        <div class="lesson-desc">Base/Instruct 的行为倾向；预训练、SFT 与偏好优化（RLHF/DPO 类路线）；微调与 RAG 的边界；区分直接文档输入、RAG、实时工具；API 默认无状态不等于应用不能保存记忆</div>
+        <div class="exercise">为股价、计算、跨会话偏好和上传 PDF 分别选择当前上下文、业务工具、应用状态或 RAG，说明为什么不能统一套一种方案</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L22</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L22</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0026-L22-benchmarks-and-selection.html">看懂 Benchmark 与模型选型</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">MMLU-Pro（知识广度）/ GPQA（专家推理）/ SWE-bench（真实工程）/ ARC-AGI（抽象推理）各测什么、<strong>榜单为何失真</strong>（数据污染 / 过拟合 / 场景不匹配）、开源 vs 闭源权衡（自托管成本拐点）、可落地的选型决策框架（别信榜单信自建评测集）</div>
-        <div class="exercise">为"处理敏感内部合同、预算有限、月调用量大"的 Agent 用决策框架给出选型建议（倾向开源自托管 + 自建评测集 + 成本核算）</div>
+        <div class="lesson-desc">主流 benchmark 各测什么；污染、针对性优化、场景不匹配、harness/scaffold/预算如何影响成绩；开放权重、托管与自托管边界；开发集/隔离测试集、固定 rubric 与重复运行</div>
+        <div class="exercise">为敏感合同 Agent 先写可审计合规硬约束，再用隔离评测集和真实负载比较合规托管、开放权重托管或自托管候选</div>
       </div>
     </div>
   </div>
@@ -170,19 +170,19 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L23</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L23</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0027-L23-token-economics.html">Token 经济学与降本杠杆</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">各主流模型价格对比（输出通常 3~5× 输入）、隐藏成本（历史累加 / system prompt 每次都算 / 工具循环）、成本计算公式、Token 预算制定；<strong>两大降本杠杆：Prompt Caching（缓存读 ~0.1×、写 ~1.25×，官方文档实锤）+ Model Routing（便宜模型兜底、贵模型只接难题）</strong>，真实案例：缓存降本 59~70%、路由降本 40~85%；压缩历史 / 批处理</div>
+        <div class="lesson-desc">请求历史与累计成本、Token 预算；Prompt Caching 的 5m/1h 写入、读取、盈亏平衡、最小前缀和 usage；Model Routing 的误路由/升级成本；案例百分比不作保证；厂商 Batch、压缩和输出控制边界</div>
         <div class="exercise">给定"2000 token 固定 system prompt + 每次 200 token 问题 + 300 token 回答、日 10 万次"，算不加缓存的日成本，再算 Prompt Caching 能省下哪部分、大致多少</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L24</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L24</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0028-L24-phase2-capstone.html">Phase 2 综合实战项目</a> <span class="badge-agent">综合</span></div>
-        <div class="lesson-desc">收官项目「模型体检报告」：整合 L17–L23——用 tiktoken 做成本估算、用 httpx + async 并发调多个模型做能力对比、用 Self-Consistency 做幻觉测试、汇总成综合报告（模型 × 质量 × 幻觉率 × 成本），并用选型框架给出结论</div>
-        <div class="exercise">写一个脚本对同一批任务对比不同模型 + 幻觉测试 + 成本核算（含 Prompt Caching 前后对比），输出一份"模型体检报告"</div>
+        <div class="lesson-desc">收官项目「模型体检报告」：各厂商计数方式 + Provider Adapter + async 并发；离线 mock 覆盖一致/部分一致/发散；ground truth 区分稳定性与事实错误；指标归一化后再加权</div>
+        <div class="exercise">离线跑通模型矩阵、三种一致性分支、成本数学与归一化选型；真实 Claude 接口使用官方 Anthropic SDK adapter</div>
       </div>
     </div>
   </div>

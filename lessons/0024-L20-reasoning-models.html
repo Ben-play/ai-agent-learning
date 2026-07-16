@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>L20 · 推理模型与 Extended Thinking</title>
+<title>L20 · 推理能力与 Adaptive Thinking</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -16,8 +16,8 @@
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
       <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
-    <h1>推理模型与 Extended Thinking</h1>
-    <p class="subtitle">让模型"先在草稿纸上演算"再作答——你在用 Token 预算换推理深度</p>
+    <h1>推理能力与 Adaptive Thinking</h1>
+    <p class="subtitle">让模型按任务决定是否深入推理，再用 effort 调节质量、延迟与成本</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:50%"></div></div>
   </div>
 </div>
@@ -25,8 +25,8 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>你现在知道 LLM 在"预测下一个 Token"。但有一类模型不再<strong>脱口而出</strong>——它们在给你答案之前，会先<strong>自己想一大段</strong>：列步骤、试错、自我检查，再吐出最终结论。这就是<strong>推理模型（reasoning models）</strong>，以及 Claude 的 <strong>Extended Thinking</strong> 机制。</p>
-    <p>作为 Agent 开发者，这直接决定你两件生死攸关的事：<strong>准确率</strong>和<strong>账单</strong>。对简单任务上推理模型是 overkill——烧钱又拖慢；对高难多步任务用标准模型，准确率不够、Agent 会翻车。这一课教你<strong>什么时候用哪个</strong>，以及 Extended Thinking 里那个关键旋钮——<strong>thinking budget（思考预算）</strong>——到底在换什么。它是后面 <a href="0027-L23-token-economics.html">L23 · Model Routing</a> 的直接前置。</p>
+    <p>你现在知道 LLM 在预测下一个 Token。面对复杂任务，当前模型可以在最终回答前投入额外计算与推理，但工程上要分清三件事：<strong>模型是否擅长推理</strong>、请求是否启用 <strong>adaptive thinking</strong>、以及用 <strong>effort</strong> 调节投入程度。它们相关，却不是同一个概念。</p>
+    <p>作为 Agent 开发者，这直接影响质量、延迟与账单。简单任务可能不需要深度推理；复杂任务也不能只凭“推理模型”标签就保证正确。这一课教你按场景实测，并使用当前 Claude 的 Adaptive Thinking + effort，而不是把已经退出新模型主线的固定 <code>budget_tokens</code> 当成通用旋钮。它是后面 <a href="0027-L23-token-economics.html">L23 · Model Routing</a> 的直接前置。</p>
   </div>
 </div>
 
@@ -35,230 +35,239 @@
   <div class="card">
     <p>完成本课后，你将能够：</p>
     <ul>
-      <li>说清<strong>标准模型 vs 推理模型</strong>的根本区别：是否先生成一长串内部思考</li>
-      <li>解释 <strong>Extended Thinking</strong> 怎么开启，以及 <code>budget_tokens</code>（思考预算）在换什么</li>
-      <li>用一条<strong>决策规则</strong>判断某个任务该上标准还是推理模型</li>
-      <li>说清推理模型<strong>更慢更贵</strong>的原因（reasoning token 也计费），并连回 Model Routing</li>
-      <li>知道推理模型的<strong>提示词该怎么写</strong>（往往更简，不用手写 step-by-step）</li>
+      <li>区分<strong>推理能力、Adaptive Thinking 与 effort</strong>，不再把它们混成一个“推理模型开关”</li>
+      <li>用当前 Claude API 开启 <code>thinking={"type":"adaptive"}</code>，并在 <code>output_config</code> 中设置 effort</li>
+      <li>知道 <code>budget_tokens</code> 只属于旧模型兼容路径，新模型不能照搬</li>
+      <li>按任务质量、延迟、成本与实测结果决定推理投入，并连回 Model Routing</li>
+      <li>解释 thinking 的展示、计费与 <code>max_tokens</code> 边界，以及为什么更高 effort 不保证总是更好</li>
     </ul>
   </div>
 </div>
 
 <div class="section">
-  <h2>1. 标准模型 vs 推理模型</h2>
+  <h2>1. 先拆开三个容易混淆的概念</h2>
   <div class="card">
-    <p>两类模型的差别，用一个类比就懂：</p>
-    <ul>
-      <li><strong>标准 LLM</strong>：像被点名就<strong>脱口而出</strong>——收到问题，直接开始生成答案 Token。</li>
-      <li><strong>推理模型</strong>：像先在<strong>草稿纸上演算</strong>——收到问题后，先生成一长串内部"思考"（long chain-of-thought，即 <strong>reasoning tokens / thinking tokens</strong>），在里面拆解步骤、尝试、自我纠错，<strong>然后</strong>才给出最终答案。</li>
-    </ul>
-    <p>那串"思考"通常对用户<strong>隐藏或折叠</strong>（你看到的是简洁答案，草稿在幕后）。关键在于：这串思考<strong>要消耗额外 Token</strong>，也就是额外的时间和钱。换来的是——面对难题时，"先打草稿"往往比"脱口而出"答得更准。</p>
-    <pre><code>标准模型：  问题 ──────────────────▶ 答案
-                    (直接生成)
+    <p>“推理模型”常被当成一个万能标签，但写 API 时至少要拆成三层：</p>
+    <table>
+      <thead><tr><th>概念</th><th>它回答什么问题</th><th>工程含义</th></tr></thead>
+      <tbody>
+        <tr><td><strong>推理能力</strong></td><td>这个模型是否擅长多步分析、规划和自检？</td><td>是模型能力，需要用你的评测集验证</td></tr>
+        <tr><td><strong>Adaptive Thinking</strong></td><td>本次请求是否允许模型按任务决定要不要深入思考？</td><td>当前 Claude 的 thinking 模式</td></tr>
+        <tr><td><strong>effort</strong></td><td>希望模型在质量、延迟和 Token 之间偏向哪一侧？</td><td>请求级控制，放在 <code>output_config</code></td></tr>
+      </tbody>
+    </table>
+    <p>可以继续用“草稿纸”建立直觉：复杂问题往往受益于额外推理，但 API 返回的是<strong>thinking block 的省略或摘要</strong>，不是模型的原始私密思维链。模型也可能判断简单问题无需 thinking，或者在高 effort 下想得过多。</p>
+    <pre><code>请求 ──▶ 模型判断任务难度 ──┬─ 直接回答
+                            └─ 进行额外 thinking ──▶ 最终回答
 
-推理模型：  问题 ──▶ [一长串内部思考/草稿] ──▶ 答案
-                    ↑ reasoning tokens
-                    ↑ 通常对用户隐藏、且照常计费</code></pre>
-    <p>注意：推理模型<strong>不是</strong>"更聪明的另一种架构"那么简单——它本质是<strong>让模型把算力多花在生成中间推理上</strong>，用更多 Token 去逼近正确答案。这也是为什么它更慢更贵（见第 4 节）。</p>
+thinking 是否发生：由模型和任务共同决定
+投入程度：受 effort 影响，但更高不等于每次都更准</code></pre>
+    <p>所以工程结论不是“推理模型永远更聪明”，而是：<strong>困难任务可能值得更高推理投入；简单任务应测量它是否只增加延迟和成本。</strong></p>
   </div>
 
   <div class="quiz" data-quiz="q1">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 推理模型和标准 LLM 最根本的区别是？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于“推理能力、Adaptive Thinking、effort”，哪项最准确？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">它用了完全不同的神经网络</button>
-      <button data-answer="correct">它先生成一长串思考</button>
-      <button data-answer="wrong">它完全不需要任何提示词</button>
-      <button data-answer="wrong">它永远比标准模型便宜</button>
+      <button data-answer="wrong">三者只是同一个开关的不同名字</button>
+      <button data-answer="wrong">只要提高 effort 就能保证答案正确</button>
+      <button data-answer="correct">模型能力、思考模式、投入控制是三层</button>
+      <button data-answer="wrong">开启 thinking 后所有请求都会长篇推理</button>
     </div>
-    <div class="quiz-explanation">推理模型在给出最终答案<strong>之前</strong>，会先生成一长串内部"思考"（long chain-of-thought / reasoning tokens），在其中拆步骤、试错、自查，再作答。这串思考通常对用户隐藏，但<strong>照常消耗 Token</strong>——所以它更慢更贵，而不是更便宜。它靠"把算力多花在中间推理上"来提升难题准确率。</div>
+    <div class="quiz-explanation"><strong>推理能力</strong>属于模型能力，<strong>Adaptive Thinking</strong>决定请求是否允许模型按需思考，<strong>effort</strong>调节质量、延迟和 Token 取舍。三者相关但不等同；模型可跳过简单题的 thinking，更高 effort 也必须用实测验证收益。</div>
   </div>
 </div>
 
 <div class="section">
-  <h2>2. Extended Thinking 是怎么工作的</h2>
+  <h2>2. 当前 Claude API：Adaptive Thinking + effort</h2>
   <div class="card">
-    <p>以 Anthropic Claude 的 <strong>Extended Thinking</strong> 为例，看推理模型在 API 层面怎么开启。核心是给请求加一个 <code>thinking</code> 参数，并设一个 <strong><code>budget_tokens</code>（思考预算）</strong>——告诉模型"这次你最多可以用这么多 Token 来打草稿"：</p>
-    <pre><code># 概念示意（以官方文档为准，字段/上限可能随版本变化）
-resp = client.messages.create(
-    model="<一个支持 extended thinking 的 Claude 模型>",
-    max_tokens=8000,
-    thinking={
-        "type": "enabled",
-        "budget_tokens": 4000   # ← 思考预算：给内部推理的 token 额度
-    },
-    messages=[{"role": "user", "content": "……你的难题……"}],
+    <p>当前 Claude 新代码使用官方 Anthropic SDK，把 <code>thinking</code> 设为 <code>adaptive</code>，再把 effort 放进 <code>output_config</code>。下面示例使用当前 Opus 模型；它不接受 L17 的 sampling 参数，所以请求里没有 temperature / top-p：</p>
+    <pre><code>import anthropic
+
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model="claude-opus-4-8",
+    max_tokens=16_000,
+    thinking={"type": "adaptive", "display": "summarized"},
+    output_config={"effort": "high"},
+    messages=[
+        {"role": "user", "content": "分析这个多约束排期问题，并给出可验证方案。"}
+    ],
 )
-# 模型会先用这个预算做内部推理，再产出最终回答</code></pre>
-    <p>要理解的核心概念就是 <strong>thinking budget（思考预算）</strong>：</p>
+
+for block in response.content:
+    if block.type == "thinking":
+        print("思考摘要：", block.thinking)
+    elif block.type == "text":
+        print("最终回答：", block.text)</code></pre>
+    <p><strong>如何区分四个字段：</strong></p>
     <ul>
-      <li><strong>预算越大 → 能想得越深</strong>：模型有更多 Token 去展开步骤、尝试多条路径、自我检查，通常对<strong>难题</strong>更有利。</li>
-      <li><strong>预算越大 → 越慢、越贵</strong>：这些思考 Token 要花时间生成，而且<strong>照常计费</strong>。</li>
-      <li>所以你实际上是在做一笔交易——<strong>用 Token 预算换推理深度</strong>。</li>
+      <li><code>thinking={"type":"adaptive"}</code>：允许模型按任务决定是否思考以及思考多少。</li>
+      <li><code>output_config.effort</code>：调节整体投入程度。可用档位随模型而定；更高可能提高难题质量，也可能增加延迟、Token 或过度思考。</li>
+      <li><code>display="summarized"</code>：请求可读的思考摘要；<code>omitted</code> 只是不返回可读文本，<strong>不等于不思考或不计费</strong>。</li>
+      <li><code>max_tokens</code>：本次响应的硬输出上限，thinking 和最终文本都要留出空间；撞上它会以 <code>max_tokens</code> 停止。</li>
     </ul>
-    <p>细节以官方文档为准：<a href="https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking" target="_blank">Anthropic · Extended Thinking</a>。<strong>注意</strong>：<code>budget_tokens</code> <strong>有上限、且随模型/版本变化</strong>——不要硬记某个具体最大值，<strong>以官方文档为准</strong>。</p>
+    <p><strong>旧写法边界：</strong><code>thinking={"type":"enabled","budget_tokens":...}</code> 是旧模型的手动思考预算。Claude Opus 4.8 / 4.7、Claude Sonnet 5、Claude Fable 5 会拒绝它；Opus / Sonnet 4.6 仅保留弃用兼容。初学者的新代码不要再从固定预算起步，应使用 adaptive thinking + effort。</p>
+    <p>官方资料：<a href="https://platform.claude.com/docs/en/build-with-claude/extended-thinking" target="_blank">Anthropic · Extended Thinking</a> 与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>。</p>
   </div>
   <div class="tip">
-    一句话记住 Extended Thinking：<strong>开一个 <code>thinking</code> 开关 + 给一个 <code>budget_tokens</code> 预算，模型就会先"打草稿"再作答</strong>。预算是旋钮：调大＝想得更深但更慢更贵，调小＝更快更省但可能不够深。这就是"用 Token 换推理深度"。
+    一句话记住当前写法：<strong>adaptive 决定“按需想不想”，effort 调节“愿意投入多少”，display 只控制“给不给你看摘要”，max_tokens 才是硬上限。</strong>
   </div>
 </div>
 
 <div class="section">
-  <h2>3. 何时用哪个：一条决策规则</h2>
+  <h2>3. 何时提高推理投入：先分类，再实测</h2>
   <div class="card">
-    <p>别凭感觉选。OpenAI 官方的 <a href="https://developers.openai.com/api/docs/guides/reasoning-best-practices" target="_blank">reasoning best practices</a> 给了一条很干净的规则，可直接照抄：</p>
+    <p>不要只看模型名称。先按任务复杂度做初筛，再用自己的评测集比较质量、延迟和成本：</p>
     <ul>
-      <li><strong>速度 + 成本优先，任务简单且定义明确 → 用标准模型。</strong>（抽字段、分类、改写、格式转换、简单问答……）</li>
-      <li><strong>准确 + 可靠优先，任务困难 / 多步推理 → 用推理模型。</strong>（数学、复杂编码、多约束决策、长文档分析……）</li>
+      <li><strong>任务简单、规则明确、速度优先 → 从较低推理投入开始。</strong>例如抽取、分类、格式转换；可选轻量模型或较低 effort。</li>
+      <li><strong>任务困难、多步、多约束、错误代价高 → 测试更强模型或更高 effort。</strong>例如复杂调试、规划和需要交叉核对的分析。</li>
     </ul>
-    <p>落到具体任务上：</p>
     <table>
-      <thead><tr><th>任务类型</th><th>推荐模型</th><th>理由</th></tr></thead>
+      <thead><tr><th>任务类型</th><th>起始策略</th><th>还要验证什么</th></tr></thead>
       <tbody>
-        <tr><td>从发票抽取金额字段</td><td>标准模型</td><td>定义明确、单步、要快要便宜</td></tr>
-        <tr><td>邮件/文本分类打标签</td><td>标准模型</td><td>模式清晰，无需多步推演</td></tr>
-        <tr><td>把 JSON 改写成另一种格式</td><td>标准模型</td><td>机械转换，脱口而出即可</td></tr>
-        <tr><td>解多步数学题并验证</td><td>推理模型</td><td>需要逐步推演 + 自我检查</td></tr>
-        <tr><td>调试一段有隐蔽 bug 的复杂代码</td><td>推理模型</td><td>需追踪多个约束、试多种假设</td></tr>
-        <tr><td>在多个约束下做规划/取舍决策</td><td>推理模型</td><td>多约束权衡，标准模型易漏条件</td></tr>
-        <tr><td>分析 50 页合同、找出风险点</td><td>推理模型</td><td>长文档、需综合多处、结论要可靠</td></tr>
+        <tr><td>发票字段抽取</td><td>轻量模型 / 低 effort</td><td>结构化输出准确率与延迟</td></tr>
+        <tr><td>邮件分类</td><td>轻量模型 / 低 effort</td><td>边界样本与类别混淆</td></tr>
+        <tr><td>JSON 格式转换</td><td>低推理投入</td><td>Schema 校验是否全部通过</td></tr>
+        <tr><td>多步数学题</td><td>较高 effort + 计算工具</td><td>不能只信推理文本，要核对结果</td></tr>
+        <tr><td>复杂代码调试</td><td>强模型 / 较高 effort</td><td>真实测试是否复现并通过</td></tr>
+        <tr><td>多约束规划</td><td>较高推理投入</td><td>是否遗漏约束、方案是否可执行</td></tr>
+        <tr><td>长合同风险分析</td><td>强模型 + 检索/引用</td><td>证据覆盖、漏检率与人工复核</td></tr>
       </tbody>
     </table>
-    <p><strong>Agent 视角</strong>：一个 Agent 的一次任务里，这两类调用往往<strong>同时存在</strong>——高层的<strong>规划（planning）</strong>该用推理模型，而每一步<strong>工具调用</strong>的解析/填参用标准模型更划算（下节细说）。</p>
+    <p><strong>Agent 视角：</strong>规划常比格式化工具结果更需要推理，但这只是起始假设。成熟系统会为不同步骤设置候选模型 / effort，用业务评测决定路由，而不是写死“规划一定用某类模型”。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 下面哪种任务<strong>最</strong>适合用推理模型？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 下面哪种任务最值得先测试较高推理投入？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">把一段发票文本抽成字段</button>
-      <button data-answer="correct">解多步数学题并逐步验证</button>
-      <button data-answer="wrong">给用户邮件打上分类标签</button>
-      <button data-answer="wrong">把 JSON 换成另一种格式</button>
+      <button data-answer="wrong">按固定 Schema 抽取发票字段</button>
+      <button data-answer="wrong">给短邮件标注三个固定类别</button>
+      <button data-answer="wrong">把一个 JSON 改成另一种格式</button>
+      <button data-answer="correct">调试隐蔽 bug 并用测试验证</button>
     </div>
-    <div class="quiz-explanation">决策规则：<strong>困难 / 多步推理 → 推理模型；简单且定义明确 → 标准模型</strong>。多步数学题需要逐步推演加自我检查，正是推理模型的强项。抽字段、打标签、格式改写都是单步、定义明确的任务，用标准模型更快更省——上推理模型属于 overkill。（来源：OpenAI reasoning best practices）</div>
+    <div class="quiz-explanation">隐蔽 bug 调试需要追踪多个假设、理解上下文并用测试核验，通常值得测试强模型或较高 effort。其余任务规则更明确，可从较低推理投入开始，但最终仍应以自建评测的质量、延迟与成本决定。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>4. 成本 / 延迟权衡</h2>
   <div class="card">
-    <p>推理模型为什么更慢更贵？因为它<strong>要生成大量 reasoning token</strong>——而这些思考 Token 即便对你隐藏，也<strong>照常计入账单</strong>、照常占用生成时间。你为"更准的答案"付出的代价，就是<strong>更多 Token × 更长延迟</strong>。</p>
-    <pre><code>标准模型：   输入 ──▶ [答案]              ← 输出 token 少，快、便宜
-推理模型：   输入 ──▶ [长草稿] + [答案]   ← 草稿也是 output token，慢、贵
+    <p>额外 thinking 会消耗输出 Token 和生成时间。你看到摘要、空 thinking 文本或只看到最终回答，都不代表后台没有产生可计费用量；应以响应的 usage 和账单为准。</p>
+    <pre><code>较低推理投入：输入 ──▶ 回答             ← 通常更快、更省
+较高推理投入：输入 ──▶ thinking ──▶ 回答 ← 可能更准，也可能更慢/更贵
 
-→ 结论：推理模型的"隐藏思考"不是免费的，它是你账单的一部分</code></pre>
-    <p>对<strong>路由 / 成本</strong>的两条启示（正好是两个反向错误）：</p>
+显示摘要或省略 thinking 文本，只影响可见内容，不自动降低计费</code></pre>
+    <p>路由要避免两个方向的错误：</p>
     <ul>
-      <li><strong>别对简单任务用推理模型</strong>——overkill，白白烧钱又拖慢响应；<strong>它还不免疫幻觉，简单题上甚至可能"想太多"(overthink) 反而降准确率</strong>。</li>
-      <li><strong>别对高难任务用标准模型</strong>——准确率不够，Agent 会在关键步骤翻车，返工反而更贵。</li>
+      <li><strong>简单任务投入过高：</strong>可能只增加延迟和成本，甚至出现 overthinking。</li>
+      <li><strong>困难任务投入不足：</strong>可能漏约束、返工或触发错误工具，最终总成本反而更高。</li>
     </ul>
-    <p>系统性地"按任务难度把请求分派给不同模型"——便宜快的模型接简单活、贵而强的模型接硬骨头——这件事叫 <strong>Model Routing</strong>，是 <a href="0027-L23-token-economics.html">L23 · 成本与 Model Routing</a> 的核心主题。这一课你只需牢牢记住：<strong>推理深度是要花钱买的，按需采购</strong>。</p>
+    <p>因此 Model Routing 不是“便宜模型永远做 A、贵模型永远做 B”，而是根据任务特征选择候选，再用质量、延迟、Token 和失败成本实测。系统化方法见 <a href="0027-L23-token-economics.html">L23</a>。</p>
   </div>
 
   <div class="quiz" data-quiz="q3">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 关于推理模型的成本，正确的说法是？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 关于 Claude thinking 的展示与成本，正确的是？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">隐藏的思考完全不收费</button>
-      <button data-answer="correct">内部思考照常计入账单</button>
-      <button data-answer="wrong">它总是比标准模型响应更快</button>
-      <button data-answer="wrong">预算越大就一定越便宜</button>
+      <button data-answer="wrong">display omitted 会关闭所有思考</button>
+      <button data-answer="correct">省略可读摘要不代表免计费</button>
+      <button data-answer="wrong">effort 越高就一定更便宜更准确</button>
+      <button data-answer="wrong">thinking 不占用任何输出 Token</button>
     </div>
-    <div class="quiz-explanation">推理模型的那串内部思考（reasoning token）即便对用户隐藏，也<strong>照常计费、照常占用生成时间</strong>，所以它更慢也更贵。思考预算越大意味着能想得越深，但也<strong>更慢更贵</strong>，不是更便宜。这正是要做 Model Routing 的原因：让贵的推理模型只接真正需要它的硬任务。</div>
+    <div class="quiz-explanation"><code>display</code> 控制是否返回可读思考摘要，不是计费开关。完整生成的 thinking 仍可能计入用量；更高 effort 也只是改变投入倾向，必须用实际 usage、延迟和任务质量评估收益。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>5. 提示词差异：别替它安排思考步骤</h2>
   <div class="card">
-    <p>一个反直觉的点：给推理模型写提示词，策略和标准模型<strong>不一样</strong>。</p>
+    <p>对支持 Adaptive Thinking 的当前模型，提示词重点不是要求它暴露或模仿一条固定思维链，而是把<strong>目标、输入、约束和验收标准</strong>讲清楚。</p>
     <ul>
-      <li>对标准模型，你常靠 <code>"let's think step by step"</code> 这类 <strong>Chain-of-Thought 提示</strong>去<strong>逼</strong>它多想一步。</li>
-      <li>对推理模型，<strong>它自己就会想</strong>——你通常<strong>不需要</strong>手写 step-by-step。过度堆叠 CoT 指令反而可能<strong>干扰</strong>它本就在做的内部推理。</li>
+      <li><strong>先给可验证目标：</strong>“找出导致失败的根因，并给出能让测试通过的最小修改”。</li>
+      <li><strong>再给硬约束：</strong>允许改哪些文件、哪些行为不能改变、输出需要哪些证据。</li>
+      <li><strong>必要时提供过程脚手架：</strong>如果你的评测证明分阶段输出能提高结果，可以要求“先列假设，再用测试排除”；不要仅因它被叫作推理模型就删除所有步骤，也不要机械堆叠“think step by step”。</li>
     </ul>
-    <p>正确姿势：<strong>给最简指令，把目标和约束说清楚就好</strong>，把"怎么推"交给模型自己。</p>
-    <pre><code>对标准模型（需要引导思考）：
-  "请一步一步思考（think step by step），先列出……再……最后……"
+    <pre><code>较弱的写法：
+  “请深入思考，一步一步想，务必认真。”
 
-对推理模型（说清目标+约束即可）：
-  "求解这道题。约束：只能用整数；答案需给出验证过程。"
-  ← 不必再喊"一步步想"，它自己会打草稿</code></pre>
-    <p>换句话说：<strong>标准模型你要"教它怎么想"，推理模型你只要"告诉它想什么"。</strong>提示的重心从"引导推理过程"转向"清晰定义任务与约束"。</p>
+可验证的写法：
+  “定位这三个失败测试的共同根因。
+   约束：只改 parser.py；不得改变公开函数签名。
+   完成标准：三个测试通过，并解释哪个输入触发了原缺陷。”</code></pre>
+    <p>核心变化：从“命令模型怎么想”转向“明确它要完成什么、不能破坏什么、如何证明完成”。这对不同模型都适用。</p>
   </div>
   <div class="tip">
-    ⚠️ 常见误区：把老一套"让我们一步步思考"的长 CoT 模板原封不动套到推理模型上。对推理模型，这往往是<strong>多余甚至有害</strong>的——<strong>指令越简、目标与约束越清晰越好</strong>，别去替它安排思考步骤。
+    ⚠️ 常见误区：把“请深入思考”当成质量保证。真正有用的是<strong>可验证目标 + 明确约束 + 外部检查</strong>；是否增加过程脚手架，应通过你的评测验证，而不是按“标准/推理”标签一刀切。
   </div>
 </div>
 
 <div class="section">
   <h2>6. Agent 里怎么混合使用</h2>
   <div class="card">
-    <p>把前五节合起来看，你会得到一个 Agent 开发的实战结论：<strong>不要全程用同一种模型，要混合。</strong></p>
+    <p>把前五节合起来，得到的是一个<strong>分步骤测量并路由</strong>的框架，而不是“Agent 必须混用两个标签模型”的教条：</p>
     <ul>
-      <li><strong>规划（planning）步骤</strong>：Agent 要拆解目标、决定先做什么后做什么、权衡多个约束——这是典型的多步推理，<strong>常受益于推理模型</strong>，值得为准确率多花钱。</li>
-      <li><strong>工具调用的每一小步</strong>：解析工具返回、填一个参数、格式化一段输出——这些大多是简单、定义明确的动作，<strong>用标准模型更划算</strong>，快且便宜。</li>
+      <li><strong>规划 / 复杂决策：</strong>通常值得把强模型或较高 effort 纳入候选，因为漏约束的失败成本高。</li>
+      <li><strong>格式化 / 简单分类：</strong>通常可从轻量模型或较低 effort 开始，因为规则明确、调用频繁。</li>
+      <li><strong>工具调用：</strong>难度取决于语义。填固定参数可能很简单，选择工具、解释失败或处理冲突结果可能仍需较强推理。</li>
     </ul>
-    <p>于是一个成熟 Agent 的模型使用往往是<strong>混合的</strong>：硬骨头（规划、复杂决策）交给推理模型，杂活（大量小步工具调用）交给标准模型。怎么把这套"按难度分派"工程化、算清省了多少钱，就是 <a href="0027-L23-token-economics.html">L23 · Model Routing</a> 要讲的。</p>
+    <p>对每一步记录成功率、延迟、Token 和重试次数，才能决定是否值得分流。怎么工程化这套按任务特征路由并核算收益，是 <a href="0027-L23-token-economics.html">L23 · Model Routing</a> 的主题。</p>
   </div>
 
   <div class="tip">
-    <strong>面试高频：「推理模型是什么？何时用？」</strong><br>
-    满分回答：<strong>推理模型在作答前先生成一长串内部思考（long chain-of-thought / reasoning tokens），再给最终答案，用 thinking budget（思考预算）换推理深度</strong>。何时用：<strong>简单、定义明确的任务用标准模型（更快更省），复杂、多步推理的任务（数学、复杂编码、多约束决策、长文档分析）才上推理模型</strong>；因为 reasoning token 也计费，对简单任务上推理模型是烧钱的 overkill。
+    <strong>面试高频：「推理能力与 Adaptive Thinking 怎么用？」</strong><br>
+    回答要分层：模型本身有不同的推理能力；当前 Claude 可用 <code>thinking={"type":"adaptive"}</code> 允许按需思考，用 <code>output_config.effort</code> 调节投入。thinking 会影响 Token 与延迟，display 只控制摘要可见性。简单任务从较低投入开始，困难任务测试强模型 / 较高 effort，最终以业务评测和外部验证决定路由。
   </div>
 
   <div class="card">
-    <p><strong>Agent 场景练习</strong>：下面几个任务，各该用<strong>标准模型</strong>还是<strong>推理模型</strong>？先自己判断，再展开对照。</p>
+    <p><strong>Agent 场景练习</strong>：下面几个任务，该从怎样的<strong>模型 / effort 候选</strong>开始？还要测什么才能拍板？先自己判断，再展开对照。</p>
     <details>
       <summary>① 从一张发票里抽取"金额"字段 —— 点开看答案</summary>
-      <p><strong>标准模型。</strong>单步、定义明确、要快要便宜，是抽字段的典型场景。上推理模型属于 overkill，白烧钱又变慢。</p>
+      <p><strong>从轻量模型 / 低 effort 开始。</strong>用结构化输出和字段校验测准确率；如果复杂票据漏字段，再升级候选。不能只凭“单步”就跳过真实样本。</p>
     </details>
     <details>
       <summary>② 解一道多步数学题并给出验证过程 —— 点开看答案</summary>
-      <p><strong>推理模型。</strong>需要逐步推演加自我检查，正是推理模型的强项；标准模型容易在中间步骤出错。提示上只需说清"求解 + 给验证"，不必手写 step-by-step。</p>
+      <p><strong>把强模型 / 较高 effort 纳入候选，并调用计算工具验证。</strong>最终看正确率、延迟和工具核验结果；思考文本本身不是答案正确的证明。</p>
     </details>
     <details>
       <summary>③ 总结一份 50 页合同的风险点 —— 点开看答案</summary>
-      <p><strong>推理模型。</strong>长文档、需要综合多处条款、结论必须可靠——准确优先，值得为推理深度付费。</p>
+      <p><strong>强模型 / 较高 effort + 检索和引用核验。</strong>长文档风险分析不仅需要推理，还要保证证据覆盖；测漏检率、引用准确率和人工复核成本。</p>
     </details>
     <details>
       <summary>④ 把用户输入分类成「投诉 / 咨询 / 表扬」 —— 点开看答案</summary>
-      <p><strong>标准模型。</strong>模式清晰的单步分类，快且便宜。这类高频小任务正是 Agent 里该省钱的地方。</p>
+      <p><strong>从轻量模型 / 低 effort 开始。</strong>重点测边界样本的混淆率、吞吐和成本；若类别含义复杂或错误代价高，再升级候选。</p>
     </details>
     <details>
       <summary>⑤ 在预算、工期、人力三重约束下排一个可行的项目计划 —— 点开看答案</summary>
-      <p><strong>推理模型。</strong>多约束权衡 + 多步规划，标准模型容易漏掉某个约束。这正对应 Agent 的 planning 步骤该用推理模型。</p>
+      <p><strong>把强模型 / 较高 effort 纳入候选。</strong>用约束满足率和计划可执行性评测，而不是只看回答是否写得详细；高 effort 若只是更啰嗦而没减少漏约束，就不值得。</p>
     </details>
   </div>
 </div>
 
 <div class="section">
-  <h2>🎯 速查卡：推理模型与 Extended Thinking</h2>
+  <h2>🎯 速查卡：推理能力与 Adaptive Thinking</h2>
   <div class="card">
-    <pre><code>【两类模型】
-  标准模型   ：问题 ─▶ 答案            （脱口而出，快、便宜）
-  推理模型   ：问题 ─▶ [长草稿] ─▶ 答案 （先打草稿，慢、贵、更准）
-  那串草稿 = reasoning tokens，通常对用户隐藏，但照常计费
+    <pre><code>【三层概念】
+  推理能力      = 模型是否擅长多步分析（模型能力，需评测）
+  Adaptive Thinking = 本次请求允许模型按需思考
+  effort        = 调节质量 / 延迟 / Token 的投入倾向
 
-【Extended Thinking（以 Claude 为例）】
-  开 thinking 开关 + 设 budget_tokens（思考预算）
-  预算大 ─▶ 想得深，但更慢更贵   ← 用 token 换推理深度
-  budget_tokens 有上限、随版本变 → 以官方文档为准
+【当前 Claude】
+  thinking={"type":"adaptive"}
+  output_config={"effort":"high"}   # 档位按目标模型文档
+  display="summarized" 只控制摘要可见性，不是计费开关
+  max_tokens 是硬输出上限，要给 thinking + 最终文本留空间
 
-【选哪个（决策规则）】
-  简单 + 定义明确 + 要快要省      → 标准模型
-  困难 / 多步 / 多约束 / 长文档   → 推理模型
-  例：抽字段/分类/改写=标准；数学/复杂编码/合同风险=推理
+【旧写法】enabled + budget_tokens
+  Opus 4.8/4.7、Sonnet 5、Fable 5 会拒绝
+  Opus/Sonnet 4.6 仅弃用兼容；新代码不从这里起步
 
-【成本】
-  reasoning token 也计费 → 推理模型更慢更贵
-  别对简单任务上推理(烧钱) / 别对硬任务用标准(不准)
-  按难度分派 = Model Routing（见 L23）
+【路由】
+  简单明确 → 从轻量模型 / 低 effort 开始
+  困难多步 → 测强模型 / 较高 effort，并用工具核验
+  最终按成功率 + 延迟 + Token + 失败成本选择（见 L23）
 
-【提示词】
-  标准模型：可能要写 "step by step" 引导思考
-  推理模型：通常不用；指令越简越好，说清目标+约束即可
-
-【Agent 混合用】
-  规划/复杂决策 → 推理模型
-  大量小步工具调用 → 标准模型</code></pre>
+【提示词】明确目标、约束、验收证据
+  不把“think step by step”当质量保证
+  是否增加过程脚手架，用评测决定</code></pre>
   </div>
 </div>
 
@@ -266,7 +275,7 @@ resp = client.messages.create(
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://developers.openai.com/api/docs/guides/reasoning-best-practices" target="_blank"><strong>OpenAI · Reasoning best practices</strong></a></p>
-    <p>官方对"何时用推理模型 vs 标准模型"的决策规则、以及推理模型的提示策略讲得最清楚，可直接用于你的路由设计。配合 <a href="https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking" target="_blank">Anthropic · Extended Thinking</a> 理解 <code>thinking</code> / <code>budget_tokens</code> 在 API 里到底怎么开、思考预算怎么调。</p>
+    <p>OpenAI 的资料适合建立“按任务复杂度选择推理投入”的直觉；Claude 的实际请求字段必须以 <a href="https://platform.claude.com/docs/en/build-with-claude/extended-thinking" target="_blank">Anthropic · Extended Thinking</a> 与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Effort</a> 为准。阅读时注意：跨厂商概念可以比较，参数名和支持范围不能照搬。</p>
   </div>
 </div>
 
@@ -294,15 +303,15 @@ resp = client.messages.create(
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li><strong>标准模型脱口而出，推理模型先打草稿</strong>——后者在作答前生成一长串隐藏的 reasoning token</li>
-      <li><strong>Extended Thinking</strong> 靠 <code>thinking</code> 开关 + <code>budget_tokens</code> 开启，本质是<strong>用 Token 预算换推理深度</strong>（上限以官方文档为准）</li>
-      <li>决策规则：<strong>简单且定义明确 → 标准模型；困难 / 多步推理 → 推理模型</strong></li>
-      <li>reasoning token <strong>照常计费</strong>，所以推理模型更慢更贵——别 overkill，也别用标准模型硬扛难题</li>
-      <li>推理模型的提示<strong>更简</strong>，通常不用手写 step-by-step；Agent 里<strong>规划用推理、工具小步用标准</strong>，混合最划算</li>
+      <li>要分清<strong>推理能力、Adaptive Thinking 与 effort</strong>：模型能力、思考模式和投入控制是三层</li>
+      <li>当前 Claude 新代码使用 <code>thinking={"type":"adaptive"}</code> + <code>output_config.effort</code>；固定 <code>budget_tokens</code> 只属旧模型兼容知识</li>
+      <li><code>display</code> 只控制思考摘要是否可见，不代表免计费；<code>max_tokens</code> 才是硬输出上限</li>
+      <li>简单任务从轻量模型 / 低 effort 开始，困难任务测试强模型 / 较高 effort，并用外部工具核验</li>
+      <li>提示词应明确目标、约束和验收证据；Agent 路由最终依据成功率、延迟、Token 与失败成本</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    想更进一步？挑一个你正在做的 Agent 任务，把它拆成"规划步"和"工具步"，分别标注该用推理还是标准模型——你会立刻看到成本和准确率的取舍点在哪。任何一步拿不准，随时问我（你的老师）。下一课我们把视野从"推理"扩展到模型的<strong>整体能力边界</strong>：<a href="0025-L21-model-capabilities.html">L21 · 模型能力边界</a>。
+    想更进一步？挑一个 Agent 任务，把它拆成几个步骤，为每步写出“起始模型 / effort、质量指标、延迟和 Token 上限、外部验证方式”，再用小评测集决定路由。下一课把视野扩展到模型的<strong>整体能力边界</strong>：<a href="0025-L21-model-capabilities.html">L21 · 模型能力边界</a>。
   </div>
 </div>
 

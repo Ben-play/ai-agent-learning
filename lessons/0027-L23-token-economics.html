@@ -14,10 +14,10 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Token 经济学与降本杠杆</h1>
-    <p class="subtitle">同一个 Agent，账单可以差 3~5 倍——差在你会不会用两根杠杆</p>
+    <p class="subtitle">先测钱花在哪，再用缓存、路由、批处理和输出控制逐项验证收益</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:87%"></div></div>
   </div>
 </div>
@@ -26,7 +26,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p><a href="0022-L18-tokenization.html">L18</a> 教了你怎么<strong>数 Token、算成本</strong>。这一课回答下一个问题：<strong>怎么把这笔成本压下去。</strong></p>
-    <p>这不是可选项。Agent 和单次 chat 有本质区别——一次任务里 LLM 被<strong>反复调用</strong>，每次都拖着长 system prompt 和越滚越长的历史。同一个功能，不会优化的人月账单可能是会优化的人的 <strong>3~5 倍</strong>。好消息是：<strong>最大的两根杠杆</strong>——<strong>Prompt Caching（提示缓存）</strong>和 <strong>Model Routing（模型路由）</strong>，官方文档和真实案例都能落到 <strong>50%~90%</strong> 的降幅（其余如压缩历史、控输出、批处理是补充）。学完你能给一个 Agent<strong>制定 token 预算、并把成本砍一半以上</strong>。这是从"能跑"到"生产级"的必修课。</p></p>
+    <p>Agent 一次任务可能反复调用 LLM，每轮又携带 system prompt、工具定义和增长的历史，因此成本会被放大。Prompt Caching 与 Model Routing 往往是高收益候选，但节省比例取决于静态前缀占比、命中率、任务分布和路由质量；第三方案例只能说明“可能做到”，不能保证你的系统也省一半。学完你会建立预算、测量成本构成，再按证据选择优化手段。</p>
   </div>
 </div>
 
@@ -65,7 +65,7 @@
     <table>
       <thead><tr><th>放大器</th><th>为什么费钱</th></tr></thead>
       <tbody>
-        <tr><td><strong>① 多轮历史每轮重发</strong></td><td>API 是无状态的，每轮都要把<strong>全部历史</strong>当输入重新送一遍，输入量随轮数线性增长</td></tr>
+        <tr><td><strong>① 多轮历史每轮重发</strong></td><td>第 n 轮请求携带的历史长度常随轮数近似线性增长；若每轮都重发完整历史，前 n 轮<strong>累计输入量常近似二次增长</strong></td></tr>
         <tr><td><strong>② 长 system prompt</strong></td><td>那段角色设定 + 工具说明 + 少样本示例，<strong>每一次请求都完整计费</strong>，一个字不少</td></tr>
         <tr><td><strong>③ 工具调用循环</strong></td><td>一次任务 = 多次往返 LLM（想→调工具→读结果→再想）。每次往返都带上完整上下文</td></tr>
         <tr><td><strong>④ 检索长文档</strong></td><td>RAG / 长文档塞进上下文，动辄几千 token，且往往<strong>反复出现</strong>在多轮里</td></tr>
@@ -79,7 +79,7 @@
 </div>
 
 <div class="section">
-  <h2>3. 杠杆一：Prompt Caching（第一降本杠杆）</h2>
+  <h2>3. Prompt Caching：静态前缀占比高时的强杠杆</h2>
   <div class="card">
     <p><strong>原理：</strong>把<strong>静态的、重复的前缀</strong>（长 system prompt、固定的少样本示例、反复出现的文档）缓存起来。后续请求只要前缀<strong>逐字节命中</strong>缓存，这部分就<strong>大幅降价</strong>——你不再为"每次都一样的内容"付全价。</p>
     <p>各家的数量级（以官方文档为准，这里用"约"）：</p>
@@ -90,7 +90,8 @@
         <tr><td><strong>OpenAI</strong></td><td>命中约省 <strong>50%~90%</strong>（视模型代次，较新模型可达 ~90%）</td><td>自动，无额外写入费</td><td>自动前缀缓存</td></tr>
       </tbody>
     </table>
-    <p>数据出处：<a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。Anthropic 首次<strong>写入</strong>略贵（约 1.25×），所以缓存的经济学是：<strong>同一前缀被读得越多越划算</strong>——一次性任务别缓存，反复命中的 Agent 场景才是甜点。</p>
+    <p>数据出处：<a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。按相对输入价粗算：5 分钟缓存一次写入 1.25×，之后一次读取 0.1×，两次使用合计 1.35×，低于两次全价 2×；1 小时缓存写 2×，通常要到第三次使用（2×+0.1×+0.1×）才低于三次全价。实际收益还取决于命中时机、并发和静态前缀占比。</p>
+    <p><strong>还有一个常被漏掉的门槛：</strong>可缓存前缀必须达到目标模型的最小 Token 数，且该阈值随模型/平台变化；太短时不会报错，只是不会建立缓存。因此不要背一个固定阈值，接入时查当前模型文档并看 usage 验证。</p>
 
     <p><strong>关键设计原则</strong>：把 prompt 拆成「<strong>静态前缀（可缓存）+ 动态后缀（每次变）</strong>」，<strong>静态部分放最前面</strong>。因为缓存是<strong>前缀匹配</strong>——前缀里任何一个字节变了，后面全部失效。所以千万别把时间戳、用户 ID、随机数塞进 system prompt 开头：</p>
     <pre><code>【缓存键设计：静态前缀 + 动态后缀】
@@ -107,10 +108,10 @@
 
 ⚠️ 反例：system prompt 开头写 "当前时间：{now}"
    → 前缀每次都变 → 缓存永远不命中 → 白交钱</code></pre>
-    <p>真实案例把这条原则落地后，报道的降幅在 <strong>59%~70%</strong>（<a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery: How We Cut LLM Cost with Prompt Caching</a>）。对 Agent 来说，长 system prompt + 固定工具集天然就是巨大的静态前缀，缓存几乎是"免费的午餐"。</p>
+    <p>ProjectDiscovery 的案例报告了 <strong>59%~70%</strong> 的降幅（<a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">案例原文</a>），但这是其请求结构和命中率下的结果，不是普遍保证。长 system prompt + 固定工具集通常是良好候选；若前缀太短、频繁变化、并发请求来不及读取刚写入的缓存，收益会显著下降。</p>
   </div>
   <div class="tip">
-    验证缓存是否真的命中：看 API 返回的 <code>usage</code>——若 <code>cache_read</code> 类字段一直是 0，说明有"静默失效因子"（多半是前缀里混进了时间戳 / 随机 ID / 没排序的 JSON）。<strong>缓存不命中不报错，只是悄悄多收钱</strong>，所以必须主动核对。
+    验证 Anthropic 缓存是否命中：看 <code>usage.cache_read_input_tokens</code>；首次写入看 <code>cache_creation_input_tokens</code>，<code>input_tokens</code> 是未缓存的剩余部分。若重复请求的读取字段一直为 0，检查前缀长度、时间戳 / 随机 ID、工具顺序和并发时机。
   </div>
 
   <div class="quiz" data-quiz="q3">
@@ -135,7 +136,7 @@
    └─ 困难（多步推理 / 复杂 Agent 规划）   → 顶级模型 只接这类
 
 思路：先用便宜模型试；不确定 / 判为难，再升级到贵模型。</code></pre>
-    <p>为什么有效：小模型的单价往往是大模型的<strong>几分之一到几十分之一</strong>，而生产流量里<strong>大部分请求其实很简单</strong>。把这部分从大模型挪走，账单立刻塌方——真实报道的降幅在 <strong>40%~85%</strong>（<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry: LLM Routing — Cost/Quality-Aware Model Selection</a>）。</p>
+    <p>为什么可能有效：不同模型单价差异大，若流量中确有一批简单请求，且路由器能在不显著损害质量的前提下识别它们，就能降低平均成本。TrueFoundry 的文章汇总了 <strong>40%~85%</strong> 的案例区间（<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">案例原文</a>）；这不是保证，误路由、二次升级和路由器自身调用也会产生质量与成本。</p>
     <p><strong>工程落地：</strong>用一个 <strong>gateway</strong>（如 <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a>，见课程 RESOURCES）统一路由，业务代码不用管背后是哪个模型，换模型 / 调路由策略只改配置。这直接连回两条已学的原则：</p>
     <ul>
       <li>👉 <a href="0024-L20-reasoning-models.html">L20</a>：推理模型（思考更多）<strong>更贵更慢</strong>——别对"翻译一句话""判断正负面"这种简单活开推理，纯属烧钱。</li>
@@ -146,12 +147,12 @@
   <div class="quiz" data-quiz="q1">
     <div class="quiz-question"><span class="quiz-q">Q</span> Model Routing 降本的核心思路是？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">把每一个请求都换成最强最贵的大模型</button>
-      <button data-answer="correct">便宜模型兜底，难请求才交给贵模型</button>
-      <button data-answer="wrong">把所有请求统一改成流式返回来省钱</button>
-      <button data-answer="wrong">把每次的输出长度都强行压到最短</button>
+      <button data-answer="wrong">把每个请求都固定交给最贵模型</button>
+      <button data-answer="wrong">把所有响应改成流式就会更省钱</button>
+      <button data-answer="correct">按任务评测分流并监控误路由</button>
+      <button data-answer="wrong">把所有输出强制截断到最短长度</button>
     </div>
-    <div class="quiz-explanation">路由的关键是<strong>按难度分流</strong>：生产流量里大部分请求很简单，用便宜快的小模型兜底，只把真正困难的请求升级到贵模型。因为小模型单价常是大模型的几分之一，这一分流就能砍掉 40%~85% 成本。它和"选型"（<a href="0026-L22-benchmarks-and-selection.html">L22</a>）一脉相承，只是把选择从一次性变成每请求的动态决策。</div>
+    <div class="quiz-explanation">路由的关键是用业务评测识别哪些任务可以交给低成本候选，并持续监控误路由、升级率和失败成本。第三方 40%~85% 只是案例区间；如果路由器判断不准或经常二次调用，节省会缩水甚至反转。</div>
   </div>
 </div>
 
@@ -164,10 +165,10 @@
       <tbody>
         <tr><td><strong>压缩历史 / 对话（compaction）</strong></td><td>多轮太长时，<strong>只保留摘要而非全文</strong>回传，砍掉①号放大器。深入见 <strong>Phase 5</strong>（Agent 上下文工程）</td></tr>
         <tr><td><strong>控制输出长度</strong></td><td>输出是输入的 3~5 倍价，最贵。设 <code>max_tokens</code>、在 prompt 里明确"简洁作答 / 只返回 JSON"，别让模型啰嗦</td></tr>
-        <tr><td><strong>批处理（Batch API）</strong></td><td>非实时任务（离线分类、批量总结）走批处理，通常约省 <strong>50%</strong>，代价是延迟（结果稍后返回）</td></tr>
+        <tr><td><strong>批处理（厂商能力）</strong></td><td>例如 Anthropic Message Batches 对非实时请求提供 50% 价格折扣；其他厂商的折扣、限制和完成时限不同，接入前查当前官方定价</td></tr>
       </tbody>
     </table>
-    <p>这些是补充，不是替代。<strong>先上缓存和路由</strong>（收益最大、几乎无副作用），再按场景补这几个。</p>
+    <p>优化顺序取决于测量结果：静态前缀占比高且会重复命中时先测缓存；请求难度分层明显时再评估路由；离线任务可比较 Batch；若输出本身占大头，先控制输出可能更直接。没有一项对所有系统都“几乎无副作用”。</p>
   </div>
 </div>
 
@@ -182,8 +183,8 @@
      × 每天 / 每月请求数
 ③ 对照单价，得出未优化月成本（这是"上限"）
 ④ 用缓存 + 路由压下来
-     静态前缀 → 缓存（约 0.1× / 约 0.5×）
-     简单请求 → 路由到便宜模型
+     静态前缀 → 按目标厂商/模型测缓存命中与盈亏平衡
+     简单请求 → 仅在质量评测通过后路由到便宜模型
      → 得出优化后成本，与上限对比看省了多少</code></pre>
     <p>为什么先算再优化：不算预算，你既不知道<strong>钱花在哪一项</strong>（是历史太长？还是 system prompt 太肥？），也无法判断优化<strong>值不值</strong>。把它当成 Agent 上线前的"体检"。</p>
   </div>
@@ -191,12 +192,12 @@
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> 关于 Anthropic 的 Prompt Caching，下面哪个说法对？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">缓存命中后被缓存的那部分内容就完全免费了</button>
-      <button data-answer="correct">缓存读约 0.1× 价，即省约九成</button>
-      <button data-answer="wrong">缓存对每次都变化的动态后缀最有效果</button>
-      <button data-answer="wrong">首次写入缓存比一次正常请求还要便宜</button>
+      <button data-answer="correct">缓存读约 0.1×，但首次写入更贵</button>
+      <button data-answer="wrong">命中后缓存内容就完全不再计费</button>
+      <button data-answer="wrong">动态后缀比稳定前缀更容易命中缓存</button>
+      <button data-answer="wrong">任何长度的前缀都会自动建立缓存</button>
     </div>
-    <div class="quiz-explanation">Anthropic 缓存<strong>读</strong>约 <strong>0.1×</strong> 输入价（省约 90%，不是全免），首次<strong>写入</strong>反而略贵（约 1.25×）。缓存对<strong>静态、重复的前缀</strong>最有效——动态后缀每次都变、无法命中。所以设计上要把静态部分放前面、打缓存标记，让它被反复命中。具体倍数以官方文档为准。</div>
+    <div class="quiz-explanation">Anthropic 缓存读取约 0.1× 输入价，5 分钟首次写约 1.25×，并非免费。前缀还要达到目标模型的最小缓存长度且保持一致；最终通过 <code>cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code> 验证，而不是只看配置。</div>
   </div>
 </div>
 
@@ -232,17 +233,17 @@
                                     省下 ≈ $540 / 天
 
 加缓存后日总成本：
-  缓存前缀 $60 + 动态输入 $60 + 输出 $360 = $480 / 天
+  缓存前缀稳态近似 $60 + 动态输入 $60 + 输出 $360 = $480 / 天
 
 ────────────────────────────────────────────────
-$1020 → $480，账单砍掉约 53%
-其中光"静态前缀"这一项就从 $600 降到 $60（省约 90%）</code></pre>
-      <p><strong>体会两点：</strong>(a) 缓存只作用于<strong>静态前缀</strong>，动态部分（问题+输出共 $420）它管不着——所以要尽量把内容往静态前缀里归；(b) system prompt 越大、请求越频繁，缓存收益越夸张。这里再叠一层<strong>路由</strong>（把简单问答分给便宜模型），$480 还能继续往下走。</p>
+$1020 → 约 $480，稳态账单下降约 53%
+其中静态前缀的缓存读取从全价降到约 0.1×</code></pre>
+      <p><strong>这是稳态近似：</strong>严格计算还应把每个缓存周期的首次写入按 1.25×（或 1 小时写入 2×）计入；在 10 万次请求中一次写入影响很小，但低频场景不能忽略。缓存只作用于命中的静态前缀，动态问题与输出仍按常规定价。是否再加路由，要看质量评测和升级率。</p>
     </details>
   </div>
 
   <div class="tip">
-    💼 面试高频：<strong>"如何优化 LLM 成本？"</strong> 满分答法按性价比排序：<strong>① Prompt Caching</strong>——缓存静态前缀，命中省约 90%（Anthropic）/约 50%~90%（OpenAI，视模型代次）；<strong>② Model Routing</strong>——便宜模型兜底、贵模型只接难请求；<strong>③ 压缩历史</strong>（只留摘要）；<strong>④ 控输出</strong>（max_tokens + 要求简洁）；<strong>⑤ 批处理</strong>（非实时约省 50%）。一句话点题原则：<strong>"原生缓存优先"</strong>——先把静态前缀缓存吃干净，再谈其他。
+    💼 面试高频：<strong>“如何优化 LLM 成本？”</strong> 先用 usage / tracing 拆出 system、历史、工具结果、输出和重试分别占多少，再匹配手段：重复静态前缀测缓存；任务难度分层明显时测路由；长历史做压缩；输出过长收紧格式；支持批处理且不要求实时的任务比较 Batch。每项都要同时报告<strong>节省、质量、延迟和失败率</strong>。
   </div>
 </div>
 
@@ -255,21 +256,18 @@ $1020 → $480，账单砍掉约 53%
   ① 历史每轮重发  ② 长 system prompt 每次都算
   ③ 工具循环多次往返  ④ 检索长文档反复出现
 
-【杠杆一·Prompt Caching】缓存静态前缀（第一杠杆）
-  Anthropic：读约 0.1×(省~90%)，写约 1.25×，默认~5min / 可选 1h
-  OpenAI：命中约省 50%~90%（视模型代次）
-  设计：静态前缀(放前+打标) + 动态后缀(放后)
-  ⚠️ 前缀混入时间戳/随机ID → 永不命中；查 usage 里 cache_read
+【Prompt Caching】适合重复、足够长、字节稳定的前缀
+  Anthropic：5m写约1.25× / 1h写约2× / 读约0.1×
+  粗略回本：5m约第2次使用；1h约第3次使用
+  最小前缀随模型变；查 cache_creation_input_tokens / cache_read_input_tokens
 
-【杠杆二·Model Routing】便宜模型兜底，贵模型只接难请求
-  按难度分流；gateway(LiteLLM)统一路由；报道降 40~85%
-  连回 L20(推理贵,别用于简单活) / L22(按难度选型)
+【Model Routing】按业务评测分流，监控误路由、升级率和失败成本
+  第三方 40~85% 仅案例，不是保证；路由器本身也有成本
 
-【其他】压缩历史(留摘要,→Phase5) / 控输出(max_tokens+简洁) / 批处理(~省50%)
+【其他】历史压缩 / 控输出 / 厂商 Batch（如 Anthropic 非实时折扣50%）
 
-【Token 预算】估单次量 × 频次 × 单价 = 上限 → 缓存+路由压下来
-
-【面试】Caching + Routing + 压历史 + 控输出 + 批处理；原则"原生缓存优先"</code></pre>
+【预算】单次量 × 频次 × 单价只是起点；还要加重试、路由、缓存写入
+【原则】先测成本构成，再选杠杆；同时验证质量、延迟和失败率</code></pre>
   </div>
 </div>
 
@@ -277,7 +275,7 @@ $1020 → $480，账单砍掉约 53%
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank"><strong>Anthropic: Prompt Caching</strong></a></p>
-    <p>官方文档，讲清缓存读/写倍数、TTL、以及"前缀匹配 + 缓存断点"的机制——这是第一降本杠杆的权威依据。配合 <a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry: LLM Routing</a> 理解第二杠杆，以及 <a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery 的真实降本案例</a> 看落地效果。</p>
+    <p>官方文档用于核对缓存读写倍数、TTL、最小前缀、前缀匹配和 usage 字段。<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry</a> 与 <a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery</a> 只作为案例阅读：学习它们如何测量，不把其节省百分比当成你的预测值。</p>
   </div>
 </div>
 
@@ -308,13 +306,13 @@ $1020 → $480，账单砍掉约 53%
     <ul>
       <li>成本 = 输入输出<strong>分开</strong>算，输出通常 3~5× 输入；Agent 因多轮/长 prompt/工具循环，token 消耗<strong>远超</strong>单次 chat</li>
       <li>费钱的几乎都是<strong>重复的静态输入</strong>——这正是两根杠杆的靶心</li>
-      <li><strong>杠杆一 Prompt Caching</strong>：缓存静态前缀，Anthropic 读约 0.1×（省约 90%）、OpenAI 约省 50%~90%（视模型代次）；设计成「静态前缀 + 动态后缀」，静态放前面</li>
-      <li><strong>杠杆二 Model Routing</strong>：便宜模型兜底、贵模型只接难请求，报道降 40~85%；连回 L20/L22</li>
-      <li>先<strong>制定 token 预算</strong>（估单次×频次×单价 = 上限），再用缓存+路由压下来；从 Phase 3 起养成"<strong>原生缓存优先 + 路由</strong>"的习惯</li>
+      <li><strong>Prompt Caching</strong>：适合足够长、重复且字节稳定的前缀；Anthropic 5m 写约 1.25×、1h 写约 2×、读约 0.1×，必须看 usage 验证命中</li>
+      <li><strong>Model Routing</strong>：按业务评测分流并监控误路由/升级率；第三方节省区间只作案例</li>
+      <li>先制定包含重试、缓存写入和路由调用的预算，再按成本构成选择缓存、路由、压缩、输出控制或 Batch，并同时验证质量与延迟</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    想动手？拿你自己的一个 Agent 场景，套第 6 节的四步算一遍预算：先估未优化的月成本，再把最大的那个静态前缀标出来、假设加缓存后按约 0.1× 重算——你会立刻看到"钱花在哪、省在哪"。算完有任何拿不准的地方（比如某个厂商的确切倍数、路由阈值怎么定），随时问我或你的老师。下一课我们把这两阶段学的<strong>选型 + 降本</strong>一起用到 <a href="0028-L24-phase2-capstone.html">Phase 2 综合实战</a>里。
+    想动手？拿一个 Agent trace，把 system、历史、工具结果、输出、重试分别计数，再模拟“无缓存 / 5m缓存 / 1h缓存 / 路由”四种方案。别只写节省比例，还要记录命中率、质量、P95 延迟和失败率。下一课把选型与成本工程用于 <a href="0028-L24-phase2-capstone.html">Phase 2 综合实战</a>。
   </div>
 </div>
 

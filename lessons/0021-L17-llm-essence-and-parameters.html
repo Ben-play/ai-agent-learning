@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">15</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>LLM 本质与生成参数</h1>
     <p class="subtitle">LLM 只是在"猜下一个词"——但怎么猜，你能调</p>
@@ -26,7 +26,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>你接下来所有的 Agent 代码，本质都是在调一个"下一个 Token 预测器"。不理解它<strong>怎么预测</strong>、<strong>凭什么有时候胡说、有时候很稳</strong>，你就只能靠玄学调参。</p>
-    <p>这一课把 LLM 的工作原理讲到"够用就好"的程度（不写 Transformer 代码），然后聚焦你每天都会设的三个旋钮——<code>temperature</code>、<code>top_p</code>、惩罚项。设对了，同一个模型能从"废话生成器"变成"可靠工具"。这是 Phase 2 的开篇，也是面试必问的第一组概念。</p>
+    <p>这一课把 LLM 的工作原理讲到“够用就好”的程度（不写 Transformer 代码），然后拆开三个常见的<strong>解码概念</strong>——<code>temperature</code>、<code>top_p</code>、重复惩罚。先理解它们如何改变候选 Token，再看具体厂商是否真的开放这些请求字段：<strong>概念通用，不代表每个 API 都有同名旋钮</strong>。这是 Phase 2 的开篇，也是面试必问的第一组概念。</p>
   </div>
 </div>
 
@@ -38,8 +38,8 @@
       <li>用一句话说清 LLM 的本质：<strong>基于概率的下一个 Token 预测</strong></li>
       <li>直觉理解"注意力"在做什么（不涉及数学）</li>
       <li>讲清 <code>temperature</code> 如何缩放概率分布、<code>top_p</code> 如何裁剪候选集</li>
-      <li>区分 <code>frequency_penalty</code> 与 <code>presence_penalty</code></li>
-      <li>为不同任务（抽取 / 创作 / 代码）选对参数组合</li>
+      <li>区分 <code>frequency_penalty</code> 与 <code>presence_penalty</code>，并知道它们不是所有厂商都有</li>
+      <li>先查目标模型支持哪些字段，再为抽取 / 创作 / 代码任务选择控制方式</li>
       <li>说清一个反直觉事实：<strong>temperature=0 也不保证完全可复现</strong></li>
     </ul>
   </div>
@@ -93,7 +93,9 @@
       <li><strong>低温（→0）</strong>：让高概率 Token 更突出、低概率的被压得更低。分布变"尖"，模型几乎总挑最可能的那个 → <strong>稳定、保守、可预测</strong>。</li>
       <li><strong>高温（→1 甚至更高）</strong>：把差距拉平，低概率 Token 也有机会被选中。分布变"平"，输出更<strong>多样、有创造力、也更容易跑偏</strong>。</li>
     </ul>
-    <p>直觉记法：<strong>温度高 = 脑洞大，温度低 = 循规蹈矩</strong>。数学上，temperature 是在 softmax 前对 logits 除以 T——T 越小，分布越集中（<code>T=0</code> 是特例，实现上直接退化为取概率最高的那个 Token，即"贪心/argmax"，这正是第 6 节要用到的）（详见 <a href="https://huggingface.co/blog/mlabonne/decoding-strategies" target="_blank">Hugging Face: Decoding Strategies</a>）。</p>
+    <p>直觉记法：<strong>温度高 = 脑洞大，温度低 = 循规蹈矩</strong>。数学上，temperature 通常是在 softmax 前对 logits 除以 T——T 越小，分布越集中；部分实现把 <code>T=0</code> 特判为贪心 / argmax（详见 <a href="https://huggingface.co/blog/mlabonne/decoding-strategies" target="_blank">Hugging Face: Decoding Strategies</a>）。</p>
+    <div class="tip">
+      <strong>先分清“解码概念”和“API 字段”。</strong>Temperature / top-p 是理解采样的基础，但并非每个模型都开放这些字段。例如当前 Claude Opus 4.8 / 4.7 与 Claude Sonnet 5 不接受 <code>temperature</code>、<code>top_p</code>、<code>top_k</code>；使用这些模型时，应通过清晰提示词约束输出，并在需要推理深度控制时使用 <code>output_config.effort</code>（L20 再展开）。所以表里的数值只适用于<strong>确实支持该采样参数</strong>的 API，接入前先查模型文档。</div>
     <table>
       <thead><tr><th>任务</th><th>建议 temperature</th><th>为什么</th></tr></thead>
       <tbody>
@@ -124,7 +126,7 @@
 按概率排序累加，取到累计 90% 为止的那批 Token，
 剩下 10% 概率的"长尾低概率词"直接排除。</code></pre>
     <p>它的好处是<strong>自适应</strong>：模型很确定时（一个 Token 就占 95%），候选集自动变小；模型不确定时（概率分散），候选集自动变大。这比固定取前 K 个（top-k）更聪明——出处见 <a href="https://huggingface.co/blog/how-to-generate" target="_blank">Hugging Face: How to generate text</a>。</p>
-    <p style="margin-top:.5rem;"><strong>temperature vs top_p 怎么配？</strong>官方与社区普遍建议：<strong>两个只重点调一个</strong>，另一个留默认。同时把两个都往极端调，行为会很难预测。常见做法是固定 <code>top_p=1</code> 只调 temperature，或反之。</p>
+    <p style="margin-top:.5rem;"><strong>temperature vs top_p 怎么配？</strong>如果目标 API 同时支持两者，通常只重点调一个、另一个留默认，便于归因；同时把两个都往极端调，行为会很难预测。常见做法是固定 <code>top_p=1</code> 只调 temperature，或反之。若目标模型不接受这些字段，就不要硬塞参数，应改用该厂商支持的控制方式。</p>
   </div>
   <div class="tip">
     ⚠️ 陷阱题：<strong>"temperature 和 top_p 有什么区别？"</strong> — temperature 是<strong>缩放</strong>整个分布的形状（改变每个 Token 被选中的相对概率）；top_p 是<strong>裁剪</strong>候选集（先砍掉长尾，再采样）。一个改"概率"，一个改"能选谁"。
@@ -134,20 +136,20 @@
 <div class="section">
   <h2>5. 两个惩罚项：治重复啰嗦</h2>
   <div class="card">
-    <p>模型有时会车轱辘话来回说。两个惩罚项通过<strong>调低已出现 Token 的 logit</strong> 来抑制重复（参考 <a href="https://www.promptingguide.ai/introduction/settings" target="_blank">Prompt Engineering Guide: LLM Settings</a>）：</p>
+    <p>一些 API（例如部分 OpenAI 风格接口）提供重复惩罚字段，通过<strong>调低已出现 Token 的 logit</strong> 来抑制车轱辘话（参考 <a href="https://www.promptingguide.ai/introduction/settings" target="_blank">Prompt Engineering Guide: LLM Settings</a>）：</p>
     <ul>
       <li><strong><code>frequency_penalty</code>（频率惩罚）</strong>：按 Token <strong>出现的次数</strong>成比例惩罚——出现越多，越难再出现。治"同一个词反复刷屏"。</li>
       <li><strong><code>presence_penalty</code>（存在惩罚）</strong>：只要 Token <strong>出现过一次</strong>就施加固定惩罚，与次数无关。鼓励模型<strong>换新话题、引入新词</strong>。</li>
     </ul>
-    <p>范围通常是 <code>-2.0 ~ 2.0</code>，默认 <code>0</code>。区别一句话：<strong>frequency 看"出现几次"（按量），presence 看"有没有出现"（按 0/1）</strong>。日常大多数任务保持默认 0 即可，只有明显重复时才小幅上调。</p>
+    <p>在提供这两个字段的接口里，常见范围是 <code>-2.0 ~ 2.0</code>、默认 <code>0</code>。区别一句话：<strong>frequency 看“出现几次”（按量），presence 看“有没有出现”（按 0/1）</strong>。但它们不是通用 LLM 参数；目标模型没有这些字段时，应通过提示词、输出约束或厂商提供的其他机制控制重复，不能照搬请求体。</p>
   </div>
 
   <div class="quiz" data-quiz="q3">
     <div class="quiz-question"><span class="quiz-q">Q</span> <code>frequency_penalty</code> 与 <code>presence_penalty</code> 的核心区别是？</div>
     <div class="quiz-options">
       <button data-answer="wrong">一个加分一个减分</button>
-      <button data-answer="correct">按次数还是按有无</button>
       <button data-answer="wrong">只作用于中文词</button>
+      <button data-answer="correct">按次数还是按有无</button>
       <button data-answer="wrong">分别控制长度速度</button>
     </div>
     <div class="quiz-explanation">两者都惩罚已出现的 Token，区别在<strong>缩放方式</strong>：frequency_penalty 按出现<strong>次数</strong>成比例（越频繁越重罚），presence_penalty 只看<strong>出现过没有</strong>（0/1 固定罚）。前者治刷屏式重复，后者鼓励引入新内容。</div>
@@ -162,11 +164,28 @@
       <li><strong>浮点数不满足结合律</strong>：<code>(a+b)+c ≠ a+(b+c)</code>。GPU 上并行归约的加法顺序会变，导致 logits 有极小抖动，偶尔翻转"谁是第一名"。</li>
       <li><strong>批处理 / 硬件差异</strong>：同一请求在不同 batch 大小、不同 GPU、不同推理引擎版本下，数值路径不同。</li>
     </ul>
-    <p>这不是玄学，是被 <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference" target="_blank">Thinking Machines Lab</a> 和 <a href="https://github.com/vllm-project/vllm/discussions/17166" target="_blank">vLLM 维护者</a>系统分析过的工程现实。<strong>面试加分点</strong>：当被问"怎么让 LLM 输出可复现"，正确回答是"temperature=0 + 固定 seed（<em>部分 API 才支持 seed，如 OpenAI；Anthropic 无此参数</em>）能<strong>大幅提高</strong>一致性，但因浮点非结合性与硬件差异，<strong>无法 100% 保证</strong>"。</p>
+    <p>这不是玄学，是被 <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference" target="_blank">Thinking Machines Lab</a> 和 <a href="https://github.com/vllm-project/vllm/discussions/17166" target="_blank">vLLM 维护者</a>系统分析过的工程现实。<strong>面试加分点</strong>：在支持采样控制的 API 上，低温 / 贪心解码配合固定 seed（若厂商提供）只能<strong>提高</strong>一致性，不能保证逐字节相同。Seed 也是厂商能力：部分 OpenAI 接口提供，Anthropic Messages API 当前没有对应请求字段；当前 Claude 模型若不接受 temperature，也不能照搬“temperature=0”方案。</p>
   </div>
   <div class="tip">
     这条对 Agent 工程很实际：<strong>不要把关键逻辑建立在"LLM 输出逐字节稳定"的假设上</strong>。要稳，就用结构化输出 + 校验（后面 <a href="0018-L14-pydantic.html">Pydantic</a> 那套），而不是指望采样完全确定。
   </div>
+</div>
+
+<div class="section">
+  <h2>7. 实战：先问“支持什么”，再谈怎么调</h2>
+  <details>
+    <summary><strong>🧪 Agent 场景练习：</strong>为抽取、创作和代码任务选择控制方式（先自己判断）</summary>
+    <div class="card" style="margin-top:.8rem;">
+      <p><strong>题目：</strong>Provider A 支持 <code>temperature</code> / <code>top_p</code>；当前 Claude Opus 4.8 不支持这些采样字段，但支持清晰提示词与 <code>output_config.effort</code>。分别为“发票字段抽取”“广告创意”“复杂代码审查”选择控制方式。</p>
+      <p><strong>参考答案：</strong></p>
+      <ul>
+        <li><strong>发票抽取：</strong>Provider A 可用低 temperature 并配结构化输出；Claude Opus 4.8 不传采样参数，改用严格输出格式、明确字段规则和运行时校验。稳定性主要靠结构化约束，不靠“温度必然可复现”。</li>
+        <li><strong>广告创意：</strong>Provider A 可提高 temperature 或调 top-p（只重点调一个）；Claude 则在提示词里明确“给出多种差异明显的方向”，而不是发送不支持的字段。</li>
+        <li><strong>复杂代码审查：</strong>重点不是提高随机性。两类 provider 都应先明确审查标准；Claude 可在 L20 学到用较高 <code>effort</code> 增加分析深度，再通过测试验证结论。</li>
+      </ul>
+      <p><strong>判断顺序：</strong>任务需要什么行为 → 目标模型支持什么接口 → 选择对应控制手段。不要先背一组参数，再强塞给所有模型。</p>
+    </div>
+  </details>
 </div>
 
 <div class="section">
@@ -182,18 +201,18 @@
   └── 按概率累加取到 P%，砍掉长尾再采样；自适应候选大小
   ★ temperature 与 top_p 只重点调一个，另一个留默认
 
-【frequency_penalty】按"出现次数"罚 → 治刷屏重复
-【presence_penalty】 按"出现有无"罚 → 鼓励换新话题
-  └── 范围 -2~2，默认 0，大多数任务不用动
+【frequency_penalty】按“出现次数”罚 → 治刷屏重复
+【presence_penalty】 按“出现有无”罚 → 鼓励换新话题
+  └── 都是厂商可选字段，不是每个模型都有
 
-【反直觉】temperature=0 ≠ 100% 可复现
-  └── 浮点非结合(a+b)+c≠a+(b+c) + 硬件/批次差异
-      要稳 → 结构化输出 + 校验，别赌采样确定
+【先看接口再调参】概念通用 ≠ 字段通用
+  ├── 支持 sampling 参数的 API：按任务调 temperature / top_p
+  └── 当前 Claude Opus 4.8/4.7、Sonnet 5：不传这些字段
+      用提示词、结构化输出、校验；推理深度见 L20 effort
 
-【任务 → 参数】
-  抽取/分类/工具调用 → temp 0~0.3
-  问答/摘要/改写      → temp 0.3~0.7
-  创意/头脑风暴       → temp 0.7~1.0+</code></pre>
+【反直觉】即使支持 temperature=0，也不保证 100% 可复现
+  └── 浮点非结合 + 硬件/批次差异；seed 也由厂商决定
+      要稳 → 结构化输出 + 校验，别赌采样确定</code></pre>
   </div>
 </div>
 
@@ -231,10 +250,10 @@
     <ul>
       <li>LLM 的本质是<strong>基于概率的下一个 Token 预测</strong>，生成就是"预测→采样→接上"的循环</li>
       <li><strong>注意力</strong>让模型按相关性给上文各 Token 加权，捕捉长距离依赖</li>
-      <li><strong>temperature</strong> 缩放分布形状（低=稳、高=野）；<strong>top_p</strong> 裁剪候选集（自适应）；两者只重点调一个</li>
-      <li><strong>frequency_penalty</strong> 按次数罚、<strong>presence_penalty</strong> 按有无罚，治重复</li>
-      <li>按任务选参数：抽取用低温，创作用高温</li>
-      <li><strong>temperature=0 也不保证逐字节可复现</strong>——浮点非结合性 + 硬件差异；要稳靠结构化校验</li>
+      <li><strong>temperature</strong> 缩放分布形状，<strong>top_p</strong> 裁剪候选集；它们是通用解码概念，但不是每个 API 都开放的字段</li>
+      <li><strong>frequency_penalty</strong> 按次数罚、<strong>presence_penalty</strong> 按有无罚；同样要先确认目标厂商支持</li>
+      <li>控制输出的顺序是：明确任务行为 → 查模型能力 → 选采样参数、提示约束或结构化校验</li>
+      <li>即便 API 支持 <strong>temperature=0 / seed</strong>，也不能保证逐字节复现；当前 Claude 模型还可能不接受这些采样字段</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
