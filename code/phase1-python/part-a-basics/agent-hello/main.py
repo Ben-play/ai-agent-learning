@@ -1,7 +1,12 @@
-from agent.core import create_response
+import sys
+
+from agent import create_response
+
 
 def run():
-    msg = create_response("Hello, how can I assist you today?")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    msg = create_response("Hello Agent!")
     print(msg)
 
 if __name__ == "__main__":

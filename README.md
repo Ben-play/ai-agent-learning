@@ -37,7 +37,10 @@
 │   ├── 0001-glossary.html        # 术语表
 │   ├── 0002-agent-harness.html   # Agent Harness
 │   └── 0003-mcp-a2a-protocols.html # MCP/A2A 协议
-├── code/                 # 代码练习
+├── best-practices/       # 非编号的阶段级工程实践综合页
+│   └── phase1-python-engineering-practices.html
+├── code/                 # 代码练习与离线综合项目
+│   └── phase1-python/phase1-practices-capstone/
 ├── learning-records/     # 学习记录
 └── NOTES.md              # 课程笔记与审核清单
 ```
@@ -50,8 +53,11 @@
 - 💡 **为什么这课重要** — 课前引导
 - 🎯 **学习目标** — 明确的知识点清单
 - 📖 **知识点** — 带 Agent 开发关联的讲解
+- ✅ **知识点级最佳实践** — 给出场景、正反对照、照做步骤、运行自检与结果解释
 - ❓ **交互测验** — 即时反馈
 - 🏋️ **实战练习** — 动手实践
+- 📋 **单课级最佳实践** — 用可操作验收任务收束本课执行纪律
+- 🧭 **阶段实践检查点与最终复盘** — 学完相关知识后立即完成跨课检查点，避免拖到阶段末遗忘；Phase 1 的 8 个检查点分布在 L01/L02/L04/L07/L11/L12/L14/L16，[最终总结页](best-practices/phase1-python-engineering-practices.html)用于复盘索引和离线综合验收
 - 💼 **面试常见问题** — 高频考点
 - 📚 **参考资源** — 延伸阅读
 

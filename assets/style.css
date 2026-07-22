@@ -13,6 +13,7 @@
   --muted: #78716C;
   --accent: #1A3A2A;
   --accent-bright: #D97706;
+  --link: #A45300;
   --accent-light: #FEF3C7;
   --accent-subtle: #E8E4DA;
   --border: #D6D3D1;
@@ -99,9 +100,10 @@
     --bg-warm: #222226;
     --fg: #E7E5E4;
     --fg-soft: #A8A29E;
-    --muted: #78716C;
+    --muted: #938C87;
     --accent: #6EE7B7;
     --accent-bright: #F59E0B;
+    --link: #F59E0B;
     --accent-light: #2D2A24;
     --accent-subtle: #2A2A2E;
     --border: #3A3A3E;
@@ -141,14 +143,15 @@
 }
 
 /* --- Token System: 深色模式（手动切换） --- */
-[data-theme="dark"] {
+:root[data-theme="dark"] {
   --bg: #1A1A1E;
   --bg-warm: #222226;
   --fg: #E7E5E4;
   --fg-soft: #A8A29E;
-  --muted: #78716C;
+  --muted: #938C87;
   --accent: #6EE7B7;
   --accent-bright: #F59E0B;
+  --link: #F59E0B;
   --accent-light: #2D2A24;
   --accent-subtle: #2A2A2E;
   --border: #3A3A3E;
@@ -279,13 +282,13 @@ em {
 }
 
 a {
-  color: var(--accent-bright);
+  color: var(--link);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 0.2s ease;
 }
 a:hover {
-  border-bottom-color: var(--accent-bright);
+  border-bottom-color: var(--link);
 }
 
 /* --- Code --- */
@@ -581,6 +584,8 @@ blockquote {
    Components: Module (for detailed outlines)
    ============================================ */
 .module {
+  min-width: 0;
+  max-width: 100%;
   margin-bottom: 2rem;
 }
 .module-header {
@@ -732,6 +737,280 @@ blockquote {
   font-style: normal;
 }
 
+.best-practice-point {
+  position: relative;
+  margin: 1.1rem 0;
+  padding: 1rem 1.15rem;
+  background: color-mix(in srgb, var(--success-bg) 58%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--success) 32%, var(--border));
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-md);
+  color: var(--fg-soft);
+  line-height: 1.7;
+}
+.best-practice-point > .callout-icon {
+  position: absolute;
+  top: 1.02rem;
+  left: 1.15rem;
+  margin: 0;
+}
+.best-practice-point > h3 {
+  margin: 0 0 0.55rem;
+  padding-left: 1.65rem;
+  color: var(--fg);
+  font-size: 1rem;
+}
+.best-practice-point p { margin: 0.35rem 0; }
+.best-practice-point p:last-child { margin-bottom: 0; }
+.best-practice-point strong { color: var(--fg); }
+
+.best-practice-lesson {
+  min-width: 0;
+  max-width: 100%;
+  padding-top: 0.35rem;
+}
+.best-practice-lesson > h2 {
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--success) 38%, var(--border));
+}
+.best-practice-lead {
+  color: var(--fg-soft);
+  font-size: 0.95rem;
+}
+.best-practice-list {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+.best-practice-item {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.32fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
+  border-top: 1px solid var(--border-light);
+}
+.best-practice-item:first-child { border-top: 0; }
+.best-practice-item strong {
+  color: var(--fg);
+  font-weight: 700;
+}
+.best-practice-item p {
+  margin: 0;
+  color: var(--fg-soft);
+  line-height: 1.65;
+}
+.best-practice-check {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+/* 初学者路径：场景 → 正反对照 → 照做 → 运行自检 → 读懂结果 */
+.bp-scenario,
+.bp-term,
+.bp-rationale,
+.bp-result {
+  margin: 0.7rem 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--card-bg) 82%, transparent);
+  border: 1px solid var(--border-light);
+  font-size: 0.92rem;
+}
+.bp-scenario strong,
+.bp-term strong,
+.bp-rationale strong,
+.bp-result strong { color: var(--fg); }
+.bp-term { border-left: 3px solid var(--accent-bright); }
+.bp-rationale {
+  border-left: 3px solid var(--info-border);
+  background: color-mix(in srgb, var(--python-bg) 46%, var(--card-bg));
+}
+.bp-result { border-left: 3px solid var(--success); }
+.bp-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0.8rem 0;
+}
+.bp-wrong,
+.bp-right {
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+}
+.bp-wrong { border-top: 3px solid var(--danger, #B4534B); }
+.bp-right { border-top: 3px solid var(--success); }
+.bp-compare-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--fg);
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+.bp-wrong p,
+.bp-right p { font-size: 0.88rem; }
+.bp-compare .tech-block { margin: 0.55rem 0; }
+.bp-compare pre { font-size: 0.78rem; }
+.bp-steps {
+  margin: 0.7rem 0;
+  padding-left: 1.35rem;
+}
+.bp-steps li { margin: 0.28rem 0; }
+.bp-check {
+  margin: 0.8rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--border);
+}
+.bp-check > strong { display: block; margin-bottom: 0.35rem; }
+/* 可运行自检统一为折叠面板；代码仍使用全站技术块的 --code-bg / --code-fg。 */
+details.bp-check {
+  padding-top: 0;
+  border: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--card-bg);
+}
+details.bp-check > summary {
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.72rem 2.6rem 0.72rem 0.85rem;
+  color: var(--fg);
+  background: var(--bg-warm);
+  line-height: 1.5;
+}
+details.bp-check > summary::-webkit-details-marker { display: none; }
+details.bp-check > summary::after {
+  content: "▸";
+  position: absolute;
+  top: 0.72rem;
+  right: 0.9rem;
+  color: var(--accent-bright);
+  transition: transform 0.18s ease;
+}
+details.bp-check[open] > summary::after { transform: rotate(90deg); }
+details.bp-check[open] > summary { border-bottom: 1px solid var(--border); }
+details.bp-check > .tech-block { margin: 0; }
+details.bp-check > .tech-block > .tech-block-head,
+details.bp-check > .tech-block > pre { border-radius: 0; }
+/* `.think-q-answer code` 是行内代码规则；若 code 位于 pre 内，必须恢复代码块配色。 */
+.think-q-answer pre code,
+[data-theme="dark"] .think-q-answer pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+/* 阶段实践检查点：共享外壳只约束宽度；课内完整验收沿用 lesson 组件密度。 */
+.stage-practice-checkpoint {
+  min-width: 0;
+  max-width: 100%;
+}
+.stage-practice-checkpoint > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.stage-practice-checkpoint:not(.best-practice-lesson) {
+  margin: 0.8rem 0;
+  padding: 0.58rem 0.72rem;
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--accent-bright);
+  border-radius: var(--radius-sm);
+  background: var(--accent-light);
+  color: var(--fg-soft);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+.stage-practice-checkpoint:not(.best-practice-lesson) > :last-child { margin-bottom: 0; }
+.practice-acceptance {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-bright);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+.practice-acceptance h3 { margin-top: 0; }
+.practice-acceptance-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.42fr);
+  gap: 1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.practice-acceptance-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.practice-pass {
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--success-bg) 65%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--success) 28%, var(--border));
+}
+.practice-pass strong { display: block; margin-bottom: 0.35rem; }
+.practice-pass ul { margin: 0; padding-left: 1.15rem; }
+/* 长函数名/类型名仍是内联代码，但不能撑宽卡片或 grid；pre 内代码保持局部滚动。 */
+p code,
+li code,
+td code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+[data-theme="dark"] .best-practice-point {
+  background: color-mix(in srgb, var(--success-bg) 72%, var(--card-bg));
+}
+[data-theme="dark"] .bp-scenario,
+[data-theme="dark"] .bp-term,
+[data-theme="dark"] .bp-rationale,
+[data-theme="dark"] .bp-result { background: color-mix(in srgb, var(--card-bg) 88%, var(--bg)); }
+
+@media (max-width: 640px) {
+  .best-practice-item,
+  .bp-compare,
+  .practice-acceptance-grid {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+  .stage-practice-checkpoint:not(.best-practice-lesson) { padding: 0.52rem 0.65rem; }
+  details.bp-check > summary { padding-left: 0.75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  details.bp-check > summary::after { transition: none; }
+}
+
+@media print {
+  .bp-wrong,
+  .bp-right,
+  .bp-scenario,
+  .bp-term,
+  .bp-rationale,
+  .bp-result,
+  .bp-check,
+  .practice-acceptance,
+  .stage-practice-checkpoint:not(.best-practice-lesson),
+  .practice-pass {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+  /* JS 在 beforeprint 中负责展开；此规则仅作无脚本/事件缺失时的整块内容回退。 */
+  details.bp-check:not([open]) > :not(summary) { display: block !important; }
+  details.bp-check > summary::after { display: none; }
+}
+
 /* ============================================
    Components: Interview Highlight
    ============================================ */
@@ -881,8 +1160,8 @@ button.phase-header {
   font-weight: 600;
 }
 
-/* 中等宽度（含平板/窄桌面）下让位于正文，避免与内容重叠 */
-@media (max-width: 1100px) {
+/* 固定目录需要正文外壳之外的安全侧栏；窄桌面也隐藏，避免 1101–1200px 区间重叠。 */
+@media (max-width: 84rem) {
   .toc { display: none; }
 }
 @media print {
@@ -1433,6 +1712,7 @@ summary:focus-visible {
   th, td { padding: 0.5rem 0.6rem; }
 
   pre { padding: 1rem; font-size: 0.78rem; }
+  .bp-compare pre { font-size: 0.82rem; }
 }
 
 /* ============================================
@@ -1457,7 +1737,7 @@ summary:focus-visible {
   }
 
   /* 避免标题/卡片/代码块被硬生生切在跨页边界上 */
-  h1, h2, h3, .card, .qa-lesson, .think-q, pre, table, .phase {
+  h1, h2, h3, .card, .qa-lesson, .think-q, .best-practice-point, .best-practice-item, pre, table, .phase {
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -1466,7 +1746,7 @@ summary:focus-visible {
     page-break-after: avoid;
   }
   /* 纸面上阴影无意义且可能被渲染成灰底，统一清除 */
-  .card, .tip, .info, .warning, .interview-box, table, .total-bar, .roadmap, .qa-lesson, .think-q {
+  .card, .tip, .info, .warning, .interview-box, .best-practice-point, .best-practice-list, .practice-acceptance, table, .total-bar, .roadmap, .qa-lesson, .think-q {
     box-shadow: none !important;
   }
 }
@@ -1475,6 +1755,7 @@ summary:focus-visible {
    Utility: Reduced Motion
    ============================================ */
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
   * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
@@ -1947,6 +2228,8 @@ a.lesson-qa-link { border-bottom: 1px solid color-mix(in srgb, var(--accent-brig
    —— 纯结构性外壳样式；不改变 pre/table 原有视觉，只加头部工具条与横向滚动容器
    ============================================ */
 .tech-block {
+  min-width: 0;
+  max-width: 100%;
   margin: 1.2rem 0;
 }
 .tech-block pre {
@@ -2065,6 +2348,8 @@ a.lesson-qa-link { border-bottom: 1px solid color-mix(in srgb, var(--accent-brig
 /* 横向滚动容器：仅在内容真正溢出时由 content-tools.js 打上 data-scrollable，
    才会获得 tabindex 与 aria-label；样式本身始终安全（不影响未溢出内容的布局） */
 .scroll-region {
+  min-width: 0;
+  width: 100%;
   overflow-x: auto;
   max-width: 100%;
 }

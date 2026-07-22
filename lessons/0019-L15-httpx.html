@@ -26,7 +26,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>你调 OpenAI/Anthropic 的 SDK，底层就是在发 HTTP 请求：带上 API Key 的 header、JSON 请求体、处理状态码、读回 JSON。你写的每个"联网工具"（搜索、查天气、调内部 API）也一样。<strong>HTTP 是 Agent 的传输层地基。</strong></p>
-    <p>2026 年首选的 Python HTTP 客户端是 <strong>httpx</strong>——因为它同时支持同步和<strong>异步</strong>（下一课并发调用要用），API 和老牌的 requests 几乎一样。</p>
+    <p>本课程选择 <strong>httpx</strong>，因为后续既要演示同步调用，也要用同一套风格进入<strong>异步</strong>调用与 <code>MockTransport</code> 离线验证。若目标服务已有合适的官方 SDK，优先评估 SDK；只有同步需求的既有 requests 项目不必为追求统一而迁移；需要不同连接模型或更底层控制时也应按约束另行选型。</p>
     <p style="font-size:.9rem;color:var(--muted);">※ 本课代码需先安装 httpx：<code>uv add httpx</code>（或 <code>pip install httpx</code>）。httpx 也是 OpenAI/Anthropic 官方 SDK 内部使用的客户端。</p>
   </div>
 </div>
@@ -52,7 +52,7 @@
     <ul>
       <li><strong>方法</strong>：GET（取数据）、POST（提交数据）为主</li>
       <li><strong>URL</strong>：请求哪个地址</li>
-      <li><strong>Headers</strong>：元信息，如 <code>Authorization: Bearer &lt;key&gt;</code>（鉴权）、<code>Content-Type: application/json</code></li>
+      <li><strong>Headers</strong>：元信息。OpenAI API Key 常用 <code>Authorization: Bearer &lt;key&gt;</code>；直接调用 Anthropic API 时，API Key 使用 <code>x-api-key: &lt;key&gt;</code>。其他凭据类型及附加 header 必须遵循目标服务当前官方文档；JSON 请求通常还带 <code>Content-Type: application/json</code></li>
       <li><strong>Body</strong>：请求体，调 LLM 时是一段 JSON（prompt、参数）</li>
     </ul>
     <p>响应回来则有：<strong>状态码</strong>（200 成功 / 4xx 你错了 / 5xx 服务端错了）、响应 <strong>headers</strong>、响应 <strong>body</strong>（通常是 JSON）。</p>
@@ -68,11 +68,12 @@ r = httpx.get("https://api.example.com/status", timeout=10)
 print(r.status_code)       # 200
 print(r.json())            # 自动把响应体解析成 dict
 
-# POST：带鉴权 header + JSON body（模拟调 LLM）
+# POST：带鉴权 header + JSON body（示例服务采用 Bearer）
+# 若直接调用 Anthropic API，API Key 应按官方文档放在 x-api-key。
 resp = httpx.post(
     "https://api.example.com/v1/chat",
-    headers={"Authorization": "Bearer sk-xxx"},
-    json={"model": "claude", "messages": [{"role": "user", "content": "你好"}]},
+    headers={"Authorization": "Bearer example-token"},
+    json={"model": "example-model", "messages": [{"role": "user", "content": "你好"}]},
     timeout=30,
 )
 data = resp.json()</code></pre>
@@ -80,12 +81,14 @@ data = resp.json()</code></pre>
   <p><strong>复用连接：</strong>要发多个请求时，用 <code>Client()</code> 复用底层连接（更快），并集中配置 base_url / headers / timeout：</p>
   <pre><code>with httpx.Client(
     base_url="https://api.example.com",
-    headers={"Authorization": "Bearer sk-xxx"},
+    headers={"Authorization": "Bearer example-token"},
     timeout=30,
 ) as client:
     a = client.post("/v1/chat", json={"messages": [...]})
     b = client.post("/v1/chat", json={"messages": [...]})   # 复用连接
 # with 结束自动关闭（呼应 L10 的上下文管理器）</code></pre>
+
+  <p><strong>同步 <code>timeout</code> 的边界：</strong><code>httpx</code> 的同步 <code>timeout=30</code>（同理，后文的 <code>timeout=remaining</code>）配置的是 connect/read/write/pool 各阶段的超时，不是覆盖整个调用的硬墙钟计时器。例如响应持续在每个 read timeout 到期前送来少量数据，调用总时长仍可能超过 30 秒。同步包装层可以在请求前后用单调时钟做截止时间记账，在发现越界后拒绝结果并停止后续等待/重试，但无法抢占正在进行的同步响应。若需要到点发起取消，应在 L16 使用异步操作与取消机制；取消传播和连接清理仍可能让实际墙钟结束时间晚于截止时刻。</p>
 
   <div class="quiz" data-quiz="q1">
     <div class="quiz-question"><span class="quiz-q">Q</span> 调 LLM 时，API Key 通常放在请求的哪部分？</div>
@@ -95,7 +98,7 @@ data = resp.json()</code></pre>
       <button data-answer="wrong">写在响应体里</button>
       <button data-answer="wrong">编进状态码字段</button>
     </div>
-    <div class="quiz-explanation">API Key 通常放在请求头 <code>Authorization: Bearer &lt;key&gt;</code>。放进 URL 会被日志/浏览器历史记录泄露，不安全。Headers 携带鉴权与元信息（Content-Type 等），Body 携带实际数据。</div>
+    <div class="quiz-explanation">API Key 通常放在请求 Headers，而不是 URL 或 Body；具体 header 由服务商定义。OpenAI API Key 常用 <code>Authorization: Bearer</code>，直接调用 Anthropic API 的 API Key 使用 <code>x-api-key</code>；其他凭据类型必须核对当前官方文档。放进 URL 容易被日志和浏览器历史记录泄露。</div>
   </div>
 </div>
 
@@ -108,7 +111,7 @@ try:
     r.raise_for_status()             # 4xx/5xx 会抛 HTTPStatusError
     data = r.json()
 except httpx.TimeoutException:
-    ...                              # 超时：可重试（配合 L10 的 tenacity）
+    ...                              # 超时：可重试（交给唯一传输策略）
 except httpx.HTTPStatusError as e:
     code = e.response.status_code
     retry_after = e.response.headers.get("retry-after")
@@ -126,7 +129,88 @@ except httpx.RequestError:
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
     <p>429（限流）、408/网络类错误、部分 5xx 通常可重试；400/401 通常不可重试。但这不是绝对规则——<strong>具体能不能重试，要看异常类型、这个操作是否幂等、以及厂商响应里的 <code>Retry-After</code> 头或错误码</strong>（比如同样是 5xx，有的服务会在错误体里标注"不可重试"；一个会产生副作用的非幂等 POST，即便是 5xx 也要谨慎重试，避免重复下单/重复扣费一类问题）。</p>
-    <p>另外注意：如果你用的是 OpenAI/Anthropic 官方 SDK，<strong>SDK 通常已经内置了指数退避重试</strong>（针对 429/5xx/网络错误）。这时不要在自己的代码里再叠加一层 tenacity/自定义重试——两层重试叠加会让真正失败的请求被重试次数远超预期（比如 SDK 重试 3 次、外层又重试 3 次，等效变成 9 次），既浪费配额也可能放大限流。是否需要自己包一层，先确认 SDK 有没有做、做到什么程度。</p>
+    <p>另外注意：Anthropic 官方 Python SDK 当前会重试连接错误以及 408、409、429、5xx，默认 <code>max_retries=2</code>，含义是<strong>初始请求之后最多再重试 2 次，即总计最多尝试 3 次</strong>。这是该 SDK 的上游策略，不是通用 HTTP 规则。若让 SDK 保持默认重试，应用层就不要再无意叠加重试；若必须由应用统一策略，则显式配置 SDK 不重试。两层若各自最多尝试 3 次，最坏会放大为 9 次底层调用。</p>
+  </div>
+
+  <div class="best-practice-point" id="bp-l15-single-transport-policy">
+    <h3>最佳实践：每条调用链只保留一个重试拥有者</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一次业务调用可能同时经过自带重试的 SDK 与应用/raw-httpx 包装层，而且这条调用链已经决定启用重试。此时只做一个决定：重试由哪一层拥有。外层共享并关闭 Client 可以作为连接管理的装配前提，但不是本卡要比较的决策。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 同一调用：SDK + 应用双重试</span><pre><code>gateway = ChatGateway(
+    sdk_retries=1,
+    raw_retries=1,
+)
+result = gateway.ask("ping")</code></pre><p>业务接口、任务和预期结果都不变，却有两个 owner；配置必须在发请求前拒绝，否则底层调用可能乘法放大。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 同一调用：只由 SDK 重试</span><pre><code>gateway = ChatGateway(
+    sdk_retries=1,
+    raw_retries=0,
+)
+result = gateway.ask("ping")</code></pre><p>仍然调用 <code>ask("ping")</code> 并得到同一结果，唯一变化只是 SDK 成为唯一 owner。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong><strong>质量</strong>上，单一 owner 让失败次数与诊断归属可预测；<strong>成本</strong>上，避免两层重试把底层调用、延迟和计费乘法放大。可选方案只有两种：官方 SDK 已满足需求时采用 SDK-only；必须自定义策略时关闭 SDK 重试，采用 raw/app-only。两者不能同时开启；既然本调用链要求重试，也不能两者都关闭。共享 Client 只负责连接复用与关闭，和 owner 选择正交。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库，静默通过）：</strong></summary><pre><code>class Transient(Exception):
+    pass
+
+class RetryOwnershipError(ValueError):
+    pass
+
+class FakeUpstream:
+    def __init__(self):
+        self.calls = 0
+
+    def send(self, task):
+        self.calls += 1
+        if self.calls == 1:
+            raise Transient
+        return {"task": task, "answer": "pong"}
+
+class FakeSDK:
+    def __init__(self, upstream, retries):
+        self.upstream, self.retries = upstream, retries
+
+    def complete(self, task):
+        for attempt in range(self.retries + 1):
+            try:
+                return self.upstream.send(task)
+            except Transient:
+                if attempt == self.retries:
+                    raise
+
+class ChatGateway:
+    def __init__(self, upstream, *, sdk_owner, raw_owner):
+        if sdk_owner == raw_owner:  # both True or both False
+            raise RetryOwnershipError("choose exactly one retry owner")
+        self.sdk = FakeSDK(upstream, retries=1 if sdk_owner else 0)
+        self.raw_retries = 1 if raw_owner else 0
+
+    def ask(self, task):
+        for attempt in range(self.raw_retries + 1):
+            try:
+                return self.sdk.complete(task)
+            except Transient:
+                if attempt == self.raw_retries:
+                    raise
+
+TASK = "ping"
+EXPECTED = {"task": TASK, "answer": "pong"}
+
+for owners in ((True, True), (False, False)):
+    upstream = FakeUpstream()
+    try:
+        ChatGateway(upstream, sdk_owner=owners[0], raw_owner=owners[1])
+    except RetryOwnershipError:
+        pass
+    else:
+        raise AssertionError("both/none must be rejected")
+    assert upstream.calls == 0
+
+for owners in ((True, False), (False, True)):
+    upstream = FakeUpstream()
+    gateway = ChatGateway(
+        upstream, sdk_owner=owners[0], raw_owner=owners[1])
+    assert gateway.ask(TASK) == EXPECTED
+    assert upstream.calls == 2</code></pre></details>
+    <p class="bp-result"><strong>通过证据：</strong>脚本必须无输出且退出码为 0。双 owner 与无 owner 都会在底层调用前被拒绝；SDK-only 与 raw-only 通过同一个 <code>ask</code> 接口完成同一任务、返回同一业务结果，并且都只有 2 次底层调用，没有乘法放大。</p>
   </div>
 </div>
 
@@ -159,7 +243,7 @@ asyncio.run(main())</code></pre>
       <button data-answer="wrong">换个参数再发</button>
       <button data-answer="wrong">忽略并继续跑</button>
     </div>
-    <div class="quiz-explanation">429 = Too Many Requests（限流），是<strong>临时性</strong>的，正确做法是等一会儿（指数退避）再重试。相对地，4xx 里的 400/401 是你自己请求有问题（参数错/鉴权失败），重试没用，应直接修。</div>
+    <div class="quiz-explanation">429 = Too Many Requests（限流），通常属于临时错误。应先遵循合法的 <code>Retry-After</code>；缺失或畸形时才使用该上游声明的后备等待/退避，并且完整等待必须落在剩余操作预算内。相对地，400/401 通常应修正请求而不是重试；最终仍以上游契约和操作语义为准。</div>
   </div>
 </div>
 
@@ -185,7 +269,7 @@ with httpx.stream("POST", url, json={"stream": True}, timeout=None) as r:
   <div class="card">
     <pre><code>HTTP 请求组成
 ├── 方法(GET/POST) + URL
-├── Headers → Authorization: Bearer key(鉴权) / Content-Type
+├── Headers → 按服务文档鉴权(OpenAI API Key 常用 Bearer；Anthropic API Key 用 x-api-key) / Content-Type
 ├── Body → JSON(prompt+参数)
 └── 响应：状态码 + headers + body(JSON)
 
@@ -211,88 +295,44 @@ SSE 流式(OpenAI风格简化示例) → iter_lines + removeprefix("data: ") + j
 <div class="section">
   <h2>实战练习</h2>
   <div class="card">
-    <h3>练习：用 httpx 写一个迷你 LLM 客户端</h3>
-    <p>封装一个健壮的 LLM 调用函数，同步 + 异步两版。<strong>先自己写，再看答案。</strong></p>
+    <h3>练习：让业务模块依赖深传输接口</h3>
+    <p>基于最佳实践卡中的 <code>UpstreamTransport</code>，写一个迷你聊天业务模块。目标不是再实现一次 HTTP 或重试，而是让业务代码只表达操作语义。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
-      <li><code>chat(client, prompt)</code>：接收外部传入的 <code>Client</code>（依赖注入，不在函数内新建），带 Authorization header + JSON body，返回解析后的回答</li>
-      <li>用 <code>raise_for_status</code>，并按状态码/异常类型归类是否可重试（自定义 <code>LLMError</code>）</li>
-      <li>超时设 30s，超时抛可重试的错误</li>
-      <li>写异步版 <code>achat(client, prompt)</code>（同样接收外部传入的 <code>AsyncClient</code>，不在函数内新建；<code>await</code>）——本课只要求补全这个给定骨架，完整的并发调度留给 L16</li>
-      <li>（选做，且需先确认没有和 SDK 自带重试重复）给 <code>chat</code> 叠加 L10 的 tenacity <code>@retry</code></li>
+      <li><code>Chat</code> 构造时只接收 transport，不接收 Client、parser、classifier、clock 或 <code>send</code>。</li>
+      <li><code>ask(prompt)</code> 调用 <code>transport.post_json("chat.complete", "/v1/chat", payload)</code>。</li>
+      <li>从返回 JSON 取回答；不在业务模块判断状态码或编写重试循环。</li>
+      <li>外层创建一个 Client 和一个 transport，并负责关闭 Client。</li>
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
       <pre><code>import httpx
 
-BASE = "https://api.example.com"
-HEADERS = {"Authorization": "Bearer sk-xxx"}
+class Chat:
+    def __init__(self, transport):
+        self.transport = transport
 
-class LLMError(Exception):
-    def __init__(self, msg, retryable: bool):
-        super().__init__(msg)
-        self.retryable = retryable      # 调用方据此决定要不要重试
+    def ask(self, prompt):
+        payload = {
+            "model": "example-model",
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        data = self.transport.post_json(
+            "chat.complete", "/v1/chat", payload)
+        return data["choices"][0]["message"]["content"]
 
-def _parse(r: httpx.Response) -&gt; str:
-    try:
-        r.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        code = e.response.status_code
-        # 简化分类：429/408/5xx 通常可重试；生产中还要结合 Retry-After、
-        # 具体错误码、以及这次请求是否幂等来决定
-        retryable = code in (429, 408) or 500 &lt;= code &lt; 600
-        raise LLMError(f"HTTP {code}", retryable) from e
-    return r.json()["choices"][0]["message"]["content"]
-
-# client 由外部创建并传入(批次/应用生命周期共享一个，不在这里新建)
-def chat(client: httpx.Client, prompt: str) -&gt; str:
-    payload = {"model": "claude", "messages": [{"role": "user", "content": prompt}]}
-    try:
-        r = client.post("/v1/chat", json=payload)
-    except httpx.TimeoutException as e:
-        raise LLMError("timeout", retryable=True) from e
-    return _parse(r)
-
-async def achat(client: httpx.AsyncClient, prompt: str) -&gt; str:
-    payload = {"model": "claude", "messages": [{"role": "user", "content": prompt}]}
-    r = await client.post("/v1/chat", json=payload)
-    return _parse(r)
-
-# —— 调用方：一个批次/应用生命周期创建一次 client，反复传入 ——
-# with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30) as client:
-#     answer = chat(client, "你好")
-#
-# async with httpx.AsyncClient(base_url=BASE, headers=HEADERS, timeout=30) as client:
-#     answer = await achat(client, "你好")
-
-# —— 选做：自动重试（只重试 retryable 的；如果用的是官方 SDK 且它已自带重试，
-#          就不要再叠加这一层，避免重试次数翻倍）——
-# from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
-# @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8),
-#        retry=retry_if_exception(lambda e: isinstance(e, LLMError) and e.retryable))
-# def chat_with_retry(client, prompt): return chat(client, prompt)</code></pre>
+with httpx.Client(
+    base_url="https://api.example.com",
+    headers={"Authorization": "Bearer example-token"},
+    timeout=30,
+) as client:
+    transport = UpstreamTransport(client)
+    chat = Chat(transport)
+    answer = chat.ask("你好")</code></pre>
+      <p style="font-size:0.9rem;color:var(--muted);">这里故意没有 Tenacity：raw-httpx 的重试已由 <code>UpstreamTransport</code> 独占。若改用自带重试的官方 SDK，应整体替换 transport，而不是在 <code>Chat</code> 外再包一层重试。</p>
       <h4>思考题</h4>
-      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
-
-      <details class="think-q">
-        <summary><span class="think-q-tag">Q1</span>为什么要把 <code>retryable</code> 标记在异常上，而不是在调用处判断状态码？</summary>
-        <div class="think-q-answer">
-          <p><strong>【结论】</strong>因为"这个错该不该重试"是<strong>错误本身固有的属性</strong>。把它标在异常上，让这份知识随错误一起传播，重试逻辑只需问 <code>exc.retryable</code>，不用在每个调用点重复判断状态码——错误来源与重试策略就此解耦。</p>
-          <p>如果在调用处判断，每个发请求的地方都要重写一遍"429 或 5xx 才重试、4xx 不重试"的逻辑。散落多处，容易写漏、写岔；将来新增一种可重试错误，得逐个地方改。</p>
-          <p>把判断收敛到抛错的 <code>_parse</code> 一处（<code>retryable = code in (429, 408) or 500 &lt;= code &lt; 600</code>，生产中还要结合 <code>Retry-After</code>、具体错误码、请求是否幂等），异常带着结论往上冒。tenacity 的重试条件只看 <code>isinstance(e, LLMError) and e.retryable</code>，通用且干净。</p>
-          <p>好处：新增错误类型只改抛错那一处；重试策略与"哪些错可重试"彻底分离；调用方代码更薄。这就是让语义随对象走、而非散落在流程里的设计思路。</p>
-        </div>
-      </details>
-
-      <details class="think-q">
-        <summary><span class="think-q-tag">Q2</span>同步 <code>chat</code> 和异步 <code>achat</code>，在"同时调 10 个 prompt"时差别有多大？</summary>
-        <div class="think-q-answer">
-          <p><strong>【结论】</strong>差别接近 <strong>10 倍</strong>：同步串行大约是 10 × 单个请求延迟（一个接一个等），异步并发（<code>gather</code>）大约只要 1 × 单个请求延迟（10 个网络等待重叠在一起）。</p>
-          <p>同步 <code>chat</code> 一次只能发一个、等它回来再发下一个。10 个各 1 秒的请求，总耗时≈10 秒——CPU 大部分时间在干等网络。</p>
-          <p>异步 <code>achat</code> 配 <code>asyncio.gather</code> 可以同时把 10 个请求都发出去，然后一起等。因为瓶颈是 I/O（等网络）而非计算，等待时间可以重叠，总耗时≈最慢的那一个≈1 秒多。</p>
-          <p>这正是下一课 L16 的主题：I/O 密集场景下 async 靠重叠等待实现高并发。注意真实场景还要用 <code>Semaphore</code> 限流，否则一口气打太多会触发 429 或耗尽本地连接。</p>
-        </div>
-      </details>
+      <details class="think-q"><summary><span class="think-q-tag">Q1</span>为什么 <code>operation</code> 要进入 transport 接口？</summary><div class="think-q-answer"><p><strong>【结论】</strong>可重试性属于“操作语义 + 上游契约”，不是状态码的固定属性。同一个 409 对预约创建可以是短暂冲突，对目录查询却应立即失败。业务层只提供稳定操作名，transport 在唯一位置分类。</p></div></details>
+      <details class="think-q"><summary><span class="think-q-tag">Q2</span>同步与异步并发调用 10 个 prompt 有什么差别？</summary><div class="think-q-answer"><p><strong>【结论】</strong>同步串行耗时约为 10 次延迟之和；异步并发能重叠网络等待，耗时接近最慢的一次请求。真实场景仍需并发上限与限流；这些留到 L16。</p></div></details>
     </details>
   </div>
 </div>
@@ -300,12 +340,12 @@ async def achat(client: httpx.AsyncClient, prompt: str) -&gt; str:
 <div class="section">
   <h2>面试常见问题</h2>
   <div class="card interview">
-    <h3>Q1：为什么 2026 年选 httpx 而不是 requests？</h3>
-    <p><strong>答：</strong>httpx API 和 requests 几乎一样，但<strong>原生支持异步</strong>（AsyncClient），还支持 HTTP/2、连接池、超时更完善。Agent 要并发调 LLM，异步是刚需，所以选 httpx。</p>
+    <h3>Q1：这个课程为什么选择 httpx？什么时候不必选它？</h3>
+    <p><strong>答：</strong>本课程需要用相近接口同时讲同步 <code>Client</code>、异步 <code>AsyncClient</code> 和离线 <code>MockTransport</code>，因此选择 httpx。真实项目若已有覆盖所需能力的官方 SDK，应先使用 SDK；稳定的同步 requests 项目若没有异步需求，也不必仅为换库而迁移。选型依据是接口需求、生态、迁移成本和目标服务支持，而不是年份排名。</p>
     <h3>Q2：HTTP 状态码 4xx 和 5xx 的区别？各怎么处理？</h3>
     <p><strong>答：</strong>4xx 是客户端错误（400 参数错、401 鉴权失败、429 限流），5xx 是服务端错误。429、408、部分 5xx 通常临时性、可退避重试；其它 4xx（如 400/401）通常是你自己的问题，重试无用，应修正请求。但这不是绝对规则，具体要看异常类型、请求是否幂等、厂商的 <code>Retry-After</code>/错误码。若用官方 SDK，它常已内置重试，别再自己叠加一层。</p>
     <h3>Q3：调 LLM 的 API Key 放哪里？为什么？</h3>
-    <p><strong>答：</strong>放请求头 <code>Authorization: Bearer &lt;key&gt;</code>。放 URL 会被日志和历史泄露；放 header 是标准且相对安全的做法（再配合环境变量管理，别硬编码）。</p>
+    <p><strong>答：</strong>放目标服务规定的请求头，不放 URL、源码或日志。OpenAI API Key 常用 <code>Authorization: Bearer &lt;key&gt;</code>；直接调用 Anthropic API 时，API Key 使用 <code>x-api-key: &lt;key&gt;</code>。其他凭据类型及附加 header 必须核对当前官方文档；真实项目优先使用官方 SDK 的凭据解析，并避免硬编码。</p>
     <h3>Q4：什么是 SSE？和 LLM streaming 什么关系？</h3>
     <p><strong>答：</strong>SSE（Server-Sent Events）是服务端持续推送多行事件的协议。OpenAI 风格是简化的 <code>data: {...}</code> + <code>[DONE]</code>；Anthropic 用具名的 <code>event:</code> 类型、终态也不同。LLM 流式输出的传输层原理都是逐行读、解析事件——但具体协议细节因厂商而异，实际项目应优先用官方 SDK 的结构化流式接口，而不是自己手写通用 parser。</p>
   </div>
@@ -318,8 +358,166 @@ async def achat(client: httpx.AsyncClient, prompt: str) -&gt; str:
       <li>· <a href="https://www.python-httpx.org/" target="_blank">httpx 官方文档</a> — 权威参考（<strong>首选</strong>）</li>
       <li>· <a href="https://www.python-httpx.org/async/" target="_blank">httpx: Async Support</a> — AsyncClient 用法</li>
       <li>· <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Status" target="_blank">MDN: HTTP 状态码</a> — 完整状态码含义</li>
-      <li>· <a href="0014-L10-exceptions-logging-context.html">L10 · 异常与重试</a> — 用 tenacity 包裹重试</li>
+      <li>· <a href="0014-L10-exceptions-logging-context.html">L10 · 异常与重试</a> — 异常、预算与重试概念</li>
     </ul>
+  </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：共享 Client 与唯一 UpstreamTransport</h2>
+  <p class="best-practice-lead">做一次近迁移：目录查询和预约创建只依赖同一个 transport。外层拥有唯一 Client；transport 独占 raw-httpx 的操作级分类、解析、截止时间记账、等待和重试。这里的同步实现不是硬总时限：它在请求前后按单调时钟检测越界，越界后拒绝成功/错误结果，并且不再等待或重试；传给 httpx 的 <code>timeout=remaining</code> 仍只是阶段/连接池超时，无法抢占正在进行且持续有数据到达的同步响应。若需要到点发起取消，请在 L16 使用异步操作与取消机制；取消后的清理仍可能使墙钟总时长略超截止时刻。若选官方 SDK，则不装配这个 transport。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>只暴露 JSON GET/POST。</li><li>让 Catalog 和 Reservations 只接收 transport。</li><li>用公开接口覆盖严格数字秒、HTTP-date、显式后备和截止时间记账。</li><li>验证操作上下文决定 409，并保留原始 header。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ol><li>Client 与 transport 身份共享，且只有 transport 重试。</li><li>有效等待不截短；请求前已到截止时间或完整等待会越界时，不 sleep、不重试。</li><li>请求前后都读取单调时钟；若同步请求返回时已经越界，拒绝其成功或普通错误结果，并以 <code>BudgetExceeded</code> 表示“已检测/已记账的越界”，而非已抢占请求。</li><li><code>timeout=remaining</code> 仅约束 httpx 各阶段/连接池等待，不宣称硬墙钟总时限；最终尝试后不 sleep；目录 409 一次，预约 409 可恢复或三次耗尽。</li><li>标准输出严格为 <code>L15 ACCEPTED</code>。</li></ol></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末自检（近迁移，整块复制即可运行）：</strong></summary><pre><code>from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+import re, httpx
+class UpstreamError(Exception):
+    def __init__(self, operation, status, retryable, raw):
+        super().__init__(f"{operation}: HTTP {status}")
+        self.operation, self.status_code = operation, status
+        self.retryable, self.retry_after_raw = retryable, raw
+class BudgetExceeded(UpstreamError):
+    # Detected after a request returns, or before the next action; not cancellation.
+    def __init__(self, error, phase, remaining):
+        super().__init__(error.operation, error.status_code,
+                         error.retryable, error.retry_after_raw)
+        self.phase, self.remaining_seconds = phase, remaining
+class RetryDelayExceedsBudget(BudgetExceeded):
+    def __init__(self, error, required, remaining):
+        super().__init__(error, "retry-wait", remaining)
+        self.required_delay = required
+class UpstreamTransport:
+    _DIGITS = re.compile(r"[0-9]+\Z")
+    _TRANSIENT = frozenset({408, 429, 502, 503, 504})
+    def __init__(self, client, *, attempts=3, budget=30.0, fallback=1.5,
+                 monotonic, wall_now, sleep):
+        if fallback &lt;= 0: raise ValueError("fallback must be positive")
+        self._client, self._attempts, self._budget = client, attempts, budget
+        self._fallback = fallback
+        self._monotonic, self._wall_now, self._sleep = monotonic, wall_now, sleep
+    def get_json(self, operation, path):
+        return self._request("GET", operation, path, None)
+    def post_json(self, operation, path, payload):
+        return self._request("POST", operation, path, payload)
+    def _error(self, operation, response):
+        status = response.status_code
+        retryable = status in self._TRANSIENT or (
+            operation == "reservation.create" and status == 409)
+        return UpstreamError(operation, status, retryable,
+                             response.headers.get("Retry-After"))
+    def _delay(self, raw):
+        if raw is None: return self._fallback
+        if self._DIGITS.fullmatch(raw): return float(raw)
+        try: target = parsedate_to_datetime(raw)
+        except (TypeError, ValueError, OverflowError): return self._fallback
+        if target.tzinfo is None: return self._fallback
+        return max(0.0, (target - self._wall_now()).total_seconds())
+    def _request(self, method, operation, path, payload):
+        deadline = self._monotonic() + self._budget
+        last = UpstreamError(operation, None, True, None)
+        for attempt in range(1, self._attempts + 1):
+            remaining = deadline - self._monotonic()
+            if remaining &lt;= 0: raise BudgetExceeded(last, "request", 0.0)
+            try:
+                response = (self._client.get(path, timeout=remaining)
+                    if method == "GET" else self._client.post(
+                        path, json=payload, timeout=remaining))
+            except httpx.RequestError:
+                error = last = UpstreamError(operation, None, True, None)
+            else:
+                if response.is_success:
+                    if self._monotonic() &gt;= deadline:
+                        ok = UpstreamError(operation, response.status_code, False,
+                            response.headers.get("Retry-After"))
+                        raise BudgetExceeded(ok, "request", 0.0)
+                    return response.json()
+                error = last = self._error(operation, response)
+            remaining = max(0.0, deadline - self._monotonic())
+            if remaining &lt;= 0:  # 先判预算，再判最终尝试
+                raise BudgetExceeded(error, "request", remaining)
+            if not error.retryable or attempt == self._attempts: raise error
+            delay = self._delay(error.retry_after_raw)
+            if delay &gt; remaining:
+                raise RetryDelayExceedsBudget(error, delay, remaining)
+            self._sleep(delay)
+        raise AssertionError("unreachable")
+class Clock:
+    def __init__(self):
+        self.elapsed, self.waits = 0.0, []
+        self.origin = datetime(2015, 10, 21, 7, 28, tzinfo=timezone.utc)
+    def monotonic(self): return self.elapsed
+    def wall_now(self): return self.origin + timedelta(seconds=self.elapsed)
+    def sleep(self, seconds): self.waits.append(seconds); self.elapsed += seconds
+class Catalog:
+    def __init__(self, transport): self.transport = transport
+    def lookup(self, sku):
+        return self.transport.get_json("catalog.lookup", f"/catalog/{sku}")
+class Reservations:
+    def __init__(self, transport): self.transport = transport
+    def create(self, seat):
+        return self.transport.post_json(
+            "reservation.create", "/reservations", {"seat": seat})
+clock, calls = Clock(), {}
+def handler(request):
+    if request.url.path.startswith("/catalog/"):
+        name = "catalog-conflict"
+    else:
+        name = request.read().decode().split('"seat":"')[1].split('"')[0]
+    calls[name] = calls.get(name, 0) + 1; attempt = calls[name]
+    first = {"date": (503, "Wed, 21 Oct 2015 07:28:12 GMT"),
+             "numeric": (429, "7"), "fallback": (503, "1.5"),
+             "missing": (502, None), "recover": (409, "2")}
+    if name in first and attempt == 1:
+        status, raw = first[name]
+        return httpx.Response(status, headers={} if raw is None else {"Retry-After": raw})
+    if name == "catalog-conflict":
+        return httpx.Response(409, headers={"Retry-After": "6"})
+    if name == "too-long":
+        return httpx.Response(429, headers={"Retry-After": "31"})
+    if name == "elapsed":
+        clock.elapsed += 31
+        return httpx.Response(503, headers={"Retry-After": "1"})
+    if name == "exhausted":
+        raw = ("3", "4", "raw-final-409")[attempt - 1]
+        return httpx.Response(409, headers={"Retry-After": raw})
+    return httpx.Response(200, json={"value": name})
+
+with httpx.Client(transport=httpx.MockTransport(handler),
+                  base_url="https://offline.test") as client:
+    transport = UpstreamTransport(client, monotonic=clock.monotonic,
+        wall_now=clock.wall_now, sleep=clock.sleep)
+    catalog, reservations = Catalog(transport), Reservations(transport)
+    assert catalog.transport is reservations.transport is transport
+    assert transport._client is client
+    for seat in ("date", "numeric", "fallback", "missing"):
+        assert reservations.create(seat) == {"value": seat}
+    before = list(clock.waits)
+    try: reservations.create("too-long")
+    except RetryDelayExceedsBudget as error:
+        assert (error.required_delay, error.retry_after_raw) == (31.0, "31")
+    else: raise AssertionError("valid delay must not be truncated")
+    assert clock.waits == before and calls["too-long"] == 1
+    try: reservations.create("elapsed")
+    except BudgetExceeded as error:
+        assert error.phase == "request" and error.retry_after_raw == "1"
+    else: raise AssertionError("request time must consume budget")
+    try: catalog.lookup("conflict")
+    except UpstreamError as error:
+        assert (error.retryable, error.retry_after_raw) == (False, "6")
+    else: raise AssertionError("catalog 409 must not retry")
+    assert calls["catalog-conflict"] == 1
+    assert reservations.create("recover") == {"value": "recover"}
+    before = list(clock.waits)
+    try: reservations.create("exhausted")
+    except UpstreamError as error:
+        assert error.retry_after_raw == "raw-final-409"
+    else: raise AssertionError("reservation 409 must exhaust")
+    assert clock.waits == before + [3.0, 4.0]
+    assert calls["exhausted"] == 3
+print("L15 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>标准输出必须严格为一行 <code>L15 ACCEPTED</code>。Catalog 与 Reservations 只共享一个 transport；公开接口证明目录 409 只调用一次，预约 409 可恢复或三次耗尽。最强证据是：同一 transport 严格解析并保留原始 header；等待会超过剩余时间时不 sleep、不重试；同步请求返回后单调时钟若已越界，则拒绝该成功/错误结果；最终尝试后不 sleep。这只证明截止时间的检测与记账，不证明硬墙钟总时限或对在途同步响应的抢占；<code>timeout=remaining</code> 仍是 httpx 的阶段/连接池超时。需要取消截止时间时应在 L16 使用异步操作，且清理可能使实际墙钟结束稍晚。</p>
   </div>
 </div>
 

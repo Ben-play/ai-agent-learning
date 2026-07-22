@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">50</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>装饰器 — Agent 框架的基石</h1>
     <p class="subtitle">@tool、@chain、@agent 都是装饰器 — 看懂它，你就看懂了半个框架源码</p>
@@ -26,7 +26,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>翻开任何 Agent 框架，满眼都是 <code>@tool</code>、<code>@chain</code>、<code>@agent</code>、<code>@retry</code>——它们全是<strong>装饰器</strong>。装饰器让你"给函数加一层包装"而不改函数本身：加日志、加重试、加计时、把普通函数注册成工具。</p>
-    <p>本课是 Part B 的收官，也是<strong>闭包（L06）的实战出口</strong>：<strong>本课聚焦函数装饰器</strong>——接收一个 callable、返回一个替代对象，最常见的实现是返回记住了原函数的闭包 wrapper。但这不是绝对定义：装饰器也能作用在类上（如 <code>@dataclass</code>），返回值也不一定是"新函数"或闭包。学完你会亲手写一个 <code>@tool</code>，从函数签名自动生成工具 Schema——这正是框架在幕后做的事。</p>
+    <p>本课是 Part B 的收官，也是<strong>闭包（L06）的实战出口</strong>：<strong>本课聚焦函数装饰器</strong>——接收一个 callable、返回一个替代对象，最常见的实现是返回记住了原函数的闭包 wrapper。但这不是绝对定义：装饰器也能作用在类上（如 <code>@dataclass</code>），返回值也不一定是"新函数"或闭包。学完你会用一个已提供的签名/Schema 构建器完成 <code>@tool</code> 注册装饰器——重点是装饰器如何安全地改变注册表，而不是提前实现 L13/L14 的反射与类型系统。</p>
   </div>
 </div>
 
@@ -39,7 +39,7 @@
       <li>写基础装饰器，并用 <code>functools.wraps</code> 保留元信息</li>
       <li>写带参数的装饰器（三层结构）</li>
       <li>理解多层装饰器的叠放顺序</li>
-      <li>手写一个 <code>@tool</code>，从类型注解提取参数 Schema</li>
+      <li>使用已提供的 Schema 构建器，实现失败安全的 <code>@tool</code> 注册</li>
     </ul>
   </div>
 </div>
@@ -84,140 +84,289 @@ print(search.__name__)      # search  ← 因为用了 wraps，否则会变成 '
 
 <div class="section">
   <h2>2. 带参数的装饰器（三层）</h2>
-  <p>想写 <code>@retry(times=3)</code> 这种"能传参"的装饰器，需要<strong>多一层</strong>：最外层收参数，返回一个真正的装饰器：</p>
+  <p>想写 <code>@tag(label="audit")</code> 这种“能传参”的装饰器，需要<strong>多一层</strong>：最外层收参数，返回一个真正的装饰器。这里选无副作用的标记示例，避免把“重试所有异常”误教成默认做法；若业务确需重试，应沿用 L10 的异常边界，只捕获明确可恢复的异常（如 <code>TemporaryError</code>）。</p>
   <pre><code>import functools
 
-def retry(times):                     # ① 收装饰器参数
+def tag(label):                       # ① 收装饰器参数
     def deco(fn):                     # ② 真正的装饰器（收函数）
         @functools.wraps(fn)
         def wrapper(*args, **kwargs): # ③ 包装逻辑
-            err = None
-            for _ in range(times):
-                try:
-                    return fn(*args, **kwargs)
-                except Exception as e:
-                    err = e
-            raise err
+            return fn(*args, **kwargs)
+        wrapper.audit_label = label
         return wrapper
     return deco
 
-@retry(times=3)                       # 先调用 retry(3) 得到 deco，再用 deco 装饰
-def flaky():
-    ...</code></pre>
-  <p>记忆：<strong>不带参数的装饰器两层，带参数的三层。</strong>多出来的最外层就是用来"接收装饰器自己的参数"。</p>
+@tag(label="audit")                  # 先调用 tag(...) 得到 deco，再用 deco 装饰
+def save_report(path):
+    return path
+
+assert save_report.audit_label == "audit"</code></pre>
+  <p>记忆：<strong>不带参数的装饰器两层，带参数的三层。</strong>多出来的最外层就是用来“接收装饰器自己的参数”。</p>
 </div>
 
 <div class="section">
   <h2>3. 多层装饰器的顺序</h2>
-  <pre><code>@timed        # 后执行（外层）
-@retry(times=3)   # 先执行（内层，离函数近）
+  <pre><code>@timed              # 后套上（外层）
+@tag(label="audit") # 先套上（内层，离函数近）
 def call():
     ...
 
-# 等价于：call = timed(retry(times=3)(call))
+# 等价于：call = timed(tag(label="audit")(call))
 # 装饰：自下而上包裹；调用：自上而下进入</code></pre>
   <p>规则：<strong>离函数最近的装饰器最先"套"上去</strong>（内层），最上面的最后套（最外层）。运行时，请求从最外层往里穿过每一层。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
     <p>"为什么装饰器里几乎总要写 <code>@functools.wraps(fn)</code>？"</p>
-    <p>答：不写的话，被装饰函数的 <code>__name__</code>、<code>__doc__</code>、签名等会被内层 <code>wrapper</code> 覆盖，导致调试、文档、以及"靠反射读函数信息"的框架（比如从函数生成工具 Schema）全部失灵。<code>wraps</code> 把这些元信息复制回来。</p>
+    <p>答：<code>wraps</code> 会按 <code>functools.update_wrapper</code> 的规则复制指定元数据（如 <code>__name__</code>、<code>__doc__</code>、<code>__annotations__</code>），更新 wrapper 的属性字典，并设置 <code>__wrapped__</code> 指向原函数。它不是把签名对象直接复制过来；<code>inspect.signature</code> 默认沿 <code>__wrapped__</code> 链取得原签名。这样调试、文档和依赖反射生成工具 Schema 的框架才能看到原函数契约。</p>
   </div>
 </div>
 
 <div class="section">
-  <h2>4. @tool：从函数生成工具 Schema</h2>
-  <p>这是装饰器在 Agent 里最经典的用法——把普通函数<strong>注册成工具</strong>，并<strong>读取它的类型注解自动生成参数 Schema</strong>（喂给 LLM）。</p>
+  <h2>4. @tool：先构建完整条目，再提交注册</h2>
+  <p>Agent 框架常用装饰器把普通函数变成工具。本课只追踪一条主线：<strong>装饰器先构建并验证完整的中立条目，全部成功后才写入注册表一次</strong>。</p>
+
   <div class="card" style="border-left: 4px solid var(--accent);">
-    <strong>📌 先说清楚类型注解：</strong>
-    <p>类型注解（<code>query: str</code> 这种写法）是什么、能写多复杂，是 L13 才系统学的内容。本课直接给你写好的函数签名，<strong>重点是装饰器怎么在导入阶段读签名、把函数注册进表里</strong>，不考察复杂 typing（<code>Optional</code>、<code>Literal</code>、泛型等）。下面的简易 Schema 也刻意只覆盖最基础的四种类型。</p>
+    <strong>📌 本课给定的 machinery</strong>
+    <p><code>inspect.signature</code>、<code>get_type_hints</code> 和 <code>build_schema</code> 视为已提供组件，不要求现在自行实现。当前构建器只支持 <code>str/int/float/bool</code> 四种标量类型；只接受可用对象键表达的普通参数与 keyword-only 参数。复杂 typing 留到 L13，Pydantic Schema 与运行时校验留到 L14。</p>
   </div>
-  <pre><code>import functools, inspect
 
-REGISTRY = {}
+  <p>下面是本课唯一的规范实现。Schema 与“通过关键字传入参数”的工具契约一致：对象拒绝未声明字段（<code>additionalProperties: False</code>）。</p>
+  <pre><code>import copy
+import functools
+import inspect
+from typing import get_type_hints
 
-TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}  # 简易 Schema 只认这 4 种
 
-def _param_schema(name, annotation):
-    if annotation is inspect.Parameter.empty:
-        raise TypeError(f"参数 `{name}` 缺少类型注解，本课简易 Schema 不支持无注解参数（L13 会系统讲类型注解）")
-    if annotation not in TYPE_MAP:
-        raise TypeError(
-            f"参数 `{name}` 的类型 {annotation!r} 超出本课支持范围（仅 str/int/float/bool）。"
-            f"list/Optional/Literal/嵌套模型等复杂类型需要 L13 类型提示 + L14 Pydantic 才能正确处理。"
-        )
-    return TYPE_MAP[annotation]
+class CountingRegistry(dict):
+    def __init__(self):
+        super().__init__()
+        self.writes = 0
+
+    def __setitem__(self, key, value):
+        self.writes += 1
+        super().__setitem__(key, value)
+
+
+REGISTRY = CountingRegistry()
+TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
+ALLOWED_KINDS = {
+    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    inspect.Parameter.KEYWORD_ONLY,
+}
+
+
+def build_schema(fn):
+    """课程提供的简化 machinery：只表达四种标量类型。"""
+    hints = get_type_hints(fn)
+    properties, required = {}, []
+    for name, parameter in inspect.signature(fn).parameters.items():
+        if parameter.kind not in ALLOWED_KINDS:
+            raise TypeError(
+                f"参数 `{name}` 的 kind={parameter.kind.name} 不受支持"
+            )
+        annotation = hints.get(name, inspect.Parameter.empty)
+        if annotation is inspect.Parameter.empty:
+            raise TypeError(f"参数 `{name}` 缺少类型注解")
+        if annotation not in TYPE_MAP:
+            raise TypeError(f"参数 `{name}` 的类型 {annotation!r} 不受支持")
+        properties[name] = {"type": TYPE_MAP[annotation]}
+        if parameter.default is inspect.Parameter.empty:
+            required.append(name)
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": False,
+    }
+
 
 def tool(fn):
-    sig = inspect.signature(fn)
-    properties, required = {}, []
-    for name, p in sig.parameters.items():
-        properties[name] = {"type": _param_schema(name, p.annotation)}
-        if p.default is inspect.Parameter.empty:
-            required.append(name)
-    input_schema = {"type": "object", "properties": properties, "required": required}
+    name = fn.__name__
+    if name in REGISTRY:
+        raise ValueError(f"工具 `{name}` 已注册")
 
-    REGISTRY[fn.__name__] = {                    # registry 保存"中立"信息，不绑定任何厂商格式
-        "fn": fn,
-        "name": fn.__name__,
-        "description": (fn.__doc__ or "").strip(),
-        "input_schema": input_schema,
-    }
+    input_schema = build_schema(fn)  # 这里及之前都可能失败
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         return fn(*args, **kwargs)
+
+    entry = {                       # 先得到完整候选条目
+        "fn": wrapper,
+        "name": name,
+        "description": (fn.__doc__ or "").strip(),
+        "input_schema": input_schema,
+    }
+    REGISTRY[name] = entry          # 唯一一次共享状态写入
     return wrapper
 
-@tool
-def web_search(query: str, max_results: int = 5) -> dict:
-    "搜索网页并返回结果"
-    return {"query": query, "n": max_results}
 
-print(REGISTRY["web_search"])
-# {'fn': &lt;function web_search ...&gt;, 'name': 'web_search',
-#  'description': '搜索网页并返回结果',
-#  'input_schema': {'type': 'object',
-#                    'properties': {'query': {'type': 'string'},
-#                                   'max_results': {'type': 'integer'}},
-#                    'required': ['query']}}
-
-# 无注解 / 复杂类型：明确拒绝，不静默瞎猜
-@tool
-def bad(x):            # TypeError：缺少类型注解
-    ...
-@tool
-def bad2(items: list): # TypeError：list 超出 str/int/float/bool 范围
-    ...</code></pre>
-  <p><strong>无注解不会退化成 <code>"any"</code> 或 <code>"_empty"</code>，而是直接 <code>TypeError</code>；</strong>不在 <code>str/int/float/bool</code> 内的类型（<code>list[str]</code>、<code>Optional[int]</code>、<code>Literal</code>、嵌套 Pydantic 模型等）同样拒绝并指向 L13/L14——宁可拒绝，也不能给 LLM 一份错的 Schema。</p>
-
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 厂商边界：registry 是中立的，请求格式要适配</strong>
-    <p>上面 <code>REGISTRY</code> 里存的 <code>name/description/input_schema</code> 是<strong>厂商无关</strong>的中立信息。真正发给 LLM 时，OpenAI 和 Anthropic 的字段结构并不一样，需要各自的 adapter 转换：</p>
-    <pre><code>def to_openai_schema(entry):
+def to_openai_chat_completions_tool(entry):
+    """OpenAI Chat Completions endpoint 的 tools[] 元素。"""
     return {"type": "function", "function": {
         "name": entry["name"],
         "description": entry["description"],
-        "parameters": entry["input_schema"],       # OpenAI 叫 parameters
+        "parameters": copy.deepcopy(entry["input_schema"]),
     }}
 
-def to_anthropic_schema(entry):
+
+def to_anthropic_messages_tool(entry):
+    """Anthropic Messages API 的 tools[] 元素。"""
     return {
         "name": entry["name"],
         "description": entry["description"],
-        "input_schema": entry["input_schema"],     # Anthropic 直接叫 input_schema
+        "input_schema": copy.deepcopy(entry["input_schema"]),
     }</code></pre>
-    <p>不是"两家都塞进 <code>parameters</code>"——字段名、嵌套层级都不同，adapter 要分开写。</p>
-  </div>
 
-  <div class="card" style="border-left: 4px solid var(--accent);">
-    <strong>⚠️ Schema ≠ 运行时校验：</strong>
-    <p>本课的 <code>@tool</code> 只做了两件事——<strong>注册</strong>（存进 <code>REGISTRY</code>）和<strong>描述</strong>（生成喂给 LLM 看的 Schema）。它<strong>不会</strong>在调用 <code>web_search(...)</code> 时校验实参类型对不对——LLM 传个字符串当 <code>max_results</code>，这段代码照样会往下执行，出错与否取决于函数体自己怎么处理。L14 会用 Pydantic <code>BaseModel</code> 在构造实例时自动校验；届时注册表应保存模型类 / validator，执行前先构造模型得到已验证参数。</p>
+  <div class="best-practice-point" id="bp-l11-failure-safe-registration">
+    <h3>最佳实践：build + validate 完整条目，然后 single-writer commit</h3>
+    <p class="bp-scenario"><strong>唯一决策：</strong>所有可能失败的工作——重复名称检查、签名解析、类型支持检查、Schema 构建、wrapper 与条目构建——都必须发生在 <code>REGISTRY[name] = entry</code> 之前。缺注解、<code>list[str]</code>、不支持的参数 kind 或重复名称一旦失败，registry 应与调用前完全相同。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 先写再补</span><pre><code>REGISTRY[name] = {"fn": fn}
+REGISTRY[name]["input_schema"] = build_schema(fn)</code></pre><p>后一步抛错时，会留下缺字段的半成品。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 完整候选只提交一次</span><pre><code>entry = build_and_validate_entry(fn)
+REGISTRY[name] = entry</code></pre><p>失败发生在写入前；成功路径只有一个写点。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先在局部变量中完成构建与验证，再执行唯一共享写入，使任一构建失败都无法暴露半成品，保护 registry 完整性、可诊断性与测试隔离。代价是要先构造完整候选，并维护失败分支和写入次数证据；对于不会失败、没有共享状态的简单映射，可直接返回值而不引入注册阶段。这里仅保证<strong>单写者场景下的失败安全</strong>，不是并发原子性；多个写者并发注册应改用锁、串行初始化或其他同步方案。</p>
+    <details class="bp-check"><summary><strong>动手自检（默认折叠；整块可独立运行）：</strong></summary><pre><code>import copy
+import functools
+import inspect
+from typing import get_type_hints
+
+
+class CountingRegistry(dict):
+    def __init__(self):
+        super().__init__()
+        self.writes = 0
+
+    def __setitem__(self, key, value):
+        self.writes += 1
+        super().__setitem__(key, value)
+
+
+REGISTRY = CountingRegistry()
+TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
+ALLOWED_KINDS = {
+    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    inspect.Parameter.KEYWORD_ONLY,
+}
+
+
+def build_schema(fn):
+    hints = get_type_hints(fn)
+    properties, required = {}, []
+    for name, parameter in inspect.signature(fn).parameters.items():
+        if parameter.kind not in ALLOWED_KINDS:
+            raise TypeError(
+                f"参数 `{name}` 的 kind={parameter.kind.name} 不受支持"
+            )
+        annotation = hints.get(name, inspect.Parameter.empty)
+        if annotation is inspect.Parameter.empty:
+            raise TypeError(f"参数 `{name}` 缺少类型注解")
+        if annotation not in TYPE_MAP:
+            raise TypeError(f"参数 `{name}` 的类型 {annotation!r} 不受支持")
+        properties[name] = {"type": TYPE_MAP[annotation]}
+        if parameter.default is inspect.Parameter.empty:
+            required.append(name)
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": False,
+    }
+
+
+def tool(fn):
+    name = fn.__name__
+    if name in REGISTRY:
+        raise ValueError(f"工具 `{name}` 已注册")
+    schema = build_schema(fn)
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+
+    entry = {
+        "fn": wrapper,
+        "name": name,
+        "description": (fn.__doc__ or "").strip(),
+        "input_schema": schema,
+    }
+    REGISTRY[name] = entry
+    return wrapper
+
+
+@tool
+def scalar_tool(query: str, *, limit: int = 3,
+                score: float = 0.5, enabled: bool = True) -> str:
+    "四种标量注册成功。"
+    return query
+
+
+assert set(REGISTRY["scalar_tool"]) == {
+    "fn", "name", "description", "input_schema"
+}
+assert REGISTRY["scalar_tool"]["input_schema"]["additionalProperties"] is False
+assert REGISTRY.writes == 1  # 成功注册只提交一次
+baseline = copy.deepcopy(REGISTRY)
+baseline_writes = REGISTRY.writes
+
+
+def expect_unchanged(fn, error_type, *message_parts):
+    before = copy.deepcopy(REGISTRY)
+    try:
+        tool(fn)
+    except error_type as exc:
+        assert all(part in str(exc) for part in message_parts)
+    else:
+        raise AssertionError(f"{fn.__name__} 应注册失败")
+    assert REGISTRY == before == baseline
+    assert REGISTRY.writes == baseline_writes
+    assert REGISTRY.writes == baseline_writes  # 失败路径零写入
+
+
+def missing(query):
+    return query
+
+
+def unsupported(tags: list[str]):
+    return tags
+
+
+def positional_only(query: str, /):
+    return query
+
+
+def variadic(*queries: str):
+    return queries
+
+
+def keyword_variadic(**options: str):
+    return options
+
+
+def duplicate(query: str):
+    return query
+
+
+duplicate.__name__ = "scalar_tool"
+expect_unchanged(missing, TypeError, "query", "缺少类型注解")
+expect_unchanged(unsupported, TypeError, "tags", "list[str]", "不受支持")
+expect_unchanged(positional_only, TypeError, "query", "POSITIONAL_ONLY")
+expect_unchanged(variadic, TypeError, "queries", "VAR_POSITIONAL")
+expect_unchanged(keyword_variadic, TypeError, "options", "VAR_KEYWORD")
+expect_unchanged(duplicate, ValueError, "scalar_tool", "已注册")</code></pre></details>
   </div>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>这就是 LangChain 的 <code>@tool</code>、Pydantic AI 的工具注册在幕后做的事：<strong>装饰器读取你的函数签名（L05）+ 类型注解（L13 会系统学）+ docstring，自动生成中立的工具描述，再由各家 SDK 转成自己的请求格式</strong>。到 L14 用 Pydantic 后，Schema 会更严谨（自动导出标准 JSON Schema，且真的带运行时校验）。Part B 到这里闭环了。</p>
+    <strong>🔑 中立 registry，endpoint-specific adapter</strong>
+    <p>registry 精确保存 <code>fn/name/description/input_schema</code>。发送时才转换：OpenAI <strong>Chat Completions endpoint</strong> 使用 <code>type → function → parameters</code>；Anthropic <strong>Messages API</strong> 使用顶层 <code>name/description/input_schema</code>。adapter 返回副本，不修改 registry。</p>
+  </div>
+
+  <div class="card" style="border-left: 4px solid var(--accent);">
+    <strong>⚠️ Schema 不是运行时参数校验</strong>
+    <p>这个 wrapper 只是把 <code>*args/**kwargs</code> 原样传给函数。Schema 描述发给模型的参数契约，但直接调用工具时不会自动拦截错误类型；真正的执行前校验留到 L14。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -236,134 +385,420 @@ def to_anthropic_schema(entry):
 <div class="section">
   <h2>知识图谱</h2>
   <div class="card">
-    <pre><code>装饰器本质（本课聚焦函数装饰器）
-├── @deco 等价 f = deco(f)（语法糖）
-├── 常见实现：返回闭包 wrapper（记住 fn，← L06）
-├── 但也可作用于类（如 @dataclass），返回值不一定是新函数/闭包
-├── wrapper(*args, **kwargs) 接任意签名（← L05）
-└── @functools.wraps(fn) 保留 __name__/__doc__/签名（必写）
+    <pre><code>函数装饰器
+├── @deco 等价于 f = deco(f)
+├── wrapper 闭包记住 fn；*args/**kwargs 转发调用
+├── functools.wraps 保留元信息与 __wrapped__ 链
+├── 带参数装饰器：参数层 → 装饰器层 → wrapper 层
+└── 多层装饰器：装饰自下而上，调用自外向内
 
-带参数装饰器 → 三层（外层收参数）
-多层装饰器 → 离函数近的先套；调用自外向内
-
-@tool（Agent 经典用法，本课示范）
-├── inspect.signature 读签名（反射）
-├── 类型注解 → 参数 type（类型注解本身 → L13 系统学）
-├── 简易 Schema 只映射 str/int/float/bool；无注解/复杂类型 → TypeError
-├── docstring → 工具描述
-├── registry 存中立信息：fn/name/description/input_schema
-├── OpenAI（parameters）/ Anthropic（input_schema）→ 各自 adapter 转换
-└── Schema 只是描述，不等于运行时校验（L14：构造 Pydantic BaseModel 实例得到已验证参数）</code></pre>
+@tool 注册
+├── 给定 machinery：inspect / get_type_hints / build_schema
+├── 当前只支持 str / int / float / bool
+├── 完整构建与验证 → registry 唯一写入
+├── 中立条目：fn / name / description / input_schema
+├── OpenAI Chat Completions：function.parameters
+├── Anthropic Messages：input_schema
+└── Schema 是描述；运行时校验留到 L14</code></pre>
   </div>
 </div>
 
 <div class="section">
   <h2>实战练习</h2>
   <div class="card">
-    <h3>练习：手写 @tool 装饰器</h3>
-    <p>实现一个工具注册装饰器，自动收集函数名、参数 Schema（仅 str/int/float/bool，从类型注解提取）、描述，构建工具注册表，并分别导出 OpenAI / Anthropic 两种请求格式。<strong>先自己写，再看答案。</strong></p>
-    <h4>任务清单</h4>
+    <h3>练习：补完注册边界</h3>
+    <p>直接复用第 4 节给定的 <code>build_schema</code>，不要重写反射或类型解析。先自己完成，再展开核对。</p>
     <ol>
-      <li><code>tool</code> 装饰器：用 <code>inspect.signature</code> 读参数</li>
-      <li>每个参数记录 JSON Schema 类型：<code>str→string / int→integer / float→number / bool→boolean</code>；无注解或类型不在这 4 种之内，<strong>抛 <code>TypeError</code></strong>（不要静默给个 <code>"any"</code> 或 <code>"_empty"</code>）</li>
-      <li>从 docstring 取工具描述</li>
-      <li>存进全局 <code>REGISTRY</code>：中立信息 <code>fn/name/description/input_schema</code>（不绑定任何厂商格式）</li>
-      <li>用 <code>functools.wraps</code>，保证被装饰函数仍可正常调用</li>
-      <li>加 <code>to_openai_schema(entry)</code> / <code>to_anthropic_schema(entry)</code> 两个 adapter，分别转成各家请求体格式</li>
+      <li>写参数化日志装饰器，并用 <code>wraps</code> 保留 name/doc/signature。</li>
+      <li>让 <code>@tool</code> 在完整条目构建成功后才写 registry。</li>
+      <li>拒绝重复名称，且失败时 registry 不变。</li>
+      <li>分别输出 OpenAI Chat Completions 与 Anthropic Messages 工具定义。</li>
     </ol>
     <details>
-      <summary>💡 点击查看参考答案</summary>
-      <pre><code>import functools, inspect, json
+      <summary>💡 点击查看参考要点</summary>
+      <ul>
+        <li>参数化装饰器是三层结构；多层装饰等价于 <code>outer(inner(fn))</code>。</li>
+        <li>注册函数应只有一个 <code>REGISTRY[name] = entry</code> 写点，且在最后。</li>
+        <li>不要把 <code>parameters</code> 与 <code>input_schema</code> 混用；它们属于不同 endpoint adapter。</li>
+        <li>第 4 节代码就是参考实现；课末验收覆盖所有失败路径，无需再复制一份 <code>build_schema</code>。</li>
+      </ul>
+    </details>
+  </div>
+</div>
 
-REGISTRY = {}
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：失败安全注册</h2>
+  <p class="best-practice-lead">先运行第 4 节规范实现，再运行下面的验收代码。场景改为物流报价，避免照抄前文示例。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>验证参数化装饰器与叠放顺序。</li><li>注册一个物流工具并核对中立条目的精确字段。</li><li>核对两个 endpoint adapter 的精确结构与不变性。</li><li>逐一触发缺注解、复杂类型、三种坏 kind、重复名称。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>name/doc/signature 与调用结果保留</li><li>Schema 拒绝额外关键字</li><li>每次失败后 registry 完全不变</li><li>adapter 不改 registry</li><li>运行时不校验的边界有实证</li><li>最后只打印一行验收标记</li></ul></div>
+    </div>
+    <details class="bp-check"><summary><strong>课末自检（整块可独立运行）：</strong></summary><pre><code>import copy
+import functools
+import inspect
+from typing import get_type_hints
+
+
+class CountingRegistry(dict):
+    def __init__(self):
+        super().__init__()
+        self.writes = 0
+
+    def __setitem__(self, key, value):
+        self.writes += 1
+        super().__setitem__(key, value)
+
+
+REGISTRY = CountingRegistry()
 TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
+ALLOWED_KINDS = {
+    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    inspect.Parameter.KEYWORD_ONLY,
+}
 
-def _param_schema(name, annotation):
-    if annotation is inspect.Parameter.empty:
-        raise TypeError(f"参数 `{name}` 缺少类型注解（本课简易 Schema 不支持，见 L13）")
-    if annotation not in TYPE_MAP:
-        raise TypeError(f"参数 `{name}` 类型 {annotation!r} 不在 str/int/float/bool 内（见 L13/L14）")
-    return TYPE_MAP[annotation]
+
+def build_schema(fn):
+    hints = get_type_hints(fn)
+    properties, required = {}, []
+    for name, parameter in inspect.signature(fn).parameters.items():
+        if parameter.kind not in ALLOWED_KINDS:
+            raise TypeError(
+                f"参数 `{name}` 的 kind={parameter.kind.name} 不受支持"
+            )
+        annotation = hints.get(name, inspect.Parameter.empty)
+        if annotation is inspect.Parameter.empty:
+            raise TypeError(f"参数 `{name}` 缺少类型注解")
+        if annotation not in TYPE_MAP:
+            raise TypeError(f"参数 `{name}` 的类型 {annotation!r} 不受支持")
+        properties[name] = {"type": TYPE_MAP[annotation]}
+        if parameter.default is inspect.Parameter.empty:
+            required.append(name)
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": False,
+    }
+
 
 def tool(fn):
-    sig = inspect.signature(fn)
-    properties, required = {}, []
-    for name, p in sig.parameters.items():
-        properties[name] = {"type": _param_schema(name, p.annotation)}
-        if p.default is inspect.Parameter.empty:
-            required.append(name)
-    REGISTRY[fn.__name__] = {
-        "fn": fn,
-        "name": fn.__name__,
-        "description": (fn.__doc__ or "").strip(),
-        "input_schema": {"type": "object", "properties": properties, "required": required},
-    }
+    name = fn.__name__
+    if name in REGISTRY:
+        raise ValueError(f"工具 `{name}` 已注册")
+    input_schema = build_schema(fn)
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         return fn(*args, **kwargs)
+
+    entry = {
+        "fn": wrapper,
+        "name": name,
+        "description": (fn.__doc__ or "").strip(),
+        "input_schema": input_schema,
+    }
+    REGISTRY[name] = entry
     return wrapper
 
-def to_openai_schema(entry):
+
+def to_openai_chat_completions_tool(entry):
     return {"type": "function", "function": {
-        "name": entry["name"], "description": entry["description"],
-        "parameters": entry["input_schema"],
+        "name": entry["name"],
+        "description": entry["description"],
+        "parameters": copy.deepcopy(entry["input_schema"]),
     }}
 
-def to_anthropic_schema(entry):
-    return {"name": entry["name"], "description": entry["description"],
-            "input_schema": entry["input_schema"]}
+
+def to_anthropic_messages_tool(entry):
+    return {
+        "name": entry["name"],
+        "description": entry["description"],
+        "input_schema": copy.deepcopy(entry["input_schema"]),
+    }
+
+
+TRACE = []
+
+
+def traced(label):
+    def decorate(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            TRACE.append(f"enter:{label}")
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                TRACE.append(f"exit:{label}")
+        return wrapper
+    return decorate
+
+
+@traced("outer")
+@traced("inner")
+def normalize_zone(zone: str) -> str:
+    "物流分区标准化。"
+    TRACE.append("body")
+    return zone.upper()
+
+
+original = normalize_zone.__wrapped__.__wrapped__
+assert normalize_zone("east") == "EAST"
+assert TRACE == ["enter:outer", "enter:inner", "body",
+                 "exit:inner", "exit:outer"]
+assert normalize_zone.__name__ == original.__name__ == "normalize_zone"
+assert normalize_zone.__doc__ == original.__doc__ == "物流分区标准化。"
+assert inspect.signature(normalize_zone) == inspect.signature(original)
 
 
 @tool
-def web_search(query: str, max_results: int = 5) -> dict:
-    "搜索网页，返回若干条结果"
-    return {"query": query, "n": max_results}
+def quote_shipping(destination: str, *, parcels: int = 1,
+                   insured: bool = False) -> str:
+    "估算物流报价。"
+    return f"{destination}|{parcels!r}|{insured!r}"
 
-@tool
-def calculator(expression: str, precise: bool = True) -> float:
-    "计算一个数学表达式"
-    return 0.0
 
-# 被装饰后照常调用
-print(web_search("ai agents"))          # {'query': 'ai agents', 'n': 5}
-print(web_search.__name__)              # web_search（wraps 生效）
+entry = REGISTRY["quote_shipping"]
+expected_schema = {
+    "type": "object",
+    "properties": {
+        "destination": {"type": "string"},
+        "parcels": {"type": "integer"},
+        "insured": {"type": "boolean"},
+    },
+    "required": ["destination"],
+    "additionalProperties": False,
+}
+assert set(entry) == {"fn", "name", "description", "input_schema"}
+assert entry["fn"] is quote_shipping
+assert entry["name"] == quote_shipping.__name__ == "quote_shipping"
+assert entry["description"] == quote_shipping.__doc__ == "估算物流报价。"
+assert entry["input_schema"] == expected_schema
 
-# 分别导出两家请求格式
-entry = REGISTRY["web_search"]
-print(json.dumps(to_openai_schema(entry), ensure_ascii=False, indent=2))
-print(json.dumps(to_anthropic_schema(entry), ensure_ascii=False, indent=2))
+# 没有运行时参数校验：错误类型被原样传入。
+assert quote_shipping("north", parcels="two") == "north|'two'|False"
 
-# 无注解 / 复杂类型 → 明确拒绝
-try:
-    @tool
-    def bad(x):
-        ...
-except TypeError as e:
-    print("拒绝：", e)</code></pre>
-      <h4>思考题</h4>
-      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
+snapshot = copy.deepcopy(REGISTRY)
+openai_tool = to_openai_chat_completions_tool(entry)
+anthropic_tool = to_anthropic_messages_tool(entry)
+assert openai_tool == {
+    "type": "function",
+    "function": {
+        "name": "quote_shipping",
+        "description": "估算物流报价。",
+        "parameters": expected_schema,
+    },
+}
+assert anthropic_tool == {
+    "name": "quote_shipping",
+    "description": "估算物流报价。",
+    "input_schema": expected_schema,
+}
+assert REGISTRY == snapshot
+assert openai_tool["function"]["parameters"] is not entry["input_schema"]
+assert anthropic_tool["input_schema"] is not entry["input_schema"]
 
-      <details class="think-q">
-        <summary><span class="think-q-tag">Q1</span>为什么去掉 <code>@functools.wraps</code> 后，很多框架会读不到工具的真实名字？</summary>
-        <div class="think-q-answer">
-          <p><strong>因为装饰器默认是用内层的 <code>wrapper</code> 函数替换掉原函数，没有 <code>@functools.wraps</code> 把元信息复制回来，<code>func.__name__</code> 就变成了 <code>"wrapper"</code>，而不是工具的真实名字。</strong></p>
-          <p><code>@deco</code> 等价于 <code>fn = deco(fn)</code>，装饰之后外界拿到的其实是 <code>wrapper</code> 这个新函数对象。<code>wrapper</code> 自己的 <code>__name__</code> 就是字符串 <code>"wrapper"</code>、<code>__doc__</code> 是 <code>None</code>，于是原函数的名字、docstring、签名全被盖掉了。</p>
-          <p>而很多 Agent 框架（LangChain、Pydantic AI 等）注册工具时，正是靠反射读 <code>func.__name__</code> 当工具名、读 <code>func.__doc__</code> 当工具描述、读签名生成参数 Schema。少了 <code>@functools.wraps(fn)</code>，框架读到的就是一堆叫 <code>"wrapper"</code>、没有描述的工具——名字冲突、LLM 也不知道每个工具是干嘛的。<code>functools.wraps</code> 的作用就是把原函数的 <code>__name__</code>/<code>__doc__</code>/<code>__wrapped__</code> 等元信息拷回 <code>wrapper</code>，让包装对外"透明"。</p>
-        </div>
-      </details>
+assert REGISTRY.writes == 1  # quote_shipping 成功注册只提交一次
+baseline = copy.deepcopy(REGISTRY)
+baseline_writes = REGISTRY.writes
 
-      <details class="think-q">
-        <summary><span class="think-q-tag">Q2</span>到 L14，如果用 Pydantic 的模型来描述参数，这个 Schema 会多出什么能力？（提示：校验 + 标准 JSON Schema 导出）</summary>
-        <div class="think-q-answer">
-          <p><strong>比手写的 dict Schema 多出三样：运行时自动校验、一键导出标准 JSON Schema、以及字段级的描述/默认值/嵌套建模。</strong></p>
-          <p>① <strong>运行时校验</strong>：Pydantic <code>BaseModel</code> 在构造实例时会按类型和约束（如 <code>int</code>、<code>gt=0</code>、<code>max_length</code>）自动校验入参，不符合就抛 <code>ValidationError</code>。而本课手写的 <code>{"type": "string"}</code> 只是一份"描述"，<strong>本身并不会真正拦截非法参数</strong>——LLM 传错类型也照样调用到函数体。L14 会用 Pydantic <code>BaseModel</code> 在构造实例时自动校验；届时注册表应保存模型类 / validator，执行前先构造模型得到已验证参数。</p>
-          <p>② <strong>标准 JSON Schema 导出</strong>：调 <code>Model.model_json_schema()</code> 就能得到符合 JSON Schema 规范的结构，直接作为 <code>input_schema</code> 塞进 OpenAI/Anthropic 各自的 adapter，不用自己拼 <code>type</code>/<code>required</code>/<code>properties</code>，也不怕拼错格式，还能覆盖 <code>list</code>/<code>Optional</code>/嵌套模型等本课拒绝的复杂类型。</p>
-          <p>③ <strong>更丰富的表达力</strong>：每个字段能带 <code>Field(description=...)</code> 描述（LLM 看得懂）、默认值、可选/必填、以及嵌套模型和复杂类型（<code>list[Item]</code>、枚举等）。这就是为什么 L14 之后工具注册表会比本课手写版严谨得多——校验和导出都交给 Pydantic，registry 也该保存"模型类"而不只是 dict Schema。</p>
-        </div>
-      </details>
-    </details>
+
+def expect_unchanged(fn, error_type, *message_parts):
+    before = copy.deepcopy(REGISTRY)
+    try:
+        tool(fn)
+    except error_type as exc:
+        assert all(part in str(exc) for part in message_parts)
+    else:
+        raise AssertionError(f"{fn.__name__} 应注册失败")
+    assert REGISTRY == before == baseline
+    assert REGISTRY.writes == baseline_writes
+
+
+def missing_annotation(destination, parcels: int):
+    return destination, parcels
+
+
+def unsupported_list(tags: list[str]):
+    return tags
+
+
+def positional_only(code: str, /):
+    return code
+
+
+def variadic(*codes: str):
+    return codes
+
+
+def keyword_variadic(**options: str):
+    return options
+
+
+def duplicate_tool(destination: str):
+    return destination
+
+
+duplicate_tool.__name__ = "quote_shipping"
+expect_unchanged(missing_annotation, TypeError,
+                 "destination", "缺少类型注解")
+expect_unchanged(unsupported_list, TypeError,
+                 "tags", "list[str]", "不受支持")
+expect_unchanged(positional_only, TypeError,
+                 "code", "POSITIONAL_ONLY")
+expect_unchanged(variadic, TypeError,
+                 "codes", "VAR_POSITIONAL")
+expect_unchanged(keyword_variadic, TypeError,
+                 "options", "VAR_KEYWORD")
+expect_unchanged(duplicate_tool, ValueError,
+                 "quote_shipping", "已注册")
+
+print("L11 ACCEPTED")</code></pre></details>
   </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-extensibility" data-phase-practice="extensibility">
+  <h2>阶段实践检查点：可扩展分发与注册</h2>
+  <p class="best-practice-lead">组合 L08 的 registry dispatch 与 L11 的 build → validate → single commit：执行器保持稳定，新增实现只扩展注册表；所有无效注册都在唯一写点之前失败。</p>
+  <div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>建立可观察写入次数的 registry 与通用执行器。</li><li>注册首个实现，再新增一个有效实现。</li><li>核对执行器对象身份与字节码均未改变。</li><li>分别触发重复名称、坏签名和不支持注解。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>新增实现无需修改执行器</li><li>有效注册恰好提交一次</li><li>三种失败路径均零写入</li><li>失败后的 registry 快照完全相同</li><li>stdout 只有指定检查点标记</li></ul></div>
+  </div>
+  <p class="bp-term"><strong>先独立完成：</strong>先自行实现稳定执行器、可观察 registry 和 build→validate→commit 注册流程；用失败快照证明零写入后，再展开参考验收程序。</p>
+  <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开）：</strong></summary><pre><code>import copy
+import functools
+import inspect
+from typing import get_type_hints
+
+
+class CountingRegistry(dict):
+    def __init__(self):
+        super().__init__()
+        self.writes = 0
+
+    def __setitem__(self, key, value):
+        self.writes += 1
+        super().__setitem__(key, value)
+
+
+REGISTRY = CountingRegistry()
+TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
+ALLOWED_KINDS = {
+    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    inspect.Parameter.KEYWORD_ONLY,
+}
+
+
+def build_schema(fn):
+    hints = get_type_hints(fn)
+    properties, required = {}, []
+    for name, parameter in inspect.signature(fn).parameters.items():
+        if parameter.kind not in ALLOWED_KINDS:
+            raise TypeError(f"bad parameter kind: {name}:{parameter.kind.name}")
+        annotation = hints.get(name, inspect.Parameter.empty)
+        if annotation is inspect.Parameter.empty:
+            raise TypeError(f"missing annotation: {name}")
+        if annotation not in TYPE_MAP:
+            raise TypeError(f"unsupported annotation: {name}:{annotation!r}")
+        properties[name] = {"type": TYPE_MAP[annotation]}
+        if parameter.default is inspect.Parameter.empty:
+            required.append(name)
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": False,
+    }
+
+
+def tool(fn):
+    name = fn.__name__
+    if name in REGISTRY:
+        raise ValueError(f"duplicate tool: {name}")
+    schema = build_schema(fn)
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+
+    entry = {
+        "fn": wrapper,
+        "name": name,
+        "description": (fn.__doc__ or "").strip(),
+        "input_schema": schema,
+    }
+    REGISTRY[name] = entry
+    return wrapper
+
+
+def execute(name, arguments):
+    entry = REGISTRY.get(name)
+    if entry is None:
+        raise KeyError(f"unknown tool: {name}")
+    return entry["fn"](**arguments)
+
+
+@tool
+def add(a: int, b: int) -> int:
+    "两数相加。"
+    return a + b
+
+
+assert execute("add", {"a": 2, "b": 3}) == 5
+executor_identity = execute
+executor_code = execute.__code__.co_code
+writes_before_extension = REGISTRY.writes
+
+
+@tool
+def join(parts: str, *, suffix: str = "") -> str:
+    "拼接文本。"
+    return parts + suffix
+
+
+assert execute is executor_identity
+assert execute.__code__.co_code == executor_code
+assert execute("join", {"parts": "A", "suffix": "I"}) == "AI"
+assert REGISTRY.writes == writes_before_extension + 1
+assert REGISTRY["join"]["fn"] is join
+
+baseline = copy.deepcopy(REGISTRY)
+baseline_writes = REGISTRY.writes
+
+
+def expect_rejected(fn, error_type, message_part):
+    before = copy.deepcopy(REGISTRY)
+    writes_before = REGISTRY.writes
+    try:
+        tool(fn)
+    except error_type as exc:
+        assert message_part in str(exc)
+    else:
+        raise AssertionError(f"{fn.__name__} should be rejected")
+    assert REGISTRY == before == baseline
+    assert REGISTRY.writes == writes_before == baseline_writes
+
+
+def duplicate(value: str):
+    return value
+
+
+def bad_signature(*values: str):
+    return values
+
+
+def unsupported(tags: list[str]):
+    return tags
+
+
+duplicate.__name__ = "join"
+expect_rejected(duplicate, ValueError, "duplicate tool: join")
+expect_rejected(bad_signature, TypeError, "VAR_POSITIONAL")
+expect_rejected(unsupported, TypeError, "unsupported annotation: tags")
+
+print("P1 CHECKPOINT EXTENSIBILITY PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>执行器身份或字节码变化，说明扩展仍依赖修改分发控制流；有效注册增加多次写入，说明提交点不唯一；任一失败使写入计数或快照变化，说明 build/validate 越过了共享状态边界。</p>
+  <p><a href="../best-practices/phase1-python-engineering-practices.html#theme-registry">返回阶段主题：Extensibility →</a></p>
 </div>
 
 <div class="section">
@@ -372,7 +807,7 @@ except TypeError as e:
     <h3>Q1：装饰器的本质是什么？</h3>
     <p><strong>答：</strong>本课聚焦函数装饰器——接收一个 callable、返回一个替代对象；常见实现是返回记住了原函数的闭包 wrapper。<code>@deco</code> 等价于 <code>f = deco(f)</code>，用来在不改原函数的前提下增强它。但装饰器不止能用于函数：作用于类（如 <code>@dataclass</code>）时返回值也是类本身，不是函数或闭包。</p>
     <h3>Q2：为什么装饰器要用 functools.wraps？</h3>
-    <p><strong>答：</strong>否则内层 wrapper 会覆盖原函数的 <code>__name__</code>/<code>__doc__</code>/签名，破坏调试、文档和依赖反射的框架（如从函数生成工具 Schema）。wraps 把元信息复制回来。</p>
+    <p><strong>答：</strong><code>wraps</code> 复制指定元数据并设置 <code>__wrapped__</code>；<code>inspect.signature</code> 默认沿这条链读取原签名。否则外界只看到 wrapper 自己的名字、文档和签名，调试、文档及依赖反射的框架都会受影响。</p>
     <h3>Q3：带参数的装饰器和不带参数的结构差别？</h3>
     <p><strong>答：</strong>不带参数两层（装饰器 → wrapper）；带参数三层（收参数 → 装饰器 → wrapper），最外层负责接收装饰器自己的参数。</p>
     <h3>Q4：<code>@a @b def f</code> 的执行顺序？</h3>
@@ -380,7 +815,7 @@ except TypeError as e:
     <h3>Q5：装饰器 wrapper 为什么常写成 <code>(*args, **kwargs)</code>？</h3>
     <p><strong>答：</strong>为了能包装<strong>任意签名</strong>的函数——原样接收所有位置/关键字参数再转发给原函数，不限制被装饰函数长什么样。</p>
     <h3>Q6：工具 Schema 存进 registry 后，能直接发给 OpenAI 和 Anthropic 吗？</h3>
-    <p><strong>答：</strong>不能直接混用。registry 里存的是厂商中立信息（<code>name/description/input_schema</code>）；OpenAI 要包成 <code>{"type":"function","function":{...,"parameters":schema}}</code>，Anthropic 要用 <code>{"name":...,"input_schema":schema}</code>，字段名和嵌套层级不同，需要各自的 adapter 转换。而且这份 Schema 只是描述，不会在调用时自动做运行时校验。</p>
+    <p><strong>答：</strong>不能直接混用。registry 精确保存中立字段 <code>fn/name/description/input_schema</code>；OpenAI Chat Completions endpoint 的工具要包成 <code>type/function/parameters</code>，Anthropic Messages API 的工具使用顶层 <code>name/description/input_schema</code>。adapter 只在发送边界转换且不修改 registry；Schema 仍只是描述，不会自动校验运行时实参。</p>
   </div>
 </div>
 
@@ -413,11 +848,11 @@ except TypeError as e:
     <ul>
       <li>本课聚焦函数装饰器：接收 callable、返回替代对象（常见实现是返回闭包 wrapper）；<code>@deco</code> 即 <code>f=deco(f)</code>；装饰器也可作用于类（如 <code>@dataclass</code>），返回值不一定是新函数/闭包</li>
       <li>wrapper 是闭包（L06）、用 <code>*args/**kwargs</code> 接任意签名（L05）</li>
-      <li>永远加 <code>@functools.wraps(fn)</code> 保留元信息</li>
+      <li><code>@functools.wraps(fn)</code> 复制指定元数据并设置 <code>__wrapped__</code>；<code>inspect.signature</code> 默认沿链读取原签名</li>
       <li>带参数的装饰器是三层结构</li>
       <li>多层装饰器：离函数近的先套，调用自外向内</li>
-      <li><code>@tool</code> 用 inspect 读签名生成中立的 registry（<code>fn/name/description/input_schema</code>），简易 Schema 只映射 str/int/float/bool，无注解/复杂类型明确拒绝</li>
-      <li>OpenAI（<code>parameters</code>）与 Anthropic（<code>input_schema</code>）请求格式不同，需要各自 adapter；Schema 只是描述，不等于运行时校验（校验留给 L14 Pydantic）</li>
+      <li><code>@tool</code> 使用给定的签名/Schema machinery；先构建并验证完整条目，再通过唯一写点提交到中立 registry</li>
+      <li>OpenAI Chat Completions（<code>function.parameters</code>）与 Anthropic Messages（<code>input_schema</code>）使用 endpoint-specific adapter；当前 Schema 只支持四种标量、拒绝额外字段，但不提供运行时实参校验</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">

@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Pydantic 数据验证</h1>
     <p class="subtitle">Pydantic 把类型变成运行时校验 — 也是生成 Tool Schema 的标准工具</p>
@@ -25,7 +25,7 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>L13 说过：类型提示运行时不校验。<strong>Pydantic 补上这一环</strong>——外部数据（LLM 输出、用户输入、API 响应）进来时自动校验、转换、报错。数据脏了立刻拦住，而不是在下游炸出诡异 bug。</p>
+    <p>L13 说过：类型提示运行时不校验。<strong>Pydantic 补上这一环</strong>——外部数据（LLM 输出、用户输入、API 响应）进来时按 v2 规则和模型配置校验、可能转换，失败则报错。数据脏了立刻拦住，而不是在下游炸出诡异 bug。</p>
     <p>更重要的是：Pydantic 能<strong>一键导出 JSON Schema</strong>。这正是喂给 LLM 的"工具说明书"。L11 你手写的 <code>@tool</code>，真实框架（LangChain、OpenAI SDK、Pydantic AI）就是用 Pydantic 来做的。这一课把 Part B 那条 <code>@tool → Schema</code> 线彻底闭环。</p>
     <p style="font-size:.9rem;color:var(--muted);">※ 本课代码基于 <strong>Pydantic v2</strong>，先安装：<code>uv add pydantic</code>（或 <code>pip install pydantic</code>）。v2 的方法名和 v1 不同（如 <code>.model_dump()</code> 取代 <code>.dict()</code>）。</p>
   </div>
@@ -46,7 +46,7 @@
 </div>
 
 <div class="section">
-  <h2>1. BaseModel：自动校验与转换</h2>
+  <h2>1. BaseModel：按规则校验，并按配置决定是否转换</h2>
   <pre><code>from pydantic import BaseModel
 
 class Message(BaseModel):
@@ -147,14 +147,16 @@ obj.model_dump_json()     # '{"query":"ai agents","max_results":5}'    → JSON 
 
 # 导出 JSON Schema —— 这就是喂给 LLM 的"工具参数说明书"
 SearchInput.model_json_schema()
+# 输出节选（为便于阅读，省略模型/字段 title 等键）：
 # {
 #   'type': 'object',
 #   'properties': {
-#     'query': {'type': 'string', 'description': '搜索关键词'},
+#     'query': {'type': 'string', 'description': '搜索关键词', ...},
 #     'max_results': {'type': 'integer', 'default': 5,
-#                     'minimum': 1, 'maximum': 50}
+#                     'minimum': 1, 'maximum': 50, ...}
 #   },
-#   'required': ['query']
+#   'required': ['query'],
+#   ...
 # }</code></pre>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
@@ -162,16 +164,74 @@ SearchInput.model_json_schema()
     <p><code>model_json_schema()</code> 输出的是模型参数的标准 JSON Schema，但 <strong>OpenAI 和 Anthropic 外层字段不同</strong>（L11 提过）：OpenAI 把它塞进 <code>function.parameters</code>；Anthropic 直接塞进顶层 <code>input_schema</code>。同一份 Schema，两家各自的 adapter 负责套外壳，字段名不能混用。回想 L11 你用 <code>inspect</code> 手写的简易 Schema —— 真实框架就是用 Pydantic 生成这份标准、带校验、带描述的 JSON Schema，再交给各厂商 adapter。</p>
   </div>
 
-  <div class="card" style="border-left: 4px solid var(--accent);">
-    <strong>⚠️ Schema 导出不执行 validator：</strong>
-    <p><code>model_json_schema()</code> 只是读类定义生成一份"参数说明书"，<strong>它不会调用任何 <code>@field_validator</code></strong>——validator 只在真正<strong>构造 BaseModel 实例</strong>时才执行。也就是说：把 Schema 发给 LLM、拿到 LLM 回填的参数后，执行工具前必须显式构造一次模型：</p>
-    <pre><code># 沿用上一节带 must_be_known validator 的 ToolCall
-schema = ToolCall.model_json_schema()    # 正常导出；不会调用 must_be_known
-print(schema["properties"]["name"])
+  <div class="best-practice-point" id="bp-l14-validate-before-execution">
+    <h3>最佳实践：Schema 负责描述，模型实例负责校验；跨信任边界的原始参数必须先经 Pydantic v2 再执行工具</h3>
+    <p class="bp-scenario"><strong>适用：</strong>参数来自 LLM 工具调用、HTTP 请求、消息队列、CLI 或其他进程，执行器会读文件、写数据库、发请求或产生其他副作用。把收到的原始 mapping 视为不可信数据，先用 <code>Model.model_validate(raw_args)</code> 得到已校验模型，再调用工具。<strong>不适用：</strong>调用方已经持有同一模型类创建并校验过的实例，且对象没有被转回原始 dict、没有再次跨越信任边界；这时可直接传递该实例，不必重复校验。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 只导出 Schema，原始参数直接执行</span><pre><code>entry = {
+    "input_schema": TransferInput.model_json_schema(),
+    "executor": execute_transfer,
+}
 
-ToolCall(name="hack")                   # 构造实例才调用 must_be_known
-# ❌ ValidationError: 未知工具: hack</code></pre>
-    <p>所以工具 registry 不能只存 <code>input_schema</code> 这份 dict，必须<strong>保存模型类本身（或对应的验证函数）</strong>。把 Schema 发给 LLM、收到原始参数后，执行工具前仍要用 <code>Model(**raw_args)</code> 构造实例，校验通过后才能交给执行器。</p>
+# 参数虽按 Schema 提供给 LLM，返回时仍只是原始 dict
+result = entry["executor"](raw_args)</code></pre><p>这在请求端已经启用结构化约束时看似省事，但仅导出 Schema 不会执行 Python validator；validator 会在模型验证/构造期间运行，启用 <code>validate_assignment=True</code> 时也可能在字段赋值时运行。其他调用方、旧客户端或手工重放的原始参数仍可能绕过模型校验。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 边界先 model_validate，再执行</span><pre><code>entry = {
+    "model": TransferInput,
+    "executor": execute_transfer,
+}
+
+validated = entry["model"].model_validate(raw_args)
+result = entry["executor"](validated)</code></pre><p>registry 保存模型类。只有 <code>model_validate</code> 成功返回的模型实例能进入执行器；<code>ValidationError</code> 在副作用之前中断链路。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong><code>model_json_schema()</code> 读取类定义并生成描述，不执行 <code>@field_validator</code>；validator 在模型验证/构造期间运行，启用 <code>validate_assignment=True</code> 时也可能在字段赋值时运行。这里的 <code>model_validate()</code> 解析原始 mapping、运行约束和 validator。把这一步放在执行器前，因果上阻止无效参数触达副作用，保护正确性、数据完整性、可靠性与错误可诊断性。实际代价是每次边界调用多一次模型解析与对象分配，还要维护 Pydantic 依赖、模型和错误映射；高吞吐路径应基准测试，而不是跳过校验。当数据已是可信的同类模型实例时直接复用；只需校验列表、联合类型等非模型形状时可改用 Pydantic <code>TypeAdapter</code>；依赖受限且契约极简单时可用一段集中、经过测试的显式 parser，但不能用“已经导出 Schema”替代运行时验证。</p>
+    <details class="bp-check"><summary><strong>动手自检（Pydantic v2，离线且整块复制即可运行）：</strong></summary><pre><code>from pydantic import BaseModel, ValidationError, field_validator
+
+validator_calls = 0
+executor_calls = 0
+
+
+class TransferInput(BaseModel):
+    destination: str
+
+    @field_validator("destination")
+    @classmethod
+    def require_account_prefix(cls, value: str) -&gt; str:
+        global validator_calls
+        validator_calls += 1
+        if not value.startswith("acct-"):
+            raise ValueError("destination 必须以 acct- 开头")
+        return value
+
+
+def execute_transfer(validated: TransferInput) -&gt; str:
+    global executor_calls
+    executor_calls += 1
+    return f"sent:{validated.destination}"
+
+
+def run_tool(raw_args: dict[str, object]) -&gt; str:
+    validated = TransferInput.model_validate(raw_args)
+    return execute_transfer(validated)
+
+
+schema = TransferInput.model_json_schema()
+assert schema["properties"]["destination"]["type"] == "string"
+assert validator_calls == 0       # Schema 导出没有执行 validator
+assert executor_calls == 0
+
+try:
+    run_tool({"destination": "external"})
+except ValidationError:
+    pass
+else:
+    raise AssertionError("无效原始参数应被 Pydantic 拒绝")
+
+assert validator_calls == 1       # model_validate 确实执行了 validator
+assert executor_calls == 0        # 无效输入没有触达执行器
+assert run_tool({"destination": "acct-42"}) == "sent:acct-42"
+assert validator_calls == 2
+assert executor_calls == 1        # 有效输入只执行一次</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>无输出且退出码为 0 即通过。Schema 导出后 <code>validator_calls</code> 非 0，说明导出路径意外构造了实例；无效输入后 <code>executor_calls</code> 非 0，说明校验门没有位于副作用之前；最终计数不是 validator 两次、executor 一次，则验证或执行发生了遗漏/重复。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -192,7 +252,7 @@ ToolCall(name="hack")                   # 构造实例才调用 must_be_known
     <table>
       <tr><th>场景</th><th>选择</th></tr>
       <tr><td>内部纯数据容器、不接触外部输入</td><td><strong>@dataclass</strong>（轻、快、零依赖）</td></tr>
-      <tr><td>校验 LLM 输出 / 用户输入 / API 响应</td><td><strong>Pydantic</strong>（自动校验转换）</td></tr>
+      <tr><td>校验 LLM 输出 / 用户输入 / API 响应</td><td><strong>Pydantic</strong>（按模型配置与 v2 规则校验，并可能转换）</td></tr>
       <tr><td>定义工具参数、要导出 JSON Schema 喂 LLM</td><td><strong>Pydantic</strong>（model_json_schema）</td></tr>
       <tr><td>配置模型（带默认值、约束）</td><td><strong>Pydantic</strong>（Field 约束）</td></tr>
     </table>
@@ -204,11 +264,12 @@ ToolCall(name="hack")                   # 构造实例才调用 must_be_known
   <h2>知识图谱</h2>
   <div class="card">
     <pre><code>Pydantic v2（pip install pydantic）
-├── BaseModel → 创建即校验 + 类型转换（失败抛 ValidationError）
+├── BaseModel → 按 v2 规则/模型配置校验，可能转换（失败抛 ValidationError）
 ├── Field(默认/描述/约束 ge le min_length...) → 描述进 Schema
-├── @field_validator + @classmethod → 自定义校验（仅在构造实例时执行）
+├── @field_validator + @classmethod → 模型验证/构造时执行；validate_assignment=True 时也可能在赋值时执行
 ├── 嵌套模型 → 递归校验
 ├── 序列化：model_dump() / model_dump_json()
+├── ConfigDict(strict=True) / Field(strict=True) → 需要时关闭相应宽松转换
 └── model_json_schema() → 导出参数 Schema（只是描述，不执行 validator）★
 
 Tool Schema 落地到厂商请求
@@ -332,10 +393,149 @@ print(calculate(validated))                        # 7.0
         <div class="think-q-answer">
           <p><strong>【结论】</strong><code>model.model_json_schema()</code> 导出的是<strong>厂商中立</strong>的参数 JSON Schema，两家都直接复用这份 Schema 内容，但外层包装字段不同：OpenAI 把它放进 <code>{"type":"function","function":{...,"parameters": schema}}</code> 的 <code>parameters</code>；Anthropic 把它放进 <code>{"name":...,"description":...,"input_schema": schema}</code> 的 <code>input_schema</code>。<strong>不是两家都叫 <code>parameters</code></strong>，也不是随便哪个字段名都能通用。</p>
           <p>练习里 <code>make_entry(name, model, description)</code> 产出的中立条目 <code>{"name","description","input_schema","model"}</code> 就是这个对应关系的雏形。工具说明由注册者显式传入，去掉首尾空白后若为空就抛 <code>ValueError</code>，避免把缺少用途说明的工具交给 LLM；同一份 <code>input_schema</code> 再交给 <code>to_openai_schema</code> 和 <code>to_anthropic_schema</code> 分别套外壳。这正是 L11 你手写 registry 时讲过的 adapter 模式，这里用 Pydantic 生成的标准 Schema 替换掉手写的简易 Schema。</p>
-          <p>关键好处仍是<strong>单一真源</strong>：同一个 Pydantic 模型既负责运行时校验入参，又负责导出给 LLM 的 Schema。但要注意：<code>model_json_schema()</code> 本身<strong>不会执行</strong>任何 <code>@field_validator</code>；只有在执行工具前用 <code>entry["model"](**raw_args)</code> 重新构造实例，校验才真正发生。这也是为什么中立条目要额外存一份 <code>model</code>（模型类），而不能只存 <code>input_schema</code> 这份静态 dict。</p>
+          <p>关键好处仍是<strong>单一真源</strong>：同一个 Pydantic 模型既负责运行时校验入参，又负责导出给 LLM 的 Schema。但要注意：<code>model_json_schema()</code> 本身<strong>不会执行</strong>任何 <code>@field_validator</code>；validator 在模型验证/构造期间运行，启用 <code>validate_assignment=True</code> 时也可能在字段赋值时运行。本例只有在执行工具前用 <code>entry["model"](**raw_args)</code> 重新构造实例，入参校验才真正发生。这也是为什么中立条目要额外存一份 <code>model</code>（模型类），而不能只存 <code>input_schema</code> 这份静态 dict。</p>
         </div>
       </details>
     </details>
+  </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：在路由分发前验证原始数据</h2>
+  <p class="best-practice-lead">换到不同的 Dispatch/Route 场景：不复用上面的转账模型，独立验收“描述与验证分离”以及“无效原始数据零执行、有效数据恰好执行一次”。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>用 Pydantic v2 API 离线运行整段自检。</li><li>导出 <code>Route</code> Schema 后检查 validator 调用数。</li><li>提交非法原始 mapping 后检查 handler 执行记录。</li><li>提交合法原始 mapping，检查类型转换后的 handler 结果。</li><li>全部提交完成后检查 handler 的精确执行次数。</li><li>所有断言通过后打印验收标记。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>离线执行成功，且调用的是 <code>model_json_schema()</code>/<code>model_validate()</code>。</li><li>Schema 导出对应 validator 调用数严格为 0。</li><li>非法原始数据对应 handler 执行数严格为 0。</li><li>合法数据把 <code>priority="2"</code> 转为整数；handler 用 <code>type(priority) is int</code> 证明后返回 <code>queued:support</code>。</li><li>handler 最终精确执行 1 次，唯一记录为 <code>support:2</code>。</li><li>标准输出严格为一行 <code>L14 ACCEPTED</code>，且标记只出现 1 次。</li></ul></div>
+    </div>
+    <details class="bp-check"><summary><strong>课末自检（Pydantic v2，整块复制即可运行）：</strong></summary><pre><code>from collections.abc import Callable
+from typing import Any
+
+from pydantic import BaseModel, ValidationError, field_validator
+
+validation_events: list[str] = []
+execution_events: list[str] = []
+
+
+class Route(BaseModel):
+    topic: str
+    priority: int
+
+    @field_validator("topic")
+    @classmethod
+    def require_known_topic(cls, value: str) -&gt; str:
+        validation_events.append(value)
+        if value not in {"billing", "support"}:
+            raise ValueError("未知路由 topic")
+        return value
+
+
+class Dispatch:
+    def __init__(self, handler: Callable[[Route], str]) -&gt; None:
+        self._handler = handler
+
+    def submit(self, raw_route: dict[str, Any]) -&gt; str:
+        route = Route.model_validate(raw_route)
+        return self._handler(route)
+
+
+def handle(route: Route) -&gt; str:
+    assert type(route.priority) is int  # 不能用格式化字符串代理类型证据
+    execution_events.append(f"{route.topic}:{route.priority}")
+    return f"queued:{route.topic}"
+
+
+schema = Route.model_json_schema()
+assert set(schema["properties"]) == {"topic", "priority"}
+assert validation_events == []
+assert execution_events == []
+
+dispatch = Dispatch(handle)
+try:
+    dispatch.submit({"topic": "unknown", "priority": 9})
+except ValidationError as exc:
+    assert "未知路由 topic" in str(exc)
+else:
+    raise AssertionError("非法 route 应在 handler 前失败")
+
+assert validation_events == ["unknown"]
+assert execution_events == []
+
+result = dispatch.submit({"topic": "support", "priority": "2"})
+assert result == "queued:support"
+assert validation_events == ["unknown", "support"]
+assert execution_events == ["support:2"]
+
+print("L14 ACCEPTED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>标准输出严格为一行 <code>L14 ACCEPTED</code> 即通过。若 Schema 导出后已有验证事件，说明错误地在导出阶段实例化了模型；若非法 topic 留下执行事件，说明 handler 绕过了 <code>model_validate</code>；若 handler 的 <code>type(route.priority) is int</code> 失败，说明宽松转换没有产生契约要求的精确类型；若合法路径的执行事件不是唯一的 <code>support:2</code>，说明执行次数或记录结果不符合契约。需要拒绝字符串 <code>"2"</code> 而不是转换时，应为模型或字段启用 strict 模式。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-boundary-contracts" data-phase-practice="boundary-contracts">
+  <h2>阶段实践检查点：数据边界契约</h2>
+  <p class="best-practice-lead">把 L03 字段契约、L05 关键字绑定、L13 <code>Literal</code> 与 L14 Pydantic v2 串成一道执行前边界：原始 mapping 只有完整、无多余字段且值合法时，才进入关键字专用 handler。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>定义 Pydantic v2 输入模型，并在 dispatch 边界用显式字段集合拒绝缺失或额外字段。</li><li>分别提交缺字段、额外字段和非法 <code>Literal</code> 的 mapping。</li><li>用 <code>model_validate()</code> 验证后，以 <code>**model_dump()</code> 绑定关键字专用 handler。</li><li>最后提交合法 mapping，并核对 handler 的调用记录与整数精确类型。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>缺字段/额外字段由显式字段契约拒绝，非法 <code>Literal</code> 由 Pydantic 拒绝；三组输入后 handler 调用数保持 0。</li><li>合法 mapping 才进入 handler，且只进入 1 次。</li><li>handler 收到 <code>type(retries) is int</code> 的值，关键字绑定结果准确。</li><li>标准输出只有检查点标记。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>先自行定义 mapping 字段集合、Pydantic 模型和关键字专用 handler，并写出三组无效输入零副作用断言；完成后再展开参考验收程序。</p>
+    <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，需 Pydantic v2）</strong></summary><pre><code>from collections.abc import Mapping
+from typing import Literal
+
+from pydantic import BaseModel, Field, ValidationError
+
+handler_calls: list[tuple[str, str, int]] = []
+EXPECTED_FIELDS = {"query", "mode", "retries"}
+
+
+class ToolRequest(BaseModel):
+    query: str = Field(min_length=1)
+    mode: Literal["fast", "safe"]
+    retries: int = Field(strict=True, ge=0)
+
+
+def handle_search(
+    *, query: str, mode: Literal["fast", "safe"], retries: int
+) -&gt; str:
+    assert type(retries) is int
+    handler_calls.append((query, mode, retries))
+    return f"search:{query}:{mode}:{retries}"
+
+
+def dispatch(raw: Mapping[str, object]) -&gt; str:
+    actual_fields = set(raw)
+    if actual_fields != EXPECTED_FIELDS:
+        missing = EXPECTED_FIELDS - actual_fields
+        extra = actual_fields - EXPECTED_FIELDS
+        raise ValueError(f"field mismatch: missing={missing}, extra={extra}")
+    validated = ToolRequest.model_validate(raw)
+    return handle_search(**validated.model_dump())
+
+
+invalid_requests = [
+    {"query": "agents", "mode": "safe"},
+    {"query": "agents", "mode": "safe", "retries": 1, "debug": True},
+    {"query": "agents", "mode": "turbo", "retries": 1},
+]
+
+for raw in invalid_requests:
+    try:
+        dispatch(raw)
+    except (ValueError, ValidationError):
+        pass
+    else:
+        raise AssertionError(f"invalid mapping reached handler: {raw}")
+
+assert handler_calls == []
+assert dispatch({"query": "agents", "mode": "safe", "retries": 1}) == (
+    "search:agents:safe:1"
+)
+assert handler_calls == [("agents", "safe", 1)]
+
+print("P1 CHECKPOINT BOUNDARY-CONTRACTS PASSED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>若缺字段、额外字段或非法 <code>Literal</code> 后出现调用记录，说明边界验证位于 handler 之后或被绕过；若合法路径不能通过 <code>**mapping</code> 调用关键字专用签名，说明字段契约与函数签名不同步；若调用次数不是 1 或 <code>retries</code> 不是精确 <code>int</code>，说明执行链发生重复或类型契约被放宽。</p>
+    <p class="bp-rationale"><strong>工程主题链接：</strong><a href="../best-practices/phase1-python-engineering-practices.html#theme-contracts">Boundary Contracts · 从容器语义到工具执行建立分层数据契约</a>。</p>
   </div>
 </div>
 
@@ -351,7 +551,7 @@ print(calculate(validated))                        # 7.0
     <h3>Q4：Field 的 description 有什么实际作用？</h3>
     <p><strong>答：</strong>它会进入导出的 JSON Schema，成为 LLM 理解"这个参数是什么、该怎么填"的依据。描述写得好，工具调用准确率更高。</p>
     <h3>Q5：<code>model_json_schema()</code> 导出的 Schema 会执行 <code>@field_validator</code> 吗？</h3>
-    <p><strong>答：</strong>不会。<code>model_json_schema()</code> 只是读类定义生成描述性 JSON，不构造任何实例，所以 validator 不会跑。validator 只在<strong>真正构造 BaseModel 实例</strong>（如 <code>CalcInput(**raw_args)</code>）时执行。因此工具执行前必须显式用收到的参数重新构造模型做校验，registry 要保存模型类或验证函数，而不能只存一份 Schema dict。</p>
+    <p><strong>答：</strong>不会。<code>model_json_schema()</code> 只是读类定义生成描述性 JSON，不执行 validator。validator 在<strong>模型验证/构造期间</strong>（如 <code>CalcInput(**raw_args)</code> 或 <code>CalcInput.model_validate(raw_args)</code>）运行；启用 <code>validate_assignment=True</code> 时，也可能在字段赋值时运行。因此工具执行前必须显式用收到的参数验证/构造模型，registry 要保存模型类或验证函数，而不能只存一份 Schema dict。</p>
     <h3>Q6：用字符串黑名单（比如禁止出现 "import"）能防住工具参数被用来做 RCE 吗？</h3>
     <p><strong>答：</strong>不能，这是虚假的安全承诺。黑名单只能挡住"包含特定子串"的输入，挡不住其他攻击路径；它本质上不是通用的 Python 沙箱。更稳妥的做法是从设计上避免"对不可信字符串求值"——比如把自由表达式参数换成 <code>Literal</code> 枚举字段，执行器用 <code>if/elif</code> 分支处理，全程不使用 <code>eval</code>。</p>
   </div>
@@ -384,9 +584,9 @@ print(calculate(validated))                        # 7.0
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>BaseModel 创建即校验、自动转换、失败抛 ValidationError</li>
+      <li>BaseModel 按 Pydantic v2 规则和模型配置校验、可能转换；失败抛 ValidationError，需要时启用 strict</li>
       <li>Field 加默认值/描述/约束（ge/le/min_length…），描述会进 Schema</li>
-      <li><code>@field_validator</code>（配 <code>@classmethod</code>）写自定义校验；模型可嵌套；<strong>validator 只在构造实例时执行，导出 Schema 时不会跑</strong></li>
+      <li><code>@field_validator</code>（配 <code>@classmethod</code>）写自定义校验；模型可嵌套；<strong>validator 在模型验证/构造期间运行，启用 <code>validate_assignment=True</code> 时也可能在赋值时运行；仅导出 Schema 不会跑</strong></li>
       <li>v2 序列化：<code>model_dump()</code> / <code>model_dump_json()</code></li>
       <li><code>model_json_schema()</code> 导出中立参数 Schema；OpenAI 塞进 <code>parameters</code>、Anthropic 塞进 <code>input_schema</code>，字段名不同，需各自 adapter</li>
       <li>工具参数应避免自由表达式 + 字符串黑名单（不是通用沙箱、也不是真实的 RCE 防护）；推荐用 <code>Literal</code> 枚举字段 + 分支执行，不使用 <code>eval</code></li>

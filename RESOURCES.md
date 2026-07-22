@@ -19,6 +19,12 @@
   非常详尽的 Agent 技术综述，覆盖 ReAct、Tool Use、Memory 等核心概念。Use for: 理解 Agent 架构全貌。
 
 ### Python 进阶 & 软件工程
+- [PEP 8 — Style Guide for Python Code](https://peps.python.org/pep-0008/)
+  Python 官方代码风格指南，覆盖布局、命名、注释与接口一致性。Use for: Python 工程最佳实践与代码可读性的一手依据。
+- [Python Packaging User Guide](https://packaging.python.org/)
+  Python Packaging Authority 维护的打包与依赖管理指南。Use for: 项目依赖、环境与可分发包的规范做法。
+- [uv: Working on projects](https://docs.astral.sh/uv/guides/projects/)
+  uv 官方项目指南，涵盖依赖声明、<code>uv.lock</code> 可复现锁定与 <code>uv sync</code> 环境同步。Use for: Phase 1 L01 的现代项目与锁文件实践。
 - [Real Python](https://realpython.com/)
   高质量 Python 教程，涵盖 async/await、装饰器、类型提示等进阶主题。Use for: Python 基础到进阶。
 - [FastAPI 官方文档](https://fastapi.tiangolo.com/)

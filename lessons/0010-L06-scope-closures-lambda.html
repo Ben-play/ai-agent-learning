@@ -17,7 +17,7 @@
       <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">20</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>作用域、闭包与 Lambda</h1>
-    <p class="subtitle">闭包是"带记忆的函数" — Agent 里的计数器、限流器、装饰器都靠它</p>
+    <p class="subtitle">闭包是封装状态的常见方式之一 — 也帮助理解计数器、限流器与装饰器</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:37%"></div></div>
   </div>
 </div>
@@ -25,9 +25,13 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>装饰器（L11）、限流器、状态计数器——这些 Agent 里天天用的东西，底层都是<strong>闭包</strong>：一个函数"记住"了它出生时的环境变量。理解闭包，你才看得懂 <code>@tool</code> 是怎么工作的。</p>
+    <p>闭包是实现装饰器（L11）、限流器和状态计数器的<strong>常见方式之一</strong>：函数可以“记住”定义时引用的外层变量。理解闭包，有助于看懂 <code>@tool</code> 一类装饰器如何保存配置；这些功能也可以用类等方式实现。</p>
     <p>而 lambda + 高阶函数（map/filter/sorted 的 key），是处理 LLM 返回的列表数据的利器——排序工具、过滤结果、聚合成本，一行搞定。</p>
   </div>
+</div>
+
+<div class="section">
+  <div class="tip"><strong>本课关键决策：</strong>无状态逻辑用普通函数；只需封闭少量状态时用闭包；状态复杂、行为增多时改用类。</div>
 </div>
 
 <div class="section">
@@ -78,7 +82,7 @@ print(outer())   # enclosing</code></pre>
 
 <div class="section">
   <h2>2. 闭包：带记忆的函数</h2>
-  <p>当内层函数<strong>引用了外层函数的变量</strong>，并被返回出去，它就"记住"了那些变量——这就是闭包。修改外层变量要用 <code>nonlocal</code>：</p>
+  <p>闭包是<strong>引用了定义时外层作用域中自由变量的函数</strong>；即使外层函数已经执行完，这些绑定仍可随闭包保留。把内层函数返回出去是创建和使用闭包的常见方式，但定义本身不要求函数必须被返回。要在闭包里重新绑定外层变量，可用 <code>nonlocal</code>：</p>
   <pre><code>def make_counter():
     calls = 0
     total_ms = 0
@@ -109,17 +113,111 @@ record_global()
 record_global()
 print(total_calls)            # 2
 print(peek_global())          # 目前共调用 2 次</code></pre>
-  <p><code>global</code> 与 <code>nonlocal</code> 对照：<code>global</code> 指向<strong>模块级</strong>变量（不管嵌套多少层函数，都是同一个模块全局）；<code>nonlocal</code> 指向<strong>最近一层外层函数（enclosing）</strong>的变量，与闭包配套使用。两者都只在"函数内要重新绑定外部变量名"时才需要。</p>
+  <p><code>global</code> 与 <code>nonlocal</code> 对照：<code>global</code> 指向<strong>模块级</strong>变量（不管嵌套多少层函数，都是同一个模块全局）；<code>nonlocal</code> 指向<strong>最近一个含有该名字绑定的非全局外层作用域</strong>，不一定只是语法上紧邻的一层。两者都只在“函数内要重新绑定外部变量名”时才需要。</p>
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>闭包是"不用类也能保存状态"的轻量方案。Agent 里的<strong>工具调用计数器、令牌桶限流器、重试计数</strong>都能用闭包实现。更重要的是——<strong>装饰器（L11）本质就是返回闭包</strong>，理解这里，L11 会非常顺。</p>
+  <div class="best-practice-point" id="bp-l06-bind-loop-callbacks">
+    <h3>最佳实践：循环创建零参数回调时固定当次绑定</h3>
+    <p class="bp-scenario"><strong>适用场景：</strong>在循环中按事件配置创建一组零参数回调，交给调度器或注册表稍后调用；每个回调必须保留自己的标签和路由。</p>
+    <p><strong>不适用场景：</strong>回调在本轮循环结束前立即执行、函数没有引用循环变量，或调用方契约本来就要求传入参数时，不需要额外绑定；不要为了使用闭包而改变真实接口。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 零参数回调共享最后一次循环绑定</span><pre><code>def make_callbacks(specs):
+    callbacks = []
+    for spec in specs:
+        callbacks.append(
+            lambda: (spec["label"], spec["route"])
+        )
+    return callbacks</code></pre><p>每个 lambda 都是零参数，但都在调用时读取同一个 <code>spec</code> 自由变量；循环结束后，它指向最后一项。</p></div><div class="bp-right"><span class="bp-compare-label">✅ 具名工厂创建独立的零参数回调</span><pre><code>def make_route_callback(label, route):
+    def callback():
+        return label, route
+    return callback
+
+
+def make_callbacks(specs):
+    callbacks = []
+    for spec in specs:
+        callbacks.append(
+            make_route_callback(spec["label"], spec["route"])
+        )
+    return callbacks</code></pre><p>每次调用工厂都会创建新的外层作用域，<code>label</code> 和 <code>route</code> 在创建时绑定；返回的回调仍保持零参数契约。</p></div></div>
+    <p class="bp-rationale"><strong>机制：</strong>闭包捕获的是名字绑定，不是循环当时值的自动快照；自由变量在回调执行时解析。具名工厂的每次调用都会产生一组独立绑定，因此延后调用不会串到最后一项。</p>
+    <p class="bp-result"><strong>相关属性：</strong>这提升正确性、可预测性、可测试性和接口可替换性；坏例与修复例都保持相同的零参数接口，比较的是绑定策略，而不是不同签名。</p>
+    <p><strong>成本：</strong>需要多一个具名函数和一次间接调用，代码比短 lambda 稍长；好处是签名诚实、可命名测试，也能容纳创建时校验。</p>
+    <p><strong>替代方案：</strong>若已有 <code>dispatch(label, route)</code>，可用 <code>functools.partial(dispatch, label, route)</code> 绑定全部参数并得到零参数 callable。少量固定配置适合具名工厂；配置项未知、校验分支复杂、状态会演进或需要多个操作与诊断时，应改用明确的配置对象和可调用类。</p>
+    <details class="bp-check"><summary><strong>自检：证明相同接口、延迟绑定、创建时绑定与可变引用边界</strong></summary><pre><code>import inspect
+
+
+def make_bad_callbacks(specs):
+    callbacks = []
+    for spec in specs:
+        callbacks.append(
+            lambda: {
+                "label": spec["label"],
+                "route": spec["route"],
+                "retries": spec["options"]["retries"],
+            }
+        )
+    return callbacks
+
+
+def make_route_callback(label, route, options):
+    def callback():
+        return {
+            "label": label,
+            "route": route,
+            "retries": options["retries"],
+        }
+    return callback
+
+
+def make_fixed_callbacks(specs):
+    callbacks = []
+    for spec in specs:
+        callbacks.append(
+            make_route_callback(
+                spec["label"], spec["route"], spec["options"]
+            )
+        )
+    return callbacks
+
+
+specs = [
+    {"label": "docs", "route": "/documents", "options": {"retries": 1}},
+    {"label": "billing", "route": "/invoices", "options": {"retries": 2}},
+]
+bad = make_bad_callbacks(specs)
+fixed = make_fixed_callbacks(specs)
+
+# 公平比较：两组回调全部都是零参数接口。
+assert all(len(inspect.signature(cb).parameters) == 0 for cb in bad + fixed)
+
+# 延迟到循环结束后调用：坏例都读取最后一个 spec。
+assert [cb() for cb in bad] == [
+    {"label": "billing", "route": "/invoices", "retries": 2},
+    {"label": "billing", "route": "/invoices", "retries": 2},
+]
+
+# 工厂在创建时分别绑定 label/route。
+assert [cb() for cb in fixed] == [
+    {"label": "docs", "route": "/documents", "retries": 1},
+    {"label": "billing", "route": "/invoices", "retries": 2},
+]
+
+# 字符串字段的源绑定改变不影响回调，但捕获的可变 options 内容仍可见。
+specs[0]["label"] = "renamed"
+specs[0]["route"] = "/moved"
+specs[0]["options"]["retries"] = 4
+assert fixed[0]() == {
+    "label": "docs",
+    "route": "/documents",
+    "retries": 4,
+}</code></pre></details>
+    <p class="bp-result"><strong>诊断：</strong>若坏例不是两个 <code>billing</code>，调用可能没有真正延后；若修复例签名含参数，修复改变了接口；若两个修复回调返回相同路由，工厂仍共享了循环绑定；若最后的 <code>retries</code> 不是 <code>4</code>，代码已复制或替换配置，而不是保留同一可变引用。</p>
+    <p class="bp-term"><strong>边界：</strong>创建时绑定固定的是传给工厂的对象引用，不是深复制。需要不可变快照时，只传不可变字段或显式复制并说明复制深度；需要持续维护复杂配置不变量时，用配置类型加可调用类比裸闭包更清楚。</p>
   </div>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
     <p>"什么是闭包？<code>global</code> 和 <code>nonlocal</code> 区别？"</p>
-    <p>答：闭包是记住了外层作用域变量的函数。<code>global</code> 声明修改的是<strong>模块全局</strong>变量；<code>nonlocal</code> 声明修改的是<strong>外层函数（enclosing）</strong>的变量。不写声明时，函数内赋值会新建局部变量。</p>
+    <p>答：闭包是引用并保留定义时外层作用域绑定的函数；它不要求必须被返回。<code>global</code> 声明重新绑定的是<strong>模块全局</strong>名字；<code>nonlocal</code> 声明重新绑定的是<strong>最近一个含该绑定的非全局外层作用域</strong>里的名字。</p>
   </div>
 </div>
 
@@ -185,8 +283,8 @@ print(call_claude("你好"))       # claude: 你好</code></pre>
 ├── Global → 模块全局（global 声明可改）
 └── Builtin → 内置
 
-闭包 = 记住外层变量的函数
-├── nonlocal → 改 enclosing 变量
+闭包 = 引用并保留定义时外层作用域绑定的函数
+├── nonlocal → 改最近含该绑定的非全局外层作用域
 ├── 用途：计数器 / 限流 / 重试状态
 └── 装饰器的底层（→ L11）
 
@@ -263,13 +361,92 @@ print(track("calc", 15))
   </div>
 </div>
 
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：批量创建独立的事件路由回调</h2>
+  <p class="best-practice-lead">从事件路由配置循环创建零参数回调，循环结束后再调用；用 <code>inspect.signature</code> 证明统一接口，并验证每个回调保留独立的标签和路由。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>实现具名工厂 <code>make_route_callback(label, route, options)</code>。</li><li>在循环中为两条事件配置创建回调，循环结束后再调用。</li><li>断言每个回调都是零参数，且标签、路由彼此独立。</li><li>修改源配置，证明不可变字段的创建时绑定与可变引用边界。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>所有回调保持零参数接口</li><li>延后调用仍返回各自 label/route</li><li>替换源 label/route 不改变已创建回调</li><li>原地修改共享 options 可被观察</li><li>标准输出仅有唯一 <code>L06 ACCEPTED</code></li></ul></div>
+  </div>
+  <p><strong>适用：</strong>调用方要求同一零参数协议、回调由已知的少量固定字段批量配置且稍后执行。<strong>不适用：</strong>立即调用、没有循环变量捕获，或调用方本应传参的场景；此时直接函数调用更简单。</p>
+  <p><strong>机制与属性：</strong>工厂每调用一次就建立独立作用域，在创建时绑定当次 <code>label</code>/<code>route</code>；这保证路由正确性、接口一致性和可测试性。<strong>成本与替代：</strong>多一个函数层级；已有多参数函数时可用 <code>functools.partial</code>。配置字段未知、嵌套复杂、需要验证、状态或多个行为时，应使用配置对象配合可调用类或专门工厂，而不是继续扩张闭包参数。</p>
+  <details class="bp-check"><summary><strong>课末自检：证明事件路由独立、零参数契约与引用边界</strong></summary><pre><code>import inspect
+
+
+def make_route_callback(label, route, options):
+    def callback():
+        return {
+            "label": label,
+            "route": route,
+            "headers": options["headers"],
+        }
+    return callback
+
+
+def build_callbacks(configs):
+    callbacks = []
+    for config in configs:
+        callbacks.append(
+            make_route_callback(
+                config["label"], config["route"], config["options"]
+            )
+        )
+    return callbacks
+
+
+configs = [
+    {
+        "label": "document-created",
+        "route": "/index",
+        "options": {"headers": {"priority": "normal"}},
+    },
+    {
+        "label": "invoice-paid",
+        "route": "/notify",
+        "options": {"headers": {"priority": "high"}},
+    },
+]
+callbacks = build_callbacks(configs)
+
+assert all(len(inspect.signature(cb).parameters) == 0 for cb in callbacks)
+assert [cb() for cb in callbacks] == [
+    {
+        "label": "document-created",
+        "route": "/index",
+        "headers": {"priority": "normal"},
+    },
+    {
+        "label": "invoice-paid",
+        "route": "/notify",
+        "headers": {"priority": "high"},
+    },
+]
+
+# label/route 在创建时分别绑定，之后替换源字段不会串改回调。
+configs[0]["label"] = "document-deleted"
+configs[0]["route"] = "/archive"
+assert callbacks[0]()["label"] == "document-created"
+assert callbacks[0]()["route"] == "/index"
+assert callbacks[1]()["label"] == "invoice-paid"
+assert callbacks[1]()["route"] == "/notify"
+
+# options 是同一个可变对象引用；原地修改其嵌套内容仍然可见。
+configs[0]["options"]["headers"]["priority"] = "urgent"
+assert callbacks[0]()["headers"] == {"priority": "urgent"}
+assert callbacks[1]()["headers"] == {"priority": "high"}
+
+print("L06 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>标准输出必须只有一行 <code>L06 ACCEPTED</code>。签名断言失败表示回调协议被改变；两个结果标签或路由相同通常表示仍在延迟读取同一个循环变量；替换源字段后结果改变表示未做创建时绑定；<code>priority</code> 看不到 <code>urgent</code> 则说明实现复制了配置，已越过“保留可变引用”的边界。</p>
+  </div>
+</div>
+
 <div class="section">
   <h2>面试常见问题</h2>
   <div class="card interview">
     <h3>Q1：什么是闭包？举个实际用途。</h3>
-    <p><strong>答：</strong>闭包是"记住了定义时外层作用域变量"的函数。用途：不建类就保存状态（计数器、限流器）、以及装饰器的实现基础。</p>
+    <p><strong>答：</strong>闭包是引用并保留定义时外层作用域绑定的函数，不要求必须被返回。它是不建类而保存状态（计数器、限流器）以及实现装饰器的常见方式之一。</p>
     <h3>Q2：global 和 nonlocal 有什么区别？</h3>
-    <p><strong>答：</strong><code>global</code> 让函数内的赋值作用到<strong>模块全局</strong>变量；<code>nonlocal</code> 作用到<strong>外层函数</strong>的变量。都用于"我要改的是外面那个，别新建局部"。</p>
+    <p><strong>答：</strong><code>global</code> 让函数内的赋值重新绑定<strong>模块全局</strong>名字；<code>nonlocal</code> 重新绑定<strong>最近一个含该绑定的非全局外层作用域</strong>里的名字。都用于“我要改的是外面那个，别新建局部”。</p>
     <h3>Q3：为什么闭包里 <code>count += 1</code> 不加 nonlocal 会报错？</h3>
     <p><strong>答：</strong>因为对变量赋值会让 Python 把它当成局部变量，而 <code>+=</code> 需要先读取它——读一个"还没赋值的局部变量"就抛 <code>UnboundLocalError</code>。加 <code>nonlocal</code> 表明改的是外层变量。</p>
     <h3>Q4：map/filter 和列表推导式怎么选？</h3>
@@ -305,8 +482,8 @@ print(track("calc", 15))
   <div class="card">
     <ul>
       <li>变量查找按 LEGB：Local → Enclosing → Global → Builtin</li>
-      <li>闭包 = 记住外层变量的函数，是"轻量状态保存"和装饰器的基础</li>
-      <li>改外层变量：<code>global</code>（全局）/ <code>nonlocal</code>（外层函数）</li>
+      <li>闭包引用并保留定义时外层作用域绑定，是轻量保存状态和实现装饰器的常见方式之一</li>
+      <li>重新绑定外部名字：<code>global</code> 指模块全局；<code>nonlocal</code> 指最近含该绑定的非全局外层作用域</li>
       <li>可变对象（dict/list）改内容不需要 nonlocal，重新赋值才需要</li>
       <li>lambda + sorted(key=) / map / filter / reduce / partial 处理列表数据</li>
     </ul>

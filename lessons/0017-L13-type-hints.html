@@ -39,8 +39,8 @@
       <li>给变量、参数、返回值加基本类型标注</li>
       <li>用 <code>Optional</code> 表达"可能为 None"</li>
       <li>用 <code>Union</code> 表达"多种类型之一"</li>
-      <li>用 <code>Literal</code> 约束成有限的取值（如模型名）</li>
-      <li>用 <code>Callable</code> 标注函数参数，用类型别名简化复杂类型，并跑 <code>mypy</code></li>
+      <li>用 <code>Literal</code> 约束稳定、封闭的有限取值（如 Role / ToolMode / OutputStyle）</li>
+      <li>用 <code>Callable</code> 标注函数参数、用类型别名简化复杂类型，并会阅读/使用 mypy 报错且知道如何运行它</li>
     </ul>
   </div>
 </div>
@@ -54,12 +54,12 @@ name: str = "search"
 temperature: float = 0.7
 tools: list[str] = ["search", "calc"]           # 3.9+ 可直接用内置泛型
 config: dict[str, int] = {"max": 5}</code></pre>
-  <p>注意：类型提示<strong>不影响运行</strong>——Python 不会因为你传错类型而报错（它只是"提示"）。真正来抓错的是 <code>mypy</code> 这类静态检查工具，以及 IDE 的实时提示。要运行时强制校验，得用 Pydantic（下一课）。</p>
+  <p>注意：类型注解<strong>本身不会在调用边界拒绝错误类型</strong>——Python 不会仅因实参与注解不符就自动报错；但函数体随后对该值执行的操作仍可能抛出 <code>TypeError</code> 等运行时异常。真正按注解抓错的是 <code>mypy</code> 这类静态检查工具，以及 IDE 的实时提示。要在调用边界做运行时强制校验，得用 Pydantic（下一课）。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
     <p>"类型提示会在运行时强制类型吗？"</p>
-    <p>答：不会。它是给静态检查器（mypy）和 IDE 看的元信息，运行时不校验、传错类型也照跑。要运行时校验用 Pydantic。</p>
+    <p>答：不会。它是给静态检查器（mypy）、IDE 和运行时内省工具看的元信息；注解本身不会在调用边界拒绝错误类型，但函数体仍可能因不支持该值而报错。要按注解做运行时校验用 Pydantic。</p>
   </div>
 </div>
 
@@ -116,18 +116,68 @@ def size(x: str | list) -&gt; int:
   <h3>Literal：只能是这几个值</h3>
   <pre><code>from typing import Literal
 
-Role = Literal["system", "user", "assistant"]      # 只能是这三个
-Model = Literal["gpt-5", "claude", "gemini"]
+Role = Literal["system", "user", "assistant"]
+ToolMode = Literal["auto", "required", "none"]
+OutputStyle = Literal["short", "detailed"]
 
-def send(role: Role, model: Model) -&gt; None:
+def run(role: Role, mode: ToolMode, style: OutputStyle) -&gt; None:
     ...
 
-send("user", "claude")     # ✅
-send("admin", "claude")    # ❌ mypy 报错：'admin' 不在允许值里</code></pre>
+run("user", "auto", "short")       # ✅
+run("admin", "auto", "short")      # ❌ mypy：非法 Role</code></pre>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p><code>Literal</code> 特别适合 Agent 里的"枚举型"参数：消息角色、模型名、工具动作类型、finish_reason。把合法值写进类型，拼错立刻被 mypy 抓到，也让 LLM 工具 Schema 能列出"这个参数只能取这几个值"。</p>
+    <p><code>Literal</code> 适合消息角色、工具模式、输出风格等<strong>稳定封闭集合</strong>。模型目录、插件名等会动态增长的开放集合应保留为 <code>str</code>，由配置或 registry 校验。<code>Literal</code> 只有在 Schema 转换器支持时才会导出 <code>enum</code>：L11 的四原子类型简易生成器并不支持；L14 的 Pydantic 可以导出 enum，并在运行时校验。</p>
+  </div>
+
+  <div class="best-practice-point" id="bp-l13-literal-runtime-boundary">
+    <h3>最佳实践：Literal 描述封闭内部状态，不可信边界显式解析</h3>
+    <p class="bp-scenario"><strong>适用：</strong>消息角色、固定策略、协议动作等<strong>封闭、稳定、规模小</strong>的字符串集合。<strong>不适用：</strong>插件名、用户自定义标签、频繁新增的模型名等开放集合；这类值通常保留为 <code>str</code>，由配置或注册表决定。若值还需要运行时身份、行为和遍历能力，可用 <code>Enum</code>；若整份外部数据都要解析校验，可在下一课用 Pydantic。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 裸 str，或误以为注解会运行时强制</span><pre><code>def set_mode(mode: str) -&gt; str:
+    return mode
+
+set_mode("requried")  # 注解本身不拒绝；该函数体会原样返回</code></pre><p><code>str</code> 没列出合法状态；即使改成 <code>Literal</code>，普通 Python 函数也不会仅凭注解自动拒绝非法值，但函数体仍可能因不支持实际值而报错。</p></div><div class="bp-right"><span class="bp-compare-label">✅ Literal 描述内部契约 + 边界显式解析</span><pre><code>from typing import Literal, cast
+
+Mode = Literal["auto", "required", "none"]
+
+def parse_mode(raw: str) -&gt; Mode:
+    if raw not in ("auto", "required", "none"):
+        raise ValueError(f"非法 mode: {raw!r}")
+    return cast(Mode, raw)</code></pre><p>内部函数接收收窄后的 <code>Mode</code>；环境变量、JSON、CLI、LLM 输出先经过 parser。</p></div></div>
+    <p class="bp-rationale"><strong>为什么更优：</strong><code>Literal</code> 把允许的内部状态记录为明确元数据，供读者、IDE 与静态检查器使用；本卡自检证明元数据与 parser 同源，而课末锁定 mypy 验收再证明静态拒绝。显式 parser 则守住不可信运行时边界。代价是合法值变化时要同步类型、解析器、Schema、文档和测试，可用 <code>get_args</code> 复用一份允许值来减少漂移。开放集合应由配置、注册表或普通 <code>str</code> 承载；需要带行为的封闭集合可选 <code>Enum</code>，复杂外部对象的运行时校验可交给 Pydantic。</p>
+    <details class="bp-check"><summary><strong>自检：证明 Literal 是元数据，非法值仍能运行，而 parser 会拒绝</strong></summary><pre><code>from typing import Literal, cast, get_args, get_type_hints
+
+OutputStyle = Literal["short", "detailed"]
+
+
+def render(style: OutputStyle) -&gt; str:
+    return f"style={style}"
+
+
+def parse_output_style(raw: str) -&gt; OutputStyle:
+    allowed = get_args(OutputStyle)
+    if raw not in allowed:
+        raise ValueError(f"unsupported style: {raw!r}")
+    return cast(OutputStyle, raw)
+
+
+allowed = ("short", "detailed")
+assert get_args(OutputStyle) == allowed
+assert get_args(get_type_hints(render)["style"]) == allowed
+
+# 注解仍被普通函数保存为元数据，但 Python 不自动执行校验。
+assert render("verbose") == "style=verbose"
+
+try:
+    parse_output_style("verbose")
+except ValueError as exc:
+    assert "verbose" in str(exc)
+else:
+    raise AssertionError("边界 parser 应拒绝非法值")
+
+assert render(parse_output_style("short")) == "style=short"</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>退出码为 0 且断言无失败即通过，本自检只用 Python 运行时内省，不依赖也不冒充 mypy。元数据断言失败，说明注解或允许值已漂移；<code>render("verbose")</code> 若被自动拒绝，说明测试前提不再是普通函数；parser 未抛 <code>ValueError</code>，说明不可信边界没有真正收口；合法值失败，则校验与内部契约不同步。</p>
   </div>
 </div>
 
@@ -155,10 +205,12 @@ Messages: TypeAlias = list[dict[str, str]]
 def run(history: Messages) -&gt; Messages:
     return history + [{"role": "assistant", "content": "ok"}]</code></pre>
 
-  <h3>mypy：把类型错误挡在运行前</h3>
-  <pre><code># 安装：pip install mypy
-# 检查：mypy your_file.py
-# 它会报出"传了 str 给需要 int 的参数""可能为 None 却没判空"等问题</code></pre>
+  <h3>mypy：用课程项目的锁定工具运行</h3>
+  <pre><code># 从仓库根执行；--directory 固定项目发现，--locked 禁止锁文件漂移：
+uv --directory code/phase1-python/part-a-basics/agent-hello \
+  run --offline --locked mypy your_file.py
+# 它会诊断“传了 str 给需要 int 的参数”“可能为 None 却没判空”等问题</code></pre>
+  <p>课程项目已在 <code>[dependency-groups].dev</code> 声明并锁定 mypy。把静态正例、静态负例与运行时实验分成不同文件：正例应得到 <code>Success: no issues found</code>，负例应出现预期的 Literal/Optional 错误；运行时实验则单独用锁定 Python 执行，不能用其中故意违反类型契约的调用要求 mypy clean。<code>--offline</code> 保证验收不访问网络，前提是锁定包已在本机缓存/环境中可用。</p>
 
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> <code>Literal["a", "b"]</code> 类型的作用是？</div>
@@ -168,20 +220,20 @@ def run(history: Messages) -&gt; Messages:
       <button data-answer="wrong">值可以是任意值</button>
       <button data-answer="wrong">值必须至少两项</button>
     </div>
-    <div class="quiz-explanation"><code>Literal</code> 把类型收窄到<strong>指定的几个具体值</strong>（这里只能是 "a" 或 "b"）。传别的值 mypy 会报错。用于 role、模型名、动作类型等"枚举型"参数，比裸 <code>str</code> 严谨得多。</div>
+    <div class="quiz-explanation"><code>Literal</code> 把类型收窄到<strong>指定的几个具体值</strong>（这里只能是 "a" 或 "b"）。传别的值 mypy 会报错。适合 role、工具模式、输出风格等稳定封闭集合；动态模型目录、插件名等开放集合通常用 <code>str</code> 配合配置或注册表。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>知识图谱</h2>
   <div class="card">
-    <pre><code>基本标注 → 参数/返回/变量；不影响运行(只是提示)
+    <pre><code>基本标注 → 参数/返回/变量；注解本身不在调用边界拒绝实参
 ├── list[str] / dict[str, int]（3.9+ 内置泛型）
-└── 运行时不校验 → 要校验用 Pydantic(L14)
+└── 函数体仍可能因错误类型报错；边界校验用 Pydantic(L14)
 
 Optional[X] = Union[X, None] → 可能为 None，提醒判空
 Union[A, B] / A | B(3.10+) → 多种类型之一
-Literal["x","y"] → 只能取这几个值（role/模型名/动作）
+Literal["x","y"] → 稳定封闭集合（role/工具模式/输出风格）；动态模型目录用 str + registry
 Callable[[参数], 返回] → 函数作参数（工具 = ToolFn）
 TypeAlias → 给复杂类型起名
 
@@ -201,7 +253,7 @@ mypy → 静态检查，把类型错误挡在运行前
       <li><code>make_message(role, content)</code>：role 用 <code>Role</code>，返回 <code>dict[str, str]</code></li>
       <li><code>get_tool(name)</code>：按名字查工具，可能查不到 → 返回 <code>Optional[Callable[[dict], dict]]</code></li>
       <li><code>truncate(x, n)</code>：x 标注为 <code>str | list</code>，返回值也标注 <code>str | list</code>，取前 n 项（注意：这个注解只表达"输入输出都是 str 或 list 之一"，<strong>不表达</strong>"传 str 就一定返回 str"这种关联——运行时切片确实会保持原类型，但 <code>str | list</code> 这套基础注解本身描述不出这层关联，见下方说明）</li>
-      <li>（可选）用 <code>typing.get_type_hints</code> 看看拿到的类型；若装了 mypy 可以跑一遍对照</li>
+      <li>用 <code>typing.get_type_hints</code> 查看运行时元数据；再用课程项目已锁定的 mypy 检查独立静态正例与负例</li>
     </ol>
 
     <div class="card" style="border-left: 4px solid var(--accent-bright);">
@@ -217,8 +269,8 @@ truncate([1,2,3,4], 2)    # 运行时确实返回 [1,2]（list）</code></pre>
       <pre><code>from typing import get_type_hints
 print(get_type_hints(truncate))
 # {'x': str | list, 'n': &lt;class 'int'&gt;, 'return': str | list}</code></pre>
-      <p><code>get_type_hints</code> 是<strong>运行时内省</strong>，这里只展示函数保存的注解元数据，不能代替 mypy 静态检查。mypy 会读取同一个签名；按类型系统语义，参数和返回值是两个独立的 Union，因此它也无法从这个签名推出"传 str 进去就一定拿到 str"。本机没有安装 mypy，所以这里没有做真实的 mypy 实测。</p>
-      <p style="font-size:.9rem;color:var(--muted);">要让静态检查器保留这种"输入决定输出"的关联，需要 <code>TypeVar</code> + <code>overload</code>，或 PEP 695 泛型函数语法等进阶工具。具体写法放到 Phase 5（Agent 状态管理）需要精确类型推断时再讲；这里先如实说清楚基础 Union 注解的局限，不要求你现在实现。</p>
+      <p><code>get_type_hints</code> 是<strong>运行时内省</strong>，这里只展示函数保存的注解元数据，不能代替 mypy 静态检查。mypy 会读取同一个签名；按类型系统语义，参数和返回值是两个独立的 Union，因此它也无法从这个签名推出“传 str 进去就一定拿到 str”。课程项目已把 mypy 声明为锁定开发依赖；从仓库根用 <code>uv --directory code/phase1-python/part-a-basics/agent-hello run --offline --locked mypy your_file.py</code> 运行，静态检查证据应与运行时实验分开保存。</p>
+      <p style="font-size:.9rem;color:var(--muted);">要让静态检查器保留这种"输入决定输出"的关联，可以使用合适的受约束 <code>TypeVar</code>，也可以为各输入类型编写 <code>overload</code>；PEP 695 泛型函数语法则能用新语法表达相应的泛型关系，并不要求把 TypeVar 与 overload 组合使用。具体写法放到 Phase 5（Agent 状态管理）需要精确类型推断时再讲；这里先如实说清楚基础 Union 注解的局限，不要求你现在实现。</p>
     </div>
 
     <details>
@@ -257,9 +309,9 @@ print(truncate([1, 2, 3, 4], 2))     # [1, 2]</code></pre>
       <details class="think-q">
         <summary><span class="think-q-tag">Q1</span>如果把 <code>make_message("admin", ...)</code> 交给 mypy，会发生什么？</summary>
         <div class="think-q-answer">
-          <p><strong>【结论】</strong>mypy 会在<strong>运行前</strong>报类型错误："admin" 不在 <code>Role = Literal["system","user","assistant"]</code> 允许的取值里；但如果直接 <code>python</code> 跑，代码照常执行、不会报错。</p>
+          <p><strong>【结论】</strong>mypy 会在<strong>运行前</strong>报类型错误："admin" 不在 <code>Role = Literal["system","user","assistant"]</code> 允许的取值里；但如果直接 <code>python</code> 跑，注解本身不会拒绝这次调用。本例函数体只把值放进 dict，所以会正常返回；其他函数体仍可能因错误类型而报错。</p>
           <p><code>Role</code> 是 <code>Literal</code> 类型，它把合法值收窄到那三个字符串。<code>make_message</code> 的第一个参数标注成 <code>Role</code>，等于告诉静态检查器"这里只接受这三个值之一"。传 "admin" 时 mypy 立刻标红。</p>
-          <p>但类型提示<strong>运行时不强制</strong>（这是 L13 的核心结论）：Python 解释器不看注解，<code>make_message("admin", ...)</code> 会正常返回 <code>{"role": "admin", ...}</code>。要在运行时也拦住非法值，得靠下一课的 Pydantic。</p>
+          <p>但类型提示<strong>运行时不强制</strong>（这是 L13 的核心结论）：Python 解释器不会仅凭注解拒绝 <code>make_message("admin", ...)</code>；本例函数体能处理该字符串，因此会正常返回 <code>{"role": "admin", ...}</code>。若函数体执行了与实际值不兼容的操作，仍可能抛运行时异常。要在调用边界拦住非法值，得靠下一课的 Pydantic。</p>
           <p>所以两者分工：mypy 在写代码/CI 阶段抓错，越早越省事；Pydantic 在数据进门时兜底，尤其面对不可信的 LLM 输出。</p>
         </div>
       </details>
@@ -269,11 +321,121 @@ print(truncate([1, 2, 3, 4], 2))     # [1, 2]</code></pre>
         <div class="think-q-answer">
           <p><strong>【结论】</strong>同一个类型注解，在 dataclass/普通函数里只是"静态提示"，搬进 Pydantic <code>BaseModel</code> 后就变成"运行时强制的字段约束"——非法值会在创建实例时抛 <code>ValidationError</code>。</p>
           <p><code>Role</code>（<code>Literal["system","user","assistant"]</code>）可以直接当 Pydantic 字段的类型，例如 <code>class Message(BaseModel): role: Role</code>。这时传 <code>role="admin"</code> 不再只是 mypy 标红，而是<strong>运行时</strong>直接被拒——正好接住 LLM 可能吐出的非法角色。</p>
-          <p><code>ToolFn</code>（<code>Callable[[dict], dict]</code>）这类可调用别名，更多用来描述"字段本身是个函数"或工具注册表的值类型；它表达的是接口契约（收 dict、还 dict）。</p>
-          <p>一句话：type hint 是静态提示，Pydantic 读取同一套注解把它变成运行时校验。L13 打的类型基础，到 L14 直接升级成"数据契约"。</p>
+          <p><code>ToolFn</code>（<code>Callable[[dict], dict]</code>）主要是静态描述工具注册表中的调用形状。Pydantic 对 Callable 字段通常只检查值是否 <code>callable()</code>，不会验证参数列表和返回值真的匹配该签名；真正需要签名检查时应在注册阶段用 <code>inspect.signature</code>。</p>
+          <p>因此 L14 的重点是把<strong>工具参数数据</strong>建成 Pydantic 模型并校验/导出 Schema，函数对象仍由 registry 保存；不能把 Callable 注解说成完整的运行时函数契约。</p>
         </div>
       </details>
     </details>
+  </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：把缓存策略守在运行时边界</h2>
+  <p class="best-practice-lead">换到不同领域的 <code>CachePolicy = Literal["use", "refresh", "bypass"]</code>：先保存一份可通过 mypy 的静态正例，再用独立负例核对预期 Literal 错误；运行时实验另行证明普通函数不自动校验，而 parser 才把外部字符串转换为可信内部值。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>定义三个缓存策略。</li><li>保存静态正例并运行 mypy。</li><li>用独立负例核对预期 Literal 错误。</li><li>单独运行 Python，证明注解不自动校验。</li><li>让 parser 拒绝非法值、合法值进入内部函数。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>正例 mypy 无问题</li><li>负例报告非法 Literal</li><li>运行时元数据准确</li><li>普通调用不自动校验</li><li>parser 拒绝非法边界输入</li><li>运行时脚本打印 <code>L13 ACCEPTED</code></li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末自检（从仓库根运行；离线调用锁定 mypy）：</strong></summary><pre><code>import subprocess
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+
+project = Path(
+    "code/phase1-python/part-a-basics/agent-hello"
+).resolve()
+assert (project / "pyproject.toml").is_file(), "请从仓库根运行"
+
+module_source = '''from typing import Literal, cast, get_args, get_type_hints
+
+CachePolicy = Literal["use", "refresh", "bypass"]
+
+
+def fetch_document(policy: CachePolicy) -&gt; str:
+    return f"fetch:{policy}"
+
+
+def parse_cache_policy(raw: str) -&gt; CachePolicy:
+    allowed = get_args(CachePolicy)
+    if raw not in allowed:
+        raise ValueError(f"unsupported cache policy: {raw!r}")
+    return cast(CachePolicy, raw)
+'''
+
+ok_source = '''from cache_policy import fetch_document, parse_cache_policy
+
+assert fetch_document("use") == "fetch:use"
+assert fetch_document(parse_cache_policy("refresh")) == "fetch:refresh"
+'''
+
+bad_source = '''from cache_policy import fetch_document
+
+fetch_document("stale")
+'''
+
+runtime_source = module_source + '''
+# 运行时元数据与 Literal 定义保持一致。
+hints = get_type_hints(fetch_document)
+assert get_args(CachePolicy) == ("use", "refresh", "bypass")
+assert get_args(hints["policy"]) == get_args(CachePolicy)
+assert hints["return"] is str
+
+# 普通 Python 不会仅因 Literal 注解自动拒绝实参。
+assert fetch_document("stale") == "fetch:stale"
+try:
+    parse_cache_policy("stale")
+except ValueError as exc:
+    assert "stale" in str(exc)
+else:
+    raise AssertionError("运行时 parser 必须拒绝非法边界值")
+print("RUNTIME OK")
+'''
+
+base = [
+    "uv", "--directory", str(project),
+    "run", "--offline", "--locked",
+]
+with TemporaryDirectory() as directory:
+    evidence = Path(directory)
+    (evidence / "cache_policy.py").write_text(
+        module_source, encoding="utf-8"
+    )
+    ok = evidence / "cache_policy_ok.py"
+    bad = evidence / "cache_policy_bad.py"
+    runtime = evidence / "cache_policy_runtime.py"
+    ok.write_text(ok_source, encoding="utf-8")
+    bad.write_text(bad_source, encoding="utf-8")
+    runtime.write_text(runtime_source, encoding="utf-8")
+
+    lock = subprocess.run(
+        ["uv", "--directory", str(project),
+         "lock", "--check", "--offline"],
+        text=True, capture_output=True,
+    )
+    assert lock.returncode == 0, lock.stderr
+
+    positive = subprocess.run(
+        [*base, "mypy", str(ok)], text=True, capture_output=True,
+    )
+    assert positive.returncode == 0, positive.stdout + positive.stderr
+    assert "Success: no issues found" in positive.stdout
+
+    negative = subprocess.run(
+        [*base, "mypy", str(bad)], text=True, capture_output=True,
+    )
+    diagnostic = negative.stdout + negative.stderr
+    assert negative.returncode != 0
+    assert diagnostic.count("[arg-type]") == 1, diagnostic
+    assert "stale" in diagnostic and "fetch_document" in diagnostic
+
+    runtime_check = subprocess.run(
+        [*base, "python", str(runtime)], text=True, capture_output=True,
+    )
+    assert runtime_check.returncode == 0, runtime_check.stderr
+    assert runtime_check.stdout.strip() == "RUNTIME OK"
+
+print("L13 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>标准输出严格为一行 <code>L13 ACCEPTED</code> 即通过。锁检查失败表示依赖声明与 <code>uv.lock</code> 漂移；正例非零表示合法调用不符合静态契约；负例没有唯一 <code>[arg-type]</code> 或未提到 <code>stale</code>/<code>fetch_document</code>，说明最强的 Literal 静态收窄主张没有被证明；运行时脚本失败则表示“注解不强制、parser 守边界”的分工已漂移。三份临时证据彼此分离，并在结束时自动清理。</p>
   </div>
 </div>
 
@@ -281,11 +443,11 @@ print(truncate([1, 2, 3, 4], 2))     # [1, 2]</code></pre>
   <h2>面试常见问题</h2>
   <div class="card interview">
     <h3>Q1：Python 类型提示在运行时生效吗？</h3>
-    <p><strong>答：</strong>不生效。它是给 mypy/IDE 的静态元信息，运行时不校验、传错类型也照跑。要运行时校验用 Pydantic。</p>
+    <p><strong>答：</strong>注解本身不会在调用边界强制类型。它是给 mypy/IDE 和运行时内省工具使用的元信息；传入不匹配的值后，函数体仍可能因不支持该值而报错。要按注解做运行时校验用 Pydantic。</p>
     <h3>Q2：Optional[str] 是什么意思？和"参数可省略"一样吗？</h3>
     <p><strong>答：</strong>它等于 <code>Union[str, None]</code>，表示值可能是 str 或 None。和"参数可省略"（那由默认值决定）不是一回事。</p>
     <h3>Q3：Literal 有什么用？</h3>
-    <p><strong>答：</strong>把类型收窄到指定的几个具体值，适合枚举型参数（role、模型名、动作类型）。传非法值 mypy 会报错，比裸 str 严谨。</p>
+    <p><strong>答：</strong>把类型收窄到稳定、封闭的几个具体值，适合 role、工具模式、输出风格。动态模型目录或插件名应使用 <code>str</code> 配合配置/registry；普通 Python 调用不会仅因 Literal 自动校验。</p>
     <h3>Q4：怎么标注"接收函数作参数"？</h3>
     <p><strong>答：</strong>用 <code>Callable[[参数类型...], 返回类型]</code>。例如工具函数是 <code>Callable[[dict], dict]</code>。装饰器、回调、策略注入都会用到。</p>
   </div>
@@ -318,12 +480,12 @@ print(truncate([1, 2, 3, 4], 2))     # [1, 2]</code></pre>
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>类型提示是给人/工具看的契约，运行时不强制（要校验用 Pydantic）</li>
+      <li>类型提示是给人/工具看的契约，注解本身不在调用边界强制类型；函数体仍可能报错（边界校验用 Pydantic）</li>
       <li><code>Optional[X]</code> = <code>Union[X, None]</code>，标出"可能为 None"</li>
       <li><code>Union[A,B]</code> / <code>A|B</code>（3.10+）表达多种类型之一</li>
-      <li><code>Literal</code> 把取值收窄到几个具体值（role/模型名/动作）</li>
-      <li><code>Callable[[参数],返回]</code> 标注函数参数；<code>TypeAlias</code> 给复杂类型起名</li>
-      <li>用 <code>mypy</code> 把类型错误挡在运行前；Generic/Protocol 留到 Phase 5</li>
+      <li><code>Literal</code> 收窄稳定封闭集合；动态模型目录等开放集合用 <code>str</code> + 配置/registry</li>
+      <li><code>Callable[[参数],返回]</code> 是静态调用形状；Pydantic 通常只验证 callable，不验证完整签名</li>
+      <li>会用课程项目锁定的 mypy 运行静态正负例并阅读诊断；Generic/Protocol 留到 Phase 5</li>
     </ul>
   </div>
 </div>

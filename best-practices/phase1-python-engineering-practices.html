@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 1 · Python 工程实践阶段复盘与验收</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .phase-practice-reference .reference-masthead {
+      margin-bottom: 1.4rem;
+      padding: 1.5rem 1.6rem;
+      border: 1px solid var(--border);
+      border-top: 5px solid var(--accent);
+      border-radius: var(--radius-md);
+      background: var(--card-bg);
+      box-shadow: var(--shadow-sm);
+    }
+    .phase-practice-reference .reference-kicker,
+    .phase-practice-reference .theme-label {
+      color: var(--accent-bright);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    .phase-practice-reference .reference-masthead h1 { margin-top: 0.25rem; }
+    .phase-practice-reference .reference-masthead > p { margin-bottom: 0; }
+    .phase-practice-reference .reference-use {
+      display: flex;
+      gap: 0.8rem 1.25rem;
+      flex-wrap: wrap;
+      align-items: baseline;
+      margin-bottom: 2rem;
+      padding: 0.85rem 1rem;
+      border-left: 3px solid var(--accent-bright);
+      background: var(--bg-warm);
+    }
+    .phase-practice-reference .reference-use p { margin: 0; }
+    .phase-practice-reference .phase-practice-theme {
+      position: relative;
+      margin: 0 0 1.2rem;
+      padding: 1.25rem 1.35rem;
+      overflow: hidden;
+    }
+    .phase-practice-reference .phase-practice-theme::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 4rem;
+      height: 4rem;
+      background: linear-gradient(135deg, transparent 50%, var(--accent-light) 50%);
+      pointer-events: none;
+    }
+    .phase-practice-reference .theme-head {
+      margin-bottom: 0.9rem;
+      padding-right: 2.5rem;
+    }
+    .phase-practice-reference .theme-head h2 {
+      margin: 0.2rem 0 0;
+      padding: 0 0 0.45rem;
+      font-size: 1.34rem;
+    }
+    .phase-practice-reference .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem;
+    }
+    .phase-practice-reference .decision-item {
+      min-width: 0;
+      padding: 0.72rem 0.8rem;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+    }
+    .phase-practice-reference .decision-item.rule { grid-column: 1 / -1; }
+    .phase-practice-reference .decision-item h3 {
+      margin: 0 0 0.2rem;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .phase-practice-reference .decision-item p { margin: 0; font-size: 0.9rem; }
+    .phase-practice-reference .source-row {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 0.85rem;
+    }
+    .phase-practice-reference .source-row > strong { font-size: 0.78rem; }
+    .phase-practice-reference .source-row a {
+      max-width: 100%;
+      padding: 0.2rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-pill);
+      background: var(--card-bg);
+      font-size: 0.76rem;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .phase-practice-reference .source-row a:hover { border-color: var(--accent-bright); }
+    .phase-practice-reference .cross-check {
+      margin: 0.75rem 0 0;
+      padding: 0.58rem 0.72rem;
+      border-left: 3px solid var(--accent-bright);
+      background: var(--accent-light);
+      color: var(--fg-soft);
+      font-size: 0.86rem;
+    }
+    .phase-practice-reference .stage-gate { margin-top: 2.4rem; }
+    .phase-practice-reference .stage-gate h2 { margin-top: 0; }
+    .phase-practice-reference .stage-gate details ol {
+      margin: 0;
+      padding: 0.85rem 1.1rem 0.85rem 2.4rem;
+    }
+    .phase-practice-reference .stage-gate details li { max-width: none; }
+    .phase-practice-reference .nav { gap: 0.8rem; flex-wrap: wrap; }
+    @media (max-width: 640px) {
+      .phase-practice-reference .reference-masthead,
+      .phase-practice-reference .phase-practice-theme { padding: 1rem; }
+      .phase-practice-reference .decision-grid { grid-template-columns: 1fr; }
+      .phase-practice-reference .decision-item.rule { grid-column: auto; }
+      .phase-practice-reference .source-row { align-items: stretch; }
+      .phase-practice-reference .source-row > strong { flex-basis: 100%; }
+      .phase-practice-reference .source-row a { flex: 1 1 12rem; }
+      .phase-practice-reference .nav { justify-content: flex-start; }
+    }
+    @media print {
+      .phase-practice-reference .reference-masthead,
+      .phase-practice-reference .phase-practice-theme,
+      .phase-practice-reference .decision-item { box-shadow: none; }
+      .phase-practice-reference .phase-practice-theme::after { display: none; }
+      .phase-practice-reference .source-row a { border-color: var(--border); }
+      .phase-practice-reference .nav { display: none; }
+    }
+  </style>
+</head>
+<body class="phase-practice-reference">
+<main>
+  <aside class="toc" id="toc" aria-label="页面目录"></aside>
+
+  <header class="reference-masthead">
+    <div class="reference-kicker">Phase 1 · Stage Review &amp; Final Gate</div>
+    <h1>Python 工程实践阶段复盘索引</h1>
+    <p>把 16 课中的 24 个局部检查压缩成 8 个可迁移的工程决策。这里是学完 Phase 1 后的阶段复盘、实践索引与最终综合验收，不是第一次动手实践，也不是新增课程。</p>
+  </header>
+
+  <div class="reference-use" aria-label="使用方法">
+    <strong>阶段复盘用法</strong>
+    <p>先用“实践索引”回到各课已有检查点，再按“触发 / 非触发”复盘决策；最后运行离线综合项目并完成 8 项最终验收。</p>
+  </div>
+
+  <article class="phase-practice-theme card" data-phase-practice="environment" aria-labelledby="theme-environment">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Environment</div>
+      <h2 id="theme-environment">让执行环境、依赖输入与秘密来源都可证明</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>项目代码从目标 uv 根目录执行；依赖以已跟踪且一致的清单与锁文件为准；本地秘密只加载、不回显。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>解释器不一致、拉取后依赖漂移、密钥进入源码或日志。<strong>非触发：</strong>一次性无依赖脚本且不读取秘密。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p><code>uv run</code> 将解释器绑定到项目；版本化输入可审查重放；布尔诊断避免泄露凭据材料。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>要维护锁文件、忽略规则和编辑器配置；部署环境改用平台的锁定构建与秘密存储，不复制本地 <code>.venv</code>。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p>项目根含 <code>pyproject.toml</code>/<code>uv.lock</code>，Git 可用，<code>.env</code> 与 <code>.venv</code> 均未被跟踪。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0004-L01-dev-environment-setup.html#bp-uv-project-execution">L01 · uv 项目执行</a>
+      <a href="../lessons/0004-L01-dev-environment-setup.html#bp-versioned-manifest-lock">L01 · 清单与锁文件</a>
+      <a href="../lessons/0004-L01-dev-environment-setup.html#bp-local-env-secret-loading">L01 · 本地秘密加载</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0004-L01-dev-environment-setup.html#stage-practice-environment">L01 · 环境阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="modules" aria-labelledby="theme-modules">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Modules</div>
+      <h2 id="theme-modules">把包入口、导入位置与依赖方向视为同一边界</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>只再导出稳定名称，普通运行时 import 默认置顶，包内依赖保持从入口与业务层单向指向底层模型。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>内部文件改名波及调用方、函数内藏依赖、底层模块反向导入上层。<strong>非触发：</strong>有说明的可选或昂贵依赖可局部延迟。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>稳定包入口隔离文件布局；置顶 import 暴露加载依赖；有向无环关系阻止部分初始化和循环导入。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>需维护精确 <code>__all__</code> 并支付启动导入成本；实验性或重模块保留显式子模块入口，例外使用窄 allowlist。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p>先定义公开 API 承诺与模块分层；AST 检查必须基于项目实际 import，而不是理想化目录图。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0005-L02-python-runtime-and-modules.html#bp-stable-public-api">L02 · 稳定公开 API</a>
+      <a href="../lessons/0005-L02-python-runtime-and-modules.html#bp-top-level-imports">L02 · 顶层 import</a>
+      <a href="../lessons/0005-L02-python-runtime-and-modules.html#bp-runtime-dependency-direction">L02 · 单向依赖</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0005-L02-python-runtime-and-modules.html#stage-practice-modules">L02 · 模块阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="state-ownership" aria-labelledby="theme-state">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · State Ownership</div>
+      <h2 id="theme-state">显式决定可变状态与延迟回调归谁所有</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>每次调用或实例需要独立容器时现场创建；循环生成的延迟回调在创建时固定当次绑定；共享必须由调用方明示。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>后一次调用携带前次数据、实例间串状态、全部回调指向循环末项。<strong>非触发：</strong>业务明确共享同一对象，或回调不捕获循环变量。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>默认参数与闭包都保存引用；函数内新建、<code>default_factory</code> 和每轮工厂调用把引用生命周期收窄。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>增加分支、分配和工厂层；长期共享状态改用显式状态对象，复杂不变量改用配置类型与可调用类。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p>必须先区分“省略值”“合法的 <code>None</code>”与“共享对象”；固定绑定不是深复制。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0006-L03-variables-types-data-structures.html#bp-fresh-mutable-defaults">L03 · 新鲜可变默认值</a>
+      <a href="../lessons/0010-L06-scope-closures-lambda.html#bp-l06-bind-loop-callbacks">L06 · 循环回调绑定</a>
+      <a href="../lessons/0011-L07-classes-and-dataclass.html#bp-l07-default-factory">L07 · default_factory</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0011-L07-classes-and-dataclass.html#stage-practice-state-ownership">L07 · 状态阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="boundary-contracts" aria-labelledby="theme-contracts">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Boundary Contracts</div>
+      <h2 id="theme-contracts">从容器语义到工具执行建立分层数据契约</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>先按语义选容器；嵌套读取遵守字段契约；JSON object 以关键字映射到明确签名；类型提示描述内部状态，Pydantic 守住不可信运行时边界。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>LLM、HTTP、队列或 CLI 交来原始 mapping。<strong>非触发：</strong>同一信任域内已持有且未重新序列化的已验证模型实例。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>容器表达顺序/命名/不变/去重；<code>**mapping</code> 让字段名进入签名绑定；解析器与模型实例执行运行时拒绝。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>契约与模型需随输入演化维护；开放值集合保留 <code>str</code>，简单内部对象可用 dataclass，性能热点可在边界验证后传递窄类型。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p><code>safe_get()</code> 是课程辅助函数而非标准库；签名、类型注解、Pydantic v2 模型和工具实现必须表达同一字段语义。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0006-L03-variables-types-data-structures.html#bp-choose-container-by-semantics">L03 · 容器语义</a>
+      <a href="../lessons/0006-L03-variables-types-data-structures.html#bp-read-nested-data-by-contract">L03 · safe_get 字段契约</a>
+      <a href="../lessons/0009-L05-functions-and-parameters.html#bp-l05-json-object-call">L05 · JSON object 调用</a>
+      <a href="../lessons/0009-L05-functions-and-parameters.html#bp-l05-signature-contract">L05 · 函数签名契约</a>
+      <a href="../lessons/0017-L13-type-hints.html#bp-l13-literal-runtime-boundary">L13 · Literal 运行时边界</a>
+      <a href="../lessons/0018-L14-pydantic.html#bp-l14-validate-before-execution">L14 · 执行前验证</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0018-L14-pydantic.html#stage-practice-boundary-contracts">L14 · 边界阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="bounded-control" aria-labelledby="theme-control">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Bounded Control</div>
+      <h2 id="theme-control">让循环终止条件与 Prompt 渲染都保持可判定</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>Agent Loop 对步骤、终态和未知动作设显式边界；Prompt 可选片段集中收集并只执行一次稳定连接。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>模型不返回终态、adapter 给出未知动作、开关改变无关空行或顺序。<strong>非触发：</strong>单次纯函数调用或无需条件片段的固定文本。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>有限状态迁移阻止无界消耗；片段列表把条件决策与最终格式分离，减少分支间格式耦合。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>过低步数会截断合法任务；长任务用可恢复状态机。复杂模板可用 Jinja；外部调用超时与预算仍由 adapter/运行器负责。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p>必须定义动作集合、终态、耗尽结果和固定渲染契约；字符串结构本身不提供 prompt injection 防护。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0008-L04-control-flow-and-prompt.html#bp-agent-loop-boundaries">L04 · Agent Loop 边界</a>
+      <a href="../lessons/0008-L04-control-flow-and-prompt.html#bp-prompt-structure">L04 · Prompt 片段结构</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0008-L04-control-flow-and-prompt.html#stage-practice-bounded-control">L04 · 控制阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="extensibility" aria-labelledby="theme-registry">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Extensibility</div>
+      <h2 id="theme-registry">扩展频率决定分发结构，失败原子性决定注册顺序</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>固定小集合用显式分支，频繁增长的实现用注册表；注册时先完整 build + validate，最后只提交一次。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>新增实现总要修改执行器，或装饰器失败后留下半条目。<strong>非触发：</strong>两三个稳定实现，分支更直接且更易审查。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>名称到可调用对象的映射把扩展变成数据；所有可失败步骤前置，使唯一写入成为原子提交点。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>注册表增加间接查找并隐藏可用集合；小集合保留分支。多写者场景需锁、不可变快照或集中 owner。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p>条目需有唯一名称、可检查签名、受支持类型和明确 callable；参数校验、权限与超时仍在注册表之外。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0012-L08-inheritance-and-call.html#bp-l08-registry-dispatch">L08 · 注册表分发</a>
+      <a href="../lessons/0015-L11-decorators.html#bp-l11-failure-safe-registration">L11 · 失败安全注册</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0015-L11-decorators.html#stage-practice-extensibility">L11 · 扩展阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="resource-lifecycle" aria-labelledby="theme-resources">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Resource Lifecycle</div>
+      <h2 id="theme-resources">更新持久状态要原子，停止消费外部流要显式</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>重要 JSON 先写完同目录唯一临时文件再替换；持有外部资源的流在正常结束、提前停止与异常路径都关闭或取消。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>更新失败仍须保留旧文件，或迭代器背后是 HTTP/SSE/文件/进程。<strong>非触发：</strong>无外部资源的本地有限生成器。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>同文件系统 <code>os.replace</code> 将可见切换收敛为一步；显式关闭把消费者的 <code>break</code> 传播到上游资源。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>临时文件与清理路径增加复杂度，原子替换也不等于断电持久；多写者需锁。纯内存流自然耗尽即可。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p>临时文件必须与目标同目录；流接口必须暴露 context manager、<code>close()</code> 或取消协议，并明确 owner。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0013-L09-files-json-dict.html#bp-l09-atomic-json-replace">L09 · 原子 JSON 替换</a>
+      <a href="../lessons/0016-L12-generators-streaming.html#bp-l12-explicit-stream-lifecycle">L12 · 显式流生命周期</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0016-L12-generators-streaming.html#stage-practice-resource-lifecycle">L12 · 资源阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="failure-ownership" aria-labelledby="theme-failure">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Failure Ownership</div>
+      <h2 id="theme-failure">异常语义、重试策略与批次隔离只由正确层负责</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>只翻译能增加业务语义的具体异常；每条传输调用链只有一个重试 owner；调度层只做逐项并发与独立失败隔离。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>需给调用方稳定错误、SDK 与包装层都可能重试、批次成员彼此独立。<strong>非触发：</strong>契约破坏应原样暴露，强一致组应 fail-fast。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p><code>raise ... from</code> 同时保留业务分类与根因；单一重试 owner 防尝试次数相乘；逐项捕获避免一个尾部失败扩散。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>要维护异常映射和 transport policy；严格顺序用串行，组内同生共死用 <code>TaskGroup</code>，按完成顺序消费用 <code>as_completed()</code>。</p></div>
+      <div class="decision-item"><h3>依赖</h3><p>先分类临时/永久错误与幂等性；共享并关闭 Client；注入的 async adapter 必须先兑现 L15 的最终传输语义。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0014-L10-exceptions-logging-context.html#bp-l10-semantic-exception-translation">L10 · 语义异常翻译</a>
+      <a href="../lessons/0019-L15-httpx.html#bp-l15-single-transport-policy">L15 · 单一重试 owner</a>
+      <a href="../lessons/0020-L16-async-concurrency.html#bp-l16-batch-isolation">L16 · 批次隔离</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0020-L16-async-concurrency.html#stage-practice-failure-ownership">L16 · 失败阶段检查点</a></p>
+  </article>
+
+  <section class="stage-gate" aria-labelledby="capstone-project">
+    <h2 id="capstone-project">离线综合项目：把 8 个决策接成一条调用链</h2>
+    <p>项目位于 <a href="../code/phase1-python/phase1-practices-capstone/README.md"><code>code/phase1-python/phase1-practices-capstone/</code></a>。它不访问网络、不读取真实密钥；一个 <code>PracticeAgent</code> 隐藏注册、传输、并发和持久化实现，只暴露稳定的运行接口。</p>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>架构</h3><pre><code>RunRequest → Pydantic 边界 → 有界运行器 → 已验证 registry
+                                  ↓
+Batch coordinator → PracticeAgent → OfflineGateway(MockTransport)
+                                  ↓
+                         原子 JSON 持久化</code></pre></div>
+      <div class="decision-item"><h3>公共接口</h3><p><code>RunRequest</code>、<code>RunReport</code>、<code>BatchOutcome</code>、<code>PracticeAgent</code>、<code>build_offline_agent</code>。批次只需传入 <code>parallelism</code> 与 <code>deadline_s</code>。</p></div>
+      <div class="decision-item"><h3>反事实</h3><p>项目包含“重试整个批次”和“只导出 Schema、不实例验证”两个故意失败的变异；若它们成功退出，说明错误方案没有被检查发现。</p></div>
+    </div>
+    <details class="bp-check">
+      <summary><strong>离线运行命令</strong></summary>
+      <pre><code>cd code/phase1-python/phase1-practices-capstone
+uv lock --check --offline
+uv run --offline --locked pytest -q
+uv run --offline --locked mypy phase1_practices tests main.py
+uv run --offline --locked python main.py</code></pre>
+      <p class="bp-result"><strong>通过：</strong>测试与 mypy 无错误，主入口只输出阶段接受标记；两个 counterfactual 模块必须因预期断言而非零退出。</p>
+    </details>
+  </section>
+
+  <section class="stage-gate" aria-labelledby="stage-acceptance">
+    <h2 id="stage-acceptance">阶段验收总览</h2>
+    <details class="bp-check">
+      <summary><strong>展开 8 项阶段验收（打印时自动展开）</strong></summary>
+      <ol>
+        <li><strong>环境：</strong>解释器属于目标项目，锁文件一致且受版本控制，秘密未进入源码、Git 或诊断输出。</li>
+        <li><strong>模块：</strong>公开入口稳定，普通 import 可见，运行时依赖图没有反向边或导入副作用。</li>
+        <li><strong>状态：</strong>省略的可变值彼此隔离，显式共享可追踪，延迟回调保留各自绑定。</li>
+        <li><strong>契约：</strong>容器符合语义，原始 mapping 在副作用前完成嵌套读取、签名绑定与运行时验证。</li>
+        <li><strong>控制：</strong>未知动作与耗尽都有结果，循环不会无界运行，Prompt 组合保持稳定格式。</li>
+        <li><strong>扩展：</strong>新增实现不改执行器，任何注册失败都不会改变 registry。</li>
+        <li><strong>资源：</strong>失败更新不破坏旧 JSON，正常、提前与异常退出都会释放真实流资源。</li>
+        <li><strong>失败：</strong>异常保留根因，每条调用链只有一个重试 owner，独立批次项互不扩散失败。</li>
+      </ol>
+    </details>
+  </section>
+</main>
+
+<nav class="nav" aria-label="手动导航">
+  <a href="../lessons/0002-phase1-python-outline.html">← Phase 1 详细大纲</a>
+  <a href="../lessons/0001-ai-agent-learning-path-overview.html">学习路径总览 →</a>
+</nav>
+
+<footer>AI Agent 高级开发工程师课程 · Phase 1 Python 工程实践阶段复盘与验收</footer>
+
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/toc.js"></script>
+</body>
+</html>

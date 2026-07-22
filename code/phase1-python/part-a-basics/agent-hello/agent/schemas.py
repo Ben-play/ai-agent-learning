@@ -4,4 +4,4 @@ class Message:
         self.content = content
 
     def __repr__(self):
-        return f"Message(role={self.role}, content={self.content})"
+        return f"Message(role={self.role!r}, content={self.content!r})"
