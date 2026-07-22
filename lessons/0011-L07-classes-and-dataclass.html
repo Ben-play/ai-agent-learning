@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">20</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>类、对象与 @dataclass</h1>
     <p class="subtitle">@dataclass 是 Agent 数据模型的起点 — Message、ToolCall、AgentState 都从这里来</p>
@@ -26,8 +26,12 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>Agent 系统里到处是"数据模型"：一条消息、一次工具调用、整个 Agent 的状态。用普通 dict 存这些数据，字段拼错了也不报错；用 <code>@dataclass</code>，字段清晰、自带比较和打印，代码立刻规整。</p>
-    <p>而且到 L14 你会用 <strong>Pydantic</strong> 做带校验的模型——<code>@dataclass</code> 是它的"前身"。搞清楚"什么时候用 dataclass、什么时候上 Pydantic"是高频面试题。</p>
+    <p>到 L14 你会进一步用 <strong>Pydantic</strong> 定义带运行时校验、可导出 Schema 的模型。<code>@dataclass</code> 提供标准库的数据类基础，Pydantic 则在相似的字段声明之上增加边界校验等能力；搞清楚“什么时候用 dataclass、什么时候上 Pydantic”是高频面试题。</p>
   </div>
+</div>
+
+<div class="section">
+  <div class="tip"><strong>本课关键决策：</strong>可信内部数据可用 dataclass；用户、LLM、API 等不可信边界先校验，再进入内部模型。</div>
 </div>
 
 <div class="section">
@@ -39,7 +43,7 @@
       <li>区分实例方法 / <code>@classmethod</code> / <code>@staticmethod</code></li>
       <li>用 <code>@dataclass</code> 快速定义数据模型</li>
       <li>用 <code>field(default_factory=...)</code> 安全地给可变默认值</li>
-      <li>用 <code>frozen=True</code> 定义不可变模型，并说清 dataclass vs Pydantic</li>
+      <li>用 <code>frozen=True</code> 禁止字段重绑定，并说清它不等于深不可变</li>
     </ul>
   </div>
 </div>
@@ -112,35 +116,70 @@ m2 = Message("user", "你好")
 print(m1)          # Message(role='user', content='你好', meta={})  ← 自动 __repr__
 print(m1 == m2)    # True  ← 自动 __eq__（按字段比较）</code></pre>
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p><code>field(default_factory=dict)</code> 正是 L03/L05 讲的<strong>可变默认参数陷阱</strong>在 dataclass 里的正解——绝不能写 <code>meta: dict = {}</code>，dataclass 会当场抛 <code>ValueError</code> 阻止你这样写（就是为了帮你避开"所有实例共享同一个 dict"这个坑）。这个坑面试常考。</p>
+  <div class="best-practice-point" id="bp-l07-default-factory">
+    <h3>最佳实践：可变默认值用 <code>default_factory</code> 创建</h3>
+    <p class="bp-scenario"><strong>适用场景：</strong>字段可省略、实例创建后又会被原地修改，且每条 Message 或每个 AgentState 都应拥有自己的 list/dict。若业务明确要求共享容器，应由调用方显式传入，而不是藏在默认值里。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 直接写可变默认值</span><pre><code>@dataclass
+class Message:
+    meta: dict = {}  # 类定义时抛 ValueError</code></pre><p>dataclass 会主动拒绝这类共享默认对象。</p></div><div class="bp-right"><span class="bp-compare-label">✅ 让工厂为每个实例创建对象</span><pre><code>@dataclass
+class Message:
+    meta: dict = field(default_factory=dict)</code></pre><p>每次实例化都会调用一次 <code>dict()</code>。</p></div></div>
+    <p class="bp-rationale"><strong>为什么更优：</strong><code>default_factory</code> 在每次实例化且字段被省略时才创建新容器，阻断了实例间的隐式别名，从而提升状态隔离性与可测试性。代价是每个实例都要分配容器，且工厂不承担输入校验；若状态应共享或字段必填，改由调用方显式传入共享对象或必填值，外部数据则在构造前设置独立校验 seam（边界函数或 Pydantic 模型）。</p>
+    <details class="bp-check"><summary><strong>动手自检（整块复制即可运行）：</strong></summary><pre><code>from dataclasses import dataclass, field
+
+@dataclass
+class Message:
+    role: str
+    meta: dict = field(default_factory=dict)
+
+first = Message("user")
+second = Message("user")
+first.meta["id"] = "m1"
+assert first.meta == {"id": "m1"}
+assert second.meta == {}
+assert first.meta is not second.meta</code></pre></details>
+    <p class="bp-result"><strong>结果解释：</strong>两个省略字段的实例拿到不同 dict；这里继续保留现有近迁移练习，课末验收再验证“显式传入共享对象”这条边界。</p>
+    <p class="bp-term"><strong>边界：</strong><code>default_factory</code> 只在调用方省略字段时创建对象，不复制显式传入的容器，也不提供输入校验；来自用户、LLM 或 API 的数据仍应在系统边界校验。</p>
   </div>
 </div>
 
 <div class="section">
-  <h2>3. frozen 不可变模型</h2>
-  <p>加 <code>frozen=True</code>，实例的字段就<strong>不能被重新绑定</strong>——适合表示"一旦产生就不该变"的数据，比如一次工具调用记录：</p>
-  <pre><code>@dataclass(frozen=True)
+  <h2>3. frozen：禁止字段重绑定</h2>
+  <p>加 <code>frozen=True</code>，实例的字段就<strong>不能被重新绑定</strong>——适合防止调用记录的字段被意外替换，但若字段引用 dict/list，记录仍不是深不可变：</p>
+  <pre><code>from dataclasses import FrozenInstanceError, dataclass
+
+
+@dataclass(frozen=True)
 class ToolCall:
     name: str
     args: dict
 
+
 tc = ToolCall("search", {"q": "python"})
-tc.name = "calc"          # ❌ FrozenInstanceError：字段不能重新赋值
-tc.args["q"] = "changed"  # ✅ 能成功！args 指向的 dict 本身还是可变的
-print(tc.args["q"])       # changed</code></pre>
+try:
+    tc.name = "calc"
+except FrozenInstanceError as exc:
+    print(type(exc).__name__)  # FrozenInstanceError
+
+tc.args["q"] = "changed"     # ✅ 浅冻结：嵌套 dict 仍可原地修改
+print(tc.args["q"])           # changed
+
+try:
+    hash(tc)
+except TypeError:
+    print("not hashable")      # frozen 不保证字段或实例可 hash</code></pre>
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>⚠️ frozen 只是"浅层不可变"：</strong>
-    <p><code>frozen=True</code> 阻止的是<strong>字段重新绑定</strong>（<code>tc.name = ...</code> 这种赋值），并不会递归冻结字段内部的对象。如果字段本身是 <code>list</code>/<code>dict</code> 这类可变容器，容器<strong>内部的内容照样可以修改</strong>——上面例子里 <code>tc.args</code> 这个 dict 就被原地改了，<code>tc</code> 本身"没变"，但它引用的数据变了。</p>
-    <p>连带的后果：<code>ToolCall</code> 带了 <code>dict</code> 字段，试图 <code>hash(tc)</code> 会直接抛 <code>TypeError</code>（dict 本身不可 hash），并不会因为加了 <code>frozen=True</code> 就自动可 hash。<strong>frozen 也不等于自动线程安全</strong>——它只保证字段不会被重新赋值，多线程同时修改内部可变字段依然不安全。</p>
-    <p>如果确实需要一个可 hash、能进 set/当 dict key 的 <code>ToolCall</code>，字段本身也要换成不可变类型，比如把 <code>args: dict</code> 换成 <code>args_json: str</code>（先序列化）：</p>
+    <strong>⚠️ frozen 只禁止字段重绑定：</strong>
+    <p>上例已显示边界：<code>frozen=True</code> 只禁止字段重新绑定，不递归冻结 list/dict 内部内容。</p>
+    <p>因此含 <code>dict</code> 的 <code>ToolCall</code> 不保证可 hash，也不会自动线程安全；这些能力取决于字段自身是否可 hash 及并发设计。</p>
+    <p>如果需要把 <code>ToolCall</code> 放进 set 或用作 dict key，字段本身也要可 hash，比如把 <code>args: dict</code> 换成规范化后的 <code>args_json: str</code>：</p>
     <pre><code>@dataclass(frozen=True)
 class ToolCallKey:
     name: str
-    args_json: str      # 不可变字段 → 整个实例才真正可 hash
+    args_json: str      # 字段均可 hash → 此示例实例可 hash
 
-print(hash(ToolCallKey("search", '{"q": "python"}')))  # 正常输出一个整数</code></pre>
+print(hash(ToolCallKey("search", '{"q":"python"}')))  # 正常输出一个整数</code></pre>
+    <p>这里的 JSON 字符串是<strong>规范化边界</strong>：同一数据必须固定键顺序、空白等序列化规则，否则语义相同的参数仍可能得到不同字符串和不同 key。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -161,7 +200,7 @@ print(hash(ToolCallKey("search", '{"q": "python"}')))  # 正常输出一个整�
     <table>
       <tr><th></th><th>@dataclass</th><th>Pydantic BaseModel</th></tr>
       <tr><td>来源</td><td>标准库，零依赖</td><td>第三方库</td></tr>
-      <tr><td>数据校验</td><td><strong>不校验</strong>（类型注解只是提示）</td><td><strong>自动校验 + 类型转换</strong></td></tr>
+      <tr><td>数据校验</td><td><strong>不校验</strong>（类型注解只是提示）</td><td><strong>运行时校验；可能按模型与配置进行类型转换</strong></td></tr>
       <tr><td>用途</td><td>内部纯数据容器</td><td>外部输入/输出、Tool Schema</td></tr>
       <tr><td>JSON Schema</td><td>不支持</td><td>一键导出（喂给 LLM）</td></tr>
     </table>
@@ -181,11 +220,11 @@ print(hash(ToolCallKey("search", '{"q": "python"}')))  # 正常输出一个整�
 @dataclass
 ├── 自动 __init__ / __eq__ / __repr__
 ├── field(default_factory=...) → 可变默认值正解
-└── frozen=True → 禁止字段重绑定（浅层），非深度不可变/非自动可 hash
+└── frozen=True → 禁止字段重绑定（浅层），非深度不可变/不保证可 hash
 
 dataclass vs Pydantic
 ├── dataclass：内部数据、不校验、零依赖
-└── Pydantic：外部输入、自动校验、导 JSON Schema（→ L14）</code></pre>
+└── Pydantic：外部输入、运行时校验、导 JSON Schema（→ L14）</code></pre>
   </div>
 </div>
 
@@ -197,7 +236,7 @@ dataclass vs Pydantic
     <h4>任务清单</h4>
     <ol>
       <li><code>Message</code>：role、content，可选 meta（dict，默认空）</li>
-      <li><code>ToolCall</code>：name、args（dict）——设为 <strong>frozen</strong>（调用记录不可变）</li>
+      <li><code>ToolCall</code>：name、args（dict）——设为 <strong>frozen</strong>（只禁止字段重绑定；args 内容仍可变）</li>
       <li><code>AgentState</code>：messages（Message 列表，默认空）、step（int，默认 0）、done（bool，默认 False）</li>
       <li>给 <code>AgentState</code> 加一个方法 <code>add(msg)</code> 追加消息并让 step + 1</li>
     </ol>
@@ -241,29 +280,153 @@ print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q'
         <div class="think-q-answer">
           <p><strong>不会报错。<code>Message(role="user", content=123)</code> 会照常创建，<code>content</code> 里就老老实实存着整数 <code>123</code>。</strong></p>
           <p>关键在于：dataclass 里的 <code>content: str</code> <strong>只是类型注解，不是校验</strong>。Python 的注解在运行时不强制，<code>@dataclass</code> 也只拿它来生成 <code>__init__</code>/<code>__repr__</code> 等样板，<strong>完全不检查你传进来的值是不是真的 str</strong>。所以传 <code>123</code>、<code>None</code>、一个列表，都能塞进去，直到后面某处把它当字符串用（比如 <code>.strip()</code>）才可能意外炸掉。</p>
-          <p>这正是「数据一旦来自外部（用户、LLM、API）就该用 Pydantic」的理由：换成 <code>Pydantic BaseModel</code>，<code>content: str</code> 会在构造时<strong>自动校验并尝试类型转换</strong>，类型不对直接抛错，把脏数据挡在门口。dataclass 负责「内部可信数据的容器」，校验的活交给 Pydantic（L14 深入）。</p>
+          <p>这正是「数据一旦来自外部（用户、LLM、API）就该用 Pydantic」的理由：换成 <code>Pydantic BaseModel</code>，<code>content: str</code> 会在构造时<strong>按模型与配置进行校验，并可能进行类型转换</strong>；不满足规则时抛错，把脏数据挡在门口。dataclass 负责「内部可信数据的容器」，校验的活交给 Pydantic（L14 深入）。</p>
         </div>
       </details>
 
       <details class="think-q">
         <summary><span class="think-q-tag">Q2</span>为什么 <code>ToolCall</code> 适合 frozen，而 <code>AgentState</code> 不适合？frozen 的 <code>AgentState</code> 会发生什么？</summary>
         <div class="think-q-answer">
-          <p><strong>因为 <code>ToolCall</code> 是「一旦发生就不该再变」的历史记录，而 <code>AgentState</code> 天生要随对话不断被修改。</strong></p>
-          <p><code>ToolCall</code> 记录的是「某一刻用某参数调了某工具」这一既成事实，把它设成 <code>frozen=True</code> 有两重好处：语义上宣告「这是不可篡改的日志」；防止代码不小心把 <code>tc.name</code> 这类字段整个重新赋值。但要注意，<code>ToolCall</code> 现在带 <code>args: dict</code> 字段——frozen 只挡得住字段重绑定，挡不住 <code>tc.args["q"] = ...</code> 这种内部修改，<code>hash(tc)</code> 也依然会因为 dict 不可 hash 而报错。真正「记录事实且可 hash」需要把可变字段换成不可变类型（如上面的 <code>ToolCallKey</code>）。</p>
-          <p><code>AgentState</code> 恰恰相反——它的 <code>add()</code> 方法要 <code>messages.append(msg)</code>、要 <code>step += 1</code>，本质就是一个<strong>随 Agent Loop 逐轮累积、持续变化</strong>的状态对象。若把 <code>AgentState</code> 设为 <code>frozen=True</code>：<code>self.step += 1</code> 是对字段 <code>step</code> 重新赋值，会直接抛 <code>FrozenInstanceError</code>，方法跑不通；但 <code>self.messages.append(msg)</code> 只是修改 <code>messages</code> 这个 list 内部的内容、没有重新绑定字段本身，即使 frozen 也<strong>可能执行成功</strong>——这正说明 frozen 只挡字段重绑定，不是真正的深度不可变。想要 <code>AgentState</code> 整体真正不可变，需要连 <code>messages</code> 也换成不可变类型（如 tuple）并且每次「修改」都返回一个新实例。<strong>不可变适合「记录事实」，可变适合「承载过程」</strong>——这就是二者的分野。</p>
+          <p><strong><code>ToolCall</code> 更像一次事实记录，而 <code>AgentState</code> 要随循环持续变化。</strong></p>
+          <p>具体的浅冻结、可变容器和 hash 边界见第 3 节；这里抓住选择原则即可：记录字段不应重绑定时可用 frozen，承载过程状态时通常保持可变。</p>
         </div>
       </details>
     </details>
   </div>
 </div>
 
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：区分默认隔离与显式共享</h2>
+  <p class="best-practice-lead">使用 <code>RunState(errors, usage)</code> 同时证明两条边界：省略字段时工厂创建独立容器；显式传入同一个外部容器时，dataclass 不会替你复制。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>定义两个 default_factory 字段。</li><li>验证省略字段的两个实例互不共享。</li><li>把同一外部列表显式传给两个实例。</li><li>证明显式输入按引用共享。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>断言省略字段时，两个实例的 errors/usage 都是新对象</li><li>断言显式传入同一列表时，两个实例都保留该对象的身份</li><li>断言修改共享列表后，两个实例都观察到同一内容</li><li>程序执行完毕并打印唯一的 <code>L07 ACCEPTED</code></li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末自检：证明默认隔离不等于复制显式输入</strong></summary><pre><code>from dataclasses import dataclass, field
+
+@dataclass
+class RunState:
+    errors: list[str] = field(default_factory=list)
+    usage: dict[str, int] = field(
+        default_factory=lambda: {"input_tokens": 0, "output_tokens": 0}
+    )
+
+first = RunState()
+second = RunState()
+first.errors.append("timeout")
+first.usage["input_tokens"] = 120
+assert second.errors == []
+assert second.usage == {"input_tokens": 0, "output_tokens": 0}
+assert first.errors is not second.errors
+assert first.usage is not second.usage
+
+shared_errors = []
+third = RunState(errors=shared_errors)
+fourth = RunState(errors=shared_errors)
+shared_errors.append("shared-by-caller")
+assert third.errors is shared_errors
+assert fourth.errors is shared_errors
+assert third.errors is fourth.errors
+assert third.errors == fourth.errors == ["shared-by-caller"]
+print("L07 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>标准输出必须只有一行 <code>L07 ACCEPTED</code>。默认身份断言失败表示省略字段时没有创建新对象；显式身份断言失败表示调用方传入的对象被复制或替换；共享内容断言失败表示一次原地修改没有被两个实例共同观察到。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-state-ownership" data-phase-practice="state-ownership">
+  <h2>阶段实践检查点：状态所有权与回调绑定</h2>
+  <p class="best-practice-lead">串联 L03 的可变容器、L06 的闭包绑定和本课的 dataclass：默认状态归实例所有，显式共享归调用方所有，延迟执行的回调保留创建时的标签与路由。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>用两个 <code>default_factory</code> 字段证明新实例默认隔离。</li><li>显式传入同一容器，证明身份保留且原地修改双方可见。</li><li>为三条配置创建延迟执行的零参数回调。</li><li>精确检查工厂、构建函数和回调签名，以及三组 label/route。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>默认 list/dict 均不是同一对象</li><li>显式共享容器保持同一身份和可观察内容</li><li>三个回调签名均为 <code>()</code> 且绑定互不串线</li><li>标准输出仅有唯一标记 <code>P1 CHECKPOINT STATE-OWNERSHIP PASSED</code></li></ul></div>
+    </div>
+  </div>
+  <p class="bp-term"><strong>先独立完成：</strong>先按操作清单设计状态模型和回调工厂，并写出自己的身份/调用结果断言；完成后再展开参考验收程序对照遗漏。</p>
+  <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开）：</strong></summary><pre><code>from dataclasses import dataclass, field
+from inspect import signature
+
+
+@dataclass
+class RouteState:
+    events: list[str] = field(default_factory=list)
+    counters: dict[str, int] = field(default_factory=dict)
+
+
+def make_route_callback(label, route):
+    def callback():
+        return {"label": label, "route": route}
+
+    return callback
+
+
+def build_callbacks(specs):
+    return [
+        make_route_callback(spec["label"], spec["route"])
+        for spec in specs
+    ]
+
+
+first = RouteState()
+second = RouteState()
+first.events.append("started")
+first.counters["attempts"] = 1
+assert first.events is not second.events
+assert first.counters is not second.counters
+assert second.events == []
+assert second.counters == {}
+
+shared_events = []
+third = RouteState(events=shared_events)
+fourth = RouteState(events=shared_events)
+shared_events.append("visible-to-both")
+assert third.events is shared_events
+assert fourth.events is shared_events
+assert third.events is fourth.events
+assert third.events == fourth.events == ["visible-to-both"]
+assert third.counters is not fourth.counters
+
+specs = [
+    {"label": "document-created", "route": "/index"},
+    {"label": "invoice-paid", "route": "/notify"},
+    {"label": "run-failed", "route": "/retry"},
+]
+callbacks = build_callbacks(specs)
+assert str(signature(make_route_callback)) == "(label, route)"
+assert str(signature(build_callbacks)) == "(specs)"
+assert [str(signature(callback)) for callback in callbacks] == [
+    "()", "()", "()"
+]
+assert [callback() for callback in callbacks] == [
+    {"label": "document-created", "route": "/index"},
+    {"label": "invoice-paid", "route": "/notify"},
+    {"label": "run-failed", "route": "/retry"},
+]
+
+specs[0]["label"] = "changed"
+specs[1]["route"] = "/changed"
+assert callbacks[0]() == {
+    "label": "document-created", "route": "/index"
+}
+assert callbacks[1]() == {
+    "label": "invoice-paid", "route": "/notify"
+}
+assert callbacks[2]() == {
+    "label": "run-failed", "route": "/retry"
+}
+
+print("P1 CHECKPOINT STATE-OWNERSHIP PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>标准输出必须只有一行 <code>P1 CHECKPOINT STATE-OWNERSHIP PASSED</code>。失败断言会定位到默认容器隔离、显式共享身份、共享修改可见性、回调零参数协议或 label/route 创建时绑定。</p>
+  <p class="bp-term"><strong>主题串联：</strong><a href="0006-L03-variables-types-data-structures.html#lesson-best-practices">L03 的容器所有权</a>、<a href="0010-L06-scope-closures-lambda.html#lesson-best-practices">L06 的闭包绑定</a>与本课 dataclass 默认工厂共同回答“谁拥有状态、何时固定绑定”。</p>
+</div>
+
 <div class="section">
   <h2>面试常见问题</h2>
   <div class="card interview">
     <h3>Q1：@dataclass 帮你自动生成了哪些方法？</h3>
-    <p><strong>答：</strong>主要是 <code>__init__</code>、<code>__repr__</code>、<code>__eq__</code>（按字段比较）；加 <code>frozen=True</code> 会阻止字段重新绑定（浅层不可变），但不会递归冻结内部对象——若字段本身是 dict/list，实例本身仍可能不可 hash，也仍需注意内部可变。省掉大量样板代码。</p>
+    <p><strong>答：</strong>主要是 <code>__init__</code>、<code>__repr__</code>、<code>__eq__</code>（按字段比较）；加 <code>frozen=True</code> 会阻止字段重新绑定，但若字段本身是 dict/list，内部仍可变，实例也不保证可 hash。省掉大量样板代码。</p>
     <h3>Q2：dataclass 和 Pydantic 有什么区别？怎么选？</h3>
-    <p><strong>答：</strong>dataclass 是标准库、<strong>不做校验</strong>，适合内部纯数据；Pydantic <strong>自动校验并转换类型</strong>、能导出 JSON Schema，适合外部输入/输出和工具 Schema。数据来自外部或需要 Schema 就用 Pydantic。</p>
+    <p><strong>答：</strong>dataclass 是标准库、<strong>不做校验</strong>，适合内部纯数据；Pydantic 会在运行时校验，并可能按模型与配置进行类型转换，也能导出 JSON Schema，适合外部输入/输出和工具 Schema。数据来自外部或需要 Schema 就用 Pydantic。</p>
     <h3>Q3：dataclass 里怎么正确给列表/字典默认值？</h3>
     <p><strong>答：</strong>用 <code>field(default_factory=list)</code>。直接写 <code>= []</code> 会因可变默认值共享而被 dataclass 直接报错。</p>
     <h3>Q4：@classmethod 和 @staticmethod 区别？</h3>
@@ -302,7 +465,7 @@ print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q'
       <li>实例方法惯例第一个参数是 self；@classmethod 拿 cls（写工厂方法），@staticmethod 归属类的工具函数</li>
       <li>@dataclass 自动生成 __init__/__eq__/__repr__，写数据模型神器</li>
       <li>可变默认值用 <code>field(default_factory=...)</code>，别写 = []</li>
-      <li>frozen=True → 禁止字段重新绑定（浅层不可变），非深度不可变、非自动可 hash、非自动线程安全</li>
+      <li>frozen=True → 禁止字段重新绑定（不递归冻结内部对象），不保证可 hash，也不自动保证线程安全</li>
       <li>内部数据用 dataclass，外部输入/Schema 用 Pydantic（→ L14）</li>
     </ul>
   </div>

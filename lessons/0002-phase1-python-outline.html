@@ -41,7 +41,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L01</span><span class="lesson-num-time">15min</span>
+      <span class="lesson-num">L01</span><span class="lesson-num-time">55min</span>
       <div>
         <div class="lesson-title"><a href="0004-L01-dev-environment-setup.html">开发环境搭建</a> <span class="badge-basic">基础</span></div>
         <div class="lesson-desc">Python 安装与版本管理（pyenv）、包管理工具（uv）、VS Code 配置、虚拟环境（venv）、.env 环境变量管理</div>
@@ -49,7 +49,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L02</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L02</span><span class="lesson-num-time">65min</span>
       <div>
         <div class="lesson-title"><a href="0005-L02-python-runtime-and-modules.html">Python 运行机制与模块系统</a> <span class="badge-basic">基础</span></div>
         <div class="lesson-desc">解释型语言特点、Python 执行流程、__name__ == "__main__"、模块与包、import 机制、相对导入 vs 绝对导入</div>
@@ -67,7 +67,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L03</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L03</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0006-L03-variables-types-data-structures.html">变量、类型与数据结构</a> <span class="badge-basic">基础</span></div>
         <div class="lesson-desc">变量命名、int/float/str/bool、可变与不可变类型（深入：内存模型、引用计数）、list/dict/tuple/set 操作、推导式、dict 深度操作（嵌套访问、defaultdict、ChainMap）</div>
@@ -75,7 +75,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L04</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L04</span><span class="lesson-num-time">60min</span>
       <div>
         <div class="lesson-title"><a href="0008-L04-control-flow-and-prompt.html">流程控制、字符串与 Prompt 构造</a></div>
         <div class="lesson-desc">if/elif/else、for/while 循环、match-case、字符串方法、f-string 高级用法（格式化、表达式、多行）、Prompt 模板模式（变量替换、条件拼接、上下文注入）</div>
@@ -97,7 +97,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L05</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L05</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0009-L05-functions-and-parameters.html">函数定义与参数</a> <span class="badge-basic">基础</span></div>
         <div class="lesson-desc">def 语法、位置参数/关键字参数/默认值、*args/**kwargs、参数解包、返回值与 return、函数签名设计</div>
@@ -123,7 +123,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L07</span><span class="lesson-num-time">20min</span>
+      <span class="lesson-num">L07</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0011-L07-classes-and-dataclass.html">类、对象与 @dataclass</a> <span class="badge-agent">Agent 核心</span></div>
         <div class="lesson-desc">class 语法、__init__、self、实例方法/类方法(@classmethod)/静态方法(@staticmethod)、@dataclass 语法、field()、frozen 不可变模型、与 Pydantic 的对比（面试题）</div>
@@ -160,7 +160,7 @@
       <span class="lesson-num">L10</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0014-L10-exceptions-logging-context.html">异常处理、日志与上下文管理器</a></div>
-        <div class="lesson-desc">try/except/else/finally、自定义异常（AgentError、ToolError）、异常链（raise from）、with 语句与 __enter__/__exit__、contextlib（@contextmanager，仅负责进入/退出与清理，超时/重试是另外的职责）；<strong>logging 结构化日志</strong>（logger/level/handler/格式化，logger.exception 只用于真实 except 块，生产 Agent 从第一天就该用，而非 print 调试）；<strong>tenacity</strong> —— 只对临时性异常重试的标准库（stop_after_attempt 总尝试次数、reraise=True 抛原始异常，别重复造轮子）</div>
+        <div class="lesson-desc">try/except/else/finally、自定义异常（AgentError、ToolError）、异常链（raise from）、with 语句与 __enter__/__exit__、contextlib（@contextmanager，仅负责进入/退出与清理，超时/重试是另外的职责）；<strong>logging 结构化日志</strong>（logger/level/handler/格式化，logger.exception 只用于真实 except 块，生产 Agent 从第一天就该用，而非 print 调试）；<strong>tenacity</strong>（第三方可选库）—— 只对临时性异常重试（stop_after_attempt 总尝试次数、reraise=True 抛原始异常）；使用前需安装，且不要与 SDK 内建重试重复叠加</div>
         <div class="exercise">实现一个 API 调用上下文管理器 — 记录进入/退出与耗时、用 logging 记录每次调用与失败原因、退出时清理资源并重抛异常，选做叠加 tenacity 对临时异常做重试，模拟 LLM API 调用场景</div>
       </div>
     </div>
@@ -175,7 +175,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L11</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L11</span><span class="lesson-num-time">50min</span>
       <div>
         <div class="lesson-title"><a href="0015-L11-decorators.html">装饰器</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">函数装饰器原理（闭包+高阶函数，装饰器不限于函数）、带参数装饰器、functools.wraps、多层装饰器、@tool 简易 Schema（str/int/float/bool）与 OpenAI/Anthropic 适配边界</div>
@@ -197,7 +197,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L12</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L12</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0016-L12-generators-streaming.html">生成器基础与 Agent Streaming</a></div>
         <div class="lesson-desc">yield 工作原理、生成器表达式、send() 基础、迭代器协议、在 Agent 中的应用：LLM Streaming 响应处理、惰性数据处理、字符级流式模拟与真实 SDK chunk/delta 的边界</div>
@@ -223,7 +223,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L14</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L14</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0018-L14-pydantic.html">Pydantic 数据验证</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">BaseModel、Field（默认值、描述、约束）、Validator、嵌套模型、序列化（model_dump/model_dump_json）、自定义类型、Agent Tool Schema 定义、JSON Schema 导出、dataclass vs Pydantic 对比（面试常问）</div>
@@ -259,7 +259,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L16</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L16</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0020-L16-async-concurrency.html">async/await 与并发</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">GIL 概念与对异步的影响（面试常问）、协程函数/协程对象/Task 的区分、await 挂起语义、协程 vs 线程 vs 进程、asyncio.gather（并发 LLM 调用）、Semaphore 并发限制（区分速率限流）、异步上下文管理器、共享 AsyncClient（衔接 L15）</div>
@@ -269,12 +269,16 @@
   </div>
 </div>
 
+<div class="tip">
+  <strong>边学边做：</strong>8 个阶段实践检查点会在所需知识刚学完时分别出现在 L01、L02、L04、L07、L11、L12、L14、L16。完成 L16 后，再进入 <a href="../best-practices/phase1-python-engineering-practices.html">Phase 1 · Python 工程实践最终复盘与验收</a>，复核 24→8 决策并运行离线综合项目；它不是第 17 课，也不计入线性导航。
+</div>
+
 <h2>学习建议</h2>
 <div class="tip">
-  <strong>Part A 快速过</strong>——你有基础，2 天内完成，重点查漏补缺。每课 20-30 分钟。<br>
-  <strong>Part B 是重点</strong>——装饰器、@dataclass、JSON 操作是 Agent 框架的底层，必须真正理解。每课 40-60 分钟。<br>
-  <strong>Part C 是核心</strong>——生成器/Streaming、类型提示、Pydantic、<strong>httpx 网络请求</strong>、异步并发，每个都直接对应 Agent 开发场景。其中 httpx + 异步是「发起并发 LLM 调用」的地基，务必动手写。每课 60+ 分钟,多写代码。<br><br>
-  <strong>练习方式：</strong>每课结束后完成实战练习。练习都是 Agent 开发中的真实场景，写完的代码后面课程会直接复用。
+  <strong>Part A 查漏补缺</strong>——按每课徽章安排时间；含阶段检查点的 L01/L02/L04 需要 55–65 分钟，其他课程以当前标注为准，不要把必做实践压缩成略读。<br>
+  <strong>Part B 是重点</strong>——装饰器、@dataclass、JSON 操作是 Agent 框架的底层；课程时长约 20–50 分钟，L07/L11 的阶段检查点要独立完成后再看参考验收。<br>
+  <strong>Part C 是核心</strong>——生成器/Streaming、类型提示、Pydantic、<strong>httpx 网络请求</strong>、异步并发直接对应 Agent 开发；课程时长约 20–45 分钟，以徽章为准，并在 L12/L14/L16 立即完成跨课检查点。<br><br>
+  <strong>练习方式：</strong>每课结束后完成实战练习；遇到“阶段实践检查点”时立即完成跨课任务，不要留到 L16。检查点代码会复用此前课程知识，最终总结页只负责复盘和综合验收。
 </div>
 
 <div class="source">

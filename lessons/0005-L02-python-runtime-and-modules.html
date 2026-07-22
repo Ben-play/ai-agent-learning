@@ -15,7 +15,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">65</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Python 运行机制与模块系统</h1>
     <p class="subtitle">理解代码是怎么被"跑起来"的 — Agent 多模块项目的基石</p>
@@ -208,25 +208,61 @@ if __name__ == "__main__":
   </div>
 
   <h3><code>__init__.py</code> 的作用</h3>
-  <p><code>__init__.py</code> 不只是一个标记文件，它有三个实际用途：</p>
+  <p><code>__init__.py</code> 可以把少量稳定名称再导出为包的公开入口，并用 <code>__all__</code> 声明星号导入的范围：</p>
 
   <pre><code># agent/__init__.py
+from .schemas import Message
+from .core import create_response
 
-# 用途 1：定义包的公开接口
+__all__ = ["Message", "create_response"]</code></pre>
+
+  <p><strong>相邻原则：import 应无可见副作用。</strong>导入包时会执行模块顶层代码，因此不要在 <code>__init__.py</code> 或被它导入的模块中启动 Agent、发网络请求、改文件或打印日志；启动行为放到 <code>main.py</code> 的 <code>if __name__ == "__main__":</code> 下。</p>
+
+  <div class="best-practice-point" id="bp-stable-public-api">
+    <h3>最佳实践：只为稳定入口做 re-export</h3>
+    <p class="bp-term"><strong>一个决策：</strong>这个名称是否是承诺给应用入口或外部调用方的稳定接口？若答案是“是”，才从 <code>__init__.py</code> 再导出；包内实现与针对内部模块的测试仍可显式导入子模块。</p>
+    <p class="bp-scenario"><strong>什么时候会遇到：</strong>希望将来调整 <code>core.py</code>，又不想修改 <code>main.py</code> 等公开接口调用方。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 公开调用方绑定内部路径</span><pre><code># main.py
+from agent.core import create_response</code></pre><p>入口知道了实现文件的位置，移动实现会波及调用方。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 再导出稳定入口</span><pre><code># agent/__init__.py
 from .core import create_response
 from .schemas import Message
+__all__ = ["Message", "create_response"]
 
-# 用途 2：控制 from package import * 的行为
-__all__ = ["create_response", "Message"]
+# main.py 等公开接口调用方
+from agent import create_response</code></pre><p>公开路径保持稳定；包内代码仍可写 <code>from .schemas import Message</code>，测试内部行为时也可显式导入 <code>agent.core</code>。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>只 re-export 稳定名称，会用包入口隔离公开调用方与内部文件布局，从而提升接口稳定性和重构可维护性。代价是维护精确的公开清单，并承担首次导入这些模块的启动成本；实验性实现或重模块的低频能力应保留显式子模块导入，避免过早承诺兼容性和拖慢包导入。</p>
+    <ol class="bp-steps"><li>把 <code>Message</code> 与 <code>create_response</code> 定为本练习的两个稳定公开名称。</li><li>在 <code>agent/__init__.py</code> 精确再导出并列入 <code>__all__</code>。</li><li>让 <code>main.py</code> 从 <code>agent</code> 导入，内部模块按需显式导入子模块。</li></ol>
+    <details class="bp-check">
+      <summary><strong>动手自检：验证精确公开 API、re-export 身份与静默导入</strong></summary>
+      <pre><code>uv run --offline python - &lt;&lt;'PY'
+import contextlib
+import io
 
-# 用途 3：包级别的初始化代码
-print("Agent package loaded")  # 只在首次 import 时执行</code></pre>
+stdout, stderr = io.StringIO(), io.StringIO()
+with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+    import agent
+    from agent.core import create_response as core_create_response
+    from agent.schemas import Message as SchemaMessage
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>Agent 项目通常在 <code>__init__.py</code> 中 re-export 核心接口，让用户可以这样导入：</p>
-    <pre><code>from agent import create_response  # 而不是 from agent.core import create_response</code></pre>
-    <p>这是 Python 包设计的标准模式。</p>
+expected = ["Message", "create_response"]
+assert agent.__all__ == expected, (
+    f"agent.__all__: expected {expected!r}, got {agent.__all__!r}"
+)
+assert agent.Message is SchemaMessage, (
+    "agent.Message is not the exact agent.schemas.Message object"
+)
+assert agent.create_response is core_create_response, (
+    "agent.create_response is not the exact agent.core.create_response object"
+)
+assert stdout.getvalue() == "", f"import agent wrote stdout: {stdout.getvalue()!r}"
+assert stderr.getvalue() == "", f"import agent wrote stderr: {stderr.getvalue()!r}"
+print("public API: exact re-exports, silent import")
+PY</code></pre>
+    </details>
+    <p class="bp-result"><strong>怎么看结果：</strong>只出现 <code>public API: exact re-exports, silent import</code> 即通过；否则断言会分别报告 <code>__all__</code>、re-export 对象身份、stdout 或 stderr 的实际差异。<code>__all__</code> 控制星号导入，不会禁止显式子模块导入。</p>
   </div>
 
   <h3><code>__all__</code> 控制公开接口</h3>
@@ -246,23 +282,23 @@ from agent import _debug  # 显式导入仍然可以</code></pre>
 <div class="section">
   <h2>4. import 机制</h2>
 
-  <h3>import 的查找顺序</h3>
-  <p>当你写 <code>import agent</code> 时，Python 按以下顺序查找：</p>
+  <h3>import 的查找模型（初学者简化版）</h3>
+  <p>完整导入机制由 <code>sys.meta_path</code> 上的 finder/loader 协作完成，还包含 built-in 与 frozen 模块等来源。本课先用下面的排错模型理解常见项目导入：</p>
 
   <ol>
-    <li><strong>sys.modules 缓存</strong> — 已经导入过的模块直接从缓存取，不会重新执行</li>
-    <li><strong>内置模块（built-in）</strong> — 直接编译进解释器可执行文件的模块，比如 <code>sys</code> 本身；数量很少，<code>json</code> 并不在其中</li>
-    <li><strong>sys.path 上的模块</strong> — 一个路径列表，Python 的导入系统会依次在这些路径里找文件/目录形式的模块，包含：
+    <li><strong>sys.modules 缓存</strong> — 名称已经加载时通常直接复用模块对象，不重新执行模块顶层代码</li>
+    <li><strong>finder 处理特殊来源</strong> — 例如编译进解释器的 built-in 模块和 frozen 模块</li>
+    <li><strong>文件系统 finder 按 sys.path 查找</strong> — 在路径条目中寻找标准库、第三方包和项目模块，常见来源包括：
       <ul>
-        <li>当前脚本所在目录（或项目根）</li>
+        <li>当前脚本所在目录或启动时加入的项目根</li>
         <li>PYTHONPATH 环境变量指定的目录</li>
-        <li>标准库目录（<code>os</code>、<code>json</code> 等大多数"内置感"的模块其实是这里的 <code>.py</code> 文件）</li>
+        <li>标准库目录（<code>os</code>、<code>json</code> 等许多模块来自这里）</li>
         <li>site-packages（第三方包安装位置）</li>
       </ul>
     </li>
   </ol>
 
-  <p style="font-size:0.9rem;color:var(--muted);">对初学者，简化理解为两类就够用：<strong>真正的内置模块</strong>（极少，如 <code>sys</code>）+ <strong><code>sys.path</code> 上的标准库/第三方/项目模块</strong>（如 <code>os</code>、<code>json</code>、<code>requests</code>、你自己写的 <code>agent</code>）。实测 <code>json.__file__</code> 能打印出一个真实的 <code>.py</code> 路径，说明它是标准库里的普通模块，不是内置模块。</p>
+  <p style="font-size:0.9rem;color:var(--muted);">这不是 Python 导入协议的完整执行顺序，而是定位“为什么找不到项目包”的简化排错模型。实测 <code>json.__file__</code> 通常能打印出标准库路径；有些 built-in/frozen 模块可能没有普通源码文件路径，不能只靠 <code>__file__</code> 判断所有模块来源。</p>
 
   <pre><code># 查看 Python 的模块搜索路径
 import sys
@@ -299,13 +335,56 @@ agent.core.run()
 from agent.core import run
 run()</code></pre>
 
-  <div class="card">
-    <strong>最佳实践：</strong>
-    <ul>
-      <li><code>import module</code> 和 <code>from module import name</code> 都可以放在文件顶层，两者只是语法形式的区别，没有谁更"正确"</li>
-      <li>是否把某个 import 挪到<strong>函数内部</strong>（延迟导入），取决于三类真实原因：打破循环依赖、降低启动成本（该模块很重但不一定用得到）、处理可选依赖（比如某个第三方库没装也要能跑），而不是看你用的是 <code>import</code> 还是 <code>from ... import</code></li>
-      <li><strong>避免</strong> <code>from module import *</code> — 会污染命名空间，IDE 也无法追踪</li>
-    </ul>
+  <div class="best-practice-point" id="bp-top-level-imports">
+    <h3>最佳实践：普通 import 放在模块顶部</h3>
+    <p class="bp-term"><strong>一个决策：</strong>这个 import 是否确实需要延迟到函数调用时？当前练习没有例外许可，因此所有运行时 import 都应位于模块顶层。</p>
+    <p class="bp-scenario"><strong>什么时候会遇到：</strong>函数内混入普通 import，依赖被隐藏，且项目没有声明可直接使用的 lint 工具。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 无理由地局部导入</span><pre><code>def test_create_response():
+    from agent.schemas import Message
+    ...</code></pre><p>依赖直到函数执行时才可见，AST 检查会报告文件与行号。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 普通依赖置顶</span><pre><code>from agent.core import create_response
+from agent.schemas import Message
+
+
+def test_create_response():
+    ...</code></pre><p>这与当前 <code>tests/test_core.py</code> 的结构一致；本练习的 allowlist 为空。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>把普通 import 置顶，会让依赖在模块加载时集中解析并对读者和静态工具可见，从而提升可读性、可分析性和故障定位速度。代价是导入成本在启动阶段支付，且可选依赖缺失会更早报错；其他项目若确有可选依赖、明显昂贵的导入或局部打断循环等边界，应为具体位置建立有说明的 allowlist，而不是放宽整条规则。</p>
+    <ol class="bp-steps"><li>从仓库根进入 <code>code/phase1-python/part-a-basics/agent-hello</code>。</li><li>运行下方标准库 AST 检查。</li><li>若失败，按 <code>路径:行:列</code> 将普通 import 移到模块顶部；当前练习不应添加 allowlist。</li></ol>
+    <details class="bp-check">
+      <summary><strong>动手自检：检查当前项目所有 Python 文件的函数内 import</strong></summary>
+      <pre><code>uv run --offline python - &lt;&lt;'PY'
+import ast
+from pathlib import Path
+
+files = sorted([Path("main.py"), *Path("agent").glob("*.py"), *Path("tests").glob("*.py")])
+allowed = set()  # 当前练习没有函数内 import 例外
+found = []
+for path in files:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    parents = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        parent = parents.get(node)
+        while parent is not None and not isinstance(
+            parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+        ):
+            parent = parents.get(parent)
+        if parent is not None:
+            location = (path.as_posix(), node.lineno)
+            if location not in allowed:
+                found.append(f"{path.as_posix()}:{node.lineno}:{node.col_offset + 1}")
+
+assert not found, "function imports not allowed:\n  " + "\n  ".join(found)
+print("function imports: []")
+PY</code></pre>
+    </details>
+    <p class="bp-result"><strong>怎么看结果：</strong>当前 fixture 的 import 已在模块顶层，应输出 <code>function imports: []</code>。若出现 <code>function imports not allowed</code>，后续每行都会精确给出违规位置；不要再期待过时的 <code>[5]</code>。</p>
   </div>
 
   <h3>相对导入 vs 绝对导入</h3>
@@ -352,15 +431,15 @@ from .config import load_config   # 当前包的 config 模块</code></pre>
 
   <p>循环导入是 Agent 开发中最常见的模块问题之一。当模块 A 导入模块 B，而模块 B 又导入模块 A 时，就会发生循环导入。</p>
 
-  <pre><code># ❌ 循环导入示例
+  <pre><code># ❌ 可能失败的循环导入示例
 # agent/core.py
 from agent.tools import search  # core 导入 tools
 
 # agent/tools.py
-from agent.core import create_response  # tools 又导入 core → 💥 ImportError</code></pre>
+from agent.core import create_response  # 若名字此时尚未绑定，会失败</code></pre>
 
-  <h3>为什么会报错？</h3>
-  <p>Python 导入一个模块时，会<strong>在真正执行模块代码之前</strong>，先把这个模块对象放进 <code>sys.modules</code>（此时对象存在，但里面的名字还没被赋值——"部分初始化"状态）。如果在执行过程中又遇到对同一个模块的导入，Python 发现 <code>sys.modules</code> 里已经有它了，就直接返回这个"部分初始化"的模块对象，<strong>不会重新执行、也不会立刻报错</strong>。真正报错的时刻，是代码接下来去访问这个部分初始化模块里<strong>还没被定义的名字</strong>时，才会抛出 <code>ImportError: cannot import name 'x' from partially initialized module ...</code>。</p>
+  <h3>为什么有时会报错？</h3>
+  <p>Python 导入一个模块时，会<strong>在真正执行模块代码之前</strong>，先把这个模块对象放进 <code>sys.modules</code>（此时对象存在，但名字可能尚未绑定——"部分初始化"状态）。如果执行过程中又导入同一模块，Python 会返回这个部分初始化对象，<strong>不会因为检测到环就自动报错</strong>；有些循环只要不提前读取尚不可用的名称，也能完成。失败发生在代码过早取用名称或属性时：<code>from a import x</code> 常见 <code>ImportError</code>，而先 <code>import a</code> 再访问尚未绑定的 <code>a.x</code> 可能是 <code>AttributeError</code>。</p>
 
   <pre><code># 实测：a.py 和 b.py 互相导入
 # a.py:  from b import y \n x = 1
@@ -404,18 +483,133 @@ def bind(agent: Agent) -> None:
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 <code>from __future__ import annotations</code> 是什么？</strong>
-    <p>加了这一行后，函数签名里的类型注解（如 <code>agent: Agent</code>）在运行时不会被求值，只以字符串形式保存，等到类型检查器（如 mypy）分析代码时才"延迟求值"。这样 <code>if TYPE_CHECKING:</code> 里导入的 <code>Agent</code> 就只需要给类型检查器看，运行时完全用不到，自然不会触发循环导入。</p>
+    <p>加了这一行后，函数签名里的类型注解（如 <code>agent: Agent</code>）在定义函数时不会立即求值，而以延迟形式保存；静态类型检查器仍能读取 <code>if TYPE_CHECKING:</code> 中的导入，因此普通运行路径不会触发该导入。但这不等于运行时永远不需要名称：若代码调用 <code>typing.get_type_hints()</code> 等去解析注解，<code>Agent</code> 仍必须能在提供的 <code>globalns</code>/<code>localns</code> 或模块命名空间中解析，否则会报错。</p>
   </div>
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>Agent 项目中，core.py 通常需要导入 tools（执行工具调用），而 tools 又需要导入 core 中的类型或配置。这是典型的循环导入场景。优先考虑方案 1（提取公共模块）从架构上根治，延迟导入只是应急手段。</p>
+  <div class="best-practice-point" id="bp-runtime-dependency-direction">
+    <h3>最佳实践：让当前运行时依赖保持单向</h3>
+    <p class="bp-term"><strong>一个决策：</strong>现有文件之间是否出现反向运行时依赖？当前项目的实际方向应为 <code>agent.__init__ → agent.core → agent.schemas</code>，同时 <code>agent.__init__ → agent.schemas</code>；<code>agent.schemas</code> 不应反向导入上层模块。</p>
+    <p class="bp-scenario"><strong>什么时候会遇到：</strong>给现有包增加功能或 re-export 时，需要确认没有把底层数据模型连回入口或业务逻辑。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 为读取 Message 让底层反向依赖</span><pre><code># agent/schemas.py
+from agent.core import create_response
+
+# 业务仍调用同一个公开入口
+from agent import create_response</code></pre><p>同样要创建响应，却让数据模型反向依赖已经使用它的业务模块，形成运行时闭环。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 下沉数据模型，公开入口只向下依赖</span><pre><code># agent/core.py
+from .schemas import Message
+
+# agent/__init__.py
+from .schemas import Message
+from .core import create_response
+
+# 业务调用保持不变
+from agent import create_response</code></pre><p>对调用方仍是同一个 <code>create_response</code>，但数据模型位于依赖图底部；当前项目没有 <code>tools.py</code>，检查也不假设它存在。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>按现有文件保持运行时依赖单向，会避免导入期间拿到部分初始化模块中尚不可用的名称，从而提升启动可靠性和架构可理解性。代价是可能需要新增低层共享模块、增加参数传递，或调整公开入口；小型一次性脚本不必为了形式制造过多层次。循环本身可能完成；失败发生在代码过早读取尚未绑定的名称或属性时，依导入形式表现为 <code>ImportError</code> 或 <code>AttributeError</code>。以后若新增共享能力，应放到依赖图更低层或通过参数传入；只有纯类型引用才用 <code>TYPE_CHECKING</code>，且运行时解析注解时仍要让名称可解析。</p>
+    <ol class="bp-steps"><li>从 AST 提取当前 <code>agent/*.py</code> 的包内运行时 import。</li><li>把实际边集合与本练习允许的方向精确比较。</li><li>若出现额外边，按诊断中的 <code>来源 → 目标</code> 判断应下沉共享对象还是改为参数传入。</li></ol>
+    <details class="bp-check">
+      <summary><strong>动手自检：提取并验证现有文件的运行时依赖图</strong></summary>
+      <pre><code>uv run --offline python - &lt;&lt;'PY'
+import ast
+from pathlib import Path
+
+expected = {
+    ("agent.__init__", "agent.core"),
+    ("agent.__init__", "agent.schemas"),
+    ("agent.core", "agent.schemas"),
+}
+
+def module_name(path):
+    return ".".join(path.with_suffix("").parts)
+
+
+def is_type_checking_test(test):
+    return (
+        isinstance(test, ast.Name) and test.id == "TYPE_CHECKING"
+    ) or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+    )
+
+
+def guarded_by_type_checking(node, parents):
+    child = node
+    while child in parents:
+        parent = parents[child]
+        if (
+            isinstance(parent, ast.If)
+            and child in parent.body
+            and is_type_checking_test(parent.test)
+        ):
+            return True
+        child = parent
+    return False
+
+
+def imported_targets(node, source, known_modules):
+    def normalize(target):
+        return "agent.__init__" if target == "agent" else target
+
+    if isinstance(node, ast.Import):
+        return [
+            normalize(alias.name) for alias in node.names
+            if alias.name == "agent" or alias.name.startswith("agent.")
+        ]
+    if not isinstance(node, ast.ImportFrom):
+        return []
+    package = (
+        source.removesuffix(".__init__")
+        if source.endswith(".__init__")
+        else source.rsplit(".", 1)[0]
+    )
+    if node.level:
+        parts = package.split(".")
+        base_parts = parts[: len(parts) - node.level + 1]
+        base = ".".join([*base_parts, *node.module.split(".")]) if node.module else ".".join(base_parts)
+    else:
+        base = node.module or ""
+    if not (base == "agent" or base.startswith("agent.")):
+        return []
+    targets = []
+    for alias in node.names:
+        candidate = f"{base}.{alias.name}"
+        targets.append(normalize(candidate if candidate in known_modules else base))
+    return targets
+
+
+paths = sorted(Path("agent").rglob("*.py"))
+known_modules = {module_name(path) for path in paths}
+edges = set()
+for path in paths:
+    source = module_name(path)
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    for node in ast.walk(tree):
+        if guarded_by_type_checking(node, parents):
+            continue
+        for target in imported_targets(node, source, known_modules):
+            if target != source:
+                edges.add((source, target))
+
+missing, extra = expected - edges, edges - expected
+fmt = lambda items: [f"{a} -&gt; {b}" for a, b in sorted(items)]
+assert not missing and not extra, (
+    f"runtime dependency mismatch; missing={fmt(missing)}, extra={fmt(extra)}"
+)
+print("runtime dependencies:", ", ".join(fmt(edges)))
+PY</code></pre>
+    </details>
+    <p class="bp-result"><strong>怎么看结果：</strong>应精确打印三条当前依赖边。若失败，<code>missing</code> 表示课程期望的边消失，<code>extra</code> 表示新增或反向依赖；检查只读取现有文件，不虚构 <code>tools.py</code>，也不修改 fixture。</p>
   </div>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
     <p>"如何诊断和解决 Python 循环导入？"</p>
-    <p>答：看 ImportError 的堆栈跟踪，找到两个互相导入的模块，以及具体是访问哪个"尚未定义的名字"时报的错。解决方法：优先提取公共模块根治耦合；延迟导入是常见的局部解法；TYPE_CHECKING 条件导入专门用于打破"仅类型注解需要"的循环依赖。</p>
+    <p>答：先看 <code>ImportError</code> 或 <code>AttributeError</code> 的堆栈，找到部分初始化期间过早访问的名称或属性；循环本身也可能完成，并非检测到环就报错。解决方法：优先提取公共模块根治耦合；延迟导入是常见的局部解法；<code>TYPE_CHECKING</code> 条件导入只适用于纯类型依赖，运行时解析注解时仍要保证名称可解析。</p>
   </div>
 </div>
 
@@ -468,8 +662,8 @@ __all__ = ["create_response", "Message"]
 └── tests/
     └── test_core.py</code></pre>
       </li>
-      <li>在 <code>schemas.py</code> 中定义一个 Message 类</li>
-      <li>在 <code>core.py</code> 中用绝对导入使用 Message</li>
+      <li>复制下方给定的 <code>Message</code> 脚手架到 <code>schemas.py</code>（本课不要求从零设计类）</li>
+      <li>在 <code>core.py</code> 中用包内相对导入使用 Message</li>
       <li>在 <code>__init__.py</code> 中导出 <code>create_response</code> 和 <code>Message</code>，定义 <code>__all__</code></li>
       <li>在 <code>main.py</code> 中使用 <code>__name__ == "__main__"</code></li>
       <li>运行并验证</li>
@@ -485,8 +679,7 @@ __all__ = ["create_response", "Message"]
 
       <h4>步骤 1：创建目录结构</h4>
       <pre><code>mkdir -p agent-hello/agent agent-hello/tests
-touch agent-hello/agent/__init__.py
-touch agent-hello/tests/__init__.py</code></pre>
+touch agent-hello/agent/__init__.py</code></pre>
 
       <h4>步骤 2：schemas.py</h4>
       <pre><code># agent/schemas.py
@@ -500,7 +693,7 @@ class Message:
 
       <h4>步骤 3：core.py</h4>
       <pre><code># agent/core.py
-from agent.schemas import Message  # 绝对导入
+from .schemas import Message  # 包内相对导入
 
 def create_response(user_input: str) -> Message:
     return Message(role="assistant", content=f"你说的是：{user_input}")</code></pre>
@@ -510,11 +703,11 @@ def create_response(user_input: str) -> Message:
 from .core import create_response
 from .schemas import Message
 
-__all__ = ["create_response", "Message"]</code></pre>
+__all__ = ["Message", "create_response"]</code></pre>
 
       <h4>步骤 5：main.py</h4>
       <pre><code># main.py
-from agent.core import create_response
+from agent import create_response
 
 def run():
     msg = create_response("Hello Agent!")
@@ -554,17 +747,394 @@ if __name__ == "__main__":
       <details class="think-q">
         <summary><span class="think-q-tag">Q3</span>如果 <code>core.py</code> 和 <code>tools.py</code> 互相导入，会发生什么？怎么解决？</summary>
         <div class="think-q-answer">
-          <p><strong>会报「循环导入」错误——因为一个模块还没初始化完，另一个就来取它的东西。</strong></p>
-          <p>当 <code>core.py</code> 顶部 <code>from tools import …</code>、而 <code>tools.py</code> 顶部又 <code>from core import …</code>：导入 <code>core</code> 时它执行到第一行就去导 <code>tools</code>，<code>tools</code> 又回头导还没执行完的 <code>core</code>，此时 <code>core</code> 里要的名字还没定义。实测报错：<code>ImportError: cannot import name 'make' from partially initialized module 'core' (most likely due to a circular import)</code>。</p>
+          <p><strong>不一定报错；关键看初始化期间是否过早读取尚未绑定的名称或属性。</strong></p>
+          <p>当 <code>core.py</code> 顶部 <code>from tools import …</code>、而 <code>tools.py</code> 顶部又 <code>from core import …</code>：导入 <code>core</code> 时它先去导 <code>tools</code>，<code>tools</code> 会拿到尚未执行完的 <code>core</code>。若此时执行 <code>from core import make</code> 且 <code>make</code> 还未绑定，常见 <code>ImportError</code>；若先 <code>import core</code> 再访问尚未绑定的 <code>core.make</code>，可能是 <code>AttributeError</code>。若双方都没有提前取用缺失名称，循环也可能完成。</p>
           <p><strong>三种解法：</strong></p>
           <p>① <strong>提取公共模块</strong>（首选，最治本）——把两边都依赖的东西（如 <code>schemas.py</code> 里的 <code>Message</code>）抽到第三个模块，<code>core</code> 和 <code>tools</code> 都只依赖它，环就断了。<strong>这是最治本的设计</strong>。<br>
           ② <strong>延迟导入</strong>（常见但不是架构根治）——把 <code>import</code> 从模块顶部挪进真正用到它的<strong>函数体内</strong>，等函数被调用时模块早已初始化完。实测可解，但只是绕开了问题，没有解决模块间耦合过紧的根本原因。<br>
-          ③ <strong><code>TYPE_CHECKING</code> 条件导入</strong>——若互相导入只是为了<em>类型注解</em>，用 <code>if TYPE_CHECKING:</code> 包住 import（运行时不执行、只给类型检查器看），配合字符串类型注解。</p>
+          ③ <strong><code>TYPE_CHECKING</code> 条件导入</strong>——若互相导入只是为了<em>类型注解</em>，用 <code>if TYPE_CHECKING:</code> 包住 import，配合延迟注解；但若运行时调用 <code>get_type_hints()</code> 解析注解，仍须提供可解析的名称。</p>
           <p><strong>根治思路：</strong>循环导入往往是<em>架构信号</em>——两个模块耦合太紧。优先想①的"抽公共模块"，而不是硬用延迟导入打补丁；延迟导入常见，但只是局部应急手段。</p>
         </div>
       </details>
     </details>
   </div>
+</div>
+
+<!-- ==================== 本课最佳实践 ==================== -->
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：验证结构、接口、依赖与测试</h2>
+  <p class="best-practice-lead">从仓库根进入现有 <code>agent-hello</code> 项目，在 Windows Git Bash 运行整段命令。命令使用 <code>uv --offline</code>，不会访问网络；临时证据会在成功或失败时保存到项目外的系统临时目录，并删除项目内证据，全部检查通过后只打印一次最终接受标记。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><p>展开课末自检，整段运行；按右侧标准核对结果。</p><details class="bp-check"><summary><strong>课末自检：运行完整 L02 验收</strong></summary><pre><code>set -euo pipefail
+cd code/phase1-python/part-a-basics/agent-hello
+project_evidence="l02-evidence.tmp"
+saved_evidence="${TMPDIR:-/tmp}/agent-hello-l02-evidence.txt"
+cleanup() {
+  status=$?
+  if [ -f "$project_evidence" ]; then
+    cp "$project_evidence" "$saved_evidence"
+    rm -f "$project_evidence"
+  fi
+  if [ "$status" -ne 0 ]; then
+    printf 'L02 REJECTED; evidence saved to %s\n' "$saved_evidence" &gt;&amp;2
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+
+{
+  uv run --offline python - &lt;&lt;'PY'
+import ast
+import contextlib
+import io
+from pathlib import Path
+
+expected_files = {
+    "main.py",
+    "agent/__init__.py",
+    "agent/config.py",
+    "agent/core.py",
+    "agent/schemas.py",
+    "tests/test_core.py",
+}
+actual_files = {
+    p.as_posix()
+    for root in (Path("agent"), Path("tests"))
+    for p in root.rglob("*.py")
+} | {"main.py"}
+assert actual_files == expected_files, (
+    f"structure mismatch; missing={sorted(expected_files - actual_files)}, "
+    f"extra={sorted(actual_files - expected_files)}"
+)
+
+trees = {}
+for name in sorted(expected_files):
+    path = Path(name)
+    trees[name] = ast.parse(path.read_text(encoding="utf-8"), filename=name)
+print("structure and AST: exact")
+
+stdout, stderr = io.StringIO(), io.StringIO()
+with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+    import agent
+    from agent.core import create_response as core_create_response
+    from agent.schemas import Message as SchemaMessage
+assert stdout.getvalue() == "", f"import agent wrote stdout: {stdout.getvalue()!r}"
+assert stderr.getvalue() == "", f"import agent wrote stderr: {stderr.getvalue()!r}"
+assert agent.__all__ == ["Message", "create_response"], (
+    f"agent.__all__ mismatch: {agent.__all__!r}"
+)
+assert agent.Message is SchemaMessage, (
+    "agent.Message is not the exact agent.schemas.Message object"
+)
+assert agent.create_response is core_create_response, (
+    "agent.create_response is not the exact agent.core.create_response object"
+)
+print("public API and import output: exact")
+
+main_imports = [
+    node for node in trees["main.py"].body
+    if isinstance(node, (ast.Import, ast.ImportFrom))
+]
+agent_imports = []
+for node in main_imports:
+    if isinstance(node, ast.Import):
+        agent_imports.extend(
+            ("import", alias.name, alias.asname)
+            for alias in node.names
+            if alias.name == "agent" or alias.name.startswith("agent.")
+        )
+    elif node.module == "agent" or (node.module or "").startswith("agent."):
+        agent_imports.append(
+            ("from", node.module, node.level, [
+                (alias.name, alias.asname) for alias in node.names
+            ])
+        )
+expected_agent_imports = [
+    ("from", "agent", 0, [("create_response", None)])
+]
+assert agent_imports == expected_agent_imports, (
+    "main.py stable entry mismatch; allowed agent import is exactly "
+    "`from agent import create_response`; "
+    f"got {agent_imports!r}"
+)
+print("main.py stable entry: exact")
+
+function_imports = []
+for name, tree in trees.items():
+    parents = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        parent = parents.get(node)
+        while parent is not None and not isinstance(
+            parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+        ):
+            parent = parents.get(parent)
+        if parent is not None:
+            function_imports.append(f"{name}:{node.lineno}:{node.col_offset + 1}")
+assert not function_imports, (
+    "function imports not allowed:\n  " + "\n  ".join(function_imports)
+)
+print("function imports: []")
+
+expected_edges = {
+    ("agent.__init__", "agent.core"),
+    ("agent.__init__", "agent.schemas"),
+    ("agent.core", "agent.schemas"),
+}
+
+def module_name(path):
+    return ".".join(path.with_suffix("").parts)
+
+
+def is_type_checking_test(test):
+    return (
+        isinstance(test, ast.Name) and test.id == "TYPE_CHECKING"
+    ) or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+    )
+
+
+def guarded_by_type_checking(node, parents):
+    child = node
+    while child in parents:
+        parent = parents[child]
+        if (
+            isinstance(parent, ast.If)
+            and child in parent.body
+            and is_type_checking_test(parent.test)
+        ):
+            return True
+        child = parent
+    return False
+
+
+def imported_targets(node, source, known_modules):
+    def normalize(target):
+        return "agent.__init__" if target == "agent" else target
+
+    if isinstance(node, ast.Import):
+        return [
+            normalize(alias.name) for alias in node.names
+            if alias.name == "agent" or alias.name.startswith("agent.")
+        ]
+    if not isinstance(node, ast.ImportFrom):
+        return []
+    package = (
+        source.removesuffix(".__init__")
+        if source.endswith(".__init__")
+        else source.rsplit(".", 1)[0]
+    )
+    if node.level:
+        parts = package.split(".")
+        base_parts = parts[: len(parts) - node.level + 1]
+        base = ".".join([*base_parts, *node.module.split(".")]) if node.module else ".".join(base_parts)
+    else:
+        base = node.module or ""
+    if not (base == "agent" or base.startswith("agent.")):
+        return []
+    targets = []
+    for alias in node.names:
+        candidate = f"{base}.{alias.name}"
+        targets.append(normalize(candidate if candidate in known_modules else base))
+    return targets
+
+
+agent_trees = {
+    name: tree for name, tree in trees.items() if name.startswith("agent/")
+}
+known_modules = {module_name(Path(name)) for name in agent_trees}
+edges = set()
+for name, tree in agent_trees.items():
+    source = module_name(Path(name))
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    for node in ast.walk(tree):
+        if guarded_by_type_checking(node, parents):
+            continue
+        for target in imported_targets(node, source, known_modules):
+            if target != source:
+                edges.add((source, target))
+fmt = lambda items: [f"{a} -&gt; {b}" for a, b in sorted(items)]
+assert edges == expected_edges, (
+    f"runtime dependency mismatch; "
+    f"missing={fmt(expected_edges - edges)}, extra={fmt(edges - expected_edges)}"
+)
+print("runtime dependencies: exact")
+PY
+  main_output=$(uv run --offline python main.py)
+  expected_output="Message(role='assistant', content='你说的是：Hello Agent!')"
+  test "$main_output" = "$expected_output" || { printf 'main.py output mismatch: expected %s, got %s\n' "$expected_output" "$main_output" &gt;&amp;2; exit 1; }
+  printf '%s\n' 'main.py output: exact'
+  uv run --offline python -m pytest -q
+} 2&gt;&amp;1 | tee "$project_evidence"
+
+cp "$project_evidence" "$saved_evidence"
+rm -f "$project_evidence"
+trap - EXIT
+printf 'L02 ACCEPTED\n'</code></pre></details></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>文件集合精确等于当前 <code>main.py</code>、四个 <code>agent/*.py</code> 与 <code>tests/test_core.py</code></li><li><code>__all__</code> 精确匹配，两个 re-export 与子模块原对象逐一满足 <code>is</code>；<code>main.py</code> 对 <code>agent</code> 的顶层导入只能是 <code>from agent import create_response</code>，可保留其他标准库导入</li><li><code>import agent</code> 的 stdout 与 stderr 都为空</li><li>所有目标文件通过 AST，函数内 import 精确为空</li><li>运行时依赖边精确匹配当前单向图，覆盖两种 import 语法并排除 <code>TYPE_CHECKING</code> 分支，不假设 <code>tools.py</code></li><li><code>main.py</code> 真实执行并输出精确的 Message repr；现有 pytest 全部通过</li><li>项目内临时证据被清理，证据副本保存在系统临时目录</li><li>所有检查成功后，最后一行打印唯一的最终接受标记</li></ul></div>
+    </div>
+    <details class="think-q"><summary><span class="think-q-tag">排错</span>怎样定位失败类别？</summary><div class="think-q-answer"><p><code>structure mismatch</code> 会列出缺少或多出的文件；<code>agent.__all__ mismatch</code> 或 re-export 来源断言指向公开接口；<code>main.py stable entry mismatch</code> 会显示实际导入并要求稳定包入口；<code>import agent wrote ...</code> 会显示副作用输出；AST 会带文件名和语法位置；<code>function imports not allowed</code> 给出 <code>路径:行:列</code>；<code>runtime dependency mismatch</code> 分别列出缺失边与额外边；pytest 失败则按测试报告定位。任何失败都会打印 <code>L02 REJECTED</code> 和证据路径，不会打印接受标记。</p></div></details>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-modules" data-phase-practice="modules">
+  <h2>阶段实践检查点：模块边界可重构</h2>
+  <p class="best-practice-lead">把本课学到的包入口 re-export、静默导入、消费者稳定路径、实现模块重命名与 AST 单向依赖组合成一个临时迷你包实验，验证内部文件布局变化不会泄漏给调用方。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div>
+        <h3>操作清单</h3>
+        <ul><li>先独立设计一个包入口、内部实现和外部 consumer</li><li>只重命名内部实现并调整包入口，保持 consumer 源码和输出不变</li><li>完成后再运行参考验收程序，核对静默导入和单向依赖</li></ul>
+        <p class="bp-term"><strong>先做迁移，再跑验收：</strong>学习者负责设计和重命名模块；折叠区的 AST、临时目录和子进程代码只是自动验收脚手架，不是 L02 要求你从零编写的知识。</p>
+        <details class="bp-check">
+          <summary><strong>参考验收程序（独立完成模块重构后展开）</strong></summary>
+          <pre><code>set -euo pipefail
+repo_root=$(git rev-parse --show-toplevel) || { printf '%s\n' 'FAIL: 当前目录不在课程 Git 仓库内。' &gt;&amp;2; exit 1; }
+project="$repo_root/code/phase1-python/part-a-basics/agent-hello"
+test -d "$project" || { printf 'FAIL: 找不到当前 agent-hello: %s\n' "$project" &gt;&amp;2; exit 1; }
+cd "$project"
+uv run --offline --locked python - &lt;&lt;'PY'
+import ast
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+def run_python(root, source):
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = subprocess.run(
+        [sys.executable, "-c", source], cwd=root, env=env,
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return completed.stdout, completed.stderr
+
+
+def module_name(path):
+    name = ".".join(path.with_suffix("").parts)
+    return name.removesuffix(".__init__") or "miniagent"
+
+
+def package_edges(root):
+    paths = sorted((root / "miniagent").glob("*.py"))
+    known = {module_name(path.relative_to(root)) for path in paths}
+    edges = set()
+    for path in paths:
+        source = module_name(path.relative_to(root))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                targets = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                package = source if path.name == "__init__.py" else source.rsplit(".", 1)[0]
+                if node.level != 1:
+                    targets = [node.module or ""]
+                else:
+                    base = ".".join(filter(None, (package, node.module or "")))
+                    targets = [
+                        f"{base}.{alias.name}" if f"{base}.{alias.name}" in known else base
+                        for alias in node.names
+                    ]
+            else:
+                continue
+            edges.update((source, target) for target in targets if target in known and target != source)
+    return edges
+
+
+def assert_acyclic(edges):
+    graph = {}
+    for source, target in edges:
+        graph.setdefault(source, set()).add(target)
+    visiting, visited = set(), set()
+    def visit(node):
+        assert node not in visiting, f"FAIL: 检测到反向边形成的环: {node}"
+        if node in visited:
+            return
+        visiting.add(node)
+        for target in graph.get(node, ()):
+            visit(target)
+        visiting.remove(node)
+        visited.add(node)
+    for node in graph:
+        visit(node)
+
+
+with tempfile.TemporaryDirectory(prefix="p1-modules-") as temp:
+    root = Path(temp)
+    package = root / "miniagent"
+    package.mkdir()
+    entry = package / "__init__.py"
+    implementation = package / "engine.py"
+    schemas = package / "schemas.py"
+    consumer = root / "consumer.py"
+    entry.write_text('from .engine import create_response\n\n__all__ = ["create_response"]\n', encoding="utf-8")
+    implementation.write_text(
+        'from .schemas import Message\n\n\ndef create_response(text):\n'
+        '    return Message(content=f"reply:{text}")\n', encoding="utf-8",
+    )
+    schemas.write_text(
+        'class Message:\n    def __init__(self, content):\n        self.content = content\n', encoding="utf-8",
+    )
+    consumer.write_text(
+        'from miniagent import create_response\n\nRESULT = create_response("checkpoint").content\n',
+        encoding="utf-8",
+    )
+    consumer_before = consumer.read_bytes()
+    schemas_before = schemas.read_bytes()
+    implementation_before = implementation.read_bytes()
+    before_edges = package_edges(root)
+    assert before_edges == {
+        ("miniagent", "miniagent.engine"),
+        ("miniagent.engine", "miniagent.schemas"),
+    }, f"FAIL: 重命名前依赖边异常: {sorted(before_edges)}"
+    assert_acyclic(before_edges)
+    import_out, import_err = run_python(root, "import miniagent")
+    assert import_out == "" and import_err == "", (
+        f"FAIL: 重命名前导入不静默: stdout={import_out!r}, stderr={import_err!r}"
+    )
+    before_out, before_err = run_python(root, "import runpy; print(runpy.run_path('consumer.py')['RESULT'])")
+    assert before_err == "" and before_out == "reply:checkpoint\n"
+    renamed = package / "runtime.py"
+    implementation.rename(renamed)
+    entry.write_text(entry.read_text(encoding="utf-8").replace(".engine", ".runtime"), encoding="utf-8")
+    assert not implementation.exists() and renamed.read_bytes() == implementation_before
+    assert schemas.read_bytes() == schemas_before
+    assert consumer.read_bytes() == consumer_before, "FAIL: consumer.py 在实现重命名时被修改"
+    after_edges = package_edges(root)
+    assert after_edges == {
+        ("miniagent", "miniagent.runtime"),
+        ("miniagent.runtime", "miniagent.schemas"),
+    }, f"FAIL: 重命名后依赖边异常: {sorted(after_edges)}"
+    assert_acyclic(after_edges)
+    import_out, import_err = run_python(root, "import miniagent")
+    assert import_out == "" and import_err == "", (
+        f"FAIL: 重命名后导入不静默: stdout={import_out!r}, stderr={import_err!r}"
+    )
+    after_out, after_err = run_python(root, "import runpy; print(runpy.run_path('consumer.py')['RESULT'])")
+    assert after_err == "" and after_out == before_out == "reply:checkpoint\n"
+print("P1 CHECKPOINT MODULES PASSED")
+PY</code></pre>
+        </details>
+      </div>
+      <div class="practice-pass">
+        <h3>通过标准</h3>
+        <ul><li>临时迷你包先由 <code>miniagent.__init__</code> re-export <code>engine.create_response</code></li><li>实现文件仅从 <code>engine.py</code> 重命名为 <code>runtime.py</code>，包入口随之更新</li><li><code>consumer.py</code> 字节完全不变，重命名前后结果都精确等于 <code>reply:checkpoint</code></li><li>重命名前后 <code>import miniagent</code> 的 stdout 与 stderr 都为空</li><li>AST 边分别精确匹配入口 → 实现 → schemas，且无反向边或环</li><li>临时目录自动清理，stdout 精确等于 <code>P1 CHECKPOINT MODULES PASSED</code></li></ul>
+      </div>
+    </div>
+  </div>
+  <p class="bp-result"><strong>怎么看结果：</strong>成功时 stdout 只有 <code>P1 CHECKPOINT MODULES PASSED</code>。若失败，断言会指出导入副作用、消费者源码变化、结果漂移或实际依赖边；先保持消费者只从 <code>miniagent</code> 导入，再让包入口指向新实现，并确保 schemas 不反向导入入口或实现。整个迷你包位于自动清理的临时目录，不会修改现有课程 fixture。继续参照 <a href="../best-practices/phase1-python-engineering-practices.html#theme-modules">Modules 工程最佳实践</a>。</p>
 </div>
 
 <!-- ==================== 知识图谱 ==================== -->
@@ -598,7 +1168,7 @@ import 机制
 └── 虚拟环境改变 sys.path 优先级
 
 循环导入
-├── 原因：模块 A 导入 B，B 又导入 A；访问部分初始化模块里未定义的名字才报错
+├── 机制：A 与 B 可形成循环并完成；过早访问部分初始化模块中未绑定的名称/属性才失败
 ├── 方案 1（首选）：提取公共模块
 ├── 方案 2（常见局部解法）：延迟导入（函数内部 import）
 └── 方案 3（仅类型注解）：TYPE_CHECKING 条件导入</code></pre>
@@ -619,7 +1189,7 @@ import 机制
     <p><strong>答：</strong>模块是一个 .py 文件，包是包含 __init__.py 的目录，且目录名必须是合法的 Python 标识符（比如不能带连字符）。项目根目录只是普通文件夹，不等于 Python 包名。Python 3.3+ 引入了命名空间包，__init__.py 不再是必须的，但仍然推荐使用。</p>
 
     <h3>Q4：什么是循环导入？怎么解决？</h3>
-    <p><strong>答：</strong>当两个模块互相导入，其中一个在对方还未初始化完时就去访问其尚未定义的名字，就会报 ImportError。解决方法：1）提取公共模块（首选，根治耦合）；2）延迟导入（函数内部 import，常见但只是局部解法）；3）使用 TYPE_CHECKING 条件导入（仅用于类型注解）。</p>
+    <p><strong>答：</strong>两个模块互相导入就形成循环，但循环不一定失败；若初始化期间过早访问对方尚未绑定的名称或属性，依导入形式可能报 <code>ImportError</code> 或 <code>AttributeError</code>。解决方法：1）提取公共模块（首选，根治耦合）；2）延迟导入（函数内部 import，常见但只是局部解法）；3）使用 <code>TYPE_CHECKING</code> 条件导入（仅用于类型注解；运行时解析注解仍需名称可解析）。</p>
 
     <h3>Q5：import 的查找顺序是什么？</h3>
     <p><strong>答：</strong>1）sys.modules 缓存（已导入的模块）；2）真正的内置模块（数量很少，如 sys）；3）sys.path 上的模块（当前目录/项目根、PYTHONPATH、标准库如 json、site-packages 第三方包）。虚拟环境会改变 sys.path 的优先级。</p>

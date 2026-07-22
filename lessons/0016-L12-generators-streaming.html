@@ -14,10 +14,10 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>生成器与 Streaming 模式</h1>
-    <p class="subtitle">生成器是"边算边给" — LLM 流式输出在 Python 端的消费接口，本质上就是用生成器包装的迭代</p>
+    <p class="subtitle">生成器是本地同步的“边算边给”迭代模型，可帮助理解但不等同于真实 SDK 流</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:75%"></div></div>
   </div>
 </div>
@@ -25,9 +25,10 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>你用 ChatGPT 时那种"内容一点点蹦出来"的体验，靠的就是<strong>流式（streaming）</strong>——服务端算出一部分就推一部分，不用等整段生成完。在 Python 里，承载这种"边算边给"的正是<strong>生成器（generator）</strong>。</p>
-    <p>注意：这里的"一部分"在真实 LLM API 里通常是一个 chunk/delta（可能含一个或多个模型 token，也可能是半个 token），并不等于"一个字符"或"一个模型 token"。本课先用生成器练习最简单的<strong>逐字符模拟</strong>建立直觉，随后会明确指出它和真实 SDK 流的边界（详见第 5 节）。</p>
-    <p>掌握生成器，你才能优雅地处理 LLM 流式响应、边收边解析、以及惰性处理大数据而不爆内存。这是 Part C（Agent 工程技能）的第一块拼图。</p>
+    <p>本课的<strong>生成器（generator）</strong>是本地、同步的迭代模型：消费方用 <code>for</code> 或 <code>next()</code> 主动拉取下一个值。真实 SDK 不一定直接返回裸生成器；它可能暴露需要上下文管理的 iterable、async iterator，或带类型的事件对象。</p>
+    <p>你用 ChatGPT 时那种"内容一点点蹦出来"的体验，靠的是<strong>流式（streaming）</strong>——服务端算出一部分就推一部分，不用等整段生成完。本课用本地生成器练习这种"边算边给"的消费方式，而不是把生成器等同于网络流。</p>
+    <p>注意：真实 SDK 交付的文本增量通常已经解码；边界不保证对应词、句或一个用户感知字符。本课先用生成器做最简单的<strong>逐字符模拟</strong>建立直觉；Python 对 <code>str</code> 的迭代每次产出一个 Unicode code point，并不保证得到一个完整 grapheme cluster。真实 SDK 的边界与生命周期详见第 5 节。</p>
+    <p>掌握生成器，你才能优雅地处理 LLM 流式响应、边收边解析和惰性处理大数据。只有每个值处理后就丢弃时，额外内存才可保持有界；若累积完整回答，空间复杂度仍是 O(n)。这是 Part C（Agent 工程技能）的第一块拼图。</p>
   </div>
 </div>
 
@@ -39,7 +40,7 @@
       <li>用 <code>yield</code> 写生成器，理解它"惰性、可暂停"的本质</li>
       <li>区分生成器表达式和列表推导式，知道何时用哪个</li>
       <li>理解迭代器协议（<code>__next__</code> / <code>StopIteration</code>）</li>
-      <li>用生成器模拟 LLM 流式响应（逐字符），并理解它与真实 SDK 的 chunk/delta 有何不同</li>
+      <li>用生成器按 Unicode code point 模拟 LLM 流式响应，并理解它与真实 SDK 的 stream_chunks/text_delta 有何不同</li>
       <li>了解 <code>send()</code> 能向生成器"回传"数据</li>
     </ul>
   </div>
@@ -65,17 +66,17 @@ def chunk_gen(text, n=3):
 chunk_list("HelloWorld", 3)   # ['Hel', 'loW', 'orl', 'd']  ← 立刻拿到完整列表
 chunk_gen("HelloWorld", 3)    # &lt;generator object&gt;         ← 只拿到一个生成器！</code></pre>
   <p><strong>认出生成器就看一点：函数体里有没有 <code>yield</code>。</strong>只要有 <code>yield</code>，它就不再是普通函数，而是"生成器函数"——调用它<strong>不会立刻执行</strong>，只返回一个生成器对象；每次迭代（<code>for</code> / <code>next</code>）才推进到下一个 <code>yield</code>。两者产出的内容一样，但下面这个版本用 <code>for</code> 取值时才逐块算出：</p>
-  <pre><code>def stream_tokens(text, n=3):
+  <pre><code>def stream_chunks(text, n=3):
     for i in range(0, len(text), n):
         yield text[i:i+n]          # 产出一块，暂停，等下次取
 
-for chunk in stream_tokens("HelloWorld", 3):
+for chunk in stream_chunks("HelloWorld", 3):
     print(chunk, end="|")          # Hel|loW|orl|d|</code></pre>
-  <p>关键：<code>stream_tokens(...)</code> 调用时<strong>不会立刻执行函数体</strong>，只返回一个生成器；每次 <code>for</code> 取值才推进到下一个 <code>yield</code>。这就是"惰性"——用到才算。</p>
+  <p>关键：<code>stream_chunks(...)</code> 调用时<strong>不会立刻执行函数体</strong>，只返回一个生成器；每次 <code>for</code> 取值才推进到下一个 <code>yield</code>。这就是"惰性"——用到才算。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p>LLM 的 streaming API 返回的就是这种"一块一块"的流。用生成器包装它，上层代码就能写成 <code>for chunk in llm_stream(prompt):</code>，边收边显示/边处理，用户体验和内存都更好。</p>
+    <p>LLM 的 streaming API 也会逐步交付内容，但具体消费接口由 SDK 决定。若将同步流适配成生成器，上层代码可写成 <code>for chunk in llm_stream(prompt):</code>；真实 SDK 也可能要求 <code>with</code>、<code>async for</code> 或按类型分派事件。边收边显示能改善体验；只有处理后丢弃已消费值时，额外内存才保持有界。</p>
   </div>
 
   <div class="quiz" data-quiz="q1">
@@ -102,7 +103,7 @@ squares_gen = (x*x for x in range(1000000))      # 括号，不是方括号
 gen = (c.upper() for c in "abc")
 print(next(gen))          # A
 print("".join(gen))       # BC   ← A 已被取走，只剩 BC</code></pre>
-  <p>差别就一对括号：<code>[]</code> 立刻生成整个列表，<code>()</code> 生成一个惰性生成器。处理大数据、或只需遍历一次时，用生成器省内存。</p>
+  <p>差别就一对括号：<code>[]</code> 立刻生成整个列表，<code>()</code> 生成一个惰性生成器。处理大数据或只需遍历一次时，生成器可避免预先保存全部输入；但只有消费后丢弃各值，额外内存才保持有界，累积完整结果仍需 O(n) 空间。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 面试常见问题：</strong>
@@ -115,8 +116,8 @@ print("".join(gen))       # BC   ← A 已被取走，只剩 BC</code></pre>
   <h2>3. 迭代器协议（背后的机制）</h2>
   <p><code>for</code> 循环能作用于生成器、列表、文件，是因为它们都遵守<strong>迭代器协议</strong>。这里要分清两个概念：</p>
   <ul>
-    <li><strong>可迭代对象（iterable）</strong>：实现了 <code>__iter__</code>，能被 <code>iter()</code> 调用产出一个迭代器。列表、字符串、文件都是 iterable，但<strong>本身不是</strong>迭代器——不能直接 <code>next()</code>。</li>
-    <li><strong>迭代器（iterator）</strong>：实现了 <code>__next__</code>，能被 <code>next()</code> 逐个取值，取完抛 <code>StopIteration</code>。</li>
+    <li><strong>可迭代对象（iterable）</strong>：能被 <code>iter()</code> 取得迭代器。<code>list</code>、<code>str</code> 是常见的 iterable-only 对象：自身不能直接 <code>next()</code>。</li>
+    <li><strong>迭代器（iterator）</strong>：既实现 <code>__next__</code>，也可迭代且 <code>iter(iterator) is iterator</code>；文件对象和生成器对象通常同时是 iterable 与 iterator。</li>
   </ul>
   <pre><code>it = iter([1, 2])       # list 是 iterable，iter() 从它拿到一个 iterator
 print(next(it))    # 1
@@ -138,7 +139,7 @@ next([1, 2])       # TypeError: 'list' object is not an iterator —— list 本
             total += x
 
 acc = accumulator()
-next(acc)              # 启动到第一个 yield（必须先 next 一次）
+next(acc)              # 启动到第一个 yield；也可写 acc.send(None)
 print(acc.send(10))    # 10
 print(acc.send(5))     # 15</code></pre>
   <p>这在需要"双向流"的场景（如可交互的 Agent 步骤流、协程式状态机）有用。日常处理 LLM streaming 通常只用单向 <code>yield</code>，<code>send</code> 了解即可。</p>
@@ -157,12 +158,73 @@ print(acc.send(5))     # 15</code></pre>
 
 <div class="section">
   <h2>5. 真实边界：生成器 ≠ 真实 LLM streaming 本身</h2>
-  <p>本课的生成器例子只是<strong>本地、纯 Python 的惰性迭代</strong>，用来练手感。真实 LLM streaming 还多了一层网络协议，二者不能划等号，几个容易踩的坑：</p>
+  <p>本课的生成器例子只是<strong>本地、同步的 Python 惰性迭代模型</strong>，用来练手感。真实 LLM streaming 还包含网络协议与 SDK 生命周期；SDK 可能提供上下文管理的 iterable、async iterator 或 typed events，不能与本地生成器划等号。几个容易踩的坑：</p>
   <ul>
-    <li><strong>字符 ≠ 模型 token ≠ chunk/delta。</strong>本课练习逐字符 yield，只是最简单的模拟；真实 SDK 的一次 <code>delta</code>/<code>chunk</code> 可能包含一个模型 token、多个 token，或半个 token（多字节 UTF-8 序列被截断），字符数、token 数、chunk 数三者不能互相替代。<strong>账单以 API 返回的 usage 字段（如 <code>usage.input_tokens</code>/<code>output_tokens</code>）为准，不能用字符数估算费用。</strong>详见 L09 的 SSE 分层、L15 的 <code>httpx.stream</code> 逐行解析。</li>
-    <li><strong>生成器只是 Python 端的消费接口，不代表"每 next 一次就发一次新 HTTP 请求"。</strong>真实流式 API 通常是一个长连接（一次 HTTP 请求/一个 SSE 连接）持续推送多个事件，Python 侧用 <code>for chunk in response:</code>／生成器只是在消费已经建立好的这个连接里陆续到达的数据，并不会为每个 chunk 单独发起新请求。</li>
-    <li><strong>本地生成器的 <code>break</code> 不等于"服务端停止计费/停止生成"。</strong>普通生成器 <code>break</code> 只是停止了本地这一次 <code>for</code> 迭代，生成器对象会被垃圾回收，但如果背后是网络连接（真实 SSE/SDK 流），必须显式关闭连接（如退出 <code>with httpx.stream(...) as r:</code> 上下文、调用 SDK 提供的取消/close 方法）才能让上游真正停止推流；不同厂商/SDK 的取消语义不同，需要查对应文档确认。即便主动取消，最终是否计费、计多少也要以厂商返回的 usage/账单为准，不能想当然认为"停止读取=不计费"。</li>
+    <li><strong>text_delta 边界不是语言边界。</strong>官方 SDK 的文本字段已经解码为 Python <code>str</code>；一次 text_delta 不保证对应词、句、一个 Unicode code point 或一个用户感知字符，应用应按文本片段累积，而不是自行拼 UTF-8 字节。Python 迭代 <code>str</code> 时按 code point 产出，并不按 grapheme cluster 产出。token 一词保留给用量核算，具体数值以 API 的 <code>usage</code> 为准。</li>
+    <li><strong>生成器只是本地消费模型之一。</strong>真实流通常在一次 HTTP/SSE 长连接上持续到达多个事件，<code>next()</code> 不是每块重发一次请求；异步 SDK 则可能用 <code>async for</code>。</li>
+    <li><strong><code>break</code> 只停止当前消费。</strong>对象以后可能最终回收，但回收时机与资源清理都不是契约；涉及连接或文件时要显式 close/cancel。完整生命周期与计费边界见下方最佳实践卡。</li>
   </ul>
+</div>
+
+<div class="section">
+  <div class="best-practice-point" id="bp-l12-explicit-stream-lifecycle">
+    <h3>最佳实践：停止消费不等于停止上游，真实流要显式关闭或取消</h3>
+    <p class="bp-scenario"><strong>适用：</strong>迭代器背后持有 HTTP/SSE 连接、文件、进程或 SDK 流对象，消费方可能正常结束、提前 <code>break</code> 或抛异常。<strong>不适用：</strong>不持有外部资源的本地有限生成器，且生命周期完全由当前同步调用控制；这类流自然耗尽即可，不必为它虚构取消协议。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 裸 break：只退出本地循环</span><pre><code>stream = CloseOnlyStream(["A", "STOP", "B"])
+for chunk in stream:
+    if chunk == "STOP":
+        break
+
+assert not stream.closed  # close() 没有自动调用</code></pre><p><code>break</code> 改变的是消费方控制流，不会自动调用只有 <code>close()</code> 的资源对象。</p></div><div class="bp-right"><span class="bp-compare-label">✅ closing 适配 close-only 对象</span><pre><code>from contextlib import closing
+
+with closing(CloseOnlyStream(["A", "STOP", "B"])) as stream:
+    for chunk in stream:
+        if chunk == "STOP":
+            break
+
+assert stream.closed</code></pre><p>若真实 SDK 对象已有原生上下文管理器，优先用原生接口；<code>closing</code> 用于只有 <code>close()</code> 的对象。</p></div></div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>显式上下文或 <code>try/finally</code> 把资源所有权与清理责任放在同一边界，提升连接、文件描述符等资源的安全性；同时应记录是否提前停止、何时发起 close/cancel、取消耗时，以及最终可获得的 usage/账单，让取消成本与结果可观察。对已暂停在 <code>yield</code> 的 Python 生成器调用 <code>generator.close()</code> 时，解释器会在暂停点注入 <code>GeneratorExit</code>，随后栈展开并执行 <code>finally</code>；因此课末验收能用 <code>close()</code> 明确触发清理。代价是要维护资源生命周期、停止原因和监控字段，且不同上游的取消语义并不统一；对于无外部资源的本地有限流，自然耗尽即可，对于真实 API 流则可选地迁移到官方 SDK，并优先使用其上下文管理器、<code>close</code> 或取消接口，而不是自造传输层。显式取消只是发出并管理停止意图，不能据此声称服务端必然立即停止生成或停止计费，最终以具体服务的 usage 和账单为准。</p>
+    <details class="bp-check"><summary><strong>自检：contextlib.closing 证明 break 与 close 是两件事</strong></summary><pre><code>from contextlib import closing
+
+
+class CloseOnlyStream:
+    def __init__(self, chunks):
+        self._chunks = iter(chunks)
+        self.pulled = []
+        self.closed = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.closed:
+            raise StopIteration
+        chunk = next(self._chunks)
+        self.pulled.append(chunk)
+        return chunk
+
+    def close(self):
+        self.closed = True
+
+
+bare = CloseOnlyStream(["A", "STOP", "B"])
+assert not hasattr(bare, "__enter__")
+for chunk in bare:
+    if chunk == "STOP":
+        break
+assert bare.pulled == ["A", "STOP"]
+assert not bare.closed
+bare.close()
+
+managed = CloseOnlyStream(["A", "STOP", "B"])
+with closing(managed) as stream:
+    for chunk in stream:
+        if chunk == "STOP":
+            break
+assert managed.pulled == ["A", "STOP"]
+assert managed.closed</code></pre></details>
+    <p class="bp-result"><strong>结果解释：</strong>代码静默结束即通过：两种写法都只拉取到停止标记，证明后续 <code>"B"</code> 仍是惰性的；裸 <code>break</code> 后 <code>closed</code> 仍为 False，说明只停了消费；上下文退出后为 True，说明清理确实发生。若第一组已自动关闭，测试对象混淆了“停止迭代”和“释放资源”；若第二组未关闭，则 <code>__exit__</code> 没有落实生命周期责任。</p>
+  </div>
 </div>
 
 <div class="section">
@@ -172,64 +234,61 @@ print(acc.send(5))     # 15</code></pre>
 ├── yield → 产出即暂停，惰性、可恢复
 ├── 调用生成器函数 → 只返回生成器，不先执行
 ├── 生成器表达式 (x for x in ...) → 惰性省内存、一次性
-└── send(x) → 向 yield 回传数据（双向，进阶）
+└── send(x) → 向 yield 回传数据；启动用 next(gen) 或 send(None)
 
 迭代器协议
-├── iterable（如 list/文件）：能被 iter() 转成 iterator，本身不能 next()
-├── iterator：能被 next() 取值，取尽抛 StopIteration
-└── 生成器对象：同时是 iterable 和 iterator（自己实现 __iter__ + __next__）
+├── iterable-only：list / str，可 iter()，自身不能 next()
+├── iterator：可 next() 且 iter(iterator) is iterator
+└── 文件对象 / 生成器对象通常同时是 iterable 与 iterator
 
 Streaming 的两层
-├── 本课的字符级生成器 —— 教惰性/迭代协议，与真实网络无关
-└── 真实 LLM streaming —— SSE/SDK 长连接持续推事件
-    ├── 一次 delta/chunk 可能含 0/1/多个 token，字符数 ≠ token 数 ≠ chunk 数
-    ├── 计费以 usage 字段为准，不能靠字符/chunk 数估算
-    ├── for chunk in stream 只是消费已建立连接的数据，不等于每次 next 发一次新请求
-    └── break 只停本地循环；真正停止上游/省费需显式取消/关闭连接，且以最终 usage 为准</code></pre>
+├── 本课逐 code point 模拟：只教惰性与拉取轨迹，不代表 grapheme cluster
+└── SDK text_delta：已解码 str，边界不保证对应词/code point/用户感知字符
+    └── token 仅指 usage 核算；长连接、关闭与计费边界 → 见上方最佳实践卡</code></pre>
   </div>
 </div>
 
 <div class="section">
   <h2>实战练习</h2>
   <div class="card">
-    <h3>练习：实现一个逐字符流式模拟器</h3>
-    <p>用生成器逐<strong>字符</strong>输出一段"回答"（模拟流式效果，不代表真实模型 token），并支持在中途根据条件提前停止。<strong>先自己写，再看答案。</strong></p>
+    <h3>练习：实现一个按 code point 产出的流式模拟器</h3>
+    <p>用生成器逐个输出 Python <code>str</code> 的 Unicode code point（模拟流式效果，不代表真实 SDK 的 stream_chunks/text_delta，也不保证每项是完整 grapheme cluster），并支持在中途根据条件提前停止。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
-      <li>写生成器 <code>stream(text)</code>，逐字符 yield</li>
-      <li>写 <code>collect(gen, stop_at=None)</code>：消费生成器、拼接输出；若取到 <code>stop_at</code> 字符就提前停止（模拟"遇到停止字符就中断"）</li>
-      <li>统计实际累积进结果的字符数（注意：停止字符本身被生成器产出/被 for 取走，但因为 <code>break</code> 在 <code>append</code> 之前，它不计入结果和计数）</li>
-      <li>体会：因为是惰性的，<code>stop_at</code> 之后的字符根本不会被生成器算出来（但停止字符自身已经被取出）</li>
+      <li>写生成器 <code>stream_code_points(text)</code>，逐个 code point yield</li>
+      <li>写 <code>collect(gen, stop_at=None)</code>：消费生成器、拼接输出；若取到 <code>stop_at</code> code point 就提前停止</li>
+      <li>统计实际累积进结果的 code point 数（注意：停止项已被生成器产出并被 <code>for</code> 取走，但因为 <code>break</code> 在 <code>append</code> 之前，它不计入结果和计数）</li>
+      <li>体会：因为是惰性的，<code>stop_at</code> 之后的 code point 根本不会被生成器算出来（但停止项自身已经被取出）</li>
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
-      <pre><code>def stream(text):
-    for ch in text:
-        yield ch                      # 逐字符产出（惰性模拟，非真实模型 token）
+      <pre><code>def stream_code_points(text):
+    for code_point in text:
+        yield code_point              # str 迭代按 code point 产出，不按 grapheme cluster
 
 def collect(gen, stop_at=None):
     parts = []
-    characters = 0
-    for ch in gen:
-        if stop_at is not None and ch == stop_at:
-            break                     # 停止字符已被 for 取出/消费，只是不再 append
-        parts.append(ch)
-        characters += 1
-    return {"text": "".join(parts), "characters": characters}
+    code_points = 0
+    for code_point in gen:
+        if stop_at is not None and code_point == stop_at:
+            break                     # 停止项已被 for 取出，只是不再 append
+        parts.append(code_point)
+        code_points += 1
+    return {"text": "".join(parts), "code_points": code_points}
 
 
-print(collect(stream("你好，世界！")))
-# {'text': '你好，世界！', 'characters': 6}
+print(collect(stream_code_points("你好，世界！")))
+# {'text': '你好，世界！', 'code_points': 6}
 
-print(collect(stream("答案是42。附注..."), stop_at="。"))
-# {'text': '答案是42', 'characters': 5}
-# 逐字符产出："答案是42"是 5 个字符；停止字符"。"被取出但未计入/未 append；
-# "。"之后的字符（"附注..."）因为惰性，生成器根本没有再往下算
+print(collect(stream_code_points("答案是42。附注..."), stop_at="。"))
+# {'text': '答案是42', 'code_points': 5}
+# "答案是42"包含 5 个 code point；停止项"。"被取出但未计入/未 append；
+# "。"之后的文本因为惰性没有再往下计算
 
 
 # 进阶：用生成器表达式做惰性过滤（只在需要时计算）
-events = ({"type": "token", "text": c} for c in "abcd")
-answer = "".join(e["text"] for e in events if e["type"] == "token")
+events = ({"type": "text_delta", "text": c} for c in "abcd")
+answer = "".join(e["text"] for e in events if e["type"] == "text_delta")
 print(answer)   # abcd</code></pre>
       <h4>思考题</h4>
       <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
@@ -237,22 +296,189 @@ print(answer)   # abcd</code></pre>
       <details class="think-q">
         <summary><span class="think-q-tag">Q1</span>如果 <code>stream</code> 背后是真实网络请求（每个 chunk 要等服务端推送），惰性/<code>break</code> 带来的好处和边界是什么？</summary>
         <div class="think-q-answer">
-          <p><strong>惰性意味着"用到才算"：只要 <code>collect</code> 里还没消费到某个 chunk，生成器就不会去触发对应的计算/网络等待。但对本地生成器来说，<code>break</code> 只是停止了这一次 <code>for</code> 循环本身，它并不会自动去通知远端服务器"别再算了"。</strong></p>
-          <p>在纯本地的惰性序列（比如本课的 <code>stream(text)</code>）里，<code>break</code> 之后确实不会再执行后面的循环体，后续元素也不会被计算——这一点是真的。但换成真实 LLM streaming，情况更复杂：response 对象背后有一个已经建立好的 HTTP/SSE 连接，Python 侧的 <code>for chunk in response:</code> 只是在消费这个连接里源源不断到达的数据。你在本地 <code>break</code> 出循环，只是不再读取这个连接，但连接是否关闭、服务端是否真的停止生成、是否停止计费，取决于：底层库/SDK 是否在你退出 <code>with</code> 上下文或调用 close/cancel 时正确关闭了连接，以及厂商后端是不是把"客户端断开"当作停止生成的信号。</p>
-          <p>结论：想要真正省时省钱，除了在业务逻辑里 <code>break</code>，还必须确保退出流式上下文（如 <code>with httpx.stream(...) as r: ... </code>结束/调用 SDK 的取消方法），并查阅具体 SDK/厂商文档确认取消语义；即便主动取消，最终计费也以厂商返回的 usage/账单数据为准，不能假设"停止读取=零费用"。</p>
+          <p><strong>本地生成器的惰性保证“未拉取就不执行”；真实网络流还要管理上游资源。</strong>业务逻辑可以 <code>break</code>，但必须按上方最佳实践卡使用 SDK 原生上下文/取消接口，只有 close-only 对象才用 <code>contextlib.closing</code>。服务端停止与计费语义以具体 SDK 文档和最终 usage/账单为准。</p>
         </div>
       </details>
 
       <details class="think-q">
         <summary><span class="think-q-tag">Q2</span>上面 <code>collect</code> 用 <code>parts.append</code> + <code>"".join(parts)</code>，这样内存占用真的接近常量吗？</summary>
         <div class="think-q-answer">
-          <p><strong>不是。</strong><code>collect</code> 里的 <code>parts</code> 列表仍然会把整段回答的每个字符都攒起来，最终 <code>"".join(parts)</code> 时内存占用是 O(n)（n 为结果长度），和直接 <code>"".join(list(gen))</code> 在数量级上没有本质区别——只是省掉了 <code>list(gen)</code> 这一个中间列表对象，峰值内存并没有变成常量级。</p>
-          <p>生成器真正带来的省内存优势体现在<strong>不需要保留完整结果</strong>的场景：比如只是逐字符打印到终端、逐块写入文件/网络、或者只统计某个特征而不保留原文——这些场景里，每次从生成器拿到一个值就立刻处理并丢弃，同一时刻内存里只有"当前正在处理的这一小块"，额外内存才是近似 O(1)。</p>
-          <p>如果目的就是拼出完整回答（比如要展示、要存库），那么无论用生成器边收边 append，还是先 <code>list(gen)</code> 再 join，最终都得有一份完整结果驻留内存，空间复杂度都是 O(n)。生成器省掉的是"中间临时列表"和"提前计算"，不是"最终结果"本身。所以判断是否真的省内存，要看你有没有在消费过程中及时丢弃已处理的数据，而不是简单地说"用了生成器就是常量内存"。</p>
+          <p><strong>不是。</strong><code>collect</code> 里的 <code>parts</code> 就是保存所有已产出引用的完整中间列表；<code>"".join(parts)</code> 还要分配最终字符串。因此它与 <code>"".join(list(gen))</code> 都会同时保留完整列表和最终结果，峰值内存与空间复杂度同为 O(n)（n 为结果长度），并没有因为手动 <code>append</code> 而少一份列表或变成常量级。</p>
+          <p>生成器真正带来的省内存优势体现在<strong>不需要保留完整结果</strong>的场景：比如只是逐项打印到终端、逐块写入文件/网络、或者只统计某个特征而不保留原文——这些场景里，每次从生成器拿到一个值就立刻处理并丢弃，同一时刻内存里只有"当前正在处理的这一小块"，额外内存才是近似 O(1)。</p>
+          <p>如果目的就是拼出完整回答（比如要展示、要存库），那么无论用生成器边收边 <code>append</code>，还是先 <code>list(gen)</code> 再 <code>join</code>，两种写法都显式物化了完整列表，并在连接时生成完整字符串，空间复杂度都是 O(n)。生成器在这里仍提供惰性和提前停止能力，却不会自动降低完整累积的峰值空间。所以判断是否真的省内存，要看消费方有没有及时丢弃已处理的数据，而不是简单地说“用了生成器就是常量内存”。</p>
         </div>
       </details>
     </details>
   </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：用真正生成器证明惰性与清理</h2>
+  <p class="best-practice-lead">这次不复演普通上下文管理：必须写出含 <code>yield</code> 的生成器，用事件轨迹证明调用惰性、按需拉取、提前停止不计算后续，并让正常、关闭与异常三条路径都经过 <code>finally</code>。对暂停在 <code>yield</code> 的生成器调用 <code>close()</code> 会在暂停点注入 <code>GeneratorExit</code>，栈展开时执行 <code>finally</code>；下面的纯标准库验收据此验证显式生命周期。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>生成器调用后先检查轨迹为空。</li><li>逐次 <code>next()</code> 核对拉取轨迹。</li><li>提前停止后显式 <code>close()</code>。</li><li>验证正常耗尽与资源关闭。</li><li>验证源异常原样传播且仍清理。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>函数体含 <code>yield</code></li><li>调用本身不执行</li><li>停止后数据未计算</li><li>正常耗尽关闭</li><li>异常不被吞掉</li><li>末尾唯一打印指定验收标记</li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末自检（纯标准库，整块复制即可运行）：</strong></summary><pre><code>def traced_stream(items, events, fail_at=None):
+    events.append("open")
+    try:
+        for index, item in enumerate(items):
+            events.append(f"compute:{item}")
+            if index == fail_at:
+                raise RuntimeError(f"failed:{item}")
+            yield item
+    finally:
+        events.append("close")
+
+
+# 调用生成器函数只创建对象，不执行函数体。
+events = []
+early = traced_stream(["A", "STOP", "NEVER"], events)
+assert events == []
+assert next(early) == "A"
+assert events == ["open", "compute:A"]
+assert next(early) == "STOP"
+assert events == ["open", "compute:A", "compute:STOP"]
+early.close()  # 提前停止时显式触发 finally
+assert events == ["open", "compute:A", "compute:STOP", "close"]
+assert "compute:NEVER" not in events
+
+# 正常耗尽：for 拉到 StopIteration，finally 自动执行。
+events = []
+normal = traced_stream(["A", "B"], events)
+assert list(normal) == ["A", "B"]
+assert events == ["open", "compute:A", "compute:B", "close"]
+
+# 异常传播：生成器不吞源异常，finally 仍关闭资源状态。
+events = []
+failing = traced_stream(["A", "BOOM", "NEVER"], events, fail_at=1)
+try:
+    list(failing)
+except RuntimeError as exc:
+    assert str(exc) == "failed:BOOM"
+else:
+    raise AssertionError("生成器源异常必须继续传播")
+assert events == ["open", "compute:A", "compute:BOOM", "close"]
+assert "compute:NEVER" not in events
+
+print("L12 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>只看到一行该验收标记即通过。调用后轨迹非空表示不再惰性；提前关闭后出现 <code>compute:NEVER</code> 表示多算；正常或异常路径缺少 <code>close</code> 表示 <code>finally</code> 未覆盖生命周期；异常未传播则 consumer 吞掉了上游失败。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-resource-lifecycle" data-phase-practice="resource-lifecycle">
+  <h2>阶段实践检查点：资源生命周期</h2>
+  <p class="best-practice-lead">组合 L09 的同目录临时文件 + 原子 JSON 替换与 L12 的显式流所有权：所有消费路径关闭上游，只有成功消费才把严格 JSON 快照提交为新可见状态。</p>
+  <div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>用 tracked generator 记录 open、pull 与 close。</li><li>验证正常耗尽、提前 break、源异常均显式关闭。</li><li>成功消费后原子提交新 JSON 快照。</li><li>注入 replace 失败并核对旧文件与临时文件。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>三条流路径都出现 close</li><li>提前停止不拉取后续数据</li><li>源异常保持原对象身份</li><li>成功快照是严格 JSON</li><li>替换失败保留旧 JSON 且清理临时文件</li><li>stdout 只有指定检查点标记</li></ul></div>
+  </div>
+  <p class="bp-term"><strong>先独立完成：</strong>先自行定义流 owner 与原子提交顺序，并为提前停止、源异常和替换失败写测试；完成后再展开参考验收程序。</p>
+  <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import json
+import os
+from contextlib import closing, suppress
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+
+
+def write_json_atomic(path, data, replace=os.replace):
+    text = json.dumps(data, ensure_ascii=False, allow_nan=False, sort_keys=True)
+    tmp = None
+    try:
+        with NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as file:
+            tmp = Path(file.name)
+            file.write(text)
+        replace(tmp, path)
+        tmp = None
+    except BaseException:
+        if tmp is not None:
+            with suppress(OSError):
+                tmp.unlink()
+        raise
+
+
+def tracked_stream(items, events, failure=None):
+    events.append("open")
+    try:
+        for item in items:
+            events.append(f"pull:{item}")
+            if failure is not None and item == "BOOM":
+                raise failure
+            yield item
+    finally:
+        events.append("close")
+
+
+def collect_owned(items, events, *, stop_at=None, failure=None):
+    parts = []
+    stream = tracked_stream(items, events, failure=failure)
+    with closing(stream):
+        for item in stream:
+            if item == stop_at:
+                break
+            parts.append(item)
+    return parts
+
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "snapshot.json"
+    write_json_atomic(path, {"version": 1, "chunks": ["OLD"]})
+
+    normal_events = []
+    chunks = collect_owned(["A", "B"], normal_events)
+    assert chunks == ["A", "B"]
+    assert normal_events == ["open", "pull:A", "pull:B", "close"]
+    write_json_atomic(path, {"version": 2, "chunks": chunks})
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "chunks": ["A", "B"], "version": 2,
+    }
+    assert "NaN" not in path.read_text(encoding="utf-8")
+
+    early_events = []
+    assert collect_owned(
+        ["A", "STOP", "NEVER"], early_events, stop_at="STOP",
+    ) == ["A"]
+    assert early_events == ["open", "pull:A", "pull:STOP", "close"]
+    assert "pull:NEVER" not in early_events
+
+    source_error = RuntimeError("source failed")
+    source_events = []
+    try:
+        collect_owned(["A", "BOOM", "NEVER"], source_events,
+                      failure=source_error)
+    except RuntimeError as exc:
+        assert exc is source_error
+    else:
+        raise AssertionError("source error must propagate")
+    assert source_events == ["open", "pull:A", "pull:BOOM", "close"]
+    assert "pull:NEVER" not in source_events
+
+    old_text = path.read_text(encoding="utf-8")
+    replace_error = OSError("replace failed")
+
+    def fail_replace(source, target):
+        raise replace_error
+
+    try:
+        write_json_atomic(
+            path, {"version": 3, "chunks": ["NEW"]},
+            replace=fail_replace,
+        )
+    except OSError as exc:
+        assert exc is replace_error
+    else:
+        raise AssertionError("replace error must propagate")
+
+    assert path.read_text(encoding="utf-8") == old_text
+    assert json.loads(old_text) == {"chunks": ["A", "B"], "version": 2}
+    assert list(path.parent.glob(".snapshot.json.*.tmp")) == []
+
+print("P1 CHECKPOINT RESOURCE-LIFECYCLE PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>任一路径缺少 <code>close</code>，说明资源 owner 没覆盖完整控制流；提前停止仍出现 <code>pull:NEVER</code>，说明惰性边界失效；异常身份变化表示错误被替换；旧文本变化、JSON 无法严格解析或残留临时文件，则原子提交与清理责任不完整。</p>
+  <p><a href="../best-practices/phase1-python-engineering-practices.html#theme-resources">返回阶段主题：Resource Lifecycle →</a></p>
 </div>
 
 <div class="section">
@@ -263,9 +489,9 @@ print(answer)   # abcd</code></pre>
     <h3>Q2：列表推导式和生成器表达式怎么选？</h3>
     <p><strong>答：</strong>需要多次遍历、随机访问、或数据不大 → 列表推导式；只遍历一次、数据很大或是流 → 生成器表达式（惰性、省内存）。</p>
     <h3>Q3：iterable 和 iterator 的区别？</h3>
-    <p><strong>答：</strong>iterable 实现 <code>__iter__</code>，能被 <code>iter()</code> 转成迭代器，但本身不能直接 <code>next()</code>（如 list：<code>next([1,2])</code> 报 <code>TypeError</code>）；iterator 实现 <code>__next__</code>，能被 <code>next()</code> 逐个取值，取尽抛 <code>StopIteration</code>。生成器对象比较特殊，同时满足两者。</p>
+    <p><strong>答：</strong>iterable 能被 <code>iter()</code> 取得迭代器；<code>list</code>/<code>str</code> 是常见 iterable-only 对象，自身不能直接 <code>next()</code>。iterator 可 <code>next()</code>，且 <code>iter(iterator) is iterator</code>；文件对象与生成器对象通常同时满足两者。</p>
     <h3>Q4：生成器在 LLM 应用里有什么用，边界是什么？</h3>
-    <p><strong>答：</strong>生成器是 Python 端消费流式数据的惰性接口，配合真实 SDK/SSE 可以写成 <code>for chunk in stream:</code> 边收边处理，降低首字延迟。但要注意三个边界：① 一个 chunk/delta 不等于一个字符或一个模型 token，计费以 usage 字段为准；② <code>for chunk in stream</code> 消费的是已建立好的一个连接，不是每次 next 发一次新请求；③ 本地 <code>break</code> 只停止本地循环，真正停止上游生成/计费需要显式关闭连接或调用 SDK 取消方法，并以最终账单为准。</p>
+    <p><strong>答：</strong>生成器提供本地同步的惰性消费模型。真实 SDK 可能暴露上下文管理的 iterable、async iterator 或 typed events；text_delta 已经解码，但边界不保证对应词、code point、grapheme cluster 或用户感知字符。token 专指 <code>usage</code> 用量核算；提前停止时按上方最佳实践卡显式关闭/取消，不能把本地 <code>break</code> 当作上游契约。</p>
   </div>
 </div>
 
@@ -300,9 +526,9 @@ print(answer)   # abcd</code></pre>
       <li><code>yield</code> = 产出即暂停，生成器惰性、可恢复</li>
       <li>调用生成器函数只返回生成器，函数体不立即执行</li>
       <li>生成器表达式用 <code>()</code>，惰性省内存但一次性</li>
-      <li>iterable（能 iter()）与 iterator（能 next()）不同，生成器对象两者都是</li>
-      <li>字符 ≠ 模型 token ≠ chunk/delta；账单以 usage 为准，不能靠计数估算</li>
-      <li>本地 <code>break</code> 只停本地循环；真正停止上游/省费需显式取消连接，且以最终账单为准</li>
+      <li><code>list</code>/<code>str</code> 常为 iterable-only；文件与生成器对象通常同时是 iterable 和 iterator</li>
+      <li>SDK text_delta 已解码，但边界不保证对应词、code point、grapheme cluster 或用户感知字符；token 专指 usage 核算</li>
+      <li><code>break</code> 只停当前消费；外部资源的关闭/取消按最佳实践卡处理</li>
       <li>只有"边处理边丢弃"才是近似常量内存；累积成完整结果（无论 list 还是 append+join）都是 O(n)</li>
       <li><code>send()</code> 可向生成器回传数据（双向流，进阶了解）</li>
     </ul>

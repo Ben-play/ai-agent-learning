@@ -17,7 +17,7 @@
       <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">20</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>继承、多态与 __call__</h1>
-    <p class="subtitle">__call__ 让对象"像函数一样被调用" — 这正是 Agent 工具的核心模式</p>
+    <p class="subtitle">__call__ 让对象“像函数一样被调用” — 是 Python 封装有状态工具的一种方式</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:50%"></div></div>
   </div>
 </div>
@@ -25,9 +25,13 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>Agent 框架里的"工具"几乎都是一个<strong>可调用对象</strong>：它既是对象（能带状态、能自我描述 name/schema），又能像函数一样 <code>tool(query="...")</code> 调用——秘密就是 <code>__call__</code>。</p>
-    <p>再配合<strong>抽象基类（ABC）</strong>定义"所有工具都得实现 run"，和<strong>多态</strong>让 Agent 用统一方式调用不同工具——这三者组合，就是各大框架 <code>BaseTool</code> 的设计骨架。</p>
+    <p>Python 可以用<strong>可调用对象</strong>封装有配置或状态的工具：对象保存 name/schema 等信息，再通过 <code>__call__</code> 提供 <code>tool(query="...")</code> 的调用方式。普通函数、协议或框架包装器也能实现工具接口；ABC + <code>__call__</code> 只是其中一种设计。</p>
+    <p>本课用<strong>抽象基类（ABC）</strong>声明子类必须提供 <code>run</code>，再用<strong>多态</strong>统一调用不同实现。要注意：<code>@abstractmethod</code> 只检查抽象方法是否被覆盖，不会验证覆盖方法的参数签名是否兼容，也不会保证返回值符合注解或业务契约，这些仍需类型检查、测试或运行时校验。</p>
   </div>
+</div>
+
+<div class="section">
+  <div class="tip"><strong>本课关键决策：</strong>无状态工具优先用函数；确需实例配置或状态时才用可调用对象；只有确需名义契约时才引入 ABC。</div>
 </div>
 
 <div class="section">
@@ -64,6 +68,7 @@ class SearchTool(Tool):
 t = SearchTool("search", "bing")
 print(t.describe())    # 工具：search（引擎：bing）</code></pre>
   <p><code>super()</code> 让子类"站在父类肩上"——不重复父类代码，只补充或改写差异部分。</p>
+  <p><strong>本课统一术语：</strong>“工具”指执行一项能力的可调用实现，可以是函数或对象；“工具对象”特指实现了 <code>__call__</code> 的实例；“注册表”是从工具名到可调用实现的映射。</p>
 </div>
 
 <div class="section">
@@ -83,8 +88,16 @@ class SearchTool(BaseTool):
     def run(self, query, max_results=5):
         return {"q": query, "n": max_results}
 
-BaseTool()          # ❌ TypeError：有未实现的抽象方法，不能实例化
-SearchTool().run(query="ai")   # ✅ {'q': 'ai', 'n': 5}</code></pre>
+try:
+    BaseTool()
+except TypeError as exc:
+    assert "abstract method" in str(exc)
+else:
+    raise AssertionError("BaseTool 不应可实例化")
+
+assert SearchTool().run(query="ai") == {"q": "ai", "n": 5}
+print("ABC example passed")</code></pre>
+  <p><code>@abstractmethod</code> 在这里保证 <code>run</code> 这个名字已被具体子类实现，因此 <code>BaseTool()</code> 失败而正例仍能继续执行；它不比较 <code>BaseTool.run(**kwargs)</code> 与 <code>SearchTool.run(query, max_results=5)</code> 的兼容性，也不检查实际返回值是不是 dict。</p>
 
   <div class="quiz" data-quiz="q1">
     <div class="quiz-question"><span class="quiz-q">Q</span> 一个含 <code>@abstractmethod</code> 的 ABC，直接实例化会怎样？</div>
@@ -100,7 +113,7 @@ SearchTool().run(query="ai")   # ✅ {'q': 'ai', 'n': 5}</code></pre>
 
 <div class="section">
   <h2>3. __call__：让对象像函数</h2>
-  <p>给类定义 <code>__call__</code>，它的实例就能"被调用"。这让工具既是对象、又能 <code>tool(...)</code>：</p>
+  <p>给类定义 <code>__call__</code>，它的实例就能"被调用"。严格地说，Python 对这类特殊方法按类型查找，大致是 <code>type(obj).__call__(obj, ...)</code>；只给某一个实例赋值 <code>obj.__call__ = ...</code> 不会让它变成可调用对象。这让工具既是对象、又能 <code>tool(...)</code>：</p>
   <pre><code>from abc import ABC, abstractmethod
 
 class BaseTool(ABC):
@@ -124,9 +137,63 @@ tool = SearchTool()
 print(tool(query="ai"))    # {'q': 'ai', 'n': 5}   ← 像函数一样调用！
 print(tool)                # &lt;Tool search&gt;         ← __repr__ 生效</code></pre>
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>这就是 Agent 执行工具的标准姿势：Agent 拿到 LLM 给的参数字典 <code>args</code>，直接 <code>tool(**args)</code> 调用（呼应 L05 的解包）。Python 函数本身也是对象，能读取 <code>__name__</code>/<code>__doc__</code>/<code>__annotations__</code> 等元信息，也能挂到注册表里——并非纯函数绝对做不到元信息。可调用对象真正的优势是：能把<strong>可变状态、配置项和行为</strong>一起封装进同一个实例（比如 <code>self.api_key</code>、<code>self.max_retries</code>），这是单个函数不方便做到的。</p>
+  <div class="best-practice-point" id="bp-l08-registry-dispatch">
+    <h3>最佳实践：按实现集合的变化频率选择分发方式</h3>
+    <p class="bp-scenario"><strong>唯一决策：</strong>实现是固定的小集合，还是会频繁新增？前者优先显式分支，后者优先注册表分发。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">固定小集合：显式分支</span><pre><code>if name == "search":
+    result = search(**args)
+elif name == "calc":
+    result = calc(**args)</code></pre><p>选项长期固定且很少时，控制流直接、可见，是有效方案。</p></div><div class="bp-right"><span class="bp-compare-label">频繁扩展：注册表分发</span><pre><code>tool = registry.get(name)
+if tool is None:
+    raise KeyError(f"unknown tool: {name}")
+result = tool(**args)</code></pre><p>新增实现只注册，不扩充分支链。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>注册表把名称解析与具体实现放入数据映射，使执行器不随实现数量增长而修改；代价是多一次间接查找，可用实现也不如分支一目了然。左栏沿用比较组件的 <code>bp-wrong</code> 样式只为保持版式一致，不表示显式分支是错误。</p>
+    <details class="bp-check"><summary><strong>动手自检（整块复制即可运行）：</strong></summary><pre><code>class AddTool:
+    def __call__(self, *, a, b):
+        return a + b
+
+class JoinTool:
+    def __call__(self, *, parts):
+        return "".join(parts)
+
+
+def register(registry, name, tool):
+    if name in registry:
+        raise KeyError(f"duplicate tool: {name}")
+    registry[name] = tool
+
+
+def execute(registry, name, args):
+    tool = registry.get(name)
+    if tool is None:
+        raise KeyError(f"unknown tool: {name}")
+    return tool(**args)
+
+registry = {}
+register(registry, "add", AddTool())
+assert execute(registry, "add", {"a": 2, "b": 3}) == 5
+
+old_add = registry["add"]
+try:
+    register(registry, "add", AddTool())
+except KeyError as exc:
+    assert exc.args == ("duplicate tool: add",)
+else:
+    raise AssertionError("重复工具名应被拒绝")
+assert registry["add"] is old_add  # 失败后旧条目保持不变
+
+execute_code = execute.__code__.co_code
+register(registry, "join", JoinTool())  # 只扩展注册表
+assert execute.__code__.co_code == execute_code
+assert execute(registry, "join", {"parts": ["A", "I"]}) == "AI"
+try:
+    execute(registry, "missing", {})
+except KeyError as exc:
+    assert exc.args == ("unknown tool: missing",)
+else:
+    raise AssertionError("未知工具名应明确失败")</code></pre></details>
+    <p class="bp-result"><strong>结果解释：</strong>重复注册默认失败且旧条目不变；增加 <code>JoinTool</code> 后 <code>execute</code> 的代码未变；未知名称产生精确的错误。</p>
+    <p class="bp-term"><strong>实现形态边界：</strong>注册表决策不强制每个实现都写成类：无状态时可使用普通函数，需要保存实例状态或配置时再使用可调用类。无论选哪一种，注册表只负责名称到可调用实现的分发；参数校验、权限、超时和副作用审批仍属于系统边界。这里是通用 Python dispatcher 教学模型，不是任何 Agent SDK 的固定接口。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -137,17 +204,20 @@ print(tool)                # &lt;Tool search&gt;         ← __repr__ 生效</co
       <button data-answer="wrong">能自动变成迭代器</button>
       <button data-answer="wrong">能直接做加法运算</button>
     </div>
-    <div class="quiz-explanation"><code>__call__</code> 让实例可被"调用"——<code>obj(...)</code> 会触发 <code>obj.__call__(...)</code>。这是"可调用对象"，让工具兼具对象的状态/元信息与函数的调用方式，是 Agent 工具设计的核心模式。</div>
+    <div class="quiz-explanation"><code>__call__</code> 让实例可被调用；特殊方法从类型上查找，大致执行 <code>type(obj).__call__(obj, ...)</code>，因此只给实例赋值同名属性并不够。这种可调用对象适合封装状态或配置；无状态工具通常用普通函数就够了。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>4. 多态 & 组合优于继承</h2>
-  <p><strong>多态</strong>：不同工具都实现了 <code>__call__</code>，Agent 就能用<strong>同一种方式</strong>调用它们，不用关心具体是哪个类（下面是示意，完整可运行版见本课练习）：</p>
-  <pre><code># 示意：tools 里可以是任意实现了 __call__ 的工具，args 为 LLM 给的参数
-tools = [SearchTool(), CalcTool()]
-for tool in tools:
-    result = tool(**args)      # 同一接口，各自的实现 —— 这就是多态</code></pre>
+  <p><strong>多态</strong>：不同工具都接受同一个调用外壳，Agent 就能用<strong>同一种方式</strong>调用它们，不用关心具体类型。这里的统一仅指调用入口；完整可替换性还要求各实现遵守相同的参数与结果契约。下面的工具都共享 <code>run(**kwargs)</code> / <code>tool(**args)</code> 这一外壳，但各自参数不同，因此不能把任意一组 <code>args</code> 无条件传给所有工具（下面是示意，完整可运行版见本课练习）：</p>
+  <pre><code># 示意：每个调用都携带与目标工具匹配的 args
+calls = [
+    (SearchTool(), {"query": "ai"}),
+    (CalcTool(), {"a": 2, "b": 3}),
+]
+for tool, args in calls:
+    result = tool(**args)      # 统一调用外壳，不等于所有参数都可互换</code></pre>
   <p><strong>组合优于继承</strong>：能用"把对象装进另一个对象"解决的，就别用深继承。比如 Agent <strong>持有</strong>一组工具（组合），而不是去<strong>继承</strong>工具。继承层级太深会让代码难懂难改。</p>
   <p style="font-size:.92rem;color:var(--fg-soft);">💡 上面示意用 <code>list</code> 遍历，是为了直观体会"同一循环调用不同工具"的多态。而实战里 Agent 拿到的是 LLM 给的<strong>工具名</strong>，需要"按名字找工具"——所以本课练习会把 <code>tools</code> 存成 <strong><code>dict</code></strong>（<code>{name: tool}</code>），用 <code>tools[call["name"]]</code> 取。结构变了，但"统一接口调用"的多态思想不变。</p>
 </div>
@@ -249,13 +319,106 @@ for call in calls:
   </div>
 </div>
 
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：扩展文本转换插件</h2>
+  <p class="best-practice-lead">将课堂中的工具注册表迁移到文本转换领域：所有转换都遵守 <code>transform(text)</code>；已有带前缀状态的转换器，新增大写转换器时只能扩展注册表，不能修改执行器。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>定义共享 <code>transform(text)</code> 的 BaseTransform 抽象契约。</li><li>实现带实例状态的 PrefixTransform。</li><li>新增 UpperTransform 并注册。</li><li>证明两个实现统一调用且父类状态完整。</li><li>默认拒绝重复名称与未知名称。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>失败明确指向未实现的抽象方法 <code>transform</code></li><li>子类通过 super 获得 name/owner</li><li>重复注册失败后旧条目不变</li><li>新增插件不修改 execute</li><li>成功路径与精确错误诊断均通过，最后打印唯一验收标记</li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末自检：证明跨领域插件可组合扩展</strong></summary><pre><code>from abc import ABC, abstractmethod
+
+class BaseTransform(ABC):
+    def __init__(self, name, owner):
+        self.name = name
+        self.owner = owner
+
+    @abstractmethod
+    def transform(self, text):
+        raise NotImplementedError
+
+    def __call__(self, text):
+        return self.transform(text)
+
+class PrefixTransform(BaseTransform):
+    def __init__(self, owner, prefix):
+        super().__init__("prefix", owner)
+        self.prefix = prefix
+
+    def transform(self, text):
+        return self.prefix + text
+
+class UpperTransform(BaseTransform):
+    def __init__(self, owner):
+        super().__init__("upper", owner)
+
+    def transform(self, text):
+        return text.upper()
+
+
+def register(registry, transform):
+    if transform.name in registry:
+        raise KeyError(f"duplicate transform: {transform.name}")
+    registry[transform.name] = transform
+
+
+def execute(registry, name, text):
+    transform = registry.get(name)
+    if transform is None:
+        raise KeyError(f"unknown transform: {name}")
+    return transform(text)
+
+try:
+    BaseTransform("base", "system")
+except TypeError as exc:
+    message = str(exc)
+    assert "abstract class BaseTransform" in message, message
+    assert "abstract method" in message, message
+    assert "transform" in message, message
+else:
+    raise AssertionError("BaseTransform 应因未实现抽象方法 transform 而不可实例化")
+
+prefix = PrefixTransform("text-team", "Agent: ")
+registry = {}
+register(registry, prefix)
+assert prefix.owner == "text-team"
+assert execute(registry, "prefix", "ready") == "Agent: ready"
+
+old_prefix = registry["prefix"]
+try:
+    register(registry, PrefixTransform("other-team", "Replaced: "))
+except KeyError as exc:
+    assert exc.args == ("duplicate transform: prefix",)
+else:
+    raise AssertionError("重复转换名称 prefix 应被拒绝")
+assert registry["prefix"] is old_prefix
+assert execute(registry, "prefix", "ready") == "Agent: ready"
+
+execute_fn = execute
+execute_code = execute.__code__
+upper = UpperTransform("text-team")
+register(registry, upper)
+assert execute is execute_fn
+assert execute.__code__ is execute_code
+assert upper.owner == "text-team"
+assert execute(registry, "upper", "agent") == "AGENT"
+try:
+    execute(registry, "missing", "x")
+except KeyError as exc:
+    assert exc.args == ("unknown transform: missing",)
+else:
+    raise AssertionError("未知转换名称 missing 应明确失败")
+print("L08 ACCEPTED")</code></pre></details>
+  </div>
+</div>
+
 <div class="section">
   <h2>面试常见问题</h2>
   <div class="card interview">
     <h3>Q1：__call__ 有什么用？举个场景。</h3>
     <p><strong>答：</strong>让实例可以像函数一样被调用（<code>obj()</code>）。典型场景是 Agent 工具：对象携带 name/schema 等元信息，又能 <code>tool(**args)</code> 直接执行，兼得对象与函数的优点。</p>
     <h3>Q2：抽象基类（ABC）解决什么问题？</h3>
-    <p><strong>答：</strong>定义"契约"——用 <code>@abstractmethod</code> 强制所有子类实现指定方法，否则不能实例化。用来统一一组类的接口，比如所有工具都必须有 <code>run</code>。</p>
+    <p><strong>答：</strong>声明抽象方法，并阻止仍有未实现抽象方法的类被实例化。它适合统一一组类的方法名，但不校验覆盖方法是否采用兼容签名，也不保证返回值满足注解或业务契约。</p>
     <h3>Q3：什么是多态？在 Agent 里怎么体现？</h3>
     <p><strong>答：</strong>同一接口、不同实现。Agent 用同一句 <code>tool(**args)</code> 调用任意工具，不关心具体类型——新增工具也不用改调用代码。</p>
     <h3>Q4："组合优于继承"是什么意思？</h3>
@@ -291,8 +454,8 @@ for call in calls:
   <div class="card">
     <ul>
       <li><code>super()</code> 复用父类逻辑，子类只写差异</li>
-      <li>ABC + @abstractmethod 定义契约，强制子类实现，否则不能实例化</li>
-      <li><code>__call__</code> 让对象像函数被调用 —— Agent 工具的核心模式</li>
+      <li>ABC + @abstractmethod 阻止抽象实现被实例化，但不校验兼容签名或返回行为</li>
+      <li><code>__call__</code> 让对象像函数被调用，是 Python 封装有状态工具的一种方式</li>
       <li><code>__repr__</code> 让对象打印清晰，便于调试</li>
       <li>多态 = 同接口不同实现，Agent 用统一方式调用所有工具</li>
       <li>组合优于继承：Agent 持有工具，而非继承工具</li>
@@ -300,7 +463,7 @@ for call in calls:
   </div>
   <div class="next-lesson">
     <span class="next-lesson-icon">🎯</span>
-    <span class="next-lesson-body">你已经懂了工具对象的骨架（多态 + __call__）。<strong>下一课</strong>处理它们进出的数据——文件读写、JSON 序列化，以及流式响应的逐行解析。 <a href="0013-L09-files-json-dict.html">L09 · 文件、JSON 与 Dict 深度操作 →</a></span>
+    <span class="next-lesson-body">你已经懂了工具对象的骨架（多态 + __call__）。<strong>下一课</strong>处理它们进出的数据——文件读写、JSON 序列化，以及流式响应的逐行解析。 <a href="0013-L09-files-json-dict.html">L09 · 文件、JSON 与 JSON Lines →</a></span>
   </div>
 
 </div>

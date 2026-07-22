@@ -1,0 +1,26 @@
+[project]
+name = "phase1-practices-capstone"
+version = "0.1.0"
+description = "Offline capstone for reliable typed async Python agents"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "httpx>=0.28.1",
+    "pydantic>=2.12.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0",
+    "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["phase1_practices", "main.py"]

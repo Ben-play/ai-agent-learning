@@ -15,7 +15,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>函数定义与参数</h1>
     <p class="subtitle">函数签名就是工具契约 — Agent 的每个工具，本质都是一个设计良好的函数</p>
@@ -27,7 +27,7 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>Agent 调用工具，本质是"按签名传参、拿返回值"。一个工具函数的<strong>参数怎么设计</strong>——哪些必填、哪些有默认、能不能只用关键字传——直接决定了它好不好用、LLM 会不会传错参。</p>
+    <p>Agent 调用工具，本质是“按工具契约生成参数，由运行时校验并执行函数，再拿返回值”。一个工具函数的<strong>参数怎么设计</strong>——哪些必填、哪些有默认、能不能只用关键字传——直接决定了它好不好用、LLM 会不会传错参。</p>
     <p>更关键的是：到 L11 你会给函数加 <code>@tool</code> 装饰器、到 L14 会用 Pydantic 描述参数，那时框架会<strong>从函数签名自动生成工具 Schema</strong>。所以「把函数签名设计好」不是基本功而已，它就是 Agent 工具契约的源头。这一课你会亲手设计一个搜索工具函数。</p>
   </div>
 </div>
@@ -113,12 +113,45 @@ greet("小明")                     # ✅ 正确（lang 用默认值）
 greet("小明", "en")               # ❌ TypeError：lang 只能关键字传
 greet(name="小明", lang="en")     # ❌ TypeError：name 只能位置传</code></pre>
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 工具边界：</strong>
-    <p>LLM 生成的工具调用参数是一个 JSON 对象，形如 <code>{"prompt": "hi", "model": "claude"}</code>，执行时靠 <code>tool(**llm_args)</code> 解包成关键字参数喂给函数。如果工具签名里把某个字段设计成仅位置（<code>/</code> 之前），<code>**llm_args</code> 就<strong>永远传不进去</strong>，一定报 <code>TypeError</code>。所以 Agent 工具签名应写成：</p>
-    <pre><code>def call_llm(prompt, *, model, temperature=0.7):
-    return (prompt, model, temperature)</code></pre>
-    <p><code>prompt</code> 保留"位置或关键字都可传"（不加 <code>/</code>），<code>model</code>/<code>temperature</code> 用 <code>*</code> 强制关键字——这与 <code>tool(**llm_args)</code> 完全兼容。</p>
+  <div class="best-practice-point" id="bp-l05-json-object-call">
+    <h3>决策：面向对象字段调用的工具参数不要设为仅位置</h3>
+    <p class="bp-term"><strong>术语：映射解包</strong>是用 <code>**mapping</code> 把映射中的字符串键转换成关键字参数。LLM 工具调用的 JSON object 反序列化后通常成为 Python dict，因此字段名本身就是契约。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 同一任务：query 仅位置</span><pre><code>def positional_tool(query, /, *, limit=5):
+    return {"query": query, "limit": limit}
+
+payload = {"query": "agent", "limit": 3}
+positional_tool(**payload)  # TypeError</code></pre><p><code>query</code> 在 <code>/</code> 前，对象字段不能绑定给它。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 同一任务：字段可按关键字绑定</span><pre><code>def keyword_tool(query, *, limit=5):
+    return {"query": query, "limit": limit}
+
+payload = {"query": "agent", "limit": 3}
+keyword_tool(**payload)
+# {"query": "agent", "limit": 3}</code></pre><p>函数体、输入和结果目标都相同，只改变 <code>query</code> 的传法约束。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>适用：</strong>参数来自 JSON object、dict、表单字段或其他具名映射时，让公开工具签名接受关键字。<strong>不适用：</strong>纯 Python 内部函数若只由人工位置调用，且不希望参数名成为 API，可以使用 <code>/</code>。<strong>成本：</strong>公开的参数名会成为兼容契约，重命名需要迁移调用方。<strong>替代方案：</strong>保留一个可按关键字调用的公开工具，在内部再转调仅位置的底层函数。</p>
+    <p class="bp-term"><strong>别混淆：</strong><code>*sequence</code> 摊成位置参数；<code>**mapping</code> 摊成关键字参数。对 dict 使用单星号只会摊开键。</p>
+    <details class="bp-check"><summary><strong>动手自检（独立复制运行）：</strong></summary><pre><code>def positional_tool(query, /, *, limit=5):
+    return {"query": query, "limit": limit}
+
+
+def keyword_tool(query, *, limit=5):
+    return {"query": query, "limit": limit}
+
+
+payload = {"query": "agent", "limit": 3}
+try:
+    positional_tool(**payload)
+except TypeError:
+    pass
+else:
+    raise AssertionError("仅位置参数不应接受同名映射字段")
+
+assert keyword_tool(**payload) == {
+    "query": "agent",
+    "limit": 3,
+}</code></pre></details>
+    <p class="bp-result"><strong>怎么看结果：</strong>同一个 <code>payload</code> 对仅位置签名失败、对关键字兼容签名成功。自检只验证异常类型，不依赖不同 Python 版本可能变化的完整错误文本。</p>
   </div>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
@@ -157,7 +190,7 @@ log_call("search", 1, 2, x=3)
 # ("search", (1, 2), {"x": 3})
 #           ↑ args      ↑ kwargs</code></pre>
 
-  <p>约定俗成叫 <code>args</code>/<code>kwargs</code>，但真正起作用的是 <code>*</code> 和 <code>**</code>。Agent 框架里常用 <code>**kwargs</code> 把额外配置透传给底层（比如把 <code>temperature</code>、<code>top_p</code> 一路传给 LLM 客户端）。</p>
+  <p>约定俗成叫 <code>args</code>/<code>kwargs</code>，但真正起作用的是 <code>*</code> 和 <code>**</code>。框架里常用 <code>**kwargs</code> 透传中立的运行配置，例如 <code>timeout</code>、<code>request_id</code> 或日志选项；对外部参数仍应校验允许的键，避免把拼写错误悄悄吞掉。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
@@ -215,26 +248,19 @@ make_msg(*args)               # 等价于 make_msg("assistant", "好的")</code>
 name, args = parse({"name": "search", "args": {"q": "x"}})   # 解包接收</code></pre>
   <p>没有 <code>return</code>、或只写 <code>return</code>，函数返回 <code>None</code>。</p>
 
-  <h3>陷阱：可变默认参数（回顾 L03）</h3>
-  <pre><code>def bad(item, acc=[]):        # ⚠️ 默认的 [] 只创建一次，被多次调用共享
-    acc.append(item)
-    return acc
-
-bad("a")   # ["a"]
-bad("b")   # ["a", "b"]  ← 不是 ["b"]！
-
-# ✅ 正确写法：默认用 None，函数内再创建
-def good(item, acc=None):
+  <h3>回归检查：可变默认参数</h3>
+  <p>完整原理、<code>None</code> 合法值时的哨兵边界和正反示例已在 <a href="0006-L03-variables-types-data-structures.html#mutable-vs-immutable">L03 · 可变与不可变类型</a> 讲过。本课只保留一段函数级回归检查：</p>
+  <pre><code>def collect(item, acc=None):
     if acc is None:
         acc = []
     acc.append(item)
-    return acc</code></pre>
+    return acc
 
-  <div class="card" style="border-left: 4px solid var(--accent);">
-    <strong>💡 面试常见问题：</strong>
-    <p>"为什么 Agent 工具函数尤其要警惕可变默认参数？"</p>
-    <p>答：工具可能被<strong>反复调用</strong>（Agent Loop 里一轮一轮跑）。如果默认参数是可变对象，状态会在多次调用间串起来，产生"上次的数据莫名出现在这次结果里"的诡异 bug，且极难复现。默认值一律用 <code>None</code> 兜。</p>
-  </div>
+first = collect("a")
+second = collect("b")
+assert first == ["a"] and second == ["b"]
+assert first is not second</code></pre>
+  <p>签名复习要点：默认对象不能携带跨调用状态；两次调用的内容和对象身份都应独立。</p>
 </div>
 
 <!-- ==================== 知识点 6 ==================== -->
@@ -249,9 +275,90 @@ def good(item, acc=None):
     *,
     filters: dict | None = None,
 ) -&gt; dict:
-    ...</code></pre>
+    clean_query = query.strip()
+    active_filters = {} if filters is None else dict(filters)
+    return {
+        "query": clean_query,
+        "max_results": max_results,
+        "filters": active_filters,
+        "results": [],
+    }</code></pre>
 
-  <p>光看这一行签名，你（和 LLM、和 IDE、和框架）就知道：<code>query</code> 必填字符串、<code>max_results</code> 可选整数默认 5、<code>filters</code> 只能关键字传的可选字典、返回一个 dict。<strong>这正是工具 Schema 的雏形。</strong></p>
+  <p>光看签名，IDE 和框架就能知道：<code>query</code> 必填字符串、<code>max_results</code> 可选整数默认 5、<code>filters</code> 是仅关键字的可选字典、函数声明返回 dict。框架可据此生成工具 Schema；<strong>LLM 实际看到的是工具名、描述和 JSON Schema 等契约信息，不是这段 Python 源码或函数体。</strong>此外，Python 类型注解默认只是元数据，不会自动做运行时类型校验：直接调用 <code>search_tool(123)</code> 仍会进入函数体，再因 <code>123.strip()</code> 不存在而报错。外部/LLM 输入仍需由框架、Pydantic 或手写代码校验。</p>
+
+  <div class="best-practice-point" id="bp-l05-signature-contract">
+    <h3>最佳实践：把函数签名当作工具契约</h3>
+    <p class="bp-term"><strong>术语：调用接口</strong>由函数名和签名共同表达；<code>fn.__name__</code> 提供函数名，<code>inspect.signature(fn)</code> 表示参数名、注解、默认值、参数传法与返回注解。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 含义要读函数体才知道</span><pre><code>def search(q, n=5, **kw):
+    ...</code></pre><p><code>q</code>、<code>n</code>、<code>kw</code> 的业务含义不清，Schema 能表达的信息也很少。</p></div><div class="bp-right"><span class="bp-compare-label">✅ 签名直接表达契约</span><pre><code>def search(
+    query: str,
+    *,
+    max_results: int = 5,
+) -&gt; dict:
+    if not isinstance(query, str):
+        raise TypeError("query must be str")
+    return {
+        "query": query,
+        "max_results": max_results,
+        "results": [],
+    }</code></pre><p>必填性、类型、默认值和仅关键字约束可被 IDE、静态分析器与 Schema 生成器读取；函数体另做运行时边界校验。</p></div></div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>描述性参数名、注解、默认值和仅关键字约束提高了 Schema 表达力与静态可分析性；Python 的参数绑定还会明确拒绝缺少字段、未知字段和错误的传参方式。<strong>但注解本身不会在运行时验证值：</strong><code>query: str</code> 不会自动拒绝整数，外部或 LLM 输入仍要由框架、Pydantic 或函数体显式校验。代价是签名更长，新增必填参数会破坏已有调用；仅在内部适配层确实需要代理开放选项时，才使用经过允许键校验的 <code>**kwargs</code>。</p>
+    <details class="bp-check"><summary><strong>动手自检（签名、绑定与运行时边界）：</strong></summary><pre><code>import inspect
+
+
+def search(query: str, *, max_results: int = 5) -&gt; dict:
+    if not isinstance(query, str):
+        raise TypeError("query must be str")
+    if not isinstance(max_results, int) or isinstance(max_results, bool):
+        raise TypeError("max_results must be int")
+    return {
+        "query": query,
+        "max_results": max_results,
+        "results": [],
+    }
+
+
+sig = inspect.signature(search)
+assert search.__name__ == "search"
+assert not hasattr(sig, "name")  # 函数名属于 callable，不属于 inspect.Signature
+query_param = sig.parameters["query"]
+max_param = sig.parameters["max_results"]
+assert query_param.default is inspect.Parameter.empty  # 必填
+assert query_param.annotation is str
+assert max_param.default == 5
+assert max_param.kind is inspect.Parameter.KEYWORD_ONLY
+assert sig.return_annotation is dict
+
+bound = sig.bind(**{"query": "python agent"})
+bound.apply_defaults()
+assert bound.arguments == {
+    "query": "python agent",
+    "max_results": 5,
+}
+
+for bad_args in ({}, {"query": "x", "unknown": True}):
+    try:
+        sig.bind(**bad_args)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("缺失或未知字段应在参数绑定时失败")
+
+try:
+    search(**{"query": 123})
+except TypeError as exc:
+    assert str(exc) == "query must be str"
+else:
+    raise AssertionError("手写边界校验应拒绝错误类型")
+
+
+def annotated_only(value: str) -&gt; str:
+    return value
+
+
+assert annotated_only(123) == 123  # 注解本身不做运行时校验</code></pre></details>
+    <p class="bp-result"><strong>怎么看结果：</strong><code>search.__name__</code> 证明函数名；<code>inspect.signature</code> 证明必填、默认值、注解和仅关键字约束可被程序读取；<code>bind</code> 证明缺失/未知字段会触发绑定诊断；错误类型则由手写边界校验拒绝。最后一条断言刻意证明“只有注解”不会自动校验。</p>
+  </div>
 </div>
 
 <!-- ==================== 知识图谱 ==================== -->
@@ -317,7 +424,7 @@ def good(item, acc=None):
         raise ValueError("query 不能为空")
 
     max_results = max(1, min(max_results, 50))   # 夹在 1~50
-    filters = filters or {}                       # None → {}，避开可变默认参数陷阱
+    filters = {} if filters is None else dict(filters)
 
     return {
         "query": query.strip(),
@@ -363,6 +470,93 @@ print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
         </div>
       </details>
     </details>
+  </div>
+</div>
+
+<!-- ==================== 本课最佳实践 ==================== -->
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：Python 映射/工具契约</h2>
+  <p class="best-practice-lead">换一个会议室预订工具，验证映射绑定、签名约束、显式运行时校验、默认对象隔离和精确结果契约；这里检查的是 Python 调用边界，不是 JSON 解析。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>用 <code>tool(**mapping)</code> 绑定具名字段。</li><li>验证必填字段、未知字段和仅关键字约束。</li><li>显式拒绝错误类型与越界值。</li><li>验证默认列表每次调用都新建。</li><li>精确比较完整返回结果。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>合法映射可执行</li><li>三类绑定错误均失败</li><li>类型和值在函数边界校验</li><li>默认容器不共享</li><li>最后打印唯一验收标记</li></ul></div>
+    </div>
+    <details class="bp-check"><summary><strong>课末自检（整块复制即可运行）：</strong></summary><pre><code>def reserve_room(
+    room: str,
+    *,
+    attendees: int,
+    equipment: list[str] | None = None,
+) -&gt; dict:
+    if not isinstance(room, str):
+        raise TypeError("room must be str")
+    clean_room = room.strip()
+    if not clean_room:
+        raise ValueError("room cannot be blank")
+    if not isinstance(attendees, int) or isinstance(attendees, bool):
+        raise TypeError("attendees must be int")
+    if not 1 &lt;= attendees &lt;= 20:
+        raise ValueError("attendees must be between 1 and 20")
+    if equipment is not None and not isinstance(equipment, list):
+        raise TypeError("equipment must be list or None")
+    active_equipment = [] if equipment is None else list(equipment)
+    if not all(isinstance(item, str) for item in active_equipment):
+        raise TypeError("equipment items must be str")
+
+    return {
+        "room": clean_room,
+        "attendees": attendees,
+        "equipment": active_equipment,
+        "status": "reserved",
+    }
+
+
+def expect_error(error_type, call):
+    try:
+        call()
+    except error_type:
+        pass
+    else:
+        raise AssertionError(f"expected {error_type.__name__}")
+
+
+payload = {
+    "room": "  Cedar  ",
+    "attendees": 4,
+    "equipment": ["projector"],
+}
+result = reserve_room(**payload)
+assert result == {
+    "room": "Cedar",
+    "attendees": 4,
+    "equipment": ["projector"],
+    "status": "reserved",
+}
+
+expect_error(TypeError, lambda: reserve_room(**{"room": "Cedar"}))
+expect_error(
+    TypeError,
+    lambda: reserve_room(**{
+        "room": "Cedar", "attendees": 4, "unknown": True
+    }),
+)
+expect_error(TypeError, lambda: reserve_room("Cedar", 4))
+expect_error(
+    TypeError,
+    lambda: reserve_room(**{"room": "Cedar", "attendees": "4"}),
+)
+expect_error(
+    ValueError,
+    lambda: reserve_room(**{"room": "Cedar", "attendees": 0}),
+)
+
+first = reserve_room(**{"room": "Cedar", "attendees": 2})
+second = reserve_room(**{"room": "Cedar", "attendees": 2})
+assert first["equipment"] == second["equipment"] == []
+assert first["equipment"] is not second["equipment"]
+
+print("L05 ACCEPTED")</code></pre></details>
+    <details class="think-q"><summary><span class="think-q-tag">排错</span>绑定错误和数据校验错误有什么区别？</summary><div class="think-q-answer"><p><strong>绑定错误说明映射字段与函数签名不匹配；数据校验错误说明字段已经绑定，但值的类型或范围不符合工具规则。</strong>前者由 Python 签名拒绝，后者必须由框架、Pydantic 或函数体显式拒绝；不要用开放的 <code>**kwargs</code> 吞掉未知字段。</p></div></details>
   </div>
 </div>
 
@@ -420,8 +614,8 @@ print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
       <li><code>*</code> 强制仅关键字、<code>/</code> 强制仅位置——把约束写进签名；<code>/</code> 不适合 Agent 工具（与 <code>tool(**args)</code> 冲突）</li>
       <li><code>*args</code> 收元组、<code>**kwargs</code> 收字典；装饰器的标准写法</li>
       <li>调用处 <code>*列表</code> / <code>**字典</code> 解包，<code>tool(**llm_args)</code> 是执行工具调用的常见写法</li>
-      <li><code>return a, b</code> 是元组；可变默认参数一律用 <code>None</code> 兜</li>
-      <li>带类型注解的函数签名，就是 Agent 工具契约的雏形（→ L11 / L14）</li>
+      <li><code>return a, b</code> 是元组；可变默认参数规则回看 L03，本课只做回归断言</li>
+      <li>框架可从带注解的签名生成 Schema；LLM 看到 Schema 而非 Python 源码，且注解本身不执行运行时校验</li>
     </ul>
   </div>
   <div class="next-lesson">

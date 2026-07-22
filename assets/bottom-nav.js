@@ -10,8 +10,6 @@
   const LESSONS = [
     { file: '0001-ai-agent-learning-path-overview.html', title: '学习路径总览', phase: '' },
     { file: '0002-phase1-python-outline.html', title: '第一阶段大纲', phase: '' },
-    { file: '0029-phase2-ai-knowledge-outline.html', title: '第二阶段大纲', phase: '' },
-    { file: '0044-phase3-api-engineering-outline.html', title: '第三阶段大纲', phase: '' },
     { file: '0004-L01-dev-environment-setup.html', title: '开发环境搭建', phase: '第一阶段' },
     { file: '0005-L02-python-runtime-and-modules.html', title: 'Python 运行机制与模块系统', phase: '第一阶段' },
     { file: '0006-L03-variables-types-data-structures.html', title: '变量、类型与数据结构', phase: '第一阶段' },
@@ -28,6 +26,7 @@
     { file: '0018-L14-pydantic.html', title: 'Pydantic 数据验证', phase: '第一阶段' },
     { file: '0019-L15-httpx.html', title: '用 httpx 发起 HTTP 请求', phase: '第一阶段' },
     { file: '0020-L16-async-concurrency.html', title: 'async/await 与并发', phase: '第一阶段' },
+    { file: '0029-phase2-ai-knowledge-outline.html', title: '第二阶段大纲', phase: '' },
     { file: '0021-L17-llm-essence-and-parameters.html', title: 'LLM 本质与生成参数', phase: '第二阶段' },
     { file: '0022-L18-tokenization.html', title: 'Token 与 Tokenization', phase: '第二阶段' },
     { file: '0023-L19-hallucination.html', title: '幻觉全解（多因素视角）', phase: '第二阶段' },
@@ -36,6 +35,7 @@
     { file: '0026-L22-benchmarks-and-selection.html', title: '看懂 Benchmark 与模型选型', phase: '第二阶段' },
     { file: '0027-L23-token-economics.html', title: 'Token 经济学与降本杠杆', phase: '第二阶段' },
     { file: '0028-L24-phase2-capstone.html', title: 'Phase 2 综合实战项目', phase: '第二阶段' },
+    { file: '0044-phase3-api-engineering-outline.html', title: '第三阶段大纲', phase: '' },
     { file: '0030-L25-llm-api-basics.html', title: '主流 LLM API 上手', phase: '第三阶段' },
     { file: '0031-L26-streaming.html', title: 'Streaming 流式输出', phase: '第三阶段' },
     { file: '0032-L27-function-calling.html', title: 'Function Calling 原理', phase: '第三阶段' },
@@ -56,9 +56,9 @@
   const idx = LESSONS.findIndex(l => l.file === currentFile);
   if (idx === -1) return;
 
+  const cur = LESSONS[idx];
   const prev = idx > 0 ? LESSONS[idx - 1] : null;
   const next = idx < LESSONS.length - 1 ? LESSONS[idx + 1] : null;
-  const cur = LESSONS[idx];
 
   let html = '<div class="bottom-nav-inner">';
 

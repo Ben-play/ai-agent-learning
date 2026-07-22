@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>L09 · 文件、JSON 与 Dict 深度操作</title>
+<title>L09 · 文件、JSON 与 JSON Lines</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -16,8 +16,8 @@
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
       <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
     </div>
-    <h1>文件、JSON 与 Dict 深度操作</h1>
-    <p class="subtitle">LLM 说的是 JSON — 读写文件、解析流式响应，是 Agent 的日常 I/O</p>
+    <h1>文件、JSON 与 JSON Lines</h1>
+    <p class="subtitle">许多接口使用 JSON 兼容结构 — 文件往返与逐行事件解析是常见 I/O</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:56%"></div></div>
   </div>
 </div>
@@ -25,9 +25,13 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>LLM 的输入输出、工具调用参数、配置文件、缓存——全是 JSON。Agent 每一步都在做 JSON 的<strong>序列化（对象→字符串）</strong>和<strong>反序列化（字符串→对象）</strong>。</p>
-    <p>本课以 JSON Lines（一行一个完整 JSON）这种常见的本地/自定义流格式练手，要能逐行解析、拼接、还要分清"完整但语法坏的记录"和"网络传来的半行"。这是处理真实 LLM 输出的基础技能，真实 SSE/SDK 层留到 L15。</p>
+    <p>许多 LLM 接口的请求/响应、工具参数、配置文件和缓存会使用 <strong>JSON 或 JSON 兼容结构</strong>。Agent 因而经常要做 JSON 的<strong>序列化（对象→字符串）</strong>和<strong>反序列化（字符串→对象）</strong>，但具体 SDK 也可能直接提供结构化对象。</p>
+    <p>本课以 JSON Lines（一行一个完整 JSON 值）这种常见的本地/自定义流格式练手：先确认完整行，再解析 JSON 值，最后按应用自己的对象事件契约校验。还要分清“完整但语法坏的记录”和“网络传来的半行”；真实 SSE/SDK 层留到 L15。</p>
   </div>
+</div>
+
+<div class="section">
+  <div class="tip"><strong>本课关键决策：</strong>单份文档用 JSON；逐条独立记录用 JSONL；网络事件优先交给 SDK 或合规的 SSE parser。</div>
 </div>
 
 <div class="section">
@@ -38,14 +42,14 @@
       <li>用 <code>with open()</code> 安全读写文件</li>
       <li>用 <code>pathlib</code> 优雅地处理路径</li>
       <li>熟练 <code>json.dumps</code> / <code>json.loads</code> 及常用参数</li>
-      <li>逐行解析 JSON Lines 流，区分坏记录与半行并正确容错</li>
+      <li>按完整行分帧解析 JSON Lines，并分清 JSON 值、事件对象和应用契约三层校验</li>
       <li>知道 orjson 何时能提速</li>
     </ul>
   </div>
 </div>
 
 <div class="section">
-  <h2>1. 文件读写：永远用 with</h2>
+  <h2>1. 文件读写：文件对象用 with，便捷读写用 Path</h2>
   <pre><code>from pathlib import Path
 
 # 写
@@ -62,7 +66,59 @@ p = Path("data") / "logs" / "run.json"   # 用 / 拼路径，跨平台
 p.parent.mkdir(parents=True, exist_ok=True)   # 确保目录存在
 p.write_text('{"ok": true}', encoding="utf-8")   # 一行读写
 print(p.read_text(encoding="utf-8"))</code></pre>
-  <p>要点：<strong>永远用 <code>with</code></strong>（自动关闭）、<strong>永远指定 <code>encoding="utf-8"</code></strong>（避免中文乱码），路径用 <code>pathlib</code> 而非字符串拼接。</p>
+  <p>要点：需要直接操作文件对象时用 <code>with open(...)</code> 保证关闭；一次性读写可用会自行管理文件句柄的 <code>Path.read_text()</code>/<code>write_text()</code>。两种方式都显式指定 <code>encoding="utf-8"</code>，路径用 <code>pathlib</code> 而非字符串拼接。</p>
+
+  <div class="best-practice-point" id="bp-l09-atomic-json-replace">
+    <h3>最佳实践：重要 JSON 先完整写入同目录临时文件，再替换目标</h3>
+    <p class="bp-scenario"><strong>适用场景：</strong>配置更新失败时，希望旧目标文件继续保持完整，而不是留下半段 JSON。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">可丢失或可再生成输出：可直接写</span><pre><code>path.write_text(json.dumps(data), encoding="utf-8")</code></pre><p>实现最简单，但写入失败时目标可能被截断。</p></div><div class="bp-right"><span class="bp-compare-label">重要配置：唯一临时文件写完后替换</span><pre><code>write_json_atomic(path, data)  # 调用下方定义并自检的原子写入 helper</code></pre><p>helper 为每个写者使用不同临时名，并在写入或替换失败时清理；替换发生前旧目标仍保持原样。</p></div></div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>同目录唯一临时文件先承接完整内容，再由 <code>os.replace</code> 一次切换目标名称，避免目标在写入中途暴露半成品，从而提升数据完整性与故障原子性。代价是额外一次完整写入和名称切换 I/O，且不自动保留元数据、保证断电持久性或协调多写者；当需要并发一致性或崩溃后持久承诺时，加入文件锁与文件/目录同步，或改用支持事务的数据库。</p>
+    <details class="bp-check"><summary><strong>自检：替换失败时保留旧目标并清理唯一临时文件</strong></summary><pre><code>import json
+import os
+from contextlib import suppress
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+
+
+def write_json_atomic(path, data, replace=os.replace):
+    text = json.dumps(data, ensure_ascii=False, allow_nan=False)
+    tmp = None
+    try:
+        with NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as file:
+            tmp = Path(file.name)
+            file.write(text)
+        replace(tmp, path)
+        tmp = None
+    except BaseException:
+        if tmp is not None:
+            with suppress(OSError):
+                tmp.unlink()
+        raise
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "config.json"
+    write_json_atomic(path, {"version": 1})
+
+    def fail_before_replace(source, target):
+        raise OSError("simulated replace failure")
+
+    try:
+        write_json_atomic(path, {"version": 2}, replace=fail_before_replace)
+    except OSError as exc:
+        assert str(exc) == "simulated replace failure"
+    else:
+        raise AssertionError("替换失败必须向上传播")
+    assert json.loads(path.read_text(encoding="utf-8")) == {"version": 1}
+    assert list(path.parent.glob(".config.json.*.tmp")) == []
+
+    write_json_atomic(path, {"version": 2})
+    assert json.loads(path.read_text(encoding="utf-8")) == {"version": 2}</code></pre></details>
+    <p class="bp-result"><strong>结果解释：</strong>注入替换失败后，旧目标仍是可解析的 version 1，临时文件已清理，且原始 <code>OSError</code> 没被覆盖；正常替换后才切换到 version 2。</p>
+    <p class="bp-term"><strong>边界：</strong>唯一临时文件必须位于目标目录。同文件系统内 <code>os.replace</code> 成功时提供名称切换的原子可见性，但仍可能因权限或文件占用失败；它不保证断电持久性，也不保留旧目标的权限等元数据。多个写者仍需锁或单写者设计。</p>
+  </div>
 
   <div class="card" style="border-left: 4px solid var(--warn, #d9822b);">
     <strong>⚠️ 三种打开模式的破坏性边界：</strong>
@@ -76,13 +132,13 @@ print(p.read_text(encoding="utf-8"))</code></pre>
     f.write("line1\n")
 with open("t.txt", "a", encoding="utf-8") as f:
     f.write("line2\n")
-print(open("t.txt", encoding="utf-8").read())
+print(Path("t.txt").read_text(encoding="utf-8"))
 # line1
 # line2
 
 with open("t.txt", "w", encoding="utf-8") as f:
     f.write("only-this\n")
-print(open("t.txt", encoding="utf-8").read())
+print(Path("t.txt").read_text(encoding="utf-8"))
 # only-this   ← 上面的 line1/line2 已被清空</code></pre>
   </div>
 
@@ -100,13 +156,13 @@ print(open("t.txt", encoding="utf-8").read())
 
 <div class="section">
   <h2>2. JSON 序列化与反序列化</h2>
-  <p>会读写文件了，但文件里<strong>存什么格式</strong>？Agent 世界的答案几乎总是 <strong>JSON</strong>——配置、LLM 响应、工具参数都是它。问题是：Python 内存里是 dict/list 对象，文件里是纯文本字符串，两者要互相转换。<strong>对象→字符串叫序列化，字符串→对象叫反序列化</strong>，靠的就是 <code>json</code> 模块：</p>
+  <p>会读写文件了，但文件里<strong>存什么格式</strong>？Agent 开发中的许多配置、接口响应和工具参数使用 <strong>JSON 或 JSON 兼容结构</strong>。Python 内存里常见的是 dict/list 对象，JSON 文件里是文本，两者需要互相转换：<strong>对象→字符串叫序列化，字符串→对象叫反序列化</strong>，靠的就是 <code>json</code> 模块：</p>
   <pre><code>import json
 
 obj = {"name": "search", "args": {"q": "python"}, "ok": True}
 
 # 序列化：对象 → 字符串
-s = json.dumps(obj, ensure_ascii=False, indent=2)
+s = json.dumps(obj, ensure_ascii=False, indent=2, allow_nan=False)
 # ensure_ascii=False → 中文正常显示（不转成 \uXXXX）
 # indent=2 → 美化缩进（存文件时好读）
 
@@ -137,42 +193,90 @@ JSON:   true / false / null</code></pre>
 
 <div class="section">
   <h2>3. 解析 JSON Lines（本地日志/自定义流）</h2>
-  <p>很多本地日志、自定义事件流会选择<strong>一行一个完整 JSON 对象</strong>的格式（即 JSON Lines，简称 JSONL）。这只是众多流格式里的一种——本节示例演示如何逐行解析 JSONL，还得扛住空行和「确认完整但语法坏」的行。<strong>注意：这不是真实 LLM SSE 的通用骨架</strong>，SSE 有自己的分行/分事件规则，见下面的三层对照卡。</p>
-  <p>在写 <code>try/except</code> 之前先说一句：<code>try</code> 包住可能失败的代码，<code>except</code> 只接住你指定的异常类型（这里是 <code>json.JSONDecodeError</code>，即"这行文本不是合法 JSON"）；其他异常不会被它吃掉。<code>try/except</code> 的完整语法和多分支用法 L10 系统学习，这里先知道"try 里放可能炸的代码，except 只接指定类型"即可。</p>
+  <p>JSON Lines（JSONL）的格式层只规定：<strong>每一行是一个完整、合法的 JSON 值</strong>。这个值可以是对象、数组、字符串、数字、布尔值或 <code>null</code>；“必须是对象”不是 JSONL 规则，而是本例事件日志的<strong>应用契约</strong>。本课只处理已经按完整行分帧的本地/自定义 JSONL，不编写通用 SSE parser。</p>
+  <p>处理时依次过三层，诊断也不要混写：①<strong>完整行分帧</strong>——网络 chunk 中尚无换行的尾部必须继续缓冲；②<strong>JSON 值</strong>——仅在完整行上调用 <code>json.loads</code>，语法失败记为 <code>syntax</code>；③<strong>应用事件契约</strong>——本应用要求对象，否则记为 <code>non-object</code>，再校验已知事件种类及必需字段/类型，失败记为 <code>contract</code>。</p>
   <pre><code>import json
 
-# 模拟 JSONL 流：每行一个事件，中间可能有空行或坏行
-stream = '{"tok":"Hel"}\n{"tok":"lo"}\n\n{oops bad line}\n{"done":true}\n'
 
-tokens = []
-done = False
-for line in stream.splitlines():
-    line = line.strip()
-    if not line:
-        continue                       # 跳过空行
-    try:
-        event = json.loads(line)
-    except json.JSONDecodeError:
-        continue                       # 这一整行已收全，但语法坏——记录/跳过
-    if "tok" in event:
-        tokens.append(event["tok"])
-    if event.get("done"):
-        done = True
+def contract_error(event):
+    kind = event.get("type")
+    if kind == "text_delta":
+        if "text" not in event or not isinstance(event["text"], str):
+            return "text_delta requires string field 'text'"
+    elif kind == "usage":
+        tokens = event.get("tokens")
+        if not isinstance(tokens, int) or isinstance(tokens, bool):
+            return "usage requires integer field 'tokens'"
+    elif kind == "done":
+        pass
+    else:
+        return f"unknown event type: {kind!r}"
+    return None
 
-print("".join(tokens), done)   # Hello True</code></pre>
+
+def reject_non_json_constant(token):
+    raise json.JSONDecodeError(
+        f"non-standard JSON constant: {token}", token, 0,
+    )
+
+
+def parse_jsonl(text):
+    events, diagnostics = [], []
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()  # 末尾 LF 后的切分哨兵不是额外记录
+    for line_no, line in enumerate(lines, start=1):
+        try:
+            value = json.loads(
+                line, parse_constant=reject_non_json_constant,
+            )
+        except json.JSONDecodeError as exc:
+            diagnostics.append({
+                "line": line_no, "category": "syntax", "message": exc.msg,
+            })
+            continue
+        if not isinstance(value, dict):
+            diagnostics.append({
+                "line": line_no, "category": "non-object",
+                "message": f"application event must be object, got {type(value).__name__}",
+            })
+            continue
+        message = contract_error(value)
+        if message is not None:
+            diagnostics.append({
+                "line": line_no, "category": "contract", "message": message,
+            })
+            continue
+        events.append(value)
+    return events, diagnostics
+
+
+stream = (
+    '{"type":"text_delta","text":"Hel"}\n'
+    '{"type":"text_delta","text":"lo"}\n'
+    '42\n'
+    '{"type":"usage","tokens":"many"}\n'
+    '{oops}\n'
+    '{"type":"done"}\n'
+)
+events, diagnostics = parse_jsonl(stream)
+text = "".join(e["text"] for e in events if e["type"] == "text_delta")
+print(text)                                      # Hello
+print([d["category"] for d in diagnostics])   # non-object, contract, syntax</code></pre>
+  <p><code>except</code> 这里只捕获真正抛出的 <code>JSONDecodeError</code>。非对象值和契约不匹配是校验结果，不是假装“捕获了 <code>TypeError</code>”；因此诊断保存稳定的类别、行号和具体消息，而不是把异常类本身塞进记录。标准库为 JavaScript 互操作默认接受 <code>NaN</code>/<code>Infinity</code>；严格 JSONL 在解析入口用 <code>parse_constant</code> 拒绝它们。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 坏记录 vs 网络半行——不是一回事：</strong>
-    <p>上面例子里的 <code>{oops bad line}</code> 是<strong>一整行都已经收到了</strong>，只是内容本身不符合 JSON 语法——这种情况下用 <code>try/except JSONDecodeError</code> 记录/跳过是安全的，不会丢数据（这条记录本身就是坏的）。</p>
-    <p>但如果数据来自<strong>网络</strong>（比如 TCP/HTTP 的 chunk），情况不同：网络传输<strong>不保证按行或按事件边界到达</strong>，一次 recv 可能只拿到半行，比如 <code>{"tok":"He</code>。这种"半行"<strong>不能直接当坏行丢弃</strong>——它不是语法错误，而是数据还没收全。正确做法是先<strong>缓冲</strong>，等拼上后续数据、凑齐完整一行后再 <code>json.loads</code>。直接丢弃会丢失这部分内容。</p>
+    <strong>🔑 完整行 vs 网络半行：</strong>
+    <p>JSONL 记录分隔符是换行符 <code>\n</code>，因此按 <code>"\n"</code> 切分，而不使用还会识别 NEL 等更多 Unicode 行边界的 <code>splitlines()</code>。JSON 空白 <code>SP</code>/<code>TAB</code>/<code>CR</code> 只能包围一个值，空白本身不是值，所以严格模式会把空行和空白行都诊断为 <code>syntax</code>；仅忽略文本末尾 LF 切分出来的非记录哨兵。也不要用 <code>strip()</code> 让 NBSP 等字符绕过语法校验。若数据按网络 chunk 到达，最后一段可能只是半行；在看到换行前要保留并与下个 chunk 拼接，不能提前归类为 <code>syntax</code>。分帧完成后，才进入 JSON 语法和应用契约两层。</p>
   </div>
 
   <div class="card">
-    <strong>📊 三层对照：不要混为一谈</strong>
-    <pre><code>JSON Lines: 每行一个完整 JSON 对象，行与行之间用 \n 分隔
-原始 SSE:   event:/data: 字段 + 空行分隔事件（协议自带分帧规则）
-SDK:        客户端库已经解析好的结构化事件/chunk 对象（不用你自己切行）</code></pre>
-    <p>三者结构不同，处理方式也不同。真实 LLM API 的原始传输大多是 SSE，本课不手写完整 SSE parser——SSE 的分行/分事件规则见 <a href="0019-L15-httpx.html">L15 · httpx</a>。</p>
+    <strong>📊 传输层不要混为一谈</strong>
+    <pre><code>JSONL: 每个完整行承载任意一种合法 JSON 值
+应用事件: 本例额外要求 object + 已知 type + 对应必需字段/类型
+SDK: 已解析好的结构化 event/chunk；按 SDK 契约消费
+SSE: 另有事件与 data 行规则；本课不实现通用 parser</code></pre>
+    <p>JSONL 的“任意 JSON 值”与本应用的“对象事件”必须分开表述。真实接口优先使用 SDK；需要处理原始 SSE 时使用合规 parser，相关边界见 <a href="0019-L15-httpx.html">L15 · httpx</a>。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -183,7 +287,7 @@ SDK:        客户端库已经解析好的结构化事件/chunk 对象（不用�
       <button data-answer="wrong">完整坏记录和网络半行，都应立即终止处理</button>
       <button data-answer="wrong">完整坏记录和网络半行，都应直接跳过处理</button>
     </div>
-    <div class="quiz-explanation">关键在于先区分"这一行是否已经完整收到"：如果一整行都收全了、只是语法本身坏了（如 <code>{oops bad line}</code>），可以安全地记录/跳过。但如果数据来自网络，chunk 可能在行中间被截断，这种"半行"不是语法错误而是不完整——必须先缓冲、拼上后续数据凑成完整一行，再尝试解析，绝不能直接丢弃，否则会丢内容。</div>
+    <div class="quiz-explanation">关键在于先区分“这一行是否已经完整收到”：完整但语法错误的记录应先记录，再按业务契约决定隔离、终止或跳过；本课示例采用隔离后继续。网络 chunk 则可能停在行中间，这种“半行”不是坏记录——必须先缓冲、拼上后续数据凑成完整一行，再尝试解析。</div>
   </div>
 </div>
 
@@ -216,11 +320,12 @@ JSON
 └── indent=2 → 美化
 
 流式解析（JSON Lines）
-├── splitlines() 逐行 + strip()
-├── 空行跳过；完整坏行 try/except 跳过；网络半行先缓冲不丢弃
-└── 拼接 tok、检测 done
+├── framing：只把完整行送去解析；网络半行先缓冲
+├── JSON value：语法错误 → syntax
+├── 应用事件：非对象 → non-object；未知种类/字段类型错 → contract
+└── text_delta 拼接 text；usage 累加 tokens；done 结束
 
-JSON Lines / 原始 SSE / SDK → 三层结构不同，处理方式不同（详见 L15）
+JSONL / 应用事件契约 / SSE / SDK → 层次不同，处理方式不同（详见 L15）
 
 json vs orjson → 大量序列化时 orjson 快 3–10x</code></pre>
   </div>
@@ -229,76 +334,274 @@ json vs orjson → 大量序列化时 orjson 快 3–10x</code></pre>
 <div class="section">
   <h2>实战练习</h2>
   <div class="card">
-    <h3>练习：解析 JSON Lines 事件日志</h3>
-    <p>模拟本地日志或自定义流中已经组装好的完整 JSON Lines 文本，逐行解析、拼接内容、统计用量，并对完整坏记录容错。<strong>先自己写，再看答案。</strong></p>
+    <h3>练习：按三层边界解析 JSON Lines 事件日志</h3>
+    <p>输入是已经按完整行组装好的 JSONL。先识别合法 JSON 值，再应用本日志的对象事件契约；不要把 JSONL 格式本身说成“只允许对象”。<strong>先自己写，再看答案。</strong></p>
     <h4>任务清单</h4>
     <ol>
-      <li>输入是多行字符串，每行可能是：<code>{"type":"token","text":"..."}</code>、<code>{"type":"usage","tokens":N}</code>、<code>{"type":"done"}</code>，也可能有空行/坏行</li>
-      <li>逐行解析，拼接所有 token 的 text 成完整回答</li>
-      <li>累加 usage 的 tokens</li>
-      <li>空行跳过；确认完整但语法错误的记录在记录后跳过，不崩溃</li>
-      <li>返回 <code>{"text": 完整回答, "total_tokens": N, "done": bool}</code></li>
+      <li>支持三种事件：<code>{"type":"text_delta","text":"..."}</code>、<code>{"type":"usage","tokens":N}</code>、<code>{"type":"done"}</code></li>
+      <li>只把完整行送入解析：文本末尾 LF 产生的切分哨兵忽略，但实际存在的完整空行或纯空白记录按严格策略诊断为 <code>syntax</code>；网络 chunk 的未完成尾行属于上一层缓冲职责</li>
+      <li>先解析任意合法 JSON 值；语法错误诊断为 <code>syntax</code></li>
+      <li>本应用再要求值是对象；否则诊断为 <code>non-object</code></li>
+      <li>拒绝未知 <code>type</code>，并校验每类事件的必需字段和类型；诊断为 <code>contract</code></li>
+      <li>返回 text、total_tokens、done 和包含行号、类别、具体消息的 diagnostics</li>
     </ol>
     <details>
       <summary>💡 点击查看参考答案</summary>
       <pre><code>import json
 
-def parse_stream(stream: str) -&gt; dict:
-    parts = []
+
+def validate_event(event):
+    kind = event.get("type")
+    if kind == "text_delta":
+        if "text" not in event or not isinstance(event["text"], str):
+            return "text_delta requires string field 'text'"
+    elif kind == "usage":
+        tokens = event.get("tokens")
+        if not isinstance(tokens, int) or isinstance(tokens, bool):
+            return "usage requires integer field 'tokens'"
+    elif kind != "done":
+        return f"unknown event type: {kind!r}"
+    return None
+
+
+def reject_non_json_constant(token):
+    raise json.JSONDecodeError(
+        f"non-standard JSON constant: {token}", token, 0,
+    )
+
+
+def parse_complete_jsonl(text: str) -&gt; dict:
+    parts, diagnostics = [], []
     total_tokens = 0
     done = False
 
-    for line in stream.splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()  # 末尾 LF 后的切分哨兵不是额外记录
+    for line_no, line in enumerate(lines, start=1):
         try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue                       # 完整但语法坏的记录：记录后跳过
+            value = json.loads(
+                line, parse_constant=reject_non_json_constant,
+            )
+        except json.JSONDecodeError as exc:
+            diagnostics.append({
+                "line": line_no, "category": "syntax", "message": exc.msg,
+            })
+            continue
+        if not isinstance(value, dict):
+            diagnostics.append({
+                "line": line_no, "category": "non-object",
+                "message": f"application event must be object, got {type(value).__name__}",
+            })
+            continue
+        message = validate_event(value)
+        if message is not None:
+            diagnostics.append({
+                "line": line_no, "category": "contract", "message": message,
+            })
+            continue
 
-        kind = ev.get("type")
-        if kind == "token":
-            parts.append(ev.get("text", ""))
-        elif kind == "usage":
-            total_tokens += ev.get("tokens", 0)
-        elif kind == "done":
+        if value["type"] == "text_delta":
+            parts.append(value["text"])
+        elif value["type"] == "usage":
+            total_tokens += value["tokens"]
+        else:
             done = True
 
-    return {"text": "".join(parts), "total_tokens": total_tokens, "done": done}
+    return {
+        "text": "".join(parts), "total_tokens": total_tokens,
+        "done": done, "diagnostics": diagnostics,
+    }
 
 
 stream = (
-    '{"type":"token","text":"你好"}\n'
-    '{"type":"token","text":"，世界"}\n'
-    '\n'                                   # 空行
-    '{oops bad line}\n'                    # 坏行
+    '{"type":"text_delta","text":"你好"}\n'
+    '{"type":"text_delta","text":"，世界"}\n'
+    '[]\n'                                  # 合法 JSON，违反对象事件契约
+    '{"type":"usage","tokens":"42"}\n'  # 对象，但字段类型错误
+    '{oops bad line}\n'                    # 完整行，JSON 语法错误
     '{"type":"usage","tokens":42}\n'
     '{"type":"done"}\n'
 )
-print(parse_stream(stream))
-# {'text': '你好，世界', 'total_tokens': 42, 'done': True}</code></pre>
+print(parse_complete_jsonl(stream))</code></pre>
       <h4>思考题</h4>
       <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。</p>
 
       <details class="think-q">
-        <summary><span class="think-q-tag">Q1</span>如果最后一行被网络截断成半个 JSON（如 <code>{"type":"tok</code>），你的代码会崩吗？</summary>
+        <summary><span class="think-q-tag">Q1</span>如果最后一个 chunk 只带来半行 JSON（如 <code>{"type":"text_del</code>），你的代码会崩吗？</summary>
         <div class="think-q-answer">
-          <p><strong>当前简单示例不会崩，但它会把半行跳过并丢失数据；这不能直接用于真实网络流。</strong></p>
-          <p>代码里的 <code>json.loads(line)</code> 会对 <code>{"type":"tok</code> 抛出 <code>JSONDecodeError</code>，随后被 <code>except</code> 捕获，所以程序不会崩溃。这只证明了异常被接住，<strong>不代表处理策略正确</strong>：如果这段文本只是网络暂时送到的半行，执行 <code>continue</code> 会永久丢掉已经收到的内容。</p>
-          <p>真实网络 chunk 不保证落在行或事件边界。半行必须先放入缓冲区，与后续 chunk 拼接；确认得到完整一行后，才能尝试解析。只有已经确认完整、但 JSON 语法仍然错误的记录，才可以在记录错误后跳过。本练习的 <code>parse_stream</code> 只处理已经组装好的完整 JSON Lines 字符串，不负责网络分块。</p>
+          <p><strong>不会崩，但会误把半行当坏记录并丢失数据，因此不能直接用于网络流。</strong></p>
+          <p>边界见本节“坏记录 vs 网络半行”：本练习只接收已分帧的完整 JSONL；网络事件应先由 SDK 或 SSE parser 完成分帧与缓冲。</p>
         </div>
       </details>
 
       <details class="think-q">
-        <summary><span class="think-q-tag">Q2</span>真实 SSE 流每行前面还有 <code>data: </code> 前缀，你会怎么先剥掉它？（提示：L04 的 removeprefix）</summary>
+        <summary><span class="think-q-tag">Q2</span>为什么合法 JSON 数字 <code>42</code> 仍会被本练习拒绝？</summary>
         <div class="think-q-answer">
-          <p><strong>在 <code>json.loads</code> 之前，先用 <code>line = line.removeprefix("data: ")</code>（Python 3.9+）把 SSE 前缀剥掉。</strong></p>
-          <p>SSE（Server-Sent Events）规范里每条数据行长成 <code>data: {"type":"token",...}</code>，前面固定带 <code>data: </code>。<code>str.removeprefix</code> 的好处是：前缀存在就精确切掉，不存在就原样返回，比 <code>line[6:]</code> 这种硬编码切片安全得多。</p>
-          <p>顺序上，在 <code>strip()</code> 之后、<code>json.loads()</code> 之前插入这一步即可。另外 SSE 常用 <code>data: [DONE]</code> 作为结束哨兵——剥掉前缀后要单独判断 <code>if line == "[DONE]": break</code>（或 continue），因为 <code>[DONE]</code> 不是 JSON，直接丢给 <code>json.loads</code> 会当坏行跳过，虽然不崩，但显式处理更清晰。</p>
+          <p><strong>因为 JSONL 层允许任意 JSON 值，但本应用的事件契约只接受对象。</strong></p>
+          <p><code>42</code> 已通过完整行和 JSON 语法两层，因此诊断类别应是 <code>non-object</code>，而不是 <code>syntax</code>。不要由此误写成“JSONL 只允许对象”。</p>
         </div>
       </details>
     </details>
+  </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：故障原子更新与三层 JSONL 校验</h2>
+  <p class="best-practice-lead">验收只使用标准库：成功更新 <code>settings.json</code>；再注入替换失败，证明旧目标仍是合法 JSON、临时文件清零且原始异常原样传播。JSONL 则按完整行、合法 JSON 值、应用对象事件契约分层，并精确区分 <code>syntax</code> / <code>non-object</code> / <code>contract</code>。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>先完成一次成功原子更新。</li><li>注入 <code>replace</code> 失败并核对旧目标。</li><li>证明失败路径无临时文件且异常对象未被替换。</li><li>仅解析完整 JSONL 行。</li><li>校验已知事件种类、必需字段与类型。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>成功路径读回新 settings</li><li>失败路径保留可解析旧目标</li><li>两条路径均无临时文件残留</li><li>原始注入异常对象继续向上传播</li><li>三类诊断均含准确行号和非空消息</li><li>最终打印本课唯一验收标记</li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末自检（整块复制即可运行）：</strong></summary><pre><code>import json
+import os
+from contextlib import suppress
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+
+
+def update_settings(path, settings, replace=os.replace):
+    text = json.dumps(
+        settings, ensure_ascii=False, indent=2, allow_nan=False,
+    )
+    tmp = None
+    try:
+        with NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as file:
+            tmp = Path(file.name)
+            file.write(text)
+        replace(tmp, path)
+        tmp = None
+    except BaseException:
+        if tmp is not None:
+            with suppress(OSError):
+                tmp.unlink()
+        raise
+
+
+def validate_event(event):
+    kind = event.get("type")
+    if kind == "text_delta":
+        if "text" not in event or not isinstance(event["text"], str):
+            return "text_delta requires string field 'text'"
+    elif kind == "usage":
+        tokens = event.get("tokens")
+        if not isinstance(tokens, int) or isinstance(tokens, bool):
+            return "usage requires integer field 'tokens'"
+    elif kind != "done":
+        return f"unknown event type: {kind!r}"
+    return None
+
+
+def reject_non_json_constant(token):
+    raise json.JSONDecodeError(
+        f"non-standard JSON constant: {token}", token, 0,
+    )
+
+
+def parse_complete_jsonl(text):
+    events, diagnostics = [], []
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()  # 末尾 LF 后的切分哨兵不是额外记录
+    for line_no, line in enumerate(lines, start=1):
+        try:
+            value = json.loads(
+                line, parse_constant=reject_non_json_constant,
+            )
+        except json.JSONDecodeError as exc:
+            diagnostics.append({
+                "line": line_no, "category": "syntax", "message": exc.msg,
+            })
+            continue
+        if not isinstance(value, dict):
+            diagnostics.append({
+                "line": line_no, "category": "non-object",
+                "message": f"application event must be object, got {type(value).__name__}",
+            })
+            continue
+        message = validate_event(value)
+        if message is not None:
+            diagnostics.append({
+                "line": line_no, "category": "contract", "message": message,
+            })
+            continue
+        events.append(value)
+    return events, diagnostics
+
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "settings.json"
+    old_settings = {"version": 1, "locale": "中文"}
+    new_settings = {"version": 2, "locale": "中文"}
+
+    update_settings(path, old_settings)
+    assert json.loads(path.read_text(encoding="utf-8")) == old_settings
+
+    injected = OSError("injected replace failure")
+
+    def fail_replace(source, target):
+        raise injected
+
+    try:
+        update_settings(path, new_settings, replace=fail_replace)
+    except OSError as caught:
+        assert caught is injected                  # 原始异常对象向上传播
+    else:
+        raise AssertionError("replace failure must propagate")
+
+    assert json.loads(path.read_text(encoding="utf-8")) == old_settings
+    assert list(path.parent.glob(".settings.json.*.tmp")) == []
+
+    update_settings(path, new_settings)
+    assert json.loads(path.read_text(encoding="utf-8")) == new_settings
+    assert list(path.parent.glob(".settings.json.*.tmp")) == []
+
+text = (
+    '{"type":"text_delta","text":"Hi"}\n'
+    '{oops}\n'
+    '42\n'
+    '{"type":"usage","tokens":"two"}\n'
+    '{"type":"text_delta"}\n'
+    '{"type":"text_delta","text":3}\n'
+    '{"type":"usage"}\n'
+    '{"type":"usage","tokens":true}\n'
+    '{"type":"mystery"}\n'
+    'NaN\n'                                      # Python 默认扩展，不是合法 JSON
+    ' {"type":"done"} \n'       # NBSP 不是 JSON 空白
+    '{"type":"done"}{"type":"done"}\n'  # NEL 不是 JSONL 分隔符
+    '\n'                                         # 空行不包含 JSON 值
+    ' \t\r\n'                                   # JSON 空白本身也不是值
+    '{"type":"usage","tokens":2}\n'
+    '{"type":"done"}\n'
+)
+events, diagnostics = parse_complete_jsonl(text)
+assert events == [
+    {"type": "text_delta", "text": "Hi"},
+    {"type": "usage", "tokens": 2},
+    {"type": "done"},
+]
+assert [
+    (item["line"], item["category"], item["message"])
+    for item in diagnostics
+] == [
+    (2, "syntax", "Expecting property name enclosed in double quotes"),
+    (3, "non-object", "application event must be object, got int"),
+    (4, "contract", "usage requires integer field 'tokens'"),
+    (5, "contract", "text_delta requires string field 'text'"),
+    (6, "contract", "text_delta requires string field 'text'"),
+    (7, "contract", "usage requires integer field 'tokens'"),
+    (8, "contract", "usage requires integer field 'tokens'"),
+    (9, "contract", "unknown event type: 'mystery'"),
+    (10, "syntax", "non-standard JSON constant: NaN"),
+    (11, "syntax", "Expecting value"),
+    (12, "syntax", "Extra data"),
+    (13, "syntax", "Expecting value"),
+    (14, "syntax", "Expecting value"),
+]
+print("L09 ACCEPTED")</code></pre></details>
   </div>
 </div>
 
@@ -310,7 +613,7 @@ print(parse_stream(stream))
     <h3>Q2：为什么读写文件推荐用 with？</h3>
     <p><strong>答：</strong><code>with</code> 是上下文管理器，块结束时自动关闭文件（即使异常也关），避免句柄泄露。比手动 <code>f.close()</code> 更安全。</p>
     <h3>Q3：解析 JSON Lines 流时要注意什么？</h3>
-    <p><strong>答：</strong>逐行解析、容错——空行跳过；一整行已收全但语法坏的记录用 <code>try/except JSONDecodeError</code> 记录/跳过；而网络传来的半行不是语法错误，需先缓冲拼接成完整行再解析，不能直接丢弃。同时要拼接内容、检测结束标志。真实 LLM SSE 传输和 SDK 已解析事件是另外两层，规则不同，见 L15。</p>
+    <p><strong>答：</strong>先确保拿到完整行，再解析其中任意合法 JSON 值；若应用只接受对象事件，还要继续校验已知种类、必需字段和类型。诊断应区分语法错误、非对象值和契约错误。网络半行必须先缓冲；真实 SSE 与 SDK 事件是其他层，规则不同，见 L15。</p>
     <h3>Q4：什么时候用 orjson 而不是标准库 json？</h3>
     <p><strong>答：</strong>当 JSON 序列化成为性能瓶颈（大量或超大数据、高频调用）时。orjson 通常快数倍，并原生支持 datetime/dataclass。日常仍可用标准库。</p>
   </div>
@@ -343,12 +646,13 @@ print(parse_stream(stream))
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>永远用 <code>with open(..., encoding="utf-8")</code>，路径用 pathlib；<code>"w"</code> 清空覆盖、<code>"a"</code> 追加，别用混了</li>
+      <li>文件对象用 <code>with open(...)</code> 管理；一次性文本读写可用 Path 方法；两者都显式指定 UTF-8</li>
       <li>dump<strong>s</strong>/load<strong>s</strong> 操作字符串；dump/load 操作文件</li>
       <li><code>ensure_ascii=False</code> 让中文原样输出；Python <code>True/False/None</code> ↔ JSON <code>true/false/null</code></li>
-      <li>JSON Lines 解析 = 逐行 + strip + 空行跳过 + 完整坏行容错跳过</li>
-      <li>网络半行不是坏行，是不完整——先缓冲拼接再解析，别直接丢</li>
-      <li>JSON Lines、原始 SSE、SDK 结构不同，别混为一谈；本课不手写完整 SSE parser</li>
+      <li>JSONL 每个完整行可承载任意合法 JSON 值；对象事件是本应用额外契约</li>
+      <li>按三层处理：完整行 framing → JSON 语法 → 已知事件种类、必需字段与类型</li>
+      <li>诊断区分 <code>syntax</code>、<code>non-object</code>、<code>contract</code>；网络半行先缓冲，不能误报语法错</li>
+      <li>JSONL、原始 SSE、SDK 结构不同；真实接口优先 SDK，本课不手写通用 SSE parser</li>
       <li>大量序列化才考虑 orjson，别过早优化</li>
     </ul>
   </div>

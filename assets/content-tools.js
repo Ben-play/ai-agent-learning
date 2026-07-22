@@ -36,7 +36,8 @@
     info: 'ℹ️',
     warning: '⚠️',
     'why-box': '❓',
-    'exercise-box': '✏️'
+    'exercise-box': '✏️',
+    'best-practice-point': '✓'
   };
 
   function enhanceCallouts(root) {
@@ -276,6 +277,44 @@
     });
   }
 
+  /* ---------- 4) 打印时展开可运行自检 ---------- */
+
+  function installPrintDetailsHandlers() {
+    // 脚本被重复加载时复用同一控制器，避免重复监听器覆盖首次 beforeprint 的状态。
+    var controllerKey = '__aiCourseBpPrintController';
+    if (window[controllerKey]) return;
+
+    var controller = {
+      checkStates: null
+    };
+
+    controller.beforePrint = function () {
+      // 某些浏览器会为一次打印流程重复派发 beforeprint；只捕获首次状态。
+      if (controller.checkStates !== null) return;
+
+      controller.checkStates = [];
+      var checks = document.querySelectorAll('details.bp-check');
+      checks.forEach(function (details) {
+        controller.checkStates.push({ element: details, open: details.open });
+        if (!details.open) details.open = true;
+      });
+    };
+
+    controller.afterPrint = function () {
+      if (controller.checkStates === null) return;
+
+      // 按快照恢复每个面板，而不是假定打印期间状态没有其它变化。
+      controller.checkStates.forEach(function (state) {
+        state.element.open = state.open;
+      });
+      controller.checkStates = null;
+    };
+
+    window[controllerKey] = controller;
+    window.addEventListener('beforeprint', controller.beforePrint);
+    window.addEventListener('afterprint', controller.afterPrint);
+  }
+
   function run() {
     enhanceCallouts(document);
     enhanceCodeBlocks(document);
@@ -285,6 +324,7 @@
 
   ready(function () {
     run();
+    installPrintDetailsHandlers();
     window.addEventListener('resize', onResize);
     // toggle 不会在所有浏览器中可靠冒泡；捕获阶段委托保证动态/既有 details 均可处理。
     document.addEventListener('toggle', onDetailsToggle, true);

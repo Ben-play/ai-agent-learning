@@ -54,10 +54,12 @@
 </head>
 <body>
 
+<main>
+
 <div class="lesson-header">
   <div class="lesson-meta-row">
     <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-    <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">15</span><span class="lesson-time-unit">分钟</span></span>
+    <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span>
   </div>
   <h1>开发环境搭建</h1>
   <p class="subtitle">工欲善其事，必先利其器 — 搭建专业级 Python 开发环境</p>
@@ -188,11 +190,21 @@ code --install-extension ms-python.debugpy</code></pre>
     </li>
   </ol>
 
+  <p><strong>让 VS Code 与 uv 项目使用同一个解释器：</strong></p>
+  <ol>
+    <li>先在项目根目录运行一次 <code>uv run python -c "import sys; print(sys.executable)"</code>，让 uv 创建或同步项目的 <code>.venv</code>。</li>
+    <li>在 VS Code 打开项目根目录，进入命令面板并运行 <strong>Python: Select Interpreter</strong>。</li>
+    <li>选择项目内的解释器：Windows 为 <code>.venv/Scripts/python.exe</code>，macOS/Linux 为 <code>.venv/bin/python</code>。不要选择全局 Python。</li>
+    <li>如果不想依赖编辑器当前选择，则在 VS Code 集成终端或任务中运行 <code>uv run python main.py</code>；任务的工作目录必须是项目根目录。</li>
+  </ol>
+  <div class="tip"><strong>诊断：</strong>“Run Python File” 使用的是 VS Code 当前选择的解释器，并不自动等同于 <code>uv run</code>。若导入结果与终端不同，先比较 VS Code 显示的解释器路径与 <code>uv run python -c "import sys; print(sys.executable)"</code> 的输出；两者都应指向当前项目的 <code>.venv</code>。</div>
+
   <p><strong>VS Code 快捷键速查（开发必备）：</strong></p>
   <table>
     <tr><th>操作</th><th>Mac</th><th>Windows</th></tr>
     <tr><td>打开终端</td><td><code>Ctrl + `</code></td><td><code>Ctrl + `</code></td></tr>
-    <tr><td>运行 Python 文件</td><td>右键 → Run Python File</td><td>右键 → Run Python File</td></tr>
+    <tr><td>运行 Python 文件</td><td>选择项目 <code>.venv</code> 后右键 → Run Python File</td><td>选择项目 <code>.venv</code> 后右键 → Run Python File</td></tr>
+    <tr><td>按 uv 项目运行</td><td colspan="2">集成终端或任务 → <code>uv run python main.py</code></td></tr>
     <tr><td>格式化代码</td><td><code>Shift + Option + F</code></td><td><code>Shift + Alt + F</code></td></tr>
     <tr><td>打开命令面板</td><td><code>Cmd + Shift + P</code></td><td><code>Ctrl + Shift + P</code></td></tr>
     <tr><td>快速打开文件</td><td><code>Cmd + P</code></td><td><code>Ctrl + P</code></td></tr>
@@ -229,6 +241,26 @@ version = "0.1.0"
 requires-python = ">=3.11"</code></pre>
 
   <p>运行 <code>uv run main.py</code> 后，会看到输出 <code>Hello from my-first-agent!</code>，同时目录下多出一个 <code>.venv</code>（首次 <code>uv run</code> 才会创建虚拟环境并同步依赖，这一步之前是不存在的）。</p>
+
+  <div class="best-practice-point" id="bp-uv-project-execution">
+    <h3>最佳实践：从目标 uv 项目执行代码</h3>
+    <p class="bp-term"><strong>本检查能证明：</strong>当前目录就是预期的 uv 项目根目录，且 <code>uv run</code> 的虚拟环境前缀对应该项目根目录的 <code>.venv</code>。它不证明其他终端、编辑器或部署环境也使用同一解释器。</p>
+    <p class="bp-scenario"><strong>什么时候会遇到：</strong>包明明安装过却无法导入，或 VS Code 与终端运行同一文件却得到不同结果。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 依赖 PATH 猜解释器</span><pre><code># 可能调用全局 Python
+python main.py</code></pre><p>命令没有证明解释器属于目标项目。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 从明确的 uv 项目运行</span><pre><code>uv run python main.py</code></pre><p>uv 按当前项目解析并执行；下面的检查再核对项目根目录与解释器路径。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong><code>uv run</code> 把执行动作绑定到当前 uv 项目；再比较项目根目录、虚拟环境 <code>sys.prefix</code> 与 <code>.venv</code> 的真实路径，可以发现“站错目录”或“选错环境”。使用 <code>sys.prefix</code> 而非解析 <code>sys.executable</code>，可避免 Unix 上解释器符号链接指向基础 Python 时误报。该证据只针对本次命令，不能推出跨机器结果必然一致。</p>
+    <ol class="bp-steps"><li>在目标项目根目录运行检查。</li><li>确认 <code>pyproject.toml</code> 与 <code>uv.lock</code> 都位于当前目录。</li><li>确认 <code>uv run</code> 的虚拟环境前缀对应当前项目的 <code>.venv</code>。</li></ol>
+    <details class="bp-check">
+      <summary>动手自检：核对项目根目录与 uv 解释器</summary>
+      <pre><code>test -f pyproject.toml || { printf '%s\n' 'FAIL: 当前目录缺少 pyproject.toml；请 cd 到目标 uv 项目根目录。' >&amp;2; exit 1; }
+test -f uv.lock || { printf '%s\n' 'FAIL: 当前目录缺少 uv.lock；这不是已锁定的目标 uv 项目。' >&amp;2; exit 1; }
+uv run python -c "from pathlib import Path; import sys; root=Path.cwd().resolve(); prefix=Path(sys.prefix).resolve(); expected=(root/'.venv').resolve(); assert sys.prefix != sys.base_prefix, 'FAIL: uv run 未使用虚拟环境'; assert prefix == expected, f'FAIL: 虚拟环境不是当前项目 .venv: {prefix}'; print('project-root: PASS'); print('project-interpreter: PASS')"</code></pre>
+    </details>
+    <p class="bp-result"><strong>怎么看结果：</strong>必须依次看到 <code>project-root: PASS</code> 与 <code>project-interpreter: PASS</code>。若目录缺文件，先切到当前练习创建的 uv 项目根目录；若解释器路径失败，检查当前目录是否为目标项目、删除错误的本地 <code>.venv</code> 后重新运行 <code>uv run</code>。VS Code 是否对齐要另行比较编辑器选择的解释器路径与 <code>uv run python -c "import sys; print(sys.executable)"</code> 的输出；编辑器选择不会控制 <code>uv run</code>。</p>
+  </div>
 </div>
 
 <!-- Step 5 -->
@@ -253,6 +285,30 @@ uv add --dev mypy      # 类型检查</code></pre>
   <p>验证安装：</p>
   <pre><code>uv pip list
 # 应该能看到 httpx, pydantic, pytest 等</code></pre>
+
+  <div class="best-practice-point" id="bp-versioned-manifest-lock">
+    <h3>最佳实践：把已版本化的清单与锁文件作为依赖输入</h3>
+    <p class="bp-term"><strong>本检查能证明：</strong><code>pyproject.toml</code> 与 <code>uv.lock</code> 当前被 Git 跟踪，锁文件与清单一致，且 <code>.venv</code> 被忽略并未被跟踪。它只验证当前工作树的输入与状态，不证明其他平台一定产生相同结果。</p>
+    <p class="bp-scenario"><strong>什么时候会遇到：</strong>拉取代码后依赖漂移，或本机环境可用但清单、锁文件没有进入版本历史。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 把本机环境当输入</span><pre><code>pip install httpx
+# 只保留 .venv/</code></pre><p>本机安装状态不能替代可审查的项目文件。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 检查版本化输入</span><pre><code>uv lock --check --offline
+git ls-files --error-unmatch pyproject.toml uv.lock</code></pre><p>验证锁一致性，并确认两个真值文件已被 Git 跟踪。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>版本化的 <code>pyproject.toml</code> 与 <code>uv.lock</code> 是团队能够审查、比较和重放的依赖输入；<code>.venv</code> 是本地产物。这里不运行同步，因此不会宣称“什么都不安装”，也不把一次本地检查夸大成跨平台可复现性证明。</p>
+    <ol class="bp-steps"><li>用 <code>uv add</code> 或 <code>uv remove</code> 有意修改依赖。</li><li>审核清单与锁文件的差异，并将两者纳入版本控制。</li><li>忽略且不跟踪 <code>.venv</code>；需要构建环境时再用锁文件同步。</li></ol>
+    <details class="bp-check">
+      <summary>动手自检：检查锁一致性、真值文件与本地环境状态</summary>
+      <pre><code>set -euo pipefail
+uv lock --check --offline
+git ls-files --error-unmatch pyproject.toml uv.lock &gt;/dev/null || { printf '%s\n' 'FAIL: pyproject.toml 与 uv.lock 必须都被 Git 跟踪。' >&amp;2; exit 1; }
+git check-ignore -q .venv || { printf '%s\n' 'FAIL: .venv 未被 .gitignore 忽略。' >&amp;2; exit 1; }
+test -z "$(git ls-files -- .venv)" || { printf '%s\n' 'FAIL: .venv 已被 Git 跟踪；仅添加忽略规则不能取消跟踪。' >&amp;2; exit 1; }
+printf '%s\n' 'manifest-lock: PASS' 'venv-git-state: PASS'</code></pre>
+    </details>
+    <p class="bp-result"><strong>怎么看结果：</strong>必须看到 <code>manifest-lock: PASS</code> 与 <code>venv-git-state: PASS</code>。<code>uv lock --check --offline</code> 失败表示离线缓存不足或锁文件与清单不一致；不要在验收中隐式联网或改锁，先区分错误并在受控步骤中处理。<code>git ls-files</code> 失败表示真值文件尚未纳入版本控制；<code>.venv</code> 失败则按消息修复忽略或跟踪状态。</p>
+  </div>
 </div>
 
 <!-- Step 6 -->
@@ -282,6 +338,34 @@ __pycache__/
 *.pyc
 .venv/</code></pre>
 
+  <div class="best-practice-point" id="bp-local-env-secret-loading">
+    <h3>最佳实践：本地加载 .env，诊断只输出布尔状态</h3>
+    <p class="bp-term"><strong>本检查能证明：</strong>当前 <code>.env</code> 与 <code>.venv</code> 被忽略且未被 Git 跟踪，<code>python-dotenv</code> 能从本地 <code>.env</code> 加载占位变量，并且诊断输出只有布尔状态。它不能证明 Git 历史、旧日志或截图中从未出现过密钥。</p>
+    <p class="bp-scenario"><strong>什么时候会遇到：</strong>调试 API 时最容易把 key 写进源码，或把完整值、前缀打印到终端和证据文件。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 输出密钥材料</span><pre><code>api_key = os.getenv("OPENAI_API_KEY")
+print(api_key[:8])</code></pre><p>即使只打印前缀，也会把密钥材料写入日志或截图。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 只输出布尔状态</span><pre><code>api_key = os.getenv("OPENAI_API_KEY")
+print("key-loaded:", bool(api_key))</code></pre><p>只回答“是否加载”，不输出值、长度或前缀。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>本地 <code>.env</code> 让开发配置不进入源码，布尔诊断避免在新日志中复制密钥材料。忽略与未跟踪检查只说明当前工作树状态；无法反证历史泄露。任何真实密钥只要曾进入代码、Git 历史、日志或截图，就必须立即在服务端撤销并轮换，删除文本并不能恢复其安全性。</p>
+    <ol class="bp-steps"><li>把 <code>.env</code> 与 <code>.venv</code> 写入忽略规则，并确认两者未被跟踪。</li><li>用 <code>load_dotenv()</code> 本地加载变量；诊断只打印 <code>bool(...)</code>。</li><li>若发生过真实暴露，不要尝试用本检查“证明安全”；直接撤销并轮换。</li></ol>
+    <details class="bp-check">
+      <summary>动手自检：用临时占位值验证本地加载</summary>
+      <pre><code>set -euo pipefail
+tmp_env=$(mktemp .l01-bp.XXXXXX)
+trap 'rm -f "$tmp_env"' EXIT
+printf '%s\n' 'L01_PLACEHOLDER=local-only-demo' &gt; "$tmp_env"
+git check-ignore -q .env || { printf '%s\n' 'FAIL: .env 未被 .gitignore 忽略。' >&amp;2; exit 1; }
+git check-ignore -q .venv || { printf '%s\n' 'FAIL: .venv 未被 .gitignore 忽略。' >&amp;2; exit 1; }
+test -z "$(git ls-files -- .env .venv)" || { printf '%s\n' 'FAIL: .env 或 .venv 已被 Git 跟踪。' >&amp;2; exit 1; }
+uv run python -c "from dotenv import load_dotenv; import os; load_dotenv(dotenv_path='$tmp_env', override=True); loaded=os.getenv('L01_PLACEHOLDER') == 'local-only-demo'; assert loaded, 'FAIL: 临时探针变量未精确加载'; print('secret-loaded:', loaded)"
+rm -f "$tmp_env"
+trap - EXIT</code></pre>
+    </details>
+    <p class="bp-result"><strong>怎么看结果：</strong>唯一的密钥状态应为 <code>secret-loaded: True</code>，它表示加载值与本检查写入的精确占位值一致；错误值或环境中的同名旧值都会让检查停止。输出不得出现占位值本身或任何真实密钥前缀。忽略或未跟踪检查失败时，按精确错误修复。历史泄露或截图无法由这些命令排除，必须轮换。</p>
+  </div>
+
   <p>在 Python 中使用：</p>
   <pre><code>from dotenv import load_dotenv
 import os
@@ -289,7 +373,7 @@ import os
 load_dotenv()  # 加载 .env 文件
 
 api_key = os.getenv("OPENAI_API_KEY")
-print(f"Key loaded: {api_key[:10]}...")  # 只打印前10位</code></pre>
+print("Key loaded:", bool(api_key))  # 只输出 True / False</code></pre>
 </div>
 
 <!-- Quiz -->
@@ -343,7 +427,7 @@ print(f"Key loaded: {api_key[:10]}...")  # 只打印前10位</code></pre>
   <ol>
     <li>用 <code>uv init agent-hello</code> 创建项目</li>
     <li>安装依赖：<code>uv add httpx pydantic python-dotenv</code></li>
-    <li>创建 <code>.env</code> 文件（先随便写个假的 key）</li>
+    <li>创建 <code>.env</code> 文件，只写课程占位变量：<code>L01_PLACEHOLDER=local-demo</code>（不要读取或粘贴真实 key）</li>
     <li>创建 <code>main.py</code>，写入以下代码：</li>
   </ol>
   <pre><code>"""我的第一个 Agent 项目骨架"""
@@ -351,12 +435,12 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 import os
 
-# 加载环境变量
-load_dotenv()
+# 明确从当前项目 .env 加载，并覆盖同名继承变量，避免环境噪声误通过
+load_dotenv(dotenv_path=".env", override=True)
 
 # 下面的 BaseModel、函数定义、类型注解不是本课考点
 # 当前只需要照抄运行，验证环境是否搭好就行
-# BaseModel 会在 L02 讲，函数在 L05 讲，类型注解在 L13 讲
+# BaseModel 会在 L14 讲，函数在 L05 讲，类型注解在 L13 讲
 class Message(BaseModel):
     """消息模型 - 后续 Agent 的基础数据结构"""
     role: str
@@ -364,10 +448,10 @@ class Message(BaseModel):
 
 def main():
     # 验证 .env 是否成功加载
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("未从 .env 读取到 OPENAI_API_KEY")
-    print(f"✅ .env 加载成功，Key 前缀：{api_key[:6]}...")
+    placeholder = os.getenv("L01_PLACEHOLDER")
+    if placeholder != "local-demo":
+        raise RuntimeError("未从当前项目 .env 精确读取 L01_PLACEHOLDER")
+    print(".env 加载成功:", placeholder == "local-demo")
 
     # 验证 Pydantic
     msg = Message(role="user", content="Hello, Agent!")
@@ -379,27 +463,157 @@ def main():
 
     print(f"✅ {greet('同学')}")
 
-# __name__ == "__main__" 这行也不是本课考点，L14 会讲，这里照抄能跑就行
+# __name__ == "__main__" 这行也不是本课考点，L02 会讲，这里照抄能跑就行
 if __name__ == "__main__":
     main()</code></pre>
   <ol start="5">
     <li>运行：<code>uv run main.py</code></li>
-    <li>看到输出里出现 <strong><code>.env 加载成功</code></strong> 这几个字，就算成功！（如果抛出 <code>RuntimeError</code>，说明 <code>.env</code> 没建对或 <code>OPENAI_API_KEY</code> 没写）</li>
+    <li>看到 <code>.env 加载成功: True</code> 就算成功；程序只比较课程占位值，不读取或打印真实密钥。（如果抛出 <code>RuntimeError</code>，说明当前项目 <code>.env</code> 没建对或占位值不精确。）</li>
   </ol>
   <div class="tip"><strong>Windows PowerShell 故障提示：</strong>如果运行时出现 <code>UnicodeEncodeError</code>，先执行 <code>$env:PYTHONIOENCODING="utf-8"</code>，再运行 <code>uv run main.py</code>。这个设置只影响当前终端会话。</div>
 </div>
 
-<h2>环境检查清单</h2>
-<ul class="checklist">
-  <li>Python 3.11+ 已安装</li>
-  <li>uv 包管理工具已安装</li>
-  <li>VS Code + Python 扩展已配置</li>
-  <li>能用 <code>uv init</code> 创建项目</li>
-  <li>能用 <code>uv add</code> 安装依赖</li>
-  <li>能用 <code>uv run</code> 运行脚本</li>
-  <li><code>.env</code> 文件能正常加载</li>
-  <li>实战任务完成（看到 <code>.env 加载成功</code>）</li>
-</ul>
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：独立、安全的 Shell 证据</h2>
+  <p class="best-practice-lead">在课程仓库内打开新的 Windows Git Bash，整段复制执行。脚本自行定位现有的 <code>code/phase1-python/part-a-basics/agent-hello</code> 项目；它可能按锁文件创建或同步本地 <code>.venv</code>，但不执行依赖声明或锁文件修改命令，并会核对 <code>pyproject.toml</code> 与 <code>uv.lock</code> 前后字节未变。脚本只使用临时占位值，不读取或要求真实密钥；临时证据文件与探针文件会由 <code>trap</code> 清理。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div>
+        <h3>操作清单</h3>
+        <ul><li>在课程 Git 仓库内打开 Windows Git Bash</li><li>展开课末自检并整段运行</li><li>核对右侧通过标准与最后一行</li></ul>
+        <details class="bp-check">
+          <summary>课末自检：运行独立、安全的 Shell 验收</summary>
+          <pre><code>set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel) || { printf '%s\n' 'FAIL: 当前目录不在课程 Git 仓库内。' &gt;&amp;2; exit 1; }
+project="$repo_root/code/phase1-python/part-a-basics/agent-hello"
+test -d "$project" || { printf '%s\n' "FAIL: 找不到现有项目: $project" &gt;&amp;2; exit 1; }
+cd "$project"
+
+evidence=$(mktemp .l01-evidence.XXXXXX)
+probe=$(mktemp .l01-secret-probe.XXXXXX)
+trap 'rm -f "$evidence" "$probe"' EXIT
+
+demo_prefix='l01-local-demo-'
+demo_secret="${demo_prefix}not-a-real-key"
+printf 'L01_PLACEHOLDER=%s\n' "$demo_secret" &gt; "$probe"
+
+{
+  test -f pyproject.toml || { printf '%s\n' 'FAIL: 项目根目录缺少 pyproject.toml。' &gt;&amp;2; exit 1; }
+  test -f uv.lock || { printf '%s\n' 'FAIL: 项目根目录缺少 uv.lock。' &gt;&amp;2; exit 1; }
+  printf '%s\n' 'project-root: PASS'
+
+  git ls-files --error-unmatch pyproject.toml uv.lock &gt;/dev/null || { printf '%s\n' 'FAIL: pyproject.toml 与 uv.lock 必须都被 Git 跟踪。' &gt;&amp;2; exit 1; }
+  before=$(sha256sum pyproject.toml uv.lock)
+  uv lock --check --offline
+  printf '%s\n' 'manifest-lock-inputs: PASS'
+
+  git check-ignore -q .env || { printf '%s\n' 'FAIL: .env 未被 .gitignore 忽略。' &gt;&amp;2; exit 1; }
+  git check-ignore -q .venv || { printf '%s\n' 'FAIL: .venv 未被 .gitignore 忽略。' &gt;&amp;2; exit 1; }
+  test -z "$(git ls-files -- .env .venv)" || { printf '%s\n' 'FAIL: .env 或 .venv 已被 Git 跟踪。' &gt;&amp;2; exit 1; }
+  printf '%s\n' 'local-files-git-state: PASS'
+
+  uv run --offline --locked python -c "from pathlib import Path; import sys; root=Path.cwd().resolve(); prefix=Path(sys.prefix).resolve(); expected=(root/'.venv').resolve(); assert sys.version_info &gt;= (3, 11), f'FAIL: 需要 Python 3.11+，实际为 {sys.version.split()[0]}'; assert root == Path(r'$project').resolve(), f'FAIL: 项目根目录不匹配: {root}'; assert sys.prefix != sys.base_prefix, 'FAIL: uv run 未使用虚拟环境'; assert prefix == expected, f'FAIL: 虚拟环境不是项目 .venv: {prefix}'; print('python-version: PASS'); print('project-interpreter: PASS')"
+  uv run --offline --locked python -c "from pathlib import Path; import httpx, pydantic, dotenv; venv=(Path.cwd()/'.venv').resolve(); files=[Path(httpx.__file__).resolve(), Path(pydantic.__file__).resolve(), Path(dotenv.__file__).resolve()]; assert all(venv in path.parents and 'site-packages' in path.parts for path in files), f'FAIL: 依赖未全部来自项目 .venv site-packages: {files}'; print('locked-import-provenance: PASS')"
+  L01_EXPECTED="$demo_secret" uv run --offline --locked python -c "from dotenv import load_dotenv; import os; load_dotenv(dotenv_path=r'$probe', override=True); loaded=os.getenv('L01_PLACEHOLDER') == os.environ['L01_EXPECTED']; assert loaded, 'FAIL: 临时探针变量未精确加载'; print('secret-loaded:', loaded)"
+
+  after=$(sha256sum pyproject.toml uv.lock)
+  test "$before" = "$after" || { printf '%s\n' 'FAIL: 验收期间 pyproject.toml 或 uv.lock 发生变化。' &gt;&amp;2; exit 1; }
+  printf '%s\n' 'manifest-lock-unchanged: PASS'
+} 2&gt;&amp;1 | tee "$evidence"
+
+if grep -F -e "$demo_secret" -e "$demo_prefix" "$evidence" &gt;/dev/null; then
+  printf '%s\n' 'FAIL: 证据中出现了密钥值或密钥前缀。' &gt;&amp;2
+  exit 1
+else
+  grep_status=$?
+  if [ "$grep_status" -ne 1 ]; then
+    printf 'FAIL: 证据扫描执行失败，grep exit=%s。\n' "$grep_status" &gt;&amp;2
+    exit 1
+  fi
+fi
+printf '%s\n' 'L01 ACCEPTED'</code></pre>
+        </details>
+        <p><strong>安全边界：</strong>证据只显示 <code>secret-loaded: True</code>，不会显示占位值、其前缀或真实密钥。最后一行必须且只在全部检查通过后显示 <code>L01 ACCEPTED</code>。该验收无法反证历史 Git、旧日志或截图中没有泄露；若真实密钥曾出现过，必须在服务端撤销并轮换。</p>
+      </div>
+      <div class="practice-pass">
+        <strong>精确通过标准</strong>
+        <ul><li><code>project-root: PASS</code></li><li><code>manifest-lock-inputs: PASS</code></li><li><code>local-files-git-state: PASS</code></li><li><code>python-version: PASS</code></li><li><code>project-interpreter: PASS</code></li><li><code>locked-import-provenance: PASS</code>（三个包均来自项目 <code>.venv</code> 的 <code>site-packages</code>）</li><li><code>secret-loaded: True</code>（加载值与临时占位值精确相等）</li><li><code>manifest-lock-unchanged: PASS</code></li><li>证据扫描未发现占位密钥值或前缀</li><li>最后一行恰为 <code>L01 ACCEPTED</code></li></ul>
+      </div>
+    </div>
+    <details class="think-q"><summary><span class="think-q-tag">排错</span>命令没通过时先检查什么？</summary><div class="think-q-answer"><p><strong>按第一条 <code>FAIL</code> 定位。</strong>“不在课程 Git 仓库”表示应先在课程仓库内打开 Git Bash；“缺少 pyproject.toml/uv.lock”表示现有项目路径不完整；“必须被 Git 跟踪”表示真值文件未版本化；“.env/.venv 未忽略”与“已被跟踪”是两种不同状态；“解释器不在项目 .venv”表示当前 uv 项目边界或本地 <code>.venv</code> 不正确，与 VS Code 的解释器选择无关；依赖来源失败表示导入包不在当前项目 <code>.venv</code> 的 <code>site-packages</code>；“锁文件发生变化”表示验收期间有其他进程修改了依赖输入，应审查差异后重试；离线检查报告缓存或缺包错误时，先在联网且受控的步骤中按锁文件准备环境，再重新执行验收。临时探针必须与脚本生成的占位值精确相等，否则会立即停止，不会继续输出 <code>L01 ACCEPTED</code>。</p></div></details>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-environment" data-phase-practice="environment">
+  <h2>阶段实践检查点：开发环境证据闭环</h2>
+  <p class="best-practice-lead">把本课学到的 uv 项目边界、离线锁定执行、项目虚拟环境、依赖来源、锁文件不变性与安全占位诊断组合成一次可重复验收；它只检查当前 <code>agent-hello</code>，不读取真实密钥，也不访问网络。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div>
+        <h3>操作清单</h3>
+        <ul><li>先独立确认 VS Code 与终端都选择 <code>agent-hello/.venv</code></li><li>独立执行离线锁检查、依赖来源检查和占位变量布尔诊断，不使用真实 API Key</li><li>完成后再展开参考验收程序，检查锁文件未变化、临时文件已清理和唯一输出标记</li></ul>
+        <p class="bp-term"><strong>学习任务与验收脚手架分开：</strong>你负责完成环境配置和证据核对；折叠区使用少量后续语法自动验收结果，不要求在 L01 自己编写这段测试脚手架。</p>
+        <details class="bp-check">
+          <summary><strong>参考验收程序（独立完成环境任务后展开）</strong></summary>
+          <pre><code>set -euo pipefail
+repo_root=$(git rev-parse --show-toplevel) || { printf '%s\n' 'FAIL: 当前目录不在课程 Git 仓库内。' &gt;&amp;2; exit 1; }
+project="$repo_root/code/phase1-python/part-a-basics/agent-hello"
+test -d "$project" || { printf 'FAIL: 找不到当前 agent-hello: %s\n' "$project" &gt;&amp;2; exit 1; }
+cd "$project"
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/p1-environment.XXXXXX")
+cleanup() { rm -rf "$tmp_dir"; }
+trap cleanup EXIT
+probe="$tmp_dir/placeholder.env"
+diagnostics="$tmp_dir/diagnostics.json"
+printf '%s\n' 'L01_CHECKPOINT_PLACEHOLDER=checkpoint-placeholder-only' &gt; "$probe"
+before=$(sha256sum pyproject.toml uv.lock)
+uv lock --check --offline &gt;/dev/null
+L01_PROBE="$probe" L01_DIAGNOSTICS="$diagnostics" uv run --offline --locked python - &lt;&lt;'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+import dotenv
+import httpx
+import pydantic
+from dotenv import load_dotenv
+
+root = Path.cwd().resolve()
+venv = (root / ".venv").resolve()
+prefix = Path(sys.prefix).resolve()
+assert root.name == "agent-hello", f"FAIL: 当前项目不是 agent-hello: {root}"
+assert sys.prefix != sys.base_prefix, "FAIL: uv run 未使用虚拟环境"
+assert prefix == venv, f"FAIL: sys.prefix 不是项目 .venv: {prefix}"
+for module in (httpx, pydantic, dotenv):
+    source = Path(module.__file__).resolve()
+    assert venv in source.parents and "site-packages" in source.parts, (
+        f"FAIL: {module.__name__} 不来自项目 .venv/site-packages: {source}"
+    )
+load_dotenv(dotenv_path=Path(os.environ["L01_PROBE"]), override=True)
+state = os.environ.get("L01_CHECKPOINT_PLACEHOLDER") == "checkpoint-placeholder-only"
+diagnostics = {"placeholder-loaded": state}
+assert all(type(value) is bool for value in diagnostics.values())
+assert all(diagnostics.values()), "FAIL: 课程占位变量未精确加载"
+Path(os.environ["L01_DIAGNOSTICS"]).write_text(
+    json.dumps(diagnostics, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+)
+PY
+after=$(sha256sum pyproject.toml uv.lock)
+test "$before" = "$after" || { printf '%s\n' 'FAIL: pyproject.toml 或 uv.lock 字节发生变化。' &gt;&amp;2; exit 1; }
+test "$(tr -d '\r\n ' &lt; "$diagnostics")" = '{"placeholder-loaded":true}' || { printf '%s\n' 'FAIL: 诊断必须只包含占位变量的布尔状态。' &gt;&amp;2; exit 1; }
+printf '%s\n' 'P1 CHECKPOINT ENVIRONMENT PASSED'</code></pre>
+        </details>
+      </div>
+      <div class="practice-pass">
+        <h3>通过标准</h3>
+        <ul><li>脚本定位课程仓库中的当前 <code>agent-hello</code></li><li><code>uv</code> 全程使用 <code>--offline</code>，运行使用 <code>--locked</code></li><li><code>sys.prefix</code> 精确等于项目 <code>.venv</code></li><li><code>httpx</code>、<code>pydantic</code>、<code>dotenv</code> 均来自该 <code>.venv/site-packages</code></li><li><code>pyproject.toml</code> 与 <code>uv.lock</code> 前后字节哈希一致</li><li>诊断文件只含占位变量的布尔状态，临时目录被清理</li><li>stdout 精确等于 <code>P1 CHECKPOINT ENVIRONMENT PASSED</code></li></ul>
+      </div>
+    </div>
+  </div>
+  <p class="bp-result"><strong>怎么看结果：</strong>成功时 stdout 只有 <code>P1 CHECKPOINT ENVIRONMENT PASSED</code>。若失败，按 stderr 的第一条 <code>FAIL</code> 或 Python 断言定位：项目路径错误先回到课程仓库；离线锁定失败先在受控联网步骤准备缓存；<code>sys.prefix</code> 或依赖来源失败时重建项目 <code>.venv</code>；哈希失败表示验收期间依赖输入被修改；布尔诊断失败只修复脚本创建的占位探针，不要提供真实密钥。继续参照 <a href="../best-practices/phase1-python-engineering-practices.html#theme-environment">Environment 工程最佳实践</a>。</p>
+</div>
 
 <div class="section">
   <h2>❓ 答疑与延伸</h2>
@@ -430,6 +644,11 @@ if __name__ == "__main__":
   · <a href="https://docs.python.org/3/library/venv.html" target="_blank">Python 虚拟环境文档</a>
 </div>
 
+</main>
+
+<!-- 侧边目录 -->
+<aside class="toc" id="toc"></aside>
+
 <div class="nav">
   <a href="0002-phase1-python-outline.html">← 阶段 1 大纲</a>
   <a href="0005-L02-python-runtime-and-modules.html">下一课：Python 运行机制与模块系统 →</a>
@@ -445,6 +664,7 @@ if __name__ == "__main__":
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
 
 </body>
 </html>

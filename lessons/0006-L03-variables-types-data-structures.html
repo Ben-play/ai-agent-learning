@@ -15,7 +15,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>变量、类型与数据结构</h1>
     <p class="subtitle">Python 数据层的核心 — Agent 处理一切信息的基础</p>
@@ -27,7 +27,7 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>LLM 返回的响应是嵌套 dict，Agent 配置是 dict，工具参数是 dict — 变量和数据结构是 Agent 开发的地基。如果 dict 操作不熟练，你写每一行 Agent 代码都会卡壳。而且可变默认参数陷阱、dict 嵌套访问这些坑，面试时一定会问。</p>
+    <p>原始 JSON 解码结果和本课模拟响应常用嵌套 dict，Agent 配置与工具参数也常用 dict；官方 SDK 则可能返回带属性的类型化对象。变量和数据结构仍是 Agent 开发的地基：不熟悉 dict/list 与对象边界，就难以正确解析和组织数据。</p>
   </div>
 </div>
 
@@ -91,7 +91,7 @@ print(x)</code></pre>
 
 <!-- ==================== 知识点 2 ==================== -->
 <div class="section">
-  <h2>2. 可变与不可变类型</h2>
+  <h2 id="mutable-vs-immutable">2. 可变与不可变类型</h2>
 
   <p>上一节看到：多个变量可以指向<strong>同一个对象</strong>。那么改动这个对象，会不会"牵连"其他变量？<strong>答案取决于这个对象能不能被改</strong>——这就引出了 Python 类型的一条根本分界：可变 vs 不可变。但在讲可变/不可变之前，先认清楚 Python 最基础的四种"标量"类型——它们都是不可变的，是后面一切容器的地基。</p>
 
@@ -123,7 +123,7 @@ isinstance("42", int)   # False
 # 类型之间不会自动"猜"你的意图，转换失败会直接报错
 int("abc")        # ❌ ValueError: invalid literal for int() with base 10: 'abc'
 # 异常处理（try/except）会在后续课系统讲，这里只需要知道"转换可能失败"</code></pre>
-  <p><strong>何时用：</strong>数量、计数用 int；测量值、比例（如 <code>temperature=0.7</code>）用 float；文本、名字、JSON 里的字符串值用 str；开关、条件判断用 bool。四种标量都是<strong>不可变</strong>——这就引出下面的分类：</p>
+  <p><strong>何时用：</strong>数量、计数用 int；测量值、比例（如 <code>confidence=0.7</code>）用 float；文本、名字、JSON 里的字符串值用 str；开关、条件判断用 bool。四种标量都是<strong>不可变</strong>——这就引出下面的分类：</p>
   <p>Python 的数据类型分为两大阵营：</p>
 
   <table>
@@ -165,9 +165,49 @@ def add_item(item, lst=None):
     lst.append(item)
     return lst</code></pre>
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>Agent 的工具函数经常有默认参数。如果用了可变默认参数，会导致多次调用间状态串扰。这是 Agent 测试中最难发现的 bug 之一。</p>
+  <div class="best-practice-point" id="bp-fresh-mutable-defaults">
+    <h3>最佳实践：需要新可变对象时，用 <code>None</code> 或专用哨兵</h3>
+    <p class="bp-scenario"><strong>什么时候会遇到：</strong>工具函数在 Agent Loop 中被调用多次，第二次结果却带着第一次的数据。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 默认列表只创建一次</span><pre><code>def collect(item, items=[]):
+    items.append(item)
+    return items
+
+print(collect("a"))
+print(collect("b"))  # ['a', 'b']</code></pre></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 每次需要时创建</span><pre><code>def collect(item, items=None):
+    if items is None:
+        items = []
+    items.append(item)
+    return items
+
+print(collect("a"))
+print(collect("b"))  # ['b']</code></pre></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>用 <code>None</code> 或唯一哨兵触发函数内新建容器，会把对象生命周期限定到单次调用，从而提升状态隔离性和行为确定性，避免上一轮数据污染下一轮。代价是增加分支并要明确 <code>None</code> 的业务语义；当确实需要跨调用累计状态时，改用显式传入的容器、实例属性或专门状态存储，而不是借默认参数隐式共享。</p>
+    <details class="bp-check"><summary><strong>动手自检（整块复制即可运行）：</strong></summary><pre><code>def collect(item, items=None):
+    if items is None:
+        items = []
+    items.append(item)
+    return items
+
+first = collect("a")
+second = collect("b")
+assert first == ["a"]
+assert second == ["b"]
+assert first is not second
+print("no shared state")</code></pre></details>
+    <p class="bp-result"><strong>怎么看结果：</strong>打印 <code>no shared state</code> 即通过；最后一条身份断言证明两次调用拿到的不是同一个列表对象。记住后果链：默认对象只创建一次 → 多次调用共享 → 上一轮状态进入下一轮。</p>
+    <p class="bp-term"><strong><code>None</code> 也可能是合法业务值：</strong>只有当 <code>None</code> 表示“未传入”时才拿它当哨兵。如果“显式传 <code>None</code>”和“没有传参”必须区分，就使用唯一对象：</p>
+    <pre><code>_MISSING = object()
+
+def normalize(value=_MISSING):
+    if value is _MISSING:
+        return []
+    return value
+
+assert normalize() == []
+assert normalize(None) is None</code></pre>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -217,7 +257,7 @@ print(sys.getrefcount(a))  # 2</code></pre>
 <div class="section">
   <h2>4. 四大容器：list / dict / tuple / set</h2>
 
-  <p>前面三节讲的是"单个值"的性质（引用、可变性、回收）。但 Agent 代码里的数据几乎都是<strong>成组</strong>的——一串工具、一组消息、一份配置。Python 用四种容器来装它们，各有各的取舍：<strong>list</strong>（有序可变）、<strong>dict</strong>（键值查找）、<strong>tuple</strong>（不可变、能当 key）、<strong>set</strong>（去重）。前面学的"可变/不可变"正好解释了它们的区别。</p>
+  <p>前面三节讲的是“单个值”的性质（引用、可变性、回收）。但 Agent 代码里的数据几乎都是<strong>成组</strong>的——一串工具、一组消息、一份配置。Python 用四种容器来装它们，各有各的取舍：<strong>list</strong>（有序可变）、<strong>dict</strong>（键值查找）、<strong>tuple</strong>（不可变；元素都可哈希时能当 key）、<strong>set</strong>（去重）。前面学的“可变/不可变”能帮助理解它们，但 dict key / set 元素的精确要求是“可哈希”。</p>
 
   <h3>先学会一眼区分：怎么创建、括号长什么样</h3>
   <p>四种容器最容易让初学者懵的，是<strong>它们的字面量括号很像</strong>——尤其 <code>{}</code> 到底是 dict 还是 set？下面这张表一次看清「怎么写出来、靠什么认出来」：</p>
@@ -235,7 +275,7 @@ print(sys.getrefcount(a))  # 2</code></pre>
       <td><strong>dict</strong></td><td><code>{"a": 1, "b": 2}</code></td><td>花括号 + <strong>冒号</strong> <code>键:值</code></td><td>✅</td><td>✅</td><td>key 不可重复</td>
     </tr>
     <tr>
-      <td><strong>set</strong></td><td><code>{1, 2, 3}</code></td><td>花括号、<strong>无冒号</strong>、只有值</td><td>❌</td><td>✅</td><td>❌</td>
+      <td><strong>set</strong></td><td><code>{1, 2, 3}</code></td><td>花括号、<strong>无冒号</strong>、只有值</td><td>❌（不要依赖遍历顺序）</td><td>✅</td><td>❌（重复值会合并）</td>
     </tr>
   </table>
   <p><strong>区分口诀：</strong>看括号 → <code>[]</code> 是 list、<code>()</code> 是 tuple；花括号 <code>{}</code> 再看里面——<strong>有冒号 <code>:</code> 是 dict，没冒号只有值是 set</strong>。</p>
@@ -281,21 +321,21 @@ except_last = messages[:-1]     # 除最后一条外的所有消息</code></pre>
 
   <h3>dict — 键值对、有序（Python 3.7+）、可变</h3>
   <p><strong>dict（字典）是"用名字查值"的容器。</strong>list 靠位置下标（<code>tools[0]</code>）取值，dict 则靠一个<strong>键（key）</strong>取到对应的<strong>值（value）</strong>——就像查字典：给一个词（key），翻到它的释义（value）。每一对就叫一个"键值对"，写成 <code>"键": 值</code>。</p>
-  <p>为什么 Agent 开发离不开它？因为 LLM 的响应、模型配置、工具参数<strong>全都是</strong> dict：<code>config["model"]</code> 比"配置里的第 0 个"直观得多。</p>
+  <p>为什么 Agent 开发离不开它？原始 JSON、配置和工具参数经常表示为 dict；官方 SDK 响应也可能是类型化对象，需要按其接口读取。对于真正的具名映射，<code>config["model"]</code> 比“配置里的第 0 个”直观得多。</p>
   <pre><code># 创建（Agent 的核心数据结构）
 config = {
-    "model": "gpt-4",
-    "temperature": 0.7,
-    "max_tokens": 1000
+    "model": "demo-model",
+    "timeout_seconds": 30,
+    "max_results": 10
 }
 
 # 访问
-config["model"]                 # "gpt-4"
-config.get("timeout", 30)      # 带默认值的安全访问
+config["model"]                       # "demo-model"
+config.get("retry_limit", 2)           # 带默认值的安全访问
 
 # 修改
-config["temperature"] = 0.5     # 修改
-config["stream"] = True         # 新增
+config["timeout_seconds"] = 45         # 修改
+config["log_calls"] = True             # 新增
 
 # 遍历
 for key, value in config.items():
@@ -323,7 +363,8 @@ locations = {
 }</code></pre>
 
   <h3>set — 无序、不可重复</h3>
-  <p><strong>set（集合）是一袋"不重复的东西"。</strong>它有两个特点：<strong>自动去重</strong>（同一个值放两次也只留一个）、<strong>无序</strong>（不记录先后顺序，所以不能用下标取值）。它的拿手好戏是两件事：<strong>去重</strong>（把一串有重复的值变成不重复的），以及<strong>集合运算</strong>——判断"哪些在 A 不在 B"、"A 和 B 共有哪些"。Agent 里常用它做工具去重、权限白名单检查。</p>
+  <p><strong>set（集合）是一袋“不重复的东西”。</strong>它有两个特点：<strong>自动去重</strong>（相等且哈希相同的重复值只保留一个）、<strong>无序</strong>（不提供可依赖的元素顺序，所以不能用下标取值；即使某次打印看似稳定，也不要把这个顺序当契约）。它的拿手好戏是两件事：<strong>去重</strong>，以及<strong>集合运算</strong>——判断“哪些在 A 不在 B”“A 和 B 共有哪些”。如果既要去重又要保留首次出现顺序，可用 <code>list(dict.fromkeys(calls))</code>。Agent 里常用 set 做权限白名单检查。</p>
+  <p><strong>可哈希（hashable）</strong>表示对象在其生命周期内具有稳定的哈希值，并且能参与相等性比较，因此可作为 dict 的 key 或 set 的元素。常见的 str、int 和只包含可哈希元素的 tuple 都可哈希；list、dict、set 不可哈希。<strong>“不可变”是好记的近似规则，但不是完整定义</strong>：例如 tuple 若包含 list，仍不可哈希。</p>
   <pre><code># 去重（Agent 中用于去除重复工具调用）
 calls = ["search", "calc", "search", "weather", "calc"]
 unique_calls = set(calls)       # {"search", "calc", "weather"}
@@ -332,17 +373,48 @@ unique_calls = set(calls)       # {"search", "calc", "weather"}
 allowed = {"search", "calc", "weather", "file"}
 requested = {"search", "hack", "weather"}
 blocked = requested - allowed   # {"hack"}
-approved = requested & allowed  # {"search", "weather"}</code></pre>
+approved = requested & allowed  # 包含 "search" 和 "weather"，顺序不保证
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>Agent 系统中最常用的容器：</p>
-    <ul>
-      <li><strong>dict</strong>：配置、LLM 响应、工具参数 — 几乎无处不在</li>
-      <li><strong>list</strong>：对话历史、工具列表、批量结果</li>
-      <li><strong>tuple</strong>：不可变的元组数据（坐标、版本号）</li>
-      <li><strong>set</strong>：去重、权限检查、已处理记录</li>
-    </ul>
+# 真实断言：验证集合语义，不比较打印顺序
+assert unique_calls == {"search", "calc", "weather"}
+assert blocked == {"hack"}
+assert approved == {"search", "weather"}
+assert len({"search", "search"}) == 1</code></pre>
+
+  <div class="best-practice-point" id="bp-choose-container-by-semantics">
+    <h3>最佳实践：先判断数据语义，再选择容器</h3>
+    <p class="bp-scenario"><strong>先问四个问题：</strong>要保留顺序吗？要按名字取值吗？数据应保持不变吗？要自动去重吗？</p>
+    <table>
+      <tr><th>Agent 场景</th><th>选择</th><th>为什么</th></tr>
+      <tr><td>按顺序保存工具调用</td><td><code>list</code></td><td>有序，也允许重复调用</td></tr>
+      <tr><td>按字段名保存模型配置</td><td><code>dict</code></td><td>通过键读取具名值</td></tr>
+      <tr><td>保存不应原地修改的坐标</td><td><code>tuple</code></td><td>不可变，能表达固定组合</td></tr>
+      <tr><td>权限白名单与工具去重</td><td><code>set</code></td><td>值唯一，支持集合运算</td></tr>
+    </table>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 只因为“都能装”就全用 list</span><p>字段含义、唯一性和不可变约束只能靠注释维持。</p></div><div class="bp-right"><span class="bp-compare-label">✅ 让容器表达约束</span><p>读代码的人看到类型，就知道数据能否重复、是否有序、怎样取值。</p></div></div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>按顺序、具名、浅层不可变或唯一性选择容器，会让数据约束由类型和操作直接表达，从而提升可读性、正确性与后续修改的安全性。注意 tuple 只保证<strong>不能替换它持有的元素引用</strong>，不会把内部可变对象“冻住”；需要深层不可变时还要限制或复制嵌套值。转换容器会分配内存，错误选择也可能丢失顺序或重复项；需要去重并保留首次出现顺序时，可用 <code>list(dict.fromkeys(values))</code>，需要具名且强校验的固定字段时则改用 <code>dataclass</code> 或 Pydantic 模型。</p>
+    <details class="bp-check"><summary><strong>动手自检（证明四种容器语义）：</strong></summary><pre><code>history = ["search", "search", "calc"]
+assert history == ["search", "search", "calc"]  # 顺序与重复都保留
+
+config = {"model": "demo", "timeout": 30}
+assert config["model"] == "demo"                 # 通过字段名访问
+
+nested = ("fixed", [1])
+try:
+    nested[0] = "changed"
+except TypeError:
+    pass
+else:
+    raise AssertionError("tuple 元素引用不能替换")
+nested[1].append(2)
+assert nested == ("fixed", [1, 2])                # 只是浅层不可变
+
+requested = {"search", "search", "weather"}
+allowed = {"search", "calc"}
+assert requested == {"search", "weather"}        # 自动去重
+assert requested & allowed == {"search"}          # 交集
+assert requested - allowed == {"weather"}         # 差集</code></pre></details>
+    <p class="bp-result"><strong>怎么看结果：</strong>静默结束即通过：list 同时证明顺序和重复，dict 证明具名访问，tuple 证明浅层而非深层不可变，set 证明去重以及交集/差集运算。</p>
   </div>
 
   <div class="quiz" data-quiz="q4">
@@ -357,7 +429,7 @@ approved = requested & allowed  # {"search", "weather"}</code></pre>
       <button data-answer="wrong">{1, 2, 3}</button>
     </div>
     <div class="quiz-explanation">
-      dict 的 key 必须是"可哈希（hashable）"的——通俗说就是<strong>不可变</strong>。tuple <code>(1,2,3)</code> 不可变，能当 key；list、dict、set 都可变，不行。<br>（记忆钩子：能不能当 key，看它<strong>会不会变</strong>。这也呼应第 2 节的可变/不可变。）注意：含可变元素的 tuple 如 <code>(1, [2,3])</code> 也不行。
+      dict 的 key 必须是“可哈希（hashable）”的：对象需要在其生命周期内保持稳定哈希值，并支持相等性比较。tuple <code>(1, 2, 3)</code> 的所有元素都可哈希，所以能当 key；list、dict、set 不可哈希。<br>“不可变通常可哈希”只是记忆钩子，不是定义；含 list 的 tuple <code>(1, [2, 3])</code> 虽然 tuple 本身不可变，仍然不可哈希。
     </div>
   </div>
 
@@ -444,7 +516,7 @@ flat = [x for sublist in nested for x in sublist]
   <h2>6. dict 深度操作</h2>
 
   <h3>嵌套访问：安全取值</h3>
-  <p>LLM 的响应往往是"套娃"式的多层 dict/list。取深处的值时，最直接的写法是一层层用 <code>[]</code> 点进去——但只要中间<strong>任何一层缺失或结构不符</strong>，就会当场报错、程序崩掉。而 LLM 的输出并不总是稳定的，所以我们需要"取不到就返回默认值、绝不崩"的安全写法。</p>
+  <p>LLM 的响应往往是“套娃”式的多层 dict/list。取深处的值时，最直接的写法是一层层用 <code>[]</code> 点进去——中间层缺失、下标越界或结构类型不符都会明确报错。正确目标不是“永不报错”，而是按字段契约区分：<strong>允许缺失</strong>时返回默认值，<strong>必填缺失或类型错误</strong>时尽早失败。</p>
   <pre><code># LLM 响应通常有多层嵌套
 response = {
     "choices": [{
@@ -462,34 +534,65 @@ response = {
 # ❌ 危险的写法（任何一层缺失就报错 KeyError / IndexError）
 name = response["choices"][0]["message"]["tool_calls"][0]["function"]["name"]</code></pre>
 
-  <p><strong>第一步：朴素的安全写法</strong>——把每层的 <code>[]</code> 换成 <code>.get(键, {})</code>（第 4 节讲过 <code>.get</code> 带默认值不会报错）。取不到就一路返回空 dict，最后再取值：</p>
-  <pre><code>name = (response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("tool_calls", [{}])[0]
-                .get("function", {})
-                .get("name"))
-# 任何一层缺失，最终得到 None，而不是崩溃</code></pre>
-  <p>能用，但每层都手写 <code>.get(..., {})</code> 太啰嗦。<strong>朴素的 <code>.get()</code> 链是本课必学</strong>——请务必掌握上面这种写法。下面再介绍一个更通用的封装 <code>safe_get(d, *keys)</code>，作为<strong>进阶阅读</strong>：它把"要走的路径"当参数传进去，用到了两个新东西：</p>
+  <p><strong>先看常见误区：</strong>链式 <code>.get()</code> 只在“每个中间值都是预期的 dict”时安全；它不能普遍替代结构校验。缺失的 list 用 <code>[{}]</code> 兜底也仍可能遇到空列表越界；若键存在但值为 <code>None</code> 或其他类型，下一次 <code>.get()</code> 仍会报错。</p>
+  <pre><code># 仅在结构已知且中间层都是 dict 时可用
+profile = {"user": {"name": "Ada"}}
+name = profile.get("user", {}).get("name")
+assert name == "Ada"
+
+# 键存在但类型不符：链式 .get 并不安全
+broken = {"user": None}
+# broken.get("user", {}).get("name")  # AttributeError</code></pre>
+  <p>因此，允许缺失的多层 dict/list 路径更适合使用下面这一个<strong>本课规范版本</strong>的 <code>safe_get(data, *path, default=MISSING)</code>。业务必填字段仍应直接读取或显式校验，让错误尽早暴露。这个封装作为<strong>进阶阅读</strong>：它把“要走的路径”当参数传进去，用到了两个新东西：</p>
   <ul>
-    <li><code>isinstance(d, dict)</code>——判断 <code>d</code> <strong>是不是</strong>某种类型（这里问"它还是个 dict 吗"）。本课第 7 节会细讲。</li>
-    <li><code>*keys</code>——让函数<strong>接收任意多个</strong>路径参数，收集成一个元组。这是 <a href="0009-L05-functions-and-parameters.html">L05 · 函数参数</a> 的内容，本课<strong>不要求你自己写出</strong> <code>*keys</code> 这种写法，能读懂、会用即可——L05 学完函数参数后再要求独立实现。</li>
+    <li><code>isinstance(d, dict)</code>——判断 <code>d</code> <strong>是不是</strong>某种类型（这里问“它还是个 dict 吗”）。本课第 7 节会细讲。</li>
+    <li><code>*path</code>——让函数<strong>接收任意多个</strong>路径参数，收集成一个元组。这是 <a href="0009-L05-functions-and-parameters.html">L05 · 函数参数</a> 的内容，本课<strong>不要求你独立写出</strong>这种写法，能读懂、会调用即可。</li>
   </ul>
-  <pre><code># ✅ 通用的安全访问函数（进阶阅读，L05 后再要求独立实现）
-def safe_get(d, *keys, default=None):
-    for key in keys:               # 沿着路径一层层往里走
-        if isinstance(d, dict):            # 当前是 dict → 用 .get 安全取
-            d = d.get(key, default)
-        elif isinstance(d, list) and isinstance(key, int):  # 是 list 且 key 是下标
-            d = d[key] if 0 <= key < len(d) else default
-        else:                              # 走不下去了 → 返回默认值
-            return default
-    return d
+  <p><strong>规范契约：</strong>只遍历 <code>dict</code>（含 <code>defaultdict</code> 等子类）与 <code>list</code>。dict 缺键、list 越界返回调用者提供的 <code>default</code>；默认的唯一 <code>MISSING</code> 哨兵能区分“路径不存在”和“字段真实存了 <code>None</code>”。dict 路径键必须可哈希；读取前先判断成员是否存在，因此不会触发 <code>defaultdict.__missing__</code> 或创建键。list 下标必须是<strong>非负的 <code>int</code>，且不能是 <code>bool</code></strong>；字符串、布尔值、负数下标，以及在标量等不兼容对象上继续遍历，都抛带路径位置的 <code>TypeError</code>。除显式 <code>hash(key)</code> 失败外，成员比较或自定义映射产生的其他 <code>TypeError</code> 原样传播，不会被误报为“不可哈希”。</p>
+  <pre><code># ✅ 本课唯一的 safe_get 规范实现（进阶阅读）
+MISSING = object()
+
+
+def safe_get(data, *path, default=MISSING):
+    current = data
+    for position, key in enumerate(path):
+        if isinstance(current, dict):
+            try:
+                hash(key)
+            except TypeError as exc:
+                raise TypeError(
+                    f"path[{position}]={key!r}: dict key must be hashable"
+                ) from exc
+            if key not in current:
+                return default
+            current = current[key]
+        elif isinstance(current, list):
+            if isinstance(key, bool) or not isinstance(key, int):
+                raise TypeError(
+                    f"path[{position}]={key!r}: list index must be a non-negative int, "
+                    f"not {type(key).__name__}"
+                )
+            if key < 0:
+                raise TypeError(
+                    f"path[{position}]={key!r}: list index must be non-negative, "
+                    f"got {type(key).__name__}"
+                )
+            if key >= len(current):
+                return default
+            current = current[key]
+        else:
+            raise TypeError(
+                f"path[{position}]={key!r}: cannot traverse "
+                f"{type(current).__name__}; expected dict or list"
+            )
+    return current
 
 name = safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "name")
-# "search"；任何一层不对，返回 None，不崩</code></pre>
+assert name == "search"</code></pre>
+  <p><strong>适用边界：</strong>读取“允许缺失”的外部 dict/list 响应路径。它不负责 JSON 反序列化、类型转换、Schema 验证，也不遍历 tuple 或对象属性。<strong>不适用边界：</strong>请求 <code>id</code> 等必填字段时使用 <code>response["id"]</code>，或先显式验证后读取，不能用默认值掩盖缺失。</p>
 
   <h3>defaultdict：自动创建默认值</h3>
-  <p style="margin-bottom:.6rem;"><code>defaultdict</code>、<code>Counter</code>、<code>ChainMap</code> 都来自 Python 自带的 <strong><code>collections</code> 标准库</strong>——它是官方提供的一组"加强版容器"，不用另外安装，<code>import</code> 就能用。它们本质还是 dict，只是各自多了一个贴心的小能力，专治普通 dict 用起来啰嗦的场景。</p>
+  <p style="margin-bottom:.6rem;"><code>defaultdict</code>、<code>Counter</code>、<code>ChainMap</code> 都来自 Python 自带的 <strong><code>collections</code> 标准库</strong>，不用另外安装。<code>defaultdict</code> 和 <code>Counter</code> 是 dict 子类；<code>ChainMap</code> 是组合多个映射的独立动态视图类型，不是 dict 子类。</p>
   <pre><code>from collections import defaultdict
 
 # 统计工具调用次数
@@ -510,33 +613,41 @@ for tool in tools:
     tools_by_type[tool["type"]].append(tool["name"])
 # {"web": ["search", "weather"], "math": ["calc"]}</code></pre>
 
-  <h3>ChainMap：合并多个字典</h3>
+  <h3>ChainMap：分层查找视图</h3>
+  <p><code>ChainMap</code> 不会复制或合并出一个独立 dict；它保留对原字典的引用，提供一个按从左到右优先级查找的<strong>动态分层视图</strong>。底层字典后续变化会反映在视图中；通过这个视图进行普通赋值或删除时，只作用于第一个映射。</p>
   <pre><code>from collections import ChainMap
 
-# Agent 配置的优先级合并
-user_config = {"model": "gpt-4", "temperature": 0.9}
-project_config = {"model": "gpt-3.5", "max_tokens": 500}
-default_config = {"model": "gpt-3.5", "temperature": 0.7, "max_tokens": 1000}
+# Agent 配置的分层优先级视图
+user_config = {"theme": "dark", "timeout_seconds": 20}
+project_config = {"theme": "light", "max_results": 50}
+default_config = {"theme": "system", "timeout_seconds": 30, "max_results": 10}
 
-# user > project > default
+# 查找优先级：user > project > default
 config = ChainMap(user_config, project_config, default_config)
-print(config["model"])        # "gpt-4"（user 优先）
-print(config["temperature"])  # 0.9（user 优先）
-print(config["max_tokens"])   # 500（project 优先）</code></pre>
+assert config["theme"] == "dark"
+assert config["max_results"] == 50
+
+project_config["max_results"] = 80
+assert config["max_results"] == 80       # 视图反映底层修改
+config["max_results"] = 100              # 写入第一个映射 user_config
+assert user_config["max_results"] == 100</code></pre>
 
   <h3>其他常用 dict 方法</h3>
-  <pre><code># setdefault：获取值，不存在则设置默认值
-cache = {}
+  <p><code>setdefault(key, default)</code> 会在调用函数前先求值所有实参，所以即使 key 已存在，昂贵的默认值表达式仍会执行。下面两段在返回/存储结果上相近，但在是否调用昂贵函数上<strong>不等价</strong>：</p>
+  <pre><code># setdefault：default 会被提前求值
+cache = {"key_123": "cached"}
 result = cache.setdefault("key_123", compute_expensive())
-# 等价于：
+# compute_expensive() 仍然已经执行
+
+# 真正的惰性“缺少时才计算”
 if "key_123" not in cache:
     cache["key_123"] = compute_expensive()
 result = cache["key_123"]
 
 # update：合并字典
-base = {"model": "gpt-4", "temperature": 0.7}
-override = {"temperature": 0.9, "stream": True}
-base.update(override)  # {"model": "gpt-4", "temperature": 0.9, "stream": True}
+base = {"theme": "system", "timeout_seconds": 30}
+override = {"timeout_seconds": 60, "log_calls": True}
+base.update(override)  # {"theme": "system", "timeout_seconds": 60, "log_calls": True}
 
 # dict | 运算符（Python 3.9+）
 merged = base | override  # 创建新字典，不修改原字典
@@ -547,9 +658,78 @@ words = ["hello", "world", "hello", "python", "hello"]
 word_count = Counter(words)
 print(word_count.most_common(2))  # [("hello", 3), ("world", 1)]</code></pre>
 
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>🔑 Agent 开发关联：</strong>
-    <p>LLM 响应是嵌套 dict，Agent 配置有多层优先级，工具参数需要安全访问 — 这些都是 Agent 开发的日常。掌握 dict 深度操作是基本功。</p>
+  <div class="best-practice-point" id="bp-read-nested-data-by-contract">
+    <h3>最佳实践：按字段契约读取外部嵌套数据</h3>
+    <p class="bp-term"><strong>先澄清：</strong><code>safe_get()</code> 是本课自己编写的教学辅助函数，不是 Python 内置函数，也不是标准库 API；实现和契约以本节上方的“本课唯一规范实现”为准。下面的折叠自检为方便独立复制运行，会原样包含同一实现。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 所有错误都吞成 None</span><p>真实存储的 <code>None</code>、允许缺失、必填 <code>id</code> 缺失和结构错误混在一起，错误会在更远处爆发。</p></div><div class="bp-right"><span class="bp-compare-label">✅ 先区分字段契约</span><p>可选路径用 <code>safe_get</code>；缺失默认返回 <code>MISSING</code> 或指定默认值；必填字段直接索引或显式验证。</p></div></div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>按字段契约分别处理可选缺失、必填缺失和结构错误，会让错误在信息最完整的位置暴露，从而提升数据完整性与可诊断性。代价是要维护路径规则、哨兵语义和正反分支测试；路径越长，错误信息和静态类型也越难表达。<strong>适用：</strong>结构允许缺少部分 dict key 或 list 元素的外部响应。<strong>不适用：</strong>必填字段、任意对象属性遍历、tuple 路径、类型转换或完整 Schema 校验。字段约束持续增长时，应改用 Pydantic 等模型，而不是继续扩展通用路径函数。</p>
+    <details class="bp-check"><summary><strong>契约测试（整块复制即可独立运行）：</strong></summary><pre><code># 与上方唯一规范实现保持完全一致
+MISSING = object()
+
+
+def safe_get(data, *path, default=MISSING):
+    current = data
+    for position, key in enumerate(path):
+        if isinstance(current, dict):
+            try:
+                hash(key)
+            except TypeError as exc:
+                raise TypeError(
+                    f"path[{position}]={key!r}: dict key must be hashable"
+                ) from exc
+            if key not in current:
+                return default
+            current = current[key]
+        elif isinstance(current, list):
+            if isinstance(key, bool) or not isinstance(key, int):
+                raise TypeError(
+                    f"path[{position}]={key!r}: list index must be a non-negative int, "
+                    f"not {type(key).__name__}"
+                )
+            if key < 0:
+                raise TypeError(
+                    f"path[{position}]={key!r}: list index must be non-negative, "
+                    f"got {type(key).__name__}"
+                )
+            if key >= len(current):
+                return default
+            current = current[key]
+        else:
+            raise TypeError(
+                f"path[{position}]={key!r}: cannot traverse "
+                f"{type(current).__name__}; expected dict or list"
+            )
+    return current
+
+
+from collections import defaultdict
+
+sample = {"choices": [{"message": {"content": None}}]}
+
+assert safe_get(sample, "choices", 0, "message", "content") is None
+assert safe_get(sample, "choices", 0, "message", "tool_calls") is MISSING
+assert safe_get(sample, "choices", 99, default="missing") == "missing"
+
+lazy = defaultdict(list)
+assert safe_get(lazy, "absent") is MISSING
+assert "absent" not in lazy                 # 不触发 __missing__，不修改映射
+
+try:
+    safe_get(sample, "choices", "bad-index")
+except TypeError as exc:
+    assert str(exc) == (
+        "path[1]='bad-index': list index must be a non-negative int, not str"
+    )
+else:
+    raise AssertionError("字符串 list 下标应抛 TypeError")
+
+try:
+    sample["id"]                    # id 是必填字段
+except KeyError as exc:
+    assert exc.args == ("id",)
+else:
+    raise AssertionError("缺少必填 id 应抛 KeyError")</code></pre></details>
+    <p class="bp-result"><strong>怎么看结果：</strong>代码静默结束即通过：存储的 <code>None</code> 保持为 <code>None</code>，缺失返回同一个 <code>MISSING</code>，<code>defaultdict</code> 缺键读取不触发 <code>__missing__</code>、不创建键，越界采用指定默认值，错误消息指出精确路径位置和问题值；list 下标错误还指出实际类型与要求，必填字段则精确抛出 <code>KeyError('id')</code>。</p>
   </div>
 </div>
 
@@ -637,7 +817,7 @@ def parse_arguments(tc):
       <li>提取所有工具调用，存为 list of dict（每个包含 call_id、name、arguments）；arguments 直接调用 <code>parse_arguments(tc)</code> 获得</li>
       <li>用推导式重写任务 2，继续调用 <code>parse_arguments(tc)</code></li>
       <li>用 defaultdict 统计工具调用次数</li>
-      <li>使用给定的 <code>safe_get(d, *keys, default=None)</code>（进阶阅读部分已给出实现），补测试用例验证不同路径下的取值行为——不要求你从零实现 <code>*keys</code> 这种写法（L05 学完函数参数后再要求独立实现）</li>
+      <li>使用第 6 节唯一规范实现 <code>safe_get(data, *path, default=MISSING)</code>，补测试验证存储的 <code>None</code>、缺失哨兵、指定默认值和非法路径——不要另写一个简化版本（L05 学完函数参数后再要求独立实现 <code>*path</code>）</li>
     </ol>
 
     <details>
@@ -673,24 +853,149 @@ for tc in tool_calls:
     call_count[tc["function"]["name"]] += 1
 print(dict(call_count))</code></pre>
 
-      <h4>任务 5：使用给定的 safe_get，补测试路径</h4>
-      <pre><code># 使用第 6 节已给出的 safe_get 实现（不要求自己写 *keys）
-def safe_get(d, *keys, default=None):
-    for key in keys:
-        if isinstance(d, dict):
-            d = d.get(key, default)
-        elif isinstance(d, list) and isinstance(key, int):
-            d = d[key] if 0 <= key < len(d) else default
-        else:
-            return default
-    return d
+      <h4>任务 5：调用第 6 节规范 safe_get，补测试路径</h4>
+      <pre><code># 先运行第 6 节的 MISSING 与 safe_get 定义；这里不重复实现
+assert safe_get(response, "choices", 0, "message", "content") is None
+assert safe_get(response, "choices", 99) is MISSING
+assert safe_get(response, "choices", 99, default="N/A") == "N/A"
+assert safe_get(
+    response, "choices", 0, "message", "tool_calls", 0, "function", "name"
+) == "web_search"
 
-# 测试：覆盖正常路径、越界下标、default 参数
-print(safe_get(response, "choices", 0, "message", "content"))                  # None
-print(safe_get(response, "choices", 99, "message", "content"))                 # None
-print(safe_get(response, "choices", 99, default="N/A"))                        # "N/A"
-print(safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "name"))  # "web_search"</code></pre>
+try:
+    safe_get(response, "choices", False)
+except TypeError as exc:
+    assert "path[1]=False" in str(exc)
+    assert "non-negative int" in str(exc)
+else:
+    raise AssertionError("bool 不能作为 list 下标")</code></pre>
     </details>
+  </div>
+</div>
+
+<!-- ==================== 本课最佳实践 ==================== -->
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：按契约解析新响应</h2>
+  <p class="best-practice-lead">使用不同于正文练习的 fixture，同时证明可变默认值隔离、四种容器语义，以及 <code>safe_get</code> 的缺失与错误边界。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>证明两次默认调用互不共享列表。</li><li>证明 list 保序保重复、dict 具名访问、tuple 仅浅层不可变、set 去重并支持集合运算。</li><li>区分存储的 <code>None</code>、<code>MISSING</code>、指定默认值和 list 越界。</li><li>精确诊断 bool/string 下标、不兼容遍历，并验证必填 <code>id</code> 缺失。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>所有断言通过</li><li>非法路径消息包含位置、值、实际类型与所需类型</li><li>必填字段精确抛 <code>KeyError('id')</code></li><li>最后只打印一次验收标记</li></ul></div>
+    </div>
+    <details class="bp-check"><summary><strong>课末自检（整块复制即可运行）：</strong></summary><pre><code>def collect(item, items=None):
+    if items is None:
+        items = []
+    items.append(item)
+    return items
+
+
+# 与第 6 节的唯一规范实现保持完全一致，便于整块独立运行
+MISSING = object()
+
+
+def safe_get(data, *path, default=MISSING):
+    current = data
+    for position, key in enumerate(path):
+        if isinstance(current, dict):
+            try:
+                hash(key)
+            except TypeError as exc:
+                raise TypeError(
+                    f"path[{position}]={key!r}: dict key must be hashable"
+                ) from exc
+            if key not in current:
+                return default
+            current = current[key]
+        elif isinstance(current, list):
+            if isinstance(key, bool) or not isinstance(key, int):
+                raise TypeError(
+                    f"path[{position}]={key!r}: list index must be a non-negative int, "
+                    f"not {type(key).__name__}"
+                )
+            if key < 0:
+                raise TypeError(
+                    f"path[{position}]={key!r}: list index must be non-negative, "
+                    f"got {type(key).__name__}"
+                )
+            if key >= len(current):
+                return default
+            current = current[key]
+        else:
+            raise TypeError(
+                f"path[{position}]={key!r}: cannot traverse "
+                f"{type(current).__name__}; expected dict or list"
+            )
+    return current
+
+
+first, second = collect("plan"), collect("execute")
+assert first == ["plan"] and second == ["execute"]
+assert first is not second
+
+history = ["search", "search", "summarize"]
+assert history == ["search", "search", "summarize"]
+settings = {"mode": "safe", "retries": 2}
+assert settings["mode"] == "safe"
+shallow = ("job", ["queued"])
+try:
+    shallow[0] = "changed"
+except TypeError:
+    pass
+else:
+    raise AssertionError("tuple 元素引用不能替换")
+shallow[1].append("running")
+assert shallow == ("job", ["queued", "running"])
+requested = {"search", "search", "export"}
+allowed = {"search", "summarize"}
+assert requested == {"search", "export"}
+assert requested & allowed == {"search"}
+assert requested - allowed == {"export"}
+
+from collections import defaultdict
+
+fixture = {
+    "jobs": [{"result": None, "steps": ["search", "summarize"]}],
+    "meta": {"state": "ready"},
+}
+assert safe_get(fixture, "jobs", 0, "result") is None
+assert safe_get(fixture, "jobs", 0, "error") is MISSING
+assert safe_get(fixture, "unknown", default="fallback") == "fallback"
+assert safe_get(fixture, "jobs", 8, default="out-of-range") == "out-of-range"
+
+lazy = defaultdict(list)
+assert safe_get(lazy, "absent") is MISSING
+assert "absent" not in lazy                 # 不触发 __missing__，不修改映射
+
+for bad_index, expected in (
+    (False, "path[1]=False: list index must be a non-negative int, not bool"),
+    ("0", "path[1]='0': list index must be a non-negative int, not str"),
+    (-1, "path[1]=-1: list index must be non-negative, got int"),
+):
+    try:
+        safe_get(fixture, "jobs", bad_index)
+    except TypeError as exc:
+        assert str(exc) == expected
+    else:
+        raise AssertionError(f"非法 list 下标未失败: {bad_index!r}")
+
+try:
+    safe_get(fixture, "meta", "state", "code")
+except TypeError as exc:
+    assert str(exc) == (
+        "path[2]='code': cannot traverse str; expected dict or list"
+    )
+else:
+    raise AssertionError("在 str 上继续遍历应抛 TypeError")
+
+try:
+    fixture["id"]
+except KeyError as exc:
+    assert exc.args == ("id",)
+else:
+    raise AssertionError("缺少必填 id 应抛 KeyError")
+
+print("L03 ACCEPTED")</code></pre></details>
+    <details class="think-q"><summary><span class="think-q-tag">判断</span>什么时候不该用 <code>safe_get</code>？</summary><div class="think-q-answer"><p><strong>字段是业务继续运行的必要条件，或需要完整结构验证时。</strong>例如响应必须有 <code>id</code> 才能追踪请求，就应直接用 <code>fixture["id"]</code> 或显式校验；需要验证全部字段类型时应使用 Schema/Pydantic。<code>safe_get</code> 只用于允许缺失的 dict/list 路径，不负责 tuple、对象属性、转换或深层 Schema 校验。</p></div></details>
   </div>
 </div>
 
@@ -701,7 +1006,7 @@ print(safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "
     <pre><code>变量与类型
 ├── 变量 = 引用（标签），不是值
 ├── 不可变类型：int / float / str / bool / tuple
-│   └── 可以作为 dict 的 key
+│   └── 常见类型多可哈希；tuple 还要求全部元素可哈希
 ├── 可变类型：list / dict / set
 │   └── 默认参数陷阱
 └── 引用计数 → 垃圾回收
@@ -710,8 +1015,9 @@ print(safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "
 ├── list：有序、可变、可重复
 │   └── 切片：messages[-3:]
 ├── dict：键值对、有序（3.7+）
-│   ├── .get() 安全访问
-│   ├── .setdefault() 获取或设置默认值
+│   ├── .get() 单层可选访问
+│   ├── safe_get() 可选 dict/list 路径（MISSING 区分缺失与 None）
+│   ├── .setdefault() 获取或设置默认值（默认表达式会提前求值）
 │   ├── .update() 合并字典
 │   └── dict | 运算符（3.9+）
 ├── tuple：有序、不可变
@@ -726,7 +1032,7 @@ print(safe_get(response, "choices", 0, "message", "tool_calls", 0, "function", "
 
 collections 模块
 ├── defaultdict → 自动默认值
-├── ChainMap → 多字典优先级合并
+├── ChainMap → 多字典优先级的动态分层视图
 └── Counter → 计数器（统计 token/工具调用）</code></pre>
   </div>
 </div>
@@ -736,16 +1042,16 @@ collections 模块
   <h2>面试常见问题</h2>
   <div class="card interview">
     <h3>Q1：Python 可变类型和不可变类型的区别？</h3>
-    <p><strong>答：</strong>不可变类型（int/str/tuple）的值不能修改，修改会创建新对象。可变类型（list/dict/set）可以原地修改。不可变类型可以作为 dict 的 key，可变类型不行。</p>
+    <p><strong>答：</strong>不可变类型（int/str/tuple）的值不能原地修改，相关操作通常创建新对象；可变类型（list/dict/set）可以原地修改。dict key 和 set 元素要求可哈希，而非笼统地要求“不可变”；例如含 list 的 tuple 就不可哈希。</p>
 
     <h3>Q2：Python dict 的底层实现是什么？</h3>
-    <p><strong>答：</strong>哈希表（Hash Table）。通过 key 的 hash 值定位存储位置，查找时间复杂度 O(1)。Python 3.7+ dict 保持插入顺序，是因为底层额外维护了一个链表。</p>
+    <p><strong>答：</strong>以 CPython 为例，dict 使用紧凑哈希表。通过 key 的哈希值定位候选槽位，平均查找复杂度是 O(1)，最坏情况可退化。Python 语言从 3.7 起保证 dict 保持插入顺序；CPython 的具体内存布局是实现细节，不应解释成语言规范要求“额外维护链表”。</p>
 
     <h3>Q3：tuple 和 list 的区别？什么时候用 tuple？</h3>
-    <p><strong>答：</strong>tuple 不可变，list 可变。tuple 可以作为 dict 的 key，list 不行。tuple 比 list 更省内存。用 tuple 的场景：数据不应被修改时（坐标、RGB 颜色）、需要作为 dict key 时。</p>
+    <p><strong>答：</strong>tuple 不可变，list 可变。只包含可哈希元素的 tuple 可以作为 dict key，list 不行。tuple 通常比同内容的 list 占用更少；适合表达不应原地修改的固定组合，或在满足可哈希条件时作为 key。</p>
 
     <h3>Q4：defaultdict 和普通 dict 有什么区别？</h3>
-    <p><strong>答：</strong>defaultdict 在访问不存在的 key 时，会自动创建默认值（由构造参数指定），而不是抛出 KeyError。常用于计数和分组场景。</p>
+    <p><strong>答：</strong><code>defaultdict</code> 在执行 <code>d[key]</code> 且 key 不存在时，会通过 <code>__missing__</code> 创建并保存默认值，而不是抛出 <code>KeyError</code>；<code>get()</code>、成员测试和迭代不会触发这一步。它常用于计数和分组场景。</p>
 
     <h3>Q5：什么是可变默认参数陷阱？怎么避免？</h3>
     <p><strong>答：</strong>函数的默认参数如果是可变对象（如 list/dict），会在函数定义时创建一次，之后每次调用共享同一个对象。避免方法：用 None 作为默认值，在函数体内创建新对象。</p>
@@ -784,7 +1090,7 @@ collections 模块
   <div class="card">
     <ul>
       <li>Python 变量是引用（标签），不是值</li>
-      <li>不可变类型（str/tuple）可以当 dict key，可变类型不行</li>
+      <li>dict key 与 set 元素必须可哈希；不可变只是常用判断线索，tuple 还要求其元素都可哈希</li>
       <li>可变默认参数是经典陷阱，用 None 替代</li>
       <li>四大容器各有适用场景，dict 是 Agent 开发的核心</li>
       <li>推导式是 Python 的数据转换利器，一行顶十行</li>
