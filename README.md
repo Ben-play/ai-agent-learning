@@ -57,7 +57,7 @@
 - ❓ **交互测验** — 即时反馈
 - 🏋️ **实战练习** — 动手实践
 - 📋 **单课级最佳实践** — 用可操作验收任务收束本课执行纪律
-- 🧭 **阶段实践检查点与最终复盘** — 学完相关知识后立即完成跨课检查点，避免拖到阶段末遗忘；Phase 1 的 8 个检查点分布在 L01/L02/L04/L07/L11/L12/L14/L16，[最终总结页](best-practices/phase1-python-engineering-practices.html)用于复盘索引和离线综合验收
+- 🧭 **阶段实践检查点与最终复盘** — 学完相关知识后立即完成跨课检查点，避免拖到阶段末遗忘；Phase 1 的 8 个检查点分布在 L01/L02/L04/L07/L11/L12/L14/L16，[Phase 1 复盘页](best-practices/phase1-python-engineering-practices.html)用于最终索引与验收；Phase 2 的 5 个检查点分布在 L18/L19/L21/L22/L23，[Phase 2 复盘页](best-practices/phase2-model-selection-practices.html)汇总模型评测与选型决策
 - 💼 **面试常见问题** — 高频考点
 - 📚 **参考资源** — 延伸阅读
 

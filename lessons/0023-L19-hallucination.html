@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>幻觉全解</h1>
     <p class="subtitle">幻觉既来自统计学习误差，也会被“猜比弃权得分高”的评估机制放大</p>
@@ -35,7 +35,7 @@
   <div class="card">
     <p>完成本课后，你将能够：</p>
     <ul>
-      <li>准确定义幻觉：<strong>流畅、自信、但事实错误或无依据</strong>的生成</li>
+      <li>准确定义幻觉：生成的<strong>事实性内容相对相关证据或上下文是错误的或无支持</strong>；流畅、自信只是常见危险表现，不是定义条件</li>
       <li>用两层视角解释幻觉：预训练统计错误如何产生，评估激励如何鼓励猜测</li>
       <li>掌握 4 种检测手段：Self-Consistency、LLM-as-judge、要出处、置信度信号</li>
       <li>掌握 4 种缓解策略：RAG、CoT、Self-Consistency、允许弃权</li>
@@ -47,7 +47,7 @@
 <div class="section">
   <h2>1. 什么是幻觉</h2>
   <div class="card">
-    <p><strong>幻觉（Hallucination）</strong>：模型生成了<strong>流畅、自信、语法完美，但事实上错误或没有任何依据</strong>的内容。注意关键词是"自信"——幻觉不是模型"结巴"或"报错"，恰恰相反，它<strong>看起来和正确答案一模一样</strong>，这才是它危险的地方。</p>
+    <p><strong>幻觉（Hallucination）</strong>：模型生成的<strong>事实性内容相对相关证据或上下文是错误的，或没有得到其支持</strong>。它不必语气自信，也不必表达流畅；即使模型用“可能”“据我所知”等试探措辞说出无依据的事实性内容，仍然可能是幻觉。<strong>流畅、自信、看起来和正确答案一样</strong>是常见且尤其危险的表现，但不是定义条件。</p>
     <p>回想 <a href="0021-L17-llm-essence-and-parameters.html">L17</a> 讲的本质：LLM 在做<strong>概率预测</strong>——预测"下一个 Token 最可能是什么"。它优化的目标是<strong>"统计上像人话"</strong>，而不是<strong>"事实上正确"</strong>。这两者经常一致，但<strong>并不等价</strong>：</p>
     <pre><code>问："某某人的生日是哪天？"（模型训练里没见过这个冷门人物）
 
@@ -60,14 +60,14 @@
   </div>
 
   <div class="quiz" data-quiz="q1">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 对"幻觉"最准确的描述是？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 对"幻觉"最准确的定义是？</div>
     <div class="quiz-options">
       <button data-answer="wrong">模型报错或崩溃退出</button>
-      <button data-answer="wrong">模型回答含糊、语无伦次</button>
-      <button data-answer="correct">流畅自信但事实错误</button>
-      <button data-answer="wrong">模型拒绝回答该问题</button>
+      <button data-answer="wrong">只有语气自信的事实错误才算</button>
+      <button data-answer="correct">事实内容相对证据或上下文错误或无支持</button>
+      <button data-answer="wrong">任何含糊或不流畅的回答</button>
     </div>
-    <div class="quiz-explanation">幻觉最危险之处在于它<strong>看起来完全正确</strong>：语法完美、语气自信，但内容是编造或无依据的。它不是报错、不是含糊、更不是拒答——恰恰相反，它和真答案难以区分。根源是 LLM 优化"统计上像人话"而非"事实正确"（见 <a href="0021-L17-llm-essence-and-parameters.html">L17</a> 概率预测本质）。</div>
+    <div class="quiz-explanation">幻觉的定义核心是：生成的<strong>事实性内容相对相关证据或上下文是错误的或无支持</strong>。它可以自信，也可以试探；可以流畅，也可以笨拙。流畅、自信的幻觉尤其危险，因为它和真答案难以区分，但这些表现不是判定幻觉的必要条件。根源是 LLM 优化"统计上像人话"而非"事实正确"（见 <a href="0021-L17-llm-essence-and-parameters.html">L17</a> 概率预测本质）。</div>
   </div>
 </div>
 
@@ -107,13 +107,68 @@
         <tr><td><strong>① Self-Consistency</strong></td><td>在支持采样参数的 API 上，对同一问题<strong>多次采样</strong></td><td>答案<strong>明显发散</strong> = 高风险；一致仍需事实核验</td></tr>
         <tr><td><strong>② LLM-as-judge</strong></td><td>用<strong>另一个模型</strong>核查这条回答是否有依据</td><td>裁判模型判"无依据/矛盾" = 疑似幻觉</td></tr>
         <tr><td><strong>③ 要出处并验证</strong></td><td>要求模型<strong>给出引用来源</strong>，再去核实链接/文档真实存在</td><td>出处<strong>打不开/查无此文</strong> = 编的</td></tr>
-        <tr><td><strong>④ 置信度信号</strong></td><td>看模型输出的<strong>不确定性</strong>（logprobs 较客观；<strong>自陈置信度不可靠</strong>——幻觉本就"自信"）</td><td>低置信 / 模糊措辞 = 需人工复核</td></tr>
+        <tr><td><strong>④ 置信度信号</strong></td><td>看模型输出的<strong>不确定性</strong>（logprobs 较客观；<strong>自陈置信度不可靠</strong>——幻觉既可能自信，也可能试探）</td><td>低置信 / 模糊措辞 = 需人工复核</td></tr>
       </tbody>
     </table>
     <p><strong>① Self-Consistency 是风险信号，不是真值证明</strong>：多次采样明显发散，说明答案不稳定、值得升级核查；但高度一致也可能是<strong>一致地错</strong>，尤其当模型共享同一个错误记忆或错误前提。因此它适合做粗筛，不能替代外部事实源、计算工具或人工验证。</p>
   </div>
   <div class="tip">
     ⚙️ 工程落地：③“要出处并验证”适合做成<strong>自动化管线</strong>——让模型输出带 URL / 文档 ID，再由程序核实来源是否存在、是否真的支持结论。它会在后续 RAG 与可靠性课程中继续展开，不是下一课 L20 的主题。
+  </div>
+
+  <div class="best-practice-point" id="bp-l19-consistency-is-risk-signal">
+    <h3>最佳实践：把回答分歧当升级信号，不把回答一致当真值</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一事实型问题可获得多个独立样本，且错误答案需要分级发布 / 人工复核。<strong>不适用：</strong>只有一个确定性权威数据源可直接查询时，应直接验证来源而不是多采样。<strong>本卡只做一个决定：</strong>样本发散就升级风险；样本一致仍须证据门，绝不自动判真。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 多数一致就发布</span><pre><code>answers = sample_same_question(3)
+if len(set(answers)) == 1:
+    publish(answers[0])</code></pre><p>同一任务、输入与 release 接口，却把共享错误记忆造成的“一致地错”误当事实证明。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 一致性只决定风险升级</span><pre><code>decision = gate(
+    answers=answers,
+    evidence=evidence,
+)
+assert decision in {"release", "escalate", "reject"}</code></pre><p>发散触发升级；一致答案也只有被证据支持才发布，无依据则拒绝或转人工。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先把一致性分类为风险信号，再单独验证 evidence，动作上拆开了“稳定性”与“真实性”；机制上覆盖一致地错、彼此发散、证据支持三类 fixture；结果提高事实正确性、可靠性、可解释性与错误遏制能力。真实成本是多次采样增加延迟与 Token，证据获取也会失败或冲突；低风险创意任务可以只用分歧做多样性信号。高风险事实一旦没有可核验证据，即使一致也不发布；如果已有权威 API / 数据库，直接查询它比自洽投票更好。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库、离线、静默通过）：</strong></summary><pre><code>def release_gate(answers, evidence):
+    unique = set(answers)
+    if len(unique) &gt; 1:
+        return {"decision": "escalate", "reason": "divergent"}
+
+    answer = answers[0]
+    if evidence.get("supports") == answer:
+        return {"decision": "release", "reason": "evidence-backed"}
+    return {"decision": "reject", "reason": "consistent-but-unverified"}
+
+
+fixtures = {
+    "consistently_wrong": {
+        "answers": ["1901", "1901", "1901"],
+        "evidence": {"supports": "1903"},
+        "expected": "reject",
+    },
+    "divergent": {
+        "answers": ["1901", "1903", "unknown"],
+        "evidence": {"supports": "1903"},
+        "expected": "escalate",
+    },
+    "evidence_backed": {
+        "answers": ["1903", "1903", "1903"],
+        "evidence": {"supports": "1903"},
+        "expected": "release",
+    },
+}
+
+for fixture in fixtures.values():
+    outcome = release_gate(fixture["answers"], fixture["evidence"])
+    assert outcome["decision"] == fixture["expected"]
+
+assert release_gate(["1901"] * 3, {"supports": "1903"})["reason"] == (
+    "consistent-but-unverified"
+)
+assert release_gate(["a", "b", "a"], {"supports": "a"})["reason"] == "divergent"</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>无输出且退出码为 0 即通过。一致错误 fixture 被 release，说明仍把 agreement 当 truth；发散 fixture 被多数票直接发布，说明升级门缺失；证据支持 fixture 被拒绝，说明 evidence 没有进入发布判定。</p>
+    <p class="bp-term"><strong>边界：</strong>Self-Consistency 测量输出稳定性，不验证世界事实；证据也必须检查来源真实且确实支持结论。</p>
   </div>
 </div>
 
@@ -180,8 +235,8 @@ Agent：  幻觉 → Agent 当成事实 → 调用了错误的工具 / 传了错
 <div class="section">
   <h2>🎯 速查卡：幻觉全解</h2>
   <div class="card">
-    <pre><code>【是什么】流畅、自信、但事实错误/无依据的生成
-  危险点：看起来和正确答案一模一样（不是报错、不是含糊）
+    <pre><code>【是什么】生成的事实内容相对相关证据/上下文错误或无支持
+  流畅、自信是常见危险表现，不是定义条件；试探措辞也可能幻觉
   根：统计上合理 ≠ 事实正确（L17 概率预测本质）
 
 【为什么 · 两层解释（重要机制，不是唯一理论）】
@@ -209,6 +264,206 @@ Agent：  幻觉 → Agent 当成事实 → 调用了错误的工具 / 传了错
   RAG 给依据 + 分步推理 + Self-Consistency 筛风险
   + 允许弃权 + 关键事实交给工具/人工核验</code></pre>
   </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：合成医疗设备事件公告发布门</h2>
+  <p class="best-practice-lead">先独立完成：为一家虚构实验室的合成医疗设备事件公告生成发布清单。每条 claim 必须携带 claim ID、evidence ID 与风险等级；样本一致性只能决定是否升级，自动发布必须得到证据精确支持，高风险 claim 还需要多个独立证据来源，否则转人工。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>定义带 claim ID、evidence IDs、risk tier 与生成样本的公告条目。</li><li>准备一致但错误、发散且有多数派、试探措辞但无支持、低风险证据支持、高风险证据不独立五类 fixture。</li><li>先用语义 claim 分歧决定升级，不用多数票判真。</li><li>再逐条验证 evidence ID 存在且精确支持 claim。</li><li>高风险条目只有多个独立来源支持才可发布，否则记录人工升级。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>一致错误与“可能……”式无支持 claim 都不能发布。</li><li>发散样本即使多数派得到证据支持也必须升级。</li><li>证据精确支持的低风险 claim 可以发布。</li><li>高风险 claim 即使有两个 evidence ID，只要来源不独立仍必须人工升级。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class BulletinClaim:
+    claim_id: str
+    statement: str
+    samples: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    risk_tier: str
+
+
+EVIDENCE = {
+    "E-ALARM-09": {"source": "alarm-test", "supports": "event:alarm-not-audible"},
+    "E-LOG-17": {"source": "device-log", "supports": "event:screen-freeze"},
+    "E-TECH-22": {"source": "technician-note", "supports": "event:manual-restart"},
+    "E-PAUSE-31": {"source": "device-log", "supports": "event:therapy-paused"},
+    "E-PAUSE-32": {"source": "device-log", "supports": "event:therapy-paused"},
+}
+
+
+def gate_claim(case):
+    base = {
+        "claim_id": case.claim_id,
+        "evidence_ids": case.evidence_ids,
+        "risk_tier": case.risk_tier,
+    }
+    claims = set(case.samples)
+    if len(claims) &gt; 1:
+        return {**base, "decision": "escalate", "route": "manual", "reason": "divergent-samples"}
+
+    claim = next(iter(claims))
+    supporting = [
+        evidence_id for evidence_id in case.evidence_ids
+        if EVIDENCE.get(evidence_id, {}).get("supports") == claim
+    ]
+    if not supporting:
+        return {**base, "decision": "reject", "reason": "unsupported-claim"}
+
+    independent_sources = {EVIDENCE[evidence_id]["source"] for evidence_id in supporting}
+    if case.risk_tier == "high" and len(independent_sources) &lt; 2:
+        return {
+            **base,
+            "decision": "escalate",
+            "route": "manual",
+            "reason": "high-risk-needs-independent-evidence",
+        }
+    return {**base, "decision": "release", "reason": "exact-evidence-support"}
+
+
+CASES = [
+    BulletinClaim(
+        "CLM-WRONG",
+        "The alarm was audible.",
+        ("event:alarm-audible",) * 3,
+        ("E-ALARM-09",),
+        "low",
+    ),
+    BulletinClaim(
+        "CLM-DIVERGENT-MAJORITY",
+        "The display froze during the synthetic run.",
+        ("event:screen-freeze", "event:screen-freeze", "event:screen-flicker"),
+        ("E-LOG-17",),
+        "low",
+    ),
+    BulletinClaim(
+        "CLM-TENTATIVE",
+        "The unit may have restarted automatically.",
+        ("event:automatic-restart",) * 3,
+        ("E-TECH-22",),
+        "low",
+    ),
+    BulletinClaim(
+        "CLM-LOW-BACKED",
+        "The display froze during the synthetic run.",
+        ("event:screen-freeze",) * 3,
+        ("E-LOG-17",),
+        "low",
+    ),
+    BulletinClaim(
+        "CLM-HIGH-INSUFFICIENT",
+        "Therapy output paused during the bench simulation.",
+        ("event:therapy-paused",) * 3,
+        ("E-PAUSE-31", "E-PAUSE-32"),
+        "high",
+    ),
+]
+
+outcomes = {case.claim_id: gate_claim(case) for case in CASES}
+assert outcomes["CLM-WRONG"]["decision"] == "reject"
+assert outcomes["CLM-DIVERGENT-MAJORITY"] == {
+    "claim_id": "CLM-DIVERGENT-MAJORITY",
+    "evidence_ids": ("E-LOG-17",),
+    "risk_tier": "low",
+    "decision": "escalate",
+    "route": "manual",
+    "reason": "divergent-samples",
+}
+assert outcomes["CLM-TENTATIVE"]["reason"] == "unsupported-claim"
+assert outcomes["CLM-LOW-BACKED"]["decision"] == "release"
+assert outcomes["CLM-HIGH-INSUFFICIENT"] == {
+    "claim_id": "CLM-HIGH-INSUFFICIENT",
+    "evidence_ids": ("E-PAUSE-31", "E-PAUSE-32"),
+    "risk_tier": "high",
+    "decision": "escalate",
+    "route": "manual",
+    "reason": "high-risk-needs-independent-evidence",
+}
+assert [row["decision"] for row in outcomes.values()].count("release") == 1
+
+print("L19 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>一致错误被发布表示仍把 agreement 当 truth；发散多数派被发布表示一致性被误用成真值投票；试探措辞无支持却被发布表示把语气当成了证据；低风险证据项被拒绝表示精确支持比对错误；高风险同源证据被发布表示独立来源门失效。</p>
+  <p class="bp-term"><strong>迁移提示：</strong>这是安全的合成公告 fixture，不用于医疗决策。真实发布门还要验证来源权限、版本、时间、冲突记录与人工责任链；本验收只锁定“分歧负责升级、证据负责发布、高风险需要独立证据”三条边界。</p>
+</div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-reliability-gate" data-phase-practice="reliability-gate">
+  <h2>阶段实践检查点：可靠性门</h2>
+  <p class="best-practice-lead">把 L17 非确定性契约与 L19 一致性 / 证据角色迁移到新的“档案征集”领域：同一可审计 run spec 允许措辞不同；样本分歧只负责升级，来源证据才负责发布。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>冻结模型、prompt、tools、controls、fixture 与 evaluator，生成稳定指纹。</li><li>对同一捐赠档案声明收集多份非确定输出。</li><li>分开检查语义 claim、一致性风险与登记证据。</li><li>覆盖措辞不同但 claim 相同、均匀发散、存在严格多数但仍发散、共识错误四条路径。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>键顺序不改变规格指纹，受控条件变化会改变。</li><li>措辞不同不构成失败，只要 claim 相同且证据支持即可。</li><li>claim 发散必须升级；共识错误必须拒绝。</li><li>标准输出只有检查点标记。</li></ul></div>
+  </div>
+  <p class="bp-term"><strong>先独立完成：</strong>只使用 L17 的“规格可复现而非字节复现”和 L19 的“分歧是风险、证据才判真”；不要引入下一课的 effort 路由。</p>
+  <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import hashlib
+import json
+
+
+def fingerprint(spec):
+    return hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def gate(outputs, registry_claim):
+    claims = {output["claim"] for output in outputs}
+    if len(claims) &gt; 1:
+        return "escalate"
+    only_claim = next(iter(claims))
+    return "release" if only_claim == registry_claim else "reject"
+
+
+SPEC = {
+    "model": "fictional-acquisition-model",
+    "prompt": {"version": 2, "text": "Assess the donor claim."},
+    "tools": [{"name": "registry_lookup", "version": 1}],
+    "controls": {"mode": "evidence-only"},
+    "fixture": {"collection": "ACQ-77"},
+    "evaluator": {"version": "acquisition-gate-v3"},
+}
+assert fingerprint(SPEC) == fingerprint(dict(reversed(list(SPEC.items()))))
+changed_values = {
+    "model": "fictional-acquisition-model-v2",
+    "prompt": {"version": 3, "text": "Assess the donor claim."},
+    "tools": [{"name": "registry_lookup", "version": 2}],
+    "controls": {"mode": "open"},
+    "fixture": {"collection": "ACQ-78"},
+    "evaluator": {"version": "acquisition-gate-v4"},
+}
+for field in SPEC:
+    omitted = {key: value for key, value in SPEC.items() if key != field}
+    changed = {**SPEC, field: changed_values[field]}
+    assert fingerprint(SPEC) != fingerprint(omitted), field
+    assert fingerprint(SPEC) != fingerprint(changed), field
+
+same_claim_varied_text = [
+    {"text": "The donor record identifies 1912.", "claim": "year:1912"},
+    {"text": "Acquisition evidence gives the year as 1912.", "claim": "year:1912"},
+]
+divergent = [
+    {"text": "1912", "claim": "year:1912"},
+    {"text": "1914", "claim": "year:1914"},
+]
+divergent_majority = [
+    {"text": "Registry says 1912.", "claim": "year:1912"},
+    {"text": "The year is 1912.", "claim": "year:1912"},
+    {"text": "The year is 1914.", "claim": "year:1914"},
+]
+wrong_consensus = [
+    {"text": "The year is 1914.", "claim": "year:1914"},
+    {"text": "Registry date: 1914.", "claim": "year:1914"},
+]
+
+assert same_claim_varied_text[0]["text"] != same_claim_varied_text[1]["text"]
+assert gate(same_claim_varied_text, "year:1912") == "release"
+assert gate(divergent, "year:1912") == "escalate"
+assert gate(divergent_majority, "year:1912") == "escalate"
+assert gate(wrong_consensus, "year:1912") == "reject"
+
+print("P2 CHECKPOINT RELIABILITY-GATE PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>措辞差异导致拒绝表示仍要求字节一致；发散 claim 被多数票发布表示风险门缺失；错误共识被发布表示证据角色被一致性替代；规格变化不改变指纹表示审计契约不完整。</p>
+  <p class="bp-rationale"><strong>工程主题链接：</strong><a href="../best-practices/phase2-model-selection-practices.html#theme-reliability-gate">Reliability Gate · 让非确定生成通过可审计规格、风险升级与证据门闭环</a>。</p>
+</div>
 </div>
 
 <div class="section">
@@ -243,7 +498,7 @@ Agent：  幻觉 → Agent 当成事实 → 调用了错误的工具 / 传了错
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>幻觉 = <strong>流畅、自信、但事实错误/无依据</strong>的生成；危险在于它和真答案难以区分</li>
+      <li>幻觉 = 生成的<strong>事实性内容相对相关证据或上下文错误或无支持</strong>；流畅、自信是常见危险表现，但不是定义条件</li>
       <li><strong>两层解释</strong>：预训练统计错误让幻觉产生；许多评测偏好猜测，让不确定性表达得不到奖励——这是重要机制而非唯一根因</li>
       <li><strong>检测</strong>：Self-Consistency 的发散是风险信号但一致不证明正确；还可用裁判、出处和外部工具核验</li>
       <li><strong>缓解</strong>：RAG 提供依据、分步推理减少部分错误、允许弃权并对高风险事实做人机兜底</li>

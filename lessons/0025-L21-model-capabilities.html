@@ -14,7 +14,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">60</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>模型能力边界与 Base vs Instruct</h1>
     <p class="subtitle">搞懂 LLM 天生做不到什么——因为 Agent 架构，本质就是来补这些短板的</p>
@@ -59,7 +59,7 @@
       </tbody>
     </table>
     <p>直觉例子：给 base model 输入"中国的首都是"，它可能补全成"中国的首都是北京，日本的首都是……"——它在<strong>模仿文本分布</strong>，不是在<strong>应答</strong>。指令模型才会理解成"你在问我，我该回答'北京'"。差别来自训练方式（见 <a href="https://toloka.ai/blog/base-llm-vs-instruction-tuned-llm" target="_blank">Toloka: Base LLM vs Instruction-Tuned LLM</a>）。</p>
-    <p><strong>关键洞察：</strong>指令微调通常首先改变“如何回应、如何执行任务”，<strong>不能默认它会可靠注入新的事实知识</strong>。研究《<a href="https://arxiv.org/html/2402.05119v3" target="_blank">A Closer Look at the Limitations of Instruction Tuning</a>》在特定模型、数据集与单轮开放问答实验中发现：LoRA 微调主要改变格式与风格；全参数微调虽可能吸收信息，却可能损害事实质量。它不证明所有微调都不能学习知识——领域/任务微调仍可教授技能或模式。</p>
+    <p><strong>关键洞察：</strong>指令微调通常首先改变“如何回应、如何执行任务”，<strong>不能默认它会可靠注入新的事实知识</strong>。研究《<a href="https://arxiv.org/html/2402.05119v5" target="_blank">A Closer Look at the Limitations of Instruction Tuning</a>》在特定模型、数据集与单轮开放问答实验中发现：LoRA 微调主要改变格式与风格；全参数微调虽可能吸收信息，却可能损害事实质量。它不证明所有微调都不能学习知识——领域/任务微调仍可教授技能或模式。</p>
     <p><strong>怎么选：</strong>需要可更新、可引用的私有/最新事实时，RAG 往往更合适；需要改变行为、格式、领域术语或特定任务能力时，可考虑微调。两者可以组合，不是“只能二选一”。</p>
     <p><strong>对 Agent 开发者的意义</strong>：你日常调的 API（GPT / Claude / Gemini 的 chat / instruct 版）<strong>都是 instruction-tuned</strong> 的——正因为它们听得懂指令，你才能用自然语言下达任务、写 system prompt、做 function calling。base model 一般不直接拿来做 Agent。</p>
   </div>
@@ -182,6 +182,66 @@ API 默认无状态           →   应用保存并重发 / 外部记忆
     <p>换句话说：<strong>LLM 是 Agent 的"大脑"，但大脑没有手、没有笔记本、也不上网。工具是它的手，记忆是它的笔记本，检索是它的联网。</strong>之后学到的每一个 Agent 组件——tool use、RAG、memory、planning——你都可以问自己一句："这是在补哪条局限？"这条主线会一直贯穿到课程结束。</p>
   </div>
 
+  <div class="best-practice-point" id="bp-l21-capability-gap-augmentation">
+    <h3>最佳实践：先诊断能力缺口，再选择一种增强候选</h3>
+    <p class="bp-scenario"><strong>适用：</strong>请求依赖模型参数之外的最新数据、私有证据、确定性计算、应用状态，或在固定任务上反复出现的稳定行为缺口。<strong>不适用：</strong>已有上下文足够完成普通改写、总结或分类时，不要为了“像 Agent”而强加 RAG、工具或微调。本卡只决定<strong>主要增强候选</strong>，不同时设计检索器、工具协议和训练流程。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 看到未知信息就统一上 RAG</span><pre><code>def choose_augmentation(request) -&gt; str:
+    return "rag"</code></pre><p>相同接口却把实时状态、精确计算和跨会话状态都误当成文档检索问题。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 先标注缺口，再映射候选</span><pre><code>def choose_augmentation(request) -&gt; str:
+    return CANDIDATE_BY_GAP[request.gap]</code></pre><p>单个决策只回答“缺什么、先试什么”：现成证据直接放上下文，私有文档检索，实时/计算走工具，业务状态走状态层，反复行为缺口才进入微调候选。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先执行缺口分类，再由每类机制提供模型参数中缺失的信息或确定性能力，结果是事实依据更可追踪、计算更正确、状态更一致，同时避免无关基础设施。真实代价包括检索索引、工具调用延迟、状态存储与评测/训练维护；若资料很小且本轮已提供，就切换为直接上下文；若知识频繁更新且需引用，就从微调切回 RAG；若只是少量格式规则，先用提示词和评测，只有反复不稳定且样本充足时才考虑微调。</p>
+    <p class="bp-term"><strong>边界：</strong><span class="bp-term-name">直接上下文</span>是把本轮已有证据直接交给模型；<span class="bp-term-name">RAG</span>是先从较大证据库检索再注入；<span class="bp-term-name">工具</span>执行外部查询或确定性计算；<span class="bp-term-name">状态层</span>保存应用事实；<span class="bp-term-name">微调候选</span>用于经评测证实的稳定行为/技能缺口，不是更新事实数据库。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库；离线、确定性、通过时静默）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Request:
+    text: str
+    gap: str
+
+
+CANDIDATE_BY_GAP = {
+    "provided_evidence": "direct_context",
+    "private_evidence": "rag",
+    "fresh_data": "tool",
+    "deterministic_computation": "tool",
+    "application_state": "state",
+    "stable_behavior": "fine_tune_candidate",
+    "none": "none",
+}
+
+
+def choose_augmentation(request: Request) -&gt; str:
+    try:
+        return CANDIDATE_BY_GAP[request.gap]
+    except KeyError as error:
+        raise ValueError(f"unknown capability gap: {request.gap}") from error
+
+
+fixtures = [
+    (Request("解释本轮附带的条例片段", "provided_evidence"), "direct_context"),
+    (Request("查询内部档案中的历史批文", "private_evidence"), "rag"),
+    (Request("读取今天的停水区域", "fresh_data"), "tool"),
+    (Request("精确计算阶梯水费", "deterministic_computation"), "tool"),
+    (Request("读取这位用户的申请进度", "application_state"), "state"),
+    (Request("固定生成已反复评测失败的公文格式", "stable_behavior"), "fine_tune_candidate"),
+    (Request("把这句话改得更简洁", "none"), "none"),
+]
+
+for request, expected in fixtures:
+    assert choose_augmentation(request) == expected
+
+try:
+    choose_augmentation(Request("含糊请求", "unknown"))
+except ValueError as error:
+    assert isinstance(error.__cause__, KeyError)
+else:
+    raise AssertionError("unknown gap must fail before choosing augmentation")</code></pre></details>
+    <p class="bp-result"><strong>失败诊断：</strong>最新数据或确定性计算没有落到 <code>tool</code>，说明把执行能力误当成文本检索；私有证据没有落到 <code>rag</code>，说明证据获取缺失；应用进度没有落到 <code>state</code>，说明把业务事实塞回模型猜测；普通改写不是 <code>none</code>，说明非触发场景被过度工程化；未知缺口未失败则表示系统会在没有诊断证据时静默选型。</p>
+  </div>
+
   <div class="card">
     <p><strong>Agent 场景练习</strong>：下面 4 个用户请求，各<strong>触碰了哪条 LLM 局限</strong>？<strong>Agent 该用什么能力补</strong>？先自己想，再展开对照。</p>
     <ol>
@@ -251,11 +311,219 @@ API 默认无状态           →   应用保存并重发 / 外部记忆
   </div>
 </div>
 
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：实验室运营助手的多缺口计划</h2>
+  <p class="best-practice-lead">知识点卡只决定“一个缺口先试哪个候选”；本练习迁移到<strong>一个请求同时包含多个已诊断缺口</strong>的情况。上游已经给出缺口到候选的解析表，你只负责验证全部输入、去重共享能力，并生成最小计划。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>接收一个请求的多个已诊断 <code>gaps</code> 和给定解析表。</li><li>先验证全部 gap，再生成计划，未知值不能留下半份结果。</li><li>把实时查询与确定性计算共享的 <code>tool</code> 去重。</li><li>把 <code>none</code> 视为“没有缺口”，禁止与真实缺口混用。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>组合请求得到稳定、无重复的最小能力序列。</li><li>相同能力只出现一次，输入顺序不改变计划顺序。</li><li>纯改写返回空计划，不强加外部能力。</li><li>未知缺口和矛盾的 <code>none</code> 都在计划生成前失败。</li><li>标准输出只有验收标记。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>不要重写卡片里的“缺口 → 候选”决策；把它当成上游已经验证的输入。本题新增约束是<strong>组合、去重与失败原子性</strong>，不能复制单缺口自检直接交卷。</p>
+    <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class LabRequest:
+    name: str
+    gaps: tuple[str, ...]
+
+
+RESOLVED_CANDIDATE = {
+    "provided_evidence": "direct_context",
+    "private_evidence": "rag",
+    "fresh_data": "tool",
+    "deterministic_computation": "tool",
+    "application_state": "state",
+    "stable_behavior": "fine_tune_candidate",
+    "none": "none",
+}
+PLAN_ORDER = (
+    "direct_context",
+    "rag",
+    "tool",
+    "state",
+    "fine_tune_candidate",
+)
+
+
+def build_plan(request: LabRequest, resolved: dict[str, str]) -&gt; tuple[str, ...]:
+    unknown = set(request.gaps) - set(resolved)
+    if unknown:
+        raise ValueError(f"unclassified gaps: {sorted(unknown)}")
+    if "none" in request.gaps and len(set(request.gaps)) &gt; 1:
+        raise ValueError("none cannot coexist with a real capability gap")
+
+    selected = {
+        resolved[gap]
+        for gap in request.gaps
+        if resolved[gap] != "none"
+    }
+    return tuple(candidate for candidate in PLAN_ORDER if candidate in selected)
+
+
+combined = LabRequest(
+    "prepare-safety-brief",
+    ("fresh_data", "provided_evidence", "deterministic_computation"),
+)
+same_needs_reordered = LabRequest(
+    "unrelated-wording",
+    ("deterministic_computation", "fresh_data", "provided_evidence"),
+)
+assert build_plan(combined, RESOLVED_CANDIDATE) == ("direct_context", "tool")
+assert build_plan(same_needs_reordered, RESOLVED_CANDIDATE) == ("direct_context", "tool")
+assert build_plan(LabRequest("rewrite", ("none",)), RESOLVED_CANDIDATE) == ()
+assert build_plan(
+    LabRequest("private-state", ("application_state", "private_evidence")),
+    RESOLVED_CANDIDATE,
+) == ("rag", "state")
+
+for bad in (
+    LabRequest("unknown", ("fresh_data", "unclassified")),
+    LabRequest("contradiction", ("none", "fresh_data")),
+):
+    try:
+        build_plan(bad, RESOLVED_CANDIDATE)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid combined gaps must fail before planning")
+
+print("L21 ACCEPTED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>组合计划里出现两个 <code>tool</code>，说明没有去重共享能力；调换 gap 顺序后计划变化，说明输出契约不稳定；纯改写得到非空计划，说明非触发场景被过度工程化；未知 gap 或 <code>none</code> 混用仍返回结果，说明输入未在生成计划前完整验证。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-capability-policy" data-phase-practice="capability-policy">
+  <h2>阶段实践检查点：能力与推理策略</h2>
+  <p class="best-practice-lead">输入已由上游诊断为 <code>gap</code>，并附带当前模型在各 effort 档位上的固定业务试验。先按 L21 选择外部能力，再按 L20 的质量/延迟门选择<strong>最低达标 effort</strong>；两个决策不能互相代替。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>由已诊断 gap 独立选择 direct context、RAG、tool、state、fine-tune candidate 或 none。</li><li>从固定 trials 中筛选同时通过质量与延迟门的 effort。</li><li>在达标项中按 low → medium → high 选择最低档，并保留质量、延迟与输出 Token 证据。</li><li>覆盖同一能力缺口但不同试验结果的请求，以及无档位达标的失败路径。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>短但需要实时容量的请求仍使用工具。</li><li>同一 fresh-data 缺口始终选 tool，但可以因试验不同选择不同 effort。</li><li>困难但资料已给齐的任务只提高 effort，不强加 RAG。</li><li>无 effort 达标时明确失败，不能静默使用最高档。</li><li>所选 trial 保留 <code>output_tokens</code>，标准输出只有检查点标记。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>只使用 L20 的评测驱动 effort 和 L21 的缺口映射。不要用请求长度猜难度，也不要引入 L22 的候选模型排名。</p>
+    <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+ORDER = ("low", "medium", "high")
+AUGMENTATION = {
+    "provided_evidence": "direct_context",
+    "private_evidence": "rag",
+    "fresh_data": "tool",
+    "deterministic_computation": "tool",
+    "application_state": "state",
+    "stable_behavior": "fine_tune_candidate",
+    "none": "none",
+}
+
+
+@dataclass(frozen=True)
+class Trial:
+    effort: str
+    quality: float
+    latency_ms: int
+    output_tokens: int
+
+
+@dataclass(frozen=True)
+class EmergencyRequest:
+    name: str
+    gap: str
+    trials: tuple[Trial, ...]
+
+
+def capability_policy(request: EmergencyRequest) -&gt; str:
+    return AUGMENTATION[request.gap]
+
+
+def effort_policy(
+    request: EmergencyRequest,
+    *,
+    min_quality: float,
+    max_latency_ms: int,
+) -&gt; Trial:
+    eligible = [
+        trial for trial in request.trials
+        if trial.quality &gt;= min_quality and trial.latency_ms &lt;= max_latency_ms
+    ]
+    if not eligible:
+        raise ValueError(f"no effort trial passes for {request.name}")
+    return min(eligible, key=lambda trial: ORDER.index(trial.effort))
+
+
+def plan(request: EmergencyRequest) -&gt; tuple[str, Trial]:
+    return capability_policy(request), effort_policy(
+        request,
+        min_quality=0.90,
+        max_latency_ms=800,
+    )
+
+
+live_quick = EmergencyRequest(
+    "live-shelter-capacity",
+    "fresh_data",
+    (
+        Trial("low", 0.93, 260, 90),
+        Trial("medium", 0.96, 480, 180),
+    ),
+)
+live_harder = EmergencyRequest(
+    "live-capacity-with-conflicts",
+    "fresh_data",
+    (
+        Trial("low", 0.82, 250, 95),
+        Trial("medium", 0.92, 560, 210),
+        Trial("high", 0.95, 920, 390),
+    ),
+)
+complete_brief = EmergencyRequest(
+    "plan-from-complete-brief",
+    "provided_evidence",
+    (
+        Trial("low", 0.78, 230, 100),
+        Trial("medium", 0.91, 610, 230),
+    ),
+)
+rewrite = EmergencyRequest(
+    "rewrite-status-line",
+    "none",
+    (Trial("low", 0.97, 120, 45),),
+)
+
+quick_capability, quick_trial = plan(live_quick)
+hard_capability, hard_trial = plan(live_harder)
+brief_capability, brief_trial = plan(complete_brief)
+rewrite_capability, rewrite_trial = plan(rewrite)
+
+assert quick_capability == hard_capability == "tool"
+assert quick_trial.effort == "low" and quick_trial.output_tokens == 90
+assert hard_trial.effort == "medium" and hard_trial.output_tokens == 210
+assert brief_capability == "direct_context" and brief_trial.effort == "medium"
+assert rewrite_capability == "none" and rewrite_trial.effort == "low"
+
+try:
+    plan(EmergencyRequest(
+        "unmet-gate",
+        "provided_evidence",
+        (Trial("low", 0.50, 200, 50), Trial("high", 0.99, 1_200, 500)),
+    ))
+except ValueError:
+    pass
+else:
+    raise AssertionError("an unmet effort gate must fail explicitly")
+
+print("P2 CHECKPOINT CAPABILITY-POLICY PASSED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>同一 fresh-data 缺口得到不同外部能力，说明 capability 被 effort 试验污染；直接选最高 effort 表示没有选择最低达标档；高质量但超延迟的 trial 入选表示延迟门失效；结果未保留 <code>output_tokens</code> 表示投入证据丢失；无档达标却仍返回结果表示系统静默降质。</p>
+    <p class="bp-rationale"><strong>工程主题链接：</strong><a href="../best-practices/phase2-model-selection-practices.html#theme-capability-policy">Capability Policy · 先分开判断外部能力缺口与推理投入</a>。</p>
+  </div>
+</div>
+
 <div class="section">
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://toloka.ai/blog/base-llm-vs-instruction-tuned-llm" target="_blank"><strong>Toloka: Base LLM vs Instruction-Tuned LLM</strong></a></p>
-    <p>这篇文章适合建立 base / instruct 的行为直觉。进一步阅读 <a href="https://arxiv.org/html/2402.05119v3" target="_blank">A Closer Look at the Limitations of Instruction Tuning</a> 时要保留实验边界：它观察到特定模型和数据上的 LoRA 指令微调主要改变格式/风格，全参数微调虽可能吸收信息却可能损害事实质量；不能外推成“任何微调都学不到知识”。偏好优化的另一条路线可参考 <a href="https://arxiv.org/abs/2305.18290" target="_blank">Direct Preference Optimization</a>。</p>
+    <p>这篇文章适合建立 base / instruct 的行为直觉。进一步阅读 <a href="https://arxiv.org/html/2402.05119v5" target="_blank">A Closer Look at the Limitations of Instruction Tuning</a> 时要保留实验边界：它观察到特定模型和数据上的 LoRA 指令微调主要改变格式/风格，全参数微调虽可能吸收信息却可能损害事实质量；不能外推成“任何微调都学不到知识”。偏好优化的另一条路线可参考 <a href="https://arxiv.org/abs/2305.18290" target="_blank">Direct Preference Optimization</a>。</p>
   </div>
 </div>
 

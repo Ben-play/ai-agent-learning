@@ -1,0 +1,9 @@
+.venv/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/

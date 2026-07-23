@@ -80,7 +80,7 @@ thinking 是否发生：由模型和任务共同决定
 <div class="section">
   <h2>2. 当前 Claude API：Adaptive Thinking + effort</h2>
   <div class="card">
-    <p>当前 Claude 新代码使用官方 Anthropic SDK，把 <code>thinking</code> 设为 <code>adaptive</code>，再把 effort 放进 <code>output_config</code>。下面示例使用当前 Opus 模型；它不接受 L17 的 sampling 参数，所以请求里没有 temperature / top-p：</p>
+    <p>当前 Claude 新代码使用官方 Anthropic SDK，把 <code>thinking</code> 设为 <code>adaptive</code>，再把 effort 放进 <code>output_config</code>。下面示例使用当前 Opus 模型；它会拒绝 L17 sampling 参数的非默认值，因此 portable 请求直接省略 temperature / top-p：</p>
     <pre><code>import anthropic
 
 client = anthropic.Anthropic()
@@ -102,15 +102,86 @@ for block in response.content:
     <p><strong>如何区分四个字段：</strong></p>
     <ul>
       <li><code>thinking={"type":"adaptive"}</code>：允许模型按任务决定是否思考以及思考多少。</li>
-      <li><code>output_config.effort</code>：调节整体投入程度。可用档位随模型而定；更高可能提高难题质量，也可能增加延迟、Token 或过度思考。</li>
-      <li><code>display="summarized"</code>：请求可读的思考摘要；<code>omitted</code> 只是不返回可读文本，<strong>不等于不思考或不计费</strong>。</li>
+      <li><code>output_config.effort</code>：对整体 Token 投入的<strong>软性行为指导，不是严格预算</strong>。API 档位全集是 <code>low</code> / <code>medium</code> / <code>high</code> / <code>xhigh</code> / <code>max</code>，但支持范围随模型而定：例如 <code>xhigh</code> 只在 Fable 5 / Mythos 5、Opus 4.8 / 4.7 与 Sonnet 5 可用；<code>high</code> 是 API 默认。更高可能提高难题质量，也可能增加延迟、Token 或过度思考。</li>
+      <li><code>display="summarized"</code>：在默认 <code>omitted</code> 的新模型上，必须显式设置它才能收到可读思考摘要；<code>omitted</code> 会省略可读 thinking 文本，并可改善流式响应的首个正文 Token 延迟，但<strong>不会关闭思考，也不会减少已生成 thinking 的计费</strong>。</li>
       <li><code>max_tokens</code>：本次响应的硬输出上限，thinking 和最终文本都要留出空间；撞上它会以 <code>max_tokens</code> 停止。</li>
     </ul>
-    <p><strong>旧写法边界：</strong><code>thinking={"type":"enabled","budget_tokens":...}</code> 是旧模型的手动思考预算。Claude Opus 4.8 / 4.7、Claude Sonnet 5、Claude Fable 5 会拒绝它；Opus / Sonnet 4.6 仅保留弃用兼容。初学者的新代码不要再从固定预算起步，应使用 adaptive thinking + effort。</p>
-    <p>官方资料：<a href="https://platform.claude.com/docs/en/build-with-claude/extended-thinking" target="_blank">Anthropic · Extended Thinking</a> 与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>。</p>
+    <p><strong>默认值与旧写法边界：</strong>adaptive 的默认行为按模型不同：Fable 5 / Mythos 5 始终开启；Sonnet 5 默认开启；Opus 4.8 / 4.7 与 Opus / Sonnet 4.6 必须显式设置 <code>thinking={"type":"adaptive"}</code> 才会开启。<code>thinking={"type":"enabled","budget_tokens":...}</code> 是手动思考预算：Claude Opus 4.8 / 4.7、Claude Sonnet 5、Claude Fable 5 / Mythos 5 会拒绝它；Opus / Sonnet 4.6 仍接受但已弃用。已退役的 Mythos Preview 曾接受手动模式，但不能用于新请求；迁移时改用 Mythos 5，并以当前官方迁移文档为准。初学者的新代码不要再从固定预算起步，应使用 adaptive thinking + effort。</p>
+    <p>官方资料：<a href="https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking" target="_blank">Anthropic · Adaptive Thinking</a> 与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>。</p>
   </div>
   <div class="tip">
     一句话记住当前写法：<strong>adaptive 决定“按需想不想”，effort 调节“愿意投入多少”，display 只控制“给不给你看摘要”，max_tokens 才是硬上限。</strong>
+  </div>
+
+  <div class="best-practice-point" id="bp-l20-eval-driven-effort">
+    <h3>最佳实践：选择满足工作负载质量门的最低 effort</h3>
+    <p class="bp-scenario"><strong>适用：</strong>目标模型支持多个 effort 档位，且工作负载有固定质量测试、延迟和 Token / 成本记录。<strong>不适用：</strong>目标模型不支持 effort，或任务尚无可判定质量门；先补评测。<strong>本卡只做一个决定：</strong>从固定 trials 中选择通过质量门的最低 effort，而不是默认追求最高档。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 永远选最高 effort</span><pre><code>choice = "max"
+result = run(task, effort=choice)</code></pre><p>同一任务、输入与 <code>choose_effort()</code> 接口，却忽略较低档是否已过门，也没有把 latency / token cost 纳入决策。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 固定试验后选最低过门档</span><pre><code>choice = choose_effort(
+    trials,
+    min_quality=0.90,
+    max_latency_ms=900,
+)</code></pre><p>先过滤质量与延迟门，再按 effort 顺序选择最低档；没有档位过门就明确失败，不静默降质。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>在固定 workload 上记录每档质量、延迟与输出 Token，动作上把“感觉更聪明”换成可比较试验；机制上以质量门优先、再选最低可行 effort；结果提高成本效率、延迟可预测性、路由可审计性，并减少无收益 overthinking。真实成本是要维护代表性 eval、定期重跑，并承担离线 trial 与线上流量分布不一致的风险；effort 本身只是软指导，不是 token 硬上限。若所有档都不过门，应升级模型、改善工具 / prompt 或转人工；若任务价值极高且延迟不敏感，可把质量门提高并允许更高档。官方 API 值为 <code>low</code>/<code>medium</code>/<code>high</code>/<code>xhigh</code>/<code>max</code>，模型支持不同，默认 <code>high</code>；必须先查目标模型（<a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>）。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库、离线、静默通过）：</strong></summary><pre><code>ORDER = ["low", "medium", "high", "xhigh", "max"]
+
+
+def choose_effort(trials, *, min_quality, max_latency_ms):
+    eligible = [
+        trial for trial in trials
+        if trial["quality"] &gt;= min_quality
+        and trial["latency_ms"] &lt;= max_latency_ms
+    ]
+    if not eligible:
+        raise ValueError("no effort level meets the workload gate")
+    return min(eligible, key=lambda trial: ORDER.index(trial["effort"]))
+
+
+TRIALS = [
+    {"effort": "high", "quality": 0.95, "latency_ms": 820, "output_tokens": 330},
+    {"effort": "low", "quality": 0.93, "latency_ms": 1200, "output_tokens": 140},
+    {"effort": "xhigh", "quality": 0.96, "latency_ms": 1250, "output_tokens": 510},
+    {"effort": "medium", "quality": 0.92, "latency_ms": 520, "output_tokens": 210},
+]
+
+quality_gate = 0.90
+latency_gate = 900
+choice = choose_effort(
+    TRIALS,
+    min_quality=quality_gate,
+    max_latency_ms=latency_gate,
+)
+eligible = [
+    trial for trial in TRIALS
+    if trial["quality"] &gt;= quality_gate
+    and trial["latency_ms"] &lt;= latency_gate
+]
+assert eligible[0]["effort"] == "high"  # 输入故意无序，不能直接取 eligible[0]
+assert choice == {
+    "effort": "medium",
+    "quality": 0.92,
+    "latency_ms": 520,
+    "output_tokens": 210,
+}
+assert ORDER.index(choice["effort"]) == min(
+    ORDER.index(trial["effort"]) for trial in eligible
+)
+assert choice["latency_ms"] &lt;= latency_gate
+assert choice["output_tokens"] == 210
+assert TRIALS[1]["quality"] &gt;= quality_gate
+assert TRIALS[1]["latency_ms"] &gt; latency_gate  # 删除延迟门会错误选 low
+
+try:
+    choose_effort(TRIALS, min_quality=0.99, max_latency_ms=400)
+except ValueError as error:
+    assert str(error) == "no effort level meets the workload gate"
+else:
+    raise AssertionError("an unmet quality gate must not silently choose a level")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>无输出且退出码为 0 即通过。选择 high / xhigh 表示没有取最低过门档；选择 low 表示质量门未生效；选择 xhigh 且忽略 900ms 表示延迟门失效；无档过门却返回结果表示系统在静默降质。</p>
+    <p class="bp-term"><strong>边界：</strong>最低 effort 指 API 档位顺序中的最低可行值，不代表最低美元价格；模型单价、重试率与失败成本仍需在完整路由评测中计算。</p>
   </div>
 </div>
 
@@ -152,7 +223,7 @@ for block in response.content:
 <div class="section">
   <h2>4. 成本 / 延迟权衡</h2>
   <div class="card">
-    <p>额外 thinking 会消耗输出 Token 和生成时间。你看到摘要、空 thinking 文本或只看到最终回答，都不代表后台没有产生可计费用量；应以响应的 usage 和账单为准。</p>
+    <p>额外 thinking 会消耗输出 Token 和生成时间。在 Fable 5 / Mythos 5、Sonnet 5、Opus 4.8 / 4.7 等新模型上，<code>display</code> 默认是 <code>omitted</code>；要收到可读摘要必须显式设为 <code>summarized</code>。省略 thinking 文本可改善流式响应的首个正文 Token 延迟，但不会减少已生成 thinking 的计费。你看到摘要、空 thinking 文本或只看到最终回答，都不代表后台没有产生可计费用量；应以响应的 usage 和账单为准。</p>
     <pre><code>较低推理投入：输入 ──▶ 回答             ← 通常更快、更省
 较高推理投入：输入 ──▶ thinking ──▶ 回答 ← 可能更准，也可能更慢/更贵
 
@@ -269,6 +340,136 @@ for block in response.content:
   不把“think step by step”当质量保证
   是否增加过程脚手架，用评测决定</code></pre>
   </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：发票处理多阶段执行策略</h2>
+  <p class="best-practice-lead">先独立完成：把故意无序的离线 trials 转成一张发票处理执行策略表。每个阶段有不同的质量门、延迟门与可用 effort 子集；逐阶段选择最低过门档，保留该档输出 Token 证据，并为没有任何过门档的阶段写出明确人工升级记录。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>定义多个发票阶段各自的质量门、延迟门与 supported efforts。</li><li>为每个支持档位准备质量、延迟、输出 Token 固定 trial，并故意打乱顺序。</li><li>按阶段过滤门槛，再按 API effort 顺序选择最低过门档。</li><li>把阶段、档位、门槛和所选 trial 的 output_tokens 写进策略表。</li><li>对无档过门阶段返回显式 escalation row，不静默选最高档。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>表头抽取与行项目核对使用不同门槛和 effort 子集。</li><li>trial 输入顺序不能决定选择结果；多个档过门时取最低可行档。</li><li>每个 use row 保留所选 trial 的 output_tokens。</li><li>异常复核阶段无档过门时包含原因、人工路由与全部 trial Token 证据。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>from dataclasses import dataclass
+
+ORDER = ["low", "medium", "high", "xhigh", "max"]
+
+
+@dataclass(frozen=True)
+class Stage:
+    stage_id: str
+    min_quality: float
+    max_latency_ms: int
+    supported_efforts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Trial:
+    stage_id: str
+    effort: str
+    quality: float
+    latency_ms: int
+    output_tokens: int
+
+
+def build_execution_policy(stages, trials):
+    table = []
+    for stage in stages:
+        if not set(stage.supported_efforts) &lt;= set(ORDER):
+            raise ValueError(f"unknown effort in stage {stage.stage_id}")
+
+        stage_trials = [trial for trial in trials if trial.stage_id == stage.stage_id]
+        by_effort = {trial.effort: trial for trial in stage_trials}
+        if len(by_effort) != len(stage_trials):
+            raise ValueError(f"duplicate effort trial in stage {stage.stage_id}")
+        if set(by_effort) != set(stage.supported_efforts):
+            raise ValueError(f"trial coverage mismatch in stage {stage.stage_id}")
+
+        passing = [
+            by_effort[effort] for effort in stage.supported_efforts
+            if by_effort[effort].quality &gt;= stage.min_quality
+            and by_effort[effort].latency_ms &lt;= stage.max_latency_ms
+        ]
+        base = {
+            "stage_id": stage.stage_id,
+            "quality_gate": stage.min_quality,
+            "latency_gate_ms": stage.max_latency_ms,
+            "supported_efforts": stage.supported_efforts,
+        }
+        if not passing:
+            evidence = tuple(
+                {
+                    "effort": effort,
+                    "quality": by_effort[effort].quality,
+                    "latency_ms": by_effort[effort].latency_ms,
+                    "output_tokens": by_effort[effort].output_tokens,
+                }
+                for effort in sorted(stage.supported_efforts, key=ORDER.index)
+            )
+            table.append({
+                **base,
+                "decision": "escalate",
+                "escalation": {
+                    "route": "manual-invoice-review",
+                    "reason": "no-supported-effort-meets-stage-gate",
+                },
+                "trial_evidence": evidence,
+            })
+            continue
+
+        chosen = min(passing, key=lambda trial: ORDER.index(trial.effort))
+        table.append({
+            **base,
+            "decision": "use",
+            "effort": chosen.effort,
+            "quality": chosen.quality,
+            "latency_ms": chosen.latency_ms,
+            "output_tokens": chosen.output_tokens,
+        })
+    return table
+
+
+STAGES = [
+    Stage("header-intake", 0.950, 350, ("low", "medium")),
+    Stage("line-item-match", 0.965, 850, ("medium", "high", "xhigh")),
+    Stage("exception-review", 0.985, 1200, ("high", "xhigh", "max")),
+]
+TRIALS = [
+    Trial("line-item-match", "high", 0.985, 720, 430),
+    Trial("header-intake", "medium", 0.978, 330, 185),
+    Trial("exception-review", "max", 0.992, 1500, 760),
+    Trial("header-intake", "low", 0.955, 250, 96),
+    Trial("line-item-match", "xhigh", 0.993, 980, 610),
+    Trial("exception-review", "high", 0.972, 690, 360),
+    Trial("line-item-match", "medium", 0.968, 620, 270),
+    Trial("exception-review", "xhigh", 0.983, 930, 520),
+]
+
+policy = build_execution_policy(STAGES, TRIALS)
+rows = {row["stage_id"]: row for row in policy}
+assert [trial.effort for trial in TRIALS if trial.stage_id == "header-intake"] == [
+    "medium", "low"
+]
+assert rows["header-intake"]["decision"] == "use"
+assert rows["header-intake"]["effort"] == "low"
+assert rows["header-intake"]["output_tokens"] == 96
+assert rows["line-item-match"]["effort"] == "medium"
+assert rows["line-item-match"]["quality_gate"] == 0.965
+assert rows["line-item-match"]["latency_gate_ms"] == 850
+assert rows["line-item-match"]["output_tokens"] == 270
+assert rows["exception-review"]["decision"] == "escalate"
+assert rows["exception-review"]["escalation"] == {
+    "route": "manual-invoice-review",
+    "reason": "no-supported-effort-meets-stage-gate",
+}
+assert [item["output_tokens"] for item in rows["exception-review"]["trial_evidence"]] == [
+    360, 520, 760
+]
+assert len(policy) == len(STAGES)
+
+print("L20 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>表头阶段选择 medium 表示受无序输入影响而没有取最低过门档；行项目阶段选择 high / xhigh 表示跨阶段复用了单一档位或忽略了阶段门槛；异常复核返回 use 表示无过门档时仍在静默降质；策略行缺少 output_tokens 表示成本证据在决策后丢失。</p>
+  <p class="bp-term"><strong>迁移提示：</strong>真实执行策略应使用版本化阶段 eval，并在模型、prompt、工具或票据分布变化后重跑；这里的策略表只依据 L20 的 effort、质量、延迟与输出 Token 概念，<code>max_tokens</code> 仍是响应硬上限。</p>
+</div>
 </div>
 
 <div class="section">

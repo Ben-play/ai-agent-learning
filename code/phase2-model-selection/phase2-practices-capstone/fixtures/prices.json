@@ -1,0 +1,51 @@
+{
+  "fiction_notice": "Invented educational prices; not current, historical, or vendor-derived.",
+  "currency": "fictional_credits",
+  "per_units": 1000,
+  "candidates": [
+    {
+      "candidate_id": "Spruce-S",
+      "prices": {
+        "uncached_input": 0.80,
+        "cache_write": 1.20,
+        "cache_read": 0.20,
+        "output": 2.40,
+        "retry": 18.00,
+        "escalation": 40.00
+      }
+    },
+    {
+      "candidate_id": "Cedar-S",
+      "prices": {
+        "uncached_input": 1.60,
+        "cache_write": 2.40,
+        "cache_read": 0.35,
+        "output": 4.20,
+        "retry": 24.00,
+        "escalation": 55.00
+      }
+    },
+    {
+      "candidate_id": "Quartz-E",
+      "prices": {
+        "uncached_input": 1.10,
+        "cache_write": 1.65,
+        "cache_read": 0.25,
+        "output": 3.00,
+        "retry": 20.00,
+        "escalation": 45.00
+      }
+    },
+    {
+      "candidate_id": "Flint-E",
+      "prices": {
+        "uncached_input": 2.40,
+        "cache_write": 3.60,
+        "cache_read": 0.50,
+        "output": 7.50,
+        "retry": 35.00,
+        "escalation": 75.00
+      }
+    }
+  ]
+}

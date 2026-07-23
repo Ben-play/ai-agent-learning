@@ -87,7 +87,7 @@ def count_openai_tokens(text: str) -&gt; int:
     return len(enc.encode(text))
 
 # 单价用「示例」值：真实价格请查各厂商官网，这里只演示算法
-# 单位：美元 / 每百万 token（输出通常是输入的 3~5 倍，见 L23）
+# 单位：美元 / 每百万 token（下面仅为教学示例；真实价差查厂商当前价格）
 PRICE = {
     # 模型名: (输入价/百万, 输出价/百万)  —— 均为示例，非真实报价
     "model-a": (3.0, 15.0),
@@ -106,7 +106,7 @@ prompt = "用一句话解释什么是向量数据库。"
 for m in PRICE:
     print(m, "输入token=", count_openai_tokens(prompt),
           "单次≈$", round(estimate_cost(prompt, m), 6))</code></pre>
-    <p>这段代码<strong>直接可运行</strong>。输出会长这样（token 数是本地 <code>tiktoken</code> 实算的，金额是示例单价算出来的；不同 tiktoken 版本可能有 ±1 的差异）：</p>
+    <p>这段代码<strong>直接可运行</strong>。输出会长这样（token 数由安装的 <code>tiktoken</code> 版本与指定编码实际计算，金额由示例单价算出；版本变化时应以本地实测输出为准）：</p>
     <pre><code>model-a 输入token= 10 单次≈$ 0.00453
 model-b 输入token= 10 单次≈$ 0.000455</code></pre>
     <p>同一段文本在两个示例价目下成本不同；真正比较厂商时，必须先换成各自的计数方式与单价。Claude 的请求前计数形状如下（会调用免费计数端点，因此需要有效认证，但不产生模型输出费用）：</p>
@@ -186,7 +186,7 @@ async def run_matrix(prompts, models, call) -&gt; list[dict]:
     <p>这里的 <code>call</code> 就是 adapter 接口。离线练习传 <code>mock_call</code>；真实 Claude 环境可包装 <code>call_claude</code>。并发器只依赖统一 dict，因此增加 provider 时不需要改评测流程。</p>
   </div>
   <div class="tip">
-    公平对比要固定 prompt、系统指令、工具、最大输出、effort/采样策略和重复次数。若某模型不支持另一个模型的参数（当前 Claude Opus 4.8 就不接受 temperature），记录差异并比较各自推荐配置，不能为了“字段一样”发送无效请求。
+    公平对比要固定 prompt、系统指令、工具、最大输出、effort/采样策略和重复次数。以本页锁定的 <code>claude-opus-4-8</code> 示例为准，它会拒绝 <code>temperature</code>、<code>top_p</code> 与 <code>top_k</code> 的非默认值；模型事实会变化，实际运行前应查 Anthropic 当前模型文档/Models API。若某候选不支持另一个候选的参数，记录差异并比较各自推荐配置，不能为了“字段一样”发送无效请求。
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -365,6 +365,78 @@ best, scores = pick_model(
 )</code></pre>
     <p>归一化只解决量纲问题：候选集合变化会改变分数，极端值也会扭曲尺度。生产中还应先设置硬门槛（如法律问答错误率不得超过阈值），淘汰不合格候选后再加权。</p>
   </div>
+
+  <div class="best-practice-point" id="bp-l24-gate-before-ranking">
+    <h3>最佳实践：先过事实、证据与质量硬门，再做归一化加权排名</h3>
+    <p class="bp-scenario"><strong>适用：</strong>候选方案同时有事实错误率、证据覆盖、业务质量和完整成本，且至少一项属于不可用红线。<strong>不适用：</strong>探索性分析还没有可辩护的阈值时，应报告数据与不确定性，不要伪造硬门。本卡只决定<strong>合格候选的比较排名</strong>；上线时若另有成本路由策略，应把“比较排名”和“每请求路由”作为两份独立输出。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 所有候选直接加权</span><pre><code>winner = max(candidates, key=weighted_score)</code></pre><p>极便宜但事实不安全的候选可用成本分抵消红线，成为“便宜赢家”。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 门槛过滤后再排名</span><pre><code>qualified = [c for c in candidates if passes_hard_gates(c)]
+if not qualified:
+    raise NoQualifiedCandidate
+winner = max(qualified, key=normalized_weighted_score)</code></pre><p>红线不可补偿；只有事实、证据和质量都合格的候选进入归一化。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先执行不可补偿的事实/证据/质量约束，再在合格集合内把不同量纲归一化并加权，机制上阻止低成本掩盖安全失败，结果更可靠、可审计且符合业务风险边界。代价是阈值治理、样本维护与“可能没有赢家”；若无候选合格就返回明确的无合格结果、扩大候选或修复系统后重测，而不是降低门槛；若任务确实没有硬红线，才切换为全量 Pareto/加权探索并明确它不是上线验收。</p>
+    <p class="bp-term"><strong>边界：</strong><span class="bp-term-name">硬门</span>不可由其它指标补偿；<span class="bp-term-name">归一化</span>只在当前合格候选集合内消除量纲；<span class="bp-term-name">权重</span>表达合格方案之间的比较偏好，不表达最低安全要求，也不自动等于成本路由的主候选。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库；离线、确定性、通过时静默）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+class NoQualifiedCandidate(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class Candidate:
+    name: str
+    factual_accuracy: float
+    evidence_coverage: float
+    quality: float
+    cost: float
+
+
+def passes(candidate):
+    return (
+        candidate.factual_accuracy &gt;= 0.95
+        and candidate.evidence_coverage &gt;= 0.90
+        and candidate.quality &gt;= 0.80
+    )
+
+
+def normalize(value, values, *, lower_is_better=False):
+    low, high = min(values), max(values)
+    score = 1.0 if high == low else (value - low) / (high - low)
+    return 1.0 - score if lower_is_better else score
+
+
+def rank(candidates):
+    qualified = [candidate for candidate in candidates if passes(candidate)]
+    if not qualified:
+        raise NoQualifiedCandidate("no candidate passes all hard gates")
+    qualities = [candidate.quality for candidate in qualified]
+    costs = [candidate.cost for candidate in qualified]
+    return max(
+        qualified,
+        key=lambda candidate: (
+            0.7 * normalize(candidate.quality, qualities)
+            + 0.3 * normalize(candidate.cost, costs, lower_is_better=True)
+        ),
+    )
+
+
+unsafe_cheap = Candidate("unsafe-cheap", 0.70, 0.60, 0.99, 0.01)
+safe_a = Candidate("safe-a", 0.97, 0.94, 0.88, 0.08)
+safe_b = Candidate("safe-b", 0.98, 0.96, 0.82, 0.04)
+assert rank([unsafe_cheap, safe_a, safe_b]).name == "safe-a"
+assert not passes(unsafe_cheap)
+
+try:
+    rank([unsafe_cheap])
+except NoQualifiedCandidate:
+    pass
+else:
+    raise AssertionError("no-qualified case must be explicit")</code></pre></details>
+    <p class="bp-result"><strong>失败诊断：</strong><code>unsafe-cheap</code> 胜出表示硬门被权重补偿；安全候选排序不稳定表示归一化或方向错误；仅有不安全候选时仍返回赢家表示无合格分支缺失；把阈值混入加权分表示“必须满足”退化成了“最好满足”。</p>
+  </div>
   <div class="tip">
     <strong>最容易犯的错：只看一个维度。</strong> 只看 benchmark 分数 → 可能选了个贵到用不起、还爱编造的模型；只看价格 → 可能选了个便宜但不靠谱、返工成本更高的。<a href="0027-L23-token-economics.html">L23</a> 提醒过：真正的成本是<strong>"总拥有成本"</strong>——包括幻觉导致的返工、人工复核。<strong>永远把能力 + 幻觉 + 成本放在一起权衡</strong>，这就是这份体检报告存在的意义。
   </div>
@@ -373,7 +445,7 @@ best, scores = pick_model(
 <div class="section">
   <h2>🎯 速查卡：Phase 2 一页复习</h2>
   <div class="card">
-    <pre><code>【L17】解码概念 ≠ 通用 API 字段；当前 Claude 新模型不接受 sampling 参数
+    <pre><code>【L17】解码概念 ≠ 通用 API 字段；本页锁定的 Opus 4.8 拒绝 sampling 控制的非默认值
 【L18】tiktoken 对匹配 OpenAI 编码计数；Claude 用 count_tokens + usage
 【L19】统计错误使幻觉产生，评估可能鼓励猜测；一致不证明正确
 【L20】推理能力 / Adaptive Thinking / effort 是三层；display ≠ 计费开关
@@ -389,6 +461,205 @@ best, scores = pick_model(
   Step3 一致性筛风险 + ground truth/证据判事实错误
   Step4 记录样本数/重复运行，指标归一化后再加权
   结论：没有脱离场景和评测配置的“最好模型”</code></pre>
+  </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：资助申请的 provider-neutral 迷你评估</h2>
+  <p class="best-practice-lead">先独立实现一个资助申请评审骨架：adapter 只返回中立观察，重复运行保留分布，事实必须由证据支持，完整成本含重试/升级，最后先过硬门再排名。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>用两个具体 adapter 把 provider 的答案与证据 ID 映射为同一 Observation。</li><li>用独立 ground truth 与证据语料计算事实正确和证据覆盖，不信 provider 自报分数。</li><li>让所有候选在同一 case/fixture 上使用不同 repeat ID 重复运行。</li><li>保留答案、证据、成功/失败、逐次派生指标与完整成本。</li><li>逐次执行联合硬门，再覆盖便宜不安全、失败、均值补偿与无合格候选。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>adapter 规范化答案/证据 ID；事实与证据分由独立真值计算。</li><li>伪造高 factual/evidence 自评分但答错或缺证据的原始结果仍被拒绝。</li><li>所有候选共享同一 fixture，且候选内 repeat ID 互异。</li><li>失败详情与逐次答案/证据/质量/事实/覆盖/成本元组均被保留。</li><li>有效去重证据决定覆盖率，重试与升级精确进入完整成本。</li><li>每次运行必须联合过门；无合格方案明确失败。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>这是刻意保持较小的单文件近迁移课程验收；多文件工程 capstone 与跨课 review 页面用途不同。先写中立数据结构、两个 adapter 和断言，再展开参考。</p>
+    <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+class NoQualifiedCandidate(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class Observation:
+    candidate: str
+    provider: str
+    case_id: str
+    fixture: str
+    repeat_id: str
+    ok: bool
+    answer: str | None
+    evidence_ids: tuple[str, ...]
+    rubric_score: float | None
+    base_cost: float
+    retry_cost: float
+    escalation_cost: float
+    failure: str | None = None
+
+    @property
+    def full_cost(self):
+        return self.base_cost + self.retry_cost + self.escalation_cost
+
+
+def normalize_answer(answer):
+    return " ".join(answer.strip().lower().split()) if answer is not None else None
+
+
+def adapt_alpha(candidate, raw):
+    return Observation(
+        candidate, "alpha", raw["case"], raw["input"], raw["repeat"],
+        raw["status"] == "ok", normalize_answer(raw.get("output")),
+        tuple(raw.get("citations", ())), raw.get("scores", {}).get("rubric"),
+        raw["cost"]["base"], raw["cost"]["retry"], raw["cost"]["escalation"],
+        raw.get("error"),
+    )
+
+
+def adapt_beta(candidate, raw):
+    return Observation(
+        candidate, "beta", raw["case_id"], raw["fixture"], raw["run_id"],
+        raw["ok"], normalize_answer(raw.get("answer")),
+        tuple(raw.get("evidence_ids", ())), raw.get("rubric_score"),
+        raw["billing"][0], raw["billing"][1], raw["billing"][2], raw.get("failure"),
+    )
+
+
+def derive_metrics(observation, truth, evidence_corpus):
+    expected_answer = normalize_answer(truth[observation.case_id]["answer"])
+    required = set(truth[observation.case_id]["required_evidence"])
+    valid = {
+        evidence_id for evidence_id in observation.evidence_ids
+        if evidence_id in evidence_corpus
+    }
+    factual = 1.0 if observation.answer == expected_answer else 0.0
+    coverage = len(valid &amp; required) / len(required)
+    return observation.rubric_score, factual, coverage
+
+
+def summarize(candidate, observations, truth, evidence_corpus):
+    metrics = [derive_metrics(item, truth, evidence_corpus) for item in observations]
+    return {
+        "name": candidate,
+        "case_ids": tuple(item.case_id for item in observations),
+        "fixtures": tuple(item.fixture for item in observations),
+        "repeat_ids": tuple(item.repeat_id for item in observations),
+        "ok": tuple(item.ok for item in observations),
+        "failures": tuple(item.failure for item in observations if not item.ok),
+        "answers": tuple(item.answer for item in observations),
+        "evidence_ids": tuple(item.evidence_ids for item in observations),
+        "quality": tuple(metric[0] for metric in metrics),
+        "factual": tuple(metric[1] for metric in metrics),
+        "evidence": tuple(metric[2] for metric in metrics),
+        "cost": tuple(item.full_cost for item in observations),
+    }
+
+
+def passes(row):
+    return all(
+        ok and quality is not None and quality &gt;= 0.80 and factual == 1.0 and evidence == 1.0
+        for ok, quality, factual, evidence in zip(
+            row["ok"], row["quality"], row["factual"], row["evidence"]
+        )
+    )
+
+
+def decide(rows):
+    qualified = [row for row in rows if passes(row)]
+    if not qualified:
+        raise NoQualifiedCandidate("no grant-review candidate passes gates")
+    return max(
+        qualified,
+        key=lambda row: (sum(row["quality"]) / len(row["quality"]))
+        - 0.1 * (sum(row["cost"]) / len(row["cost"])),
+    )
+
+
+CASE = "grant-eligibility-07"
+FIXTURE = "same redacted grant application"
+TRUTH = {
+    CASE: {
+        "answer": "eligible",
+        "required_evidence": ("rule-income", "rule-region"),
+    }
+}
+EVIDENCE_CORPUS = {
+    "rule-income": "Income threshold is satisfied.",
+    "rule-region": "Applicant region is eligible.",
+    "unrelated-note": "Formatting note only.",
+}
+alpha_raw = {
+    "safe-a": [
+        {"case": CASE, "input": FIXTURE, "repeat": "a-1", "status": "ok", "output": "Eligible", "citations": ["rule-income", "rule-region", "rule-region"], "scores": {"rubric": .88}, "cost": {"base": .05, "retry": .01, "escalation": .02}},
+        {"case": CASE, "input": FIXTURE, "repeat": "a-2", "status": "ok", "output": " eligible ", "citations": ["rule-region", "rule-income"], "scores": {"rubric": .90}, "cost": {"base": .05, "retry": .00, "escalation": .01}},
+    ],
+    "unsafe-cheap": [
+        {"case": CASE, "input": FIXTURE, "repeat": "u-1", "status": "ok", "output": "ineligible", "citations": [], "scores": {"rubric": .95, "factual": 1.0, "evidence": 1.0}, "cost": {"base": .01, "retry": .00, "escalation": .00}},
+        {"case": CASE, "input": FIXTURE, "repeat": "u-2", "status": "ok", "output": "eligible", "citations": ["unrelated-note", "forged-id"], "scores": {"rubric": .96, "factual": 1.0, "evidence": 1.0}, "cost": {"base": .01, "retry": .00, "escalation": .00}},
+    ],
+}
+beta_raw = {
+    "safe-b": [
+        {"case_id": CASE, "fixture": FIXTURE, "run_id": "b-1", "ok": True, "answer": "eligible", "evidence_ids": ["rule-income", "rule-region"], "rubric_score": .83, "billing": (.03, .01, .01)},
+        {"case_id": CASE, "fixture": FIXTURE, "run_id": "b-2", "ok": True, "answer": "ELIGIBLE", "evidence_ids": ["rule-region", "rule-income"], "rubric_score": .82, "billing": (.03, .00, .01)},
+    ],
+    "failed-candidate": [
+        {"case_id": CASE, "fixture": FIXTURE, "run_id": "f-1", "ok": True, "answer": "eligible", "evidence_ids": ["rule-income", "rule-region"], "rubric_score": .99, "billing": (.02, .00, .00)},
+        {"case_id": CASE, "fixture": FIXTURE, "run_id": "f-2", "ok": False, "billing": (.02, .01, .03), "failure": "provider timeout"},
+    ],
+    "compensating": [
+        {"case_id": CASE, "fixture": FIXTURE, "run_id": "c-1", "ok": True, "answer": "eligible", "evidence_ids": ["rule-income"], "rubric_score": .90, "claimed_factual": 1.0, "claimed_evidence": 1.0, "billing": (.02, .00, .00)},
+        {"case_id": CASE, "fixture": FIXTURE, "run_id": "c-2", "ok": True, "answer": "ineligible", "evidence_ids": ["rule-income", "rule-region"], "rubric_score": .90, "claimed_factual": 1.0, "claimed_evidence": 1.0, "billing": (.02, .00, .00)},
+    ],
+}
+
+observations = {
+    name: [adapt_alpha(name, raw) for raw in raws]
+    for name, raws in alpha_raw.items()
+}
+observations.update({
+    name: [adapt_beta(name, raw) for raw in raws]
+    for name, raws in beta_raw.items()
+})
+rows = [
+    summarize(name, items, TRUTH, EVIDENCE_CORPUS)
+    for name, items in observations.items()
+]
+by_name = {row["name"]: row for row in rows}
+
+assert {case for row in rows for case in row["case_ids"]} == {CASE}
+assert {fixture for row in rows for fixture in row["fixtures"]} == {FIXTURE}
+assert all(len(set(row["repeat_ids"])) == 2 for row in rows)
+assert by_name["safe-a"]["answers"] == ("eligible", "eligible")
+assert by_name["safe-a"]["evidence_ids"][0] == (
+    "rule-income", "rule-region", "rule-region"
+)
+assert by_name["safe-a"]["quality"] == (.88, .90)
+assert by_name["safe-a"]["factual"] == (1.0, 1.0)
+assert by_name["safe-a"]["evidence"] == (1.0, 1.0)
+assert tuple(round(value, 2) for value in by_name["safe-a"]["cost"]) == (.08, .06)
+assert observations["safe-a"][0].full_cost == .05 + .01 + .02
+assert by_name["failed-candidate"]["failures"] == ("provider timeout",)
+assert by_name["failed-candidate"]["ok"] == (True, False)
+assert by_name["unsafe-cheap"]["quality"] == (.95, .96)
+assert by_name["unsafe-cheap"]["factual"] == (0.0, 1.0)
+assert by_name["unsafe-cheap"]["evidence"] == (0.0, 0.0)
+assert by_name["compensating"]["factual"] == (1.0, 0.0)
+assert by_name["compensating"]["evidence"] == (0.5, 1.0)
+assert not passes(by_name["unsafe-cheap"])
+assert not passes(by_name["failed-candidate"])
+assert not passes(by_name["compensating"])
+assert decide(rows)["name"] == "safe-a"
+
+try:
+    decide([by_name["unsafe-cheap"], by_name["failed-candidate"], by_name["compensating"]])
+except NoQualifiedCandidate:
+    pass
+else:
+    raise AssertionError("no-qualified case must be explicit")
+
+print("L24 ACCEPTED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>adapter 没保留规范化 answer/evidence IDs，或 factual/evidence 仍读取 provider 自报数字，表示证据真值边界失效；伪造高自评分的错误/缺证据结果过门，表示独立 ground truth/corpus 未生效；重复证据提高覆盖率表示未去重；case/fixture 不唯一、repeat 重复、失败详情或逐次元组丢失都会掩盖比较风险；首次成本不是 0.08 表示重试/升级遗漏；均值互补或失败候选过门表示未逐次联合验收；无合格集合仍返回结果表示失败语义缺失。</p>
+    <p class="bp-rationale"><strong>继续练习：</strong>当前块是本课单文件、离线的<strong>课程验收</strong>；<a href="../code/phase2-model-selection/phase2-practices-capstone/README.md">抽取的多文件 Phase 2 capstone</a>用于把 adapter、fixtures、评测与测试拆成工程；<a href="../best-practices/phase2-model-selection-practices.html">Phase 2 最佳实践 review 页面</a>用于跨课主题复盘与审查。三者目标不同。</p>
   </div>
 </div>
 
