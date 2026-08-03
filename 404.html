@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F8F6F1">
+  <title>页面未找到 · AI Agent 学习路径</title>
+  <style>
+    :root { color-scheme: light dark; font-family: "Songti SC", STSong, Georgia, serif; }
+    * { box-sizing: border-box; }
+    body { min-height:100vh; margin:0; display:grid; place-items:center; padding:1.5rem; color:#203126; background:radial-gradient(circle at 78% 20%,rgba(217,119,6,.13),transparent 16rem),#f6f2e8; }
+    main { width:min(100%,42rem); padding:clamp(2rem,8vw,5rem); border:1px solid #d8d1c3; border-radius:1.2rem 1.2rem 4rem 1.2rem; background:#fffdf8; box-shadow:0 1.6rem 5rem rgba(32,49,38,.12); }
+    .code { margin:0 0 1.5rem; color:#c16c08; font:700 clamp(3.8rem,17vw,8rem)/.85 ui-monospace,monospace; letter-spacing:-.09em; }
+    h1 { margin:0 0 .8rem; color:#173525; font-size:clamp(1.8rem,7vw,3rem); line-height:1.2; }
+    p { margin:0 0 2rem; color:#625d55; font:1rem/1.8 system-ui,sans-serif; }
+    a { display:inline-flex; align-items:center; min-height:3rem; padding:.7rem 1.1rem; border-radius:999px; color:#fff; background:#173525; font:650 .92rem system-ui,sans-serif; text-decoration:none; }
+    @media (prefers-color-scheme:dark) { body{color:#ece9e2;background:#151918} main{border-color:#343a36;background:#202522;box-shadow:none} h1{color:#a5ecc4} p{color:#bbb6ad} a{color:#142118;background:#8ee0b2} .code{color:#f2b34e} }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="code" aria-hidden="true">404</div>
+    <h1>这条学习路径没有对应页面</h1>
+    <p>链接可能已移动，或地址输入有误。返回课程首页后，可以从学习路径总览继续。</p>
+    <a id="home-link" href="./" data-site-root="__SITE_ROOT__">返回课程首页</a>
+  </main>
+  <script>
+    (function () {
+      var link = document.getElementById('home-link');
+      var root = link.getAttribute('data-site-root');
+      if (root && root.charAt(0) === '/') link.href = root;
+    })();
+  </script>
+</body>
+</html>

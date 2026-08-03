@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F8F6F1">
+  <meta name="description" content="从 Python 基础到生产级多智能体系统的 AI Agent 中文学习路径。">
+  <title>AI Agent 高级开发工程师 · 课程首页</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    body.home-shell {
+      max-width: 70rem;
+      padding-top: calc(1.5rem + var(--safe-top));
+      overflow-x: hidden;
+    }
+    .home-topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.4rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: .76rem;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+    .home-topline::before {
+      content: "";
+      width: 2.8rem;
+      height: 3px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+    }
+    .home-topline span:first-child { margin-right: auto; }
+    .home-hero {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(16rem, .75fr);
+      gap: clamp(2rem, 6vw, 5rem);
+      align-items: end;
+      padding: clamp(2.3rem, 6vw, 5.2rem);
+      margin-bottom: 1.2rem;
+      border-radius: 1.5rem 1.5rem 4.5rem 1.5rem;
+      overflow: hidden;
+      color: #fff;
+      background:
+        radial-gradient(circle at 88% 16%, rgba(245, 158, 11, .2), transparent 21rem),
+        linear-gradient(128deg, #102c1d 0%, #1a3a2a 62%, #244b36 100%);
+      box-shadow: 0 1.5rem 4rem rgba(19, 46, 31, .18);
+    }
+    .home-hero::before {
+      content: "";
+      position: absolute;
+      width: 22rem;
+      height: 22rem;
+      right: -10rem;
+      bottom: -12rem;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 50%;
+      box-shadow: 0 0 0 3rem rgba(255,255,255,.025), 0 0 0 6rem rgba(255,255,255,.018);
+    }
+    .home-kicker {
+      margin-bottom: 1rem;
+      color: #f4b43c;
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+    }
+    .home-hero h1 {
+      max-width: 9em;
+      margin: 0 0 1.2rem;
+      color: #fff;
+      font-size: clamp(2.35rem, 6vw, 5.2rem);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -.045em;
+    }
+    .home-lede {
+      max-width: 37rem;
+      margin: 0;
+      color: rgba(255,255,255,.76);
+      font-size: clamp(1rem, 2vw, 1.16rem);
+      line-height: 1.8;
+    }
+    .home-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      width: 100%;
+      min-height: 4.4rem;
+      padding: 1rem 1.15rem 1rem 1.35rem;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: .85rem;
+      color: #173121;
+      background: #f3b33d;
+      box-shadow: 0 .9rem 2rem rgba(0,0,0,.15);
+      font-weight: 750;
+      line-height: 1.35;
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .home-primary:hover {
+      color: #173121;
+      border-bottom-color: transparent;
+      transform: translateY(-2px);
+      box-shadow: 0 1.1rem 2.3rem rgba(0,0,0,.22);
+    }
+    .home-primary .arrow {
+      display: grid;
+      place-items: center;
+      width: 2.3rem;
+      height: 2.3rem;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #173121;
+      color: #fff;
+      font-size: 1.15rem;
+    }
+    .home-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(17rem, .65fr);
+      gap: 1.2rem;
+      margin-top: 1.2rem;
+    }
+    .home-panel {
+      position: relative;
+      padding: clamp(1.35rem, 4vw, 2.2rem);
+      border: 1px solid var(--border-light);
+      border-radius: 1.1rem;
+      background: var(--card-bg);
+      box-shadow: var(--shadow-sm);
+    }
+    .home-panel h2 {
+      margin: 0 0 .45rem;
+      padding: 0;
+      border: 0;
+      font-size: 1.35rem;
+    }
+    .home-panel > p { margin-bottom: 1.25rem; }
+    .continue-slot {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 1rem;
+      align-items: center;
+      min-height: 6.2rem;
+      padding: 1.1rem 1.2rem;
+      border-left: 4px solid var(--accent-bright);
+      border-radius: .2rem .8rem .8rem .2rem;
+      background: var(--bg-warm);
+    }
+    .continue-slot a { font-weight: 700; }
+    .continue-slot small {
+      display: block;
+      margin-top: .35rem;
+      color: var(--muted);
+    }
+    .progress-slot {
+      display: grid;
+      place-items: center;
+      min-height: 10.5rem;
+      border-radius: .85rem;
+      background:
+        linear-gradient(var(--card-bg), var(--card-bg)) padding-box,
+        linear-gradient(135deg, var(--accent), var(--accent-bright)) border-box;
+      border: 1px solid transparent;
+      text-align: center;
+    }
+    .progress-slot strong {
+      display: block;
+      font-family: var(--font-display);
+      font-size: 2.7rem;
+      line-height: 1;
+      color: var(--accent);
+    }
+    .progress-slot span {
+      display: block;
+      margin-top: .55rem;
+      color: var(--muted);
+      font-size: .85rem;
+    }
+    .home-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 2.2rem;
+      padding: 1rem .2rem 0;
+      border-top: 1px solid var(--border-light);
+      color: var(--muted);
+      font-size: .82rem;
+    }
+    @media (max-width: 760px) {
+      .home-hero, .home-grid { grid-template-columns: 1fr; }
+      .home-hero { align-items: start; border-radius: 1.2rem 1.2rem 3rem 1.2rem; }
+      .home-hero h1 { max-width: none; }
+      .home-primary { max-width: 25rem; }
+      .home-topline span:last-child { display: none; }
+      .home-foot { display: block; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .home-primary { transition: none; }
+    }
+  </style>
+</head>
+<body class="home-shell">
+  <header class="home-topline" aria-label="课程信息">
+    <span>AI Agent Engineering</span>
+    <span>静态课程 · 支持离线访问</span>
+  </header>
+
+  <main>
+    <section class="home-hero" aria-labelledby="home-title">
+      <div>
+        <p class="home-kicker">从基础语法到生产系统</p>
+        <h1 id="home-title">构建真正能工作的 AI Agent</h1>
+        <p class="home-lede">一条中文、实战导向的完整学习路径：理解模型，设计工具，编排 Agent，并把系统可靠地交付到生产环境。</p>
+      </div>
+      <div>
+        <a class="home-primary" href="lessons/0001-ai-agent-learning-path-overview.html">
+          <span>进入学习路径总览</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
+    <div class="home-grid">
+      <section class="home-panel" aria-labelledby="continue-heading">
+        <h2 id="continue-heading">继续学习</h2>
+        <p>学习记录保存在当前设备中。首次访问时从总览开始。</p>
+        <div class="continue-slot" data-continue-learning>
+          <div>
+            <a href="lessons/0001-ai-agent-learning-path-overview.html">打开学习路径总览</a>
+            <small>浏览器未启用 JavaScript 时仍可正常进入课程。</small>
+          </div>
+          <span aria-hidden="true">L00</span>
+        </div>
+      </section>
+
+      <section class="home-panel" aria-labelledby="progress-heading">
+        <h2 id="progress-heading">学习进度</h2>
+        <p>完成课程后，这里会汇总本机进度。</p>
+        <div class="progress-slot" data-learning-progress role="status" aria-live="polite">
+          <div><strong>0%</strong><span>尚未记录已完成课程</span></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="home-foot">
+    <span>AI Agent 高级开发工程师学习路径</span>
+    <span>无外部依赖 · 可安装 · 可离线阅读已访问页面</span>
+  </footer>
+
+  <script src="assets/course-catalog.js" defer></script>
+  <script src="assets/content-tools.js" defer></script>
+  <script src="assets/theme-toggle.js" defer></script>
+  <script src="assets/back-to-top.js" defer></script>
+  <script src="assets/pwa.js" defer></script>
+</body>
+</html>

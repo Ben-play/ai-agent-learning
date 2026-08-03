@@ -2,22 +2,126 @@
  * 主题切换组件
  * - 支持深色/浅色切换
  * - 自动检测系统偏好
- * - localStorage 持久化
+ * - 安全 localStorage 持久化（受限环境降级为内存）
  * - 跟随系统偏好变化
  */
 (function() {
   'use strict';
 
-  const STORAGE_KEY = 'theme';
+  if (window.__aiCourseThemeToggleInitialized) return;
+  window.__aiCourseThemeToggleInitialized = true;
+
+  const script = document.currentScript;
+  const scriptUrl = script && script.src;
+  let siteRoot = null;
+  try { siteRoot = scriptUrl ? new URL('../', scriptUrl) : null; } catch (error) { /* 特殊 URL 降级。 */ }
+  const scopePath = siteRoot ? siteRoot.pathname : 'local';
+  const storageScope = encodeURIComponent(scopePath);
+  const STORAGE_KEY = 'ai-course:theme:v1:' + storageScope;
+  const LEGACY_STORAGE_KEY = 'theme';
+  const MIGRATION_KEY = 'ai-course:theme:migrated:' + storageScope;
+  const LEGACY_SEEN_KEY = 'ai-course:theme:legacy-seen:' + storageScope;
   const DARK = 'dark';
   const LIGHT = 'light';
+  let memoryTheme = null;
+  let memoryOnly = false;
+
+  function isTheme(value) {
+    return value === DARK || value === LIGHT;
+  }
+
+  function rememberLegacy(value) {
+    window.localStorage.setItem(LEGACY_SEEN_KEY, isTheme(value) ? value : '');
+  }
+
+  function changedLegacyTheme() {
+    var legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    var seen = window.localStorage.getItem(LEGACY_SEEN_KEY);
+    if (seen === null) {
+      rememberLegacy(legacy);
+      return null;
+    }
+    if (legacy === seen) return null;
+    rememberLegacy(legacy);
+    return isTheme(legacy) ? legacy : null;
+  }
+
+  function readStoredTheme() {
+    let value;
+    let legacyChange;
+    if (memoryOnly && isTheme(memoryTheme)) {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, memoryTheme);
+        window.localStorage.setItem(MIGRATION_KEY, '1');
+        memoryOnly = window.localStorage.getItem(STORAGE_KEY) !== memoryTheme;
+      } catch (recoveryError) {
+        memoryOnly = true;
+      }
+      /* 未持久化的最新用户选择优先于存储中的旧值。 */
+      if (memoryOnly) return memoryTheme;
+    }
+    try {
+      value = window.localStorage.getItem(STORAGE_KEY);
+      legacyChange = changedLegacyTheme();
+      if (isTheme(legacyChange)) {
+        memoryTheme = legacyChange;
+        memoryOnly = true;
+        try {
+          window.localStorage.setItem(STORAGE_KEY, legacyChange);
+          window.localStorage.setItem(MIGRATION_KEY, '1');
+          memoryOnly = window.localStorage.getItem(STORAGE_KEY) !== legacyChange;
+        } catch (migrationError) { /* 当前标签仍使用内存值。 */ }
+        return legacyChange;
+      }
+      if (isTheme(value)) {
+        memoryTheme = value;
+        memoryOnly = false;
+        try { window.localStorage.setItem(MIGRATION_KEY, '1'); } catch (migrationError) { /* best effort */ }
+        return value;
+      }
+      if (window.localStorage.getItem(MIGRATION_KEY) !== '1') {
+        value = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (isTheme(value)) {
+          memoryTheme = value;
+          try {
+            window.localStorage.setItem(STORAGE_KEY, value);
+            window.localStorage.setItem(MIGRATION_KEY, '1');
+            rememberLegacy(value);
+            memoryOnly = window.localStorage.getItem(STORAGE_KEY) !== value;
+          } catch (migrationError) {
+            memoryOnly = true;
+          }
+          return value;
+        }
+      }
+      if (memoryOnly && isTheme(memoryTheme)) return memoryTheme;
+      memoryTheme = null;
+      return null;
+    } catch (error) {
+      memoryOnly = true;
+      return memoryTheme;
+    }
+  }
+
+  function writeStoredTheme(theme) {
+    memoryTheme = theme;
+    memoryOnly = true;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, theme);
+      window.localStorage.setItem(MIGRATION_KEY, '1');
+      memoryOnly = window.localStorage.getItem(STORAGE_KEY) !== theme;
+    } catch (error) { /* 当前选择仍保存在内存中，后续读取会重试存储。 */ }
+  }
+
+  function systemTheme() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? DARK : LIGHT;
+  }
 
   // 获取当前主题
   function getTheme() {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readStoredTheme();
     if (stored === DARK || stored === LIGHT) return stored;
-    // 未设置过，检测系统偏好
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? DARK : LIGHT;
+    return systemTheme();
   }
 
   // 纯 CSS/SVG 图标：不依赖任何 emoji 字体或远程资源，深浅色下都能稳定渲染
@@ -32,12 +136,14 @@
     '</svg>';
 
   var btn = null;
+  var boundButton = null;
 
   // 应用主题
   function applyTheme(theme) {
+    let meta;
     document.documentElement.setAttribute('data-theme', theme);
     // 更新 meta theme-color（移动端浏览器状态栏）
-    let meta = document.querySelector('meta[name="theme-color"]');
+    meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
       meta = document.createElement('meta');
       meta.name = 'theme-color';
@@ -62,31 +168,80 @@
   function toggleTheme() {
     const current = getTheme();
     const next = current === DARK ? LIGHT : DARK;
-    localStorage.setItem(STORAGE_KEY, next);
+    writeStoredTheme(next);
     applyTheme(next);
+  }
+
+  function buildButton() {
+    btn = document.querySelector('.theme-toggle[data-theme-toggle]');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'theme-toggle';
+      btn.setAttribute('data-theme-toggle', '');
+      btn.innerHTML =
+        '<span class="icon-sun">' + SUN_SVG + '</span>' +
+        '<span class="icon-moon">' + MOON_SVG + '</span>';
+      document.body.appendChild(btn);
+    }
+    if (boundButton !== btn) {
+      btn.setAttribute('data-theme-toggle-bound', '');
+      btn.addEventListener('click', toggleTheme);
+      boundButton = btn;
+    }
+    updateButtonState(getTheme());
   }
 
   // 初始化：尽早应用主题（防止闪烁）
   applyTheme(getTheme());
 
   // DOM 加载完成后注入按钮
-  document.addEventListener('DOMContentLoaded', function() {
-    btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'theme-toggle';
-    btn.innerHTML =
-      '<span class="icon-sun">' + SUN_SVG + '</span>' +
-      '<span class="icon-moon">' + MOON_SVG + '</span>';
-    btn.addEventListener('click', toggleTheme);
-    document.body.appendChild(btn);
-    updateButtonState(getTheme());
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', buildButton, { once: true });
+  } else {
+    buildButton();
+  }
+
+  // 监听系统主题变化；只在用户没有手动设置过时跟随系统
+  if (window.matchMedia) {
+    var media = window.matchMedia('(prefers-color-scheme: dark)');
+    var onSystemThemeChange = function(e) {
+      if (readStoredTheme() !== DARK && readStoredTheme() !== LIGHT) {
+        applyTheme(e.matches ? DARK : LIGHT);
+      }
+    };
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onSystemThemeChange);
+    } else if (typeof media.addListener === 'function') {
+      media.addListener(onSystemThemeChange);
+    }
+  }
+
+  // 同源多标签页主题同步；只接受 localStorage，并以持久化 scoped 值为准。
+  window.addEventListener('storage', function(event) {
+    var stored;
+    if (event.storageArea && event.storageArea !== window.localStorage) return;
+    if (event.key !== null && event.key !== STORAGE_KEY && event.key !== LEGACY_STORAGE_KEY) return;
+    if (event.key === LEGACY_STORAGE_KEY &&
+        (event.newValue === DARK || event.newValue === LIGHT)) {
+      /* 兼容尚未升级的旧标签页：同步它的明确用户操作，并收敛到 scoped 键。 */
+      memoryTheme = event.newValue;
+      memoryOnly = true;
+      try {
+        window.localStorage.setItem(STORAGE_KEY, event.newValue);
+        window.localStorage.setItem(MIGRATION_KEY, '1');
+        rememberLegacy(event.newValue);
+        memoryOnly = window.localStorage.getItem(STORAGE_KEY) !== event.newValue;
+      } catch (error) { /* 当前标签仍使用内存值。 */ }
+      applyTheme(event.newValue);
+      return;
+    }
+    stored = readStoredTheme();
+    applyTheme(stored === DARK || stored === LIGHT ? stored : systemTheme());
   });
 
-  // 监听系统主题变化
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-    // 只在用户没有手动设置过时才跟随系统
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      applyTheme(e.matches ? DARK : LIGHT);
-    }
+  // 从 bfcache 恢复时重新对齐持久化主题和按钮状态。
+  window.addEventListener('pageshow', function() {
+    applyTheme(getTheme());
   });
 })();

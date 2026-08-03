@@ -65,11 +65,14 @@
   --shell-pad-x-tablet: 1.5rem;
   --shell-pad-x-phone: 1rem;
 
-  --scroll-anchor-offset: 5rem;      /* 锚点跳转时预留的顶部安全区（避免被 sticky 顶栏遮挡） */
+  --scroll-anchor-offset: calc(5rem + var(--safe-top)); /* 锚点避开 sticky 顶栏和顶部刘海安全区 */
   --course-bar-height: 3rem;
 
   /* 安全区适配（刘海屏/手势条） */
-  --safe-x: env(safe-area-inset-right, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-x: var(--safe-right);
   --safe-y: env(safe-area-inset-bottom, 0px);
 
   /* 悬浮控件（主题切换 / 回到顶部）统一尺寸与间距，二者位置在各自组件中基于这些 token 叠算 */
@@ -212,7 +215,7 @@ body {
   background: var(--bg);
   max-width: var(--shell-max-width);
   margin: 0 auto;
-  padding: 2.5rem var(--shell-pad-x) 5rem;
+  padding: calc(2.5rem + var(--safe-top)) max(var(--shell-pad-x), var(--safe-right)) calc(5rem + var(--safe-y)) max(var(--shell-pad-x), var(--safe-left));
   text-wrap: pretty;
 }
 
@@ -1177,7 +1180,7 @@ button.phase-header {
   z-index: 50;
   background: color-mix(in srgb, var(--card-bg) 82%, transparent);
   border-bottom: 1px solid var(--border-light);
-  padding: 0;
+  padding: var(--safe-top) 0 0;
   margin: 0 calc(var(--shell-pad-x) * -1);
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
@@ -1673,7 +1676,9 @@ summary:focus-visible {
 /* 平板端：8~13" 平板与小型笔记本常见宽度区间。收窄外壳内边距、字号与卡片密度，
    但不套用手机端的大幅折叠（保留双栏元数据、时间线数字圈等） */
 @media (min-width: 641px) and (max-width: 900px) {
-  body { padding: 2rem var(--shell-pad-x-tablet) 4rem; }
+  body {
+    padding: calc(2rem + var(--safe-top)) max(var(--shell-pad-x-tablet), var(--safe-right)) calc(4rem + var(--safe-y)) max(var(--shell-pad-x-tablet), var(--safe-left));
+  }
 
   .hero { padding: 2rem 1.3rem; }
   .hero h1 { font-size: 1.9rem; }
@@ -1686,7 +1691,9 @@ summary:focus-visible {
 
 @media (max-width: 640px) {
   html { font-size: 15px; }
-  body { padding: 1.2rem var(--shell-pad-x-phone) 3rem; }
+  body {
+    padding: calc(1.2rem + var(--safe-top)) max(var(--shell-pad-x-phone), var(--safe-right)) calc(3rem + var(--safe-y)) max(var(--shell-pad-x-phone), var(--safe-left));
+  }
 
   .hero { padding: 1.5rem 1rem; }
   .hero h1 { font-size: 1.6rem; }
@@ -2392,5 +2399,274 @@ a.lesson-qa-link { border-bottom: 1px solid color-mix(in srgb, var(--accent-brig
   .table-scroll-region td {
     overflow-wrap: anywhere;
     word-break: break-word;
+  }
+}
+
+/* ============================================
+   Components: PWA / 共享学习状态
+   —— pwa.js 渐进注入；不改变无脚本页面，也不接管正文代码块。
+   ============================================ */
+
+/* 课头手动完成控件：明确由学习者决定，避免把滚动到底误判为完成。 */
+.lesson-completion-control {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+.lesson-completion-button {
+  min-height: 44px;
+  padding: 0.58rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease,
+              box-shadow 0.18s ease, transform 0.18s ease;
+}
+.lesson-completion-button:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.lesson-completion-button:active { transform: translateY(0); }
+.lesson-completion-button.is-complete {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success-bg) 82%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--success) 52%, var(--border));
+}
+.lesson-completion-button.is-complete::before {
+  content: "✓";
+  display: inline-block;
+  margin-right: 0.45em;
+  font-family: var(--font-mono);
+}
+
+/* 根入口可按需放置这些 data hook；脚本只更新内容和状态，布局仍由共享样式控制。 */
+[data-learning-progress] {
+  font-variant-numeric: tabular-nums;
+}
+progress[data-learning-progress] {
+  width: 100%;
+  height: 0.55rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent-subtle);
+  accent-color: var(--accent-bright);
+}
+progress[data-learning-progress]::-webkit-progress-bar {
+  background: var(--accent-subtle);
+  border-radius: var(--radius-pill);
+}
+progress[data-learning-progress]::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  border-radius: var(--radius-pill);
+}
+progress[data-learning-progress]::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  border-radius: var(--radius-pill);
+}
+[data-continue-learning] {
+  min-height: 44px;
+}
+a[data-continue-learning],
+[data-continue-learning] > a,
+button[data-continue-learning] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+a[data-continue-learning]:hover,
+[data-continue-learning] > a:hover,
+button[data-continue-learning]:hover {
+  color: #FFFFFF;
+  border-bottom-color: var(--accent);
+  box-shadow: var(--shadow-md);
+}
+
+/* 顶栏完成度：数字负责精确读数，轨道负责快速扫视。 */
+.course-bar-progress-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+.course-bar-track[data-course-progress].is-empty .course-bar-track-cursor {
+  opacity: 0;
+}
+.course-bar-track[data-course-progress] .course-bar-track-fill,
+.course-bar-track[data-course-progress] .course-bar-track-cursor {
+  transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              left 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.2s ease;
+}
+
+/* 非模态全局状态区：不抢焦点、不遮正文；按钮均为真实 44px 触摸目标。 */
+.pwa-status-region {
+  position: fixed;
+  left: calc(1rem + env(safe-area-inset-left, 0px));
+  bottom: calc(1rem + var(--safe-y));
+  z-index: 120;
+  display: grid;
+  width: min(28rem, calc(100vw - 2rem - env(safe-area-inset-left, 0px) - var(--safe-x)));
+  gap: 0.55rem;
+  pointer-events: none;
+}
+.pwa-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-height: 52px;
+  padding: 0.38rem 0.38rem 0.38rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  border-left: 3px solid var(--accent-bright);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+  color: var(--fg);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  pointer-events: auto;
+  animation: pwaStatusIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.pwa-status-message {
+  min-width: 0;
+  color: var(--fg-soft);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.pwa-status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+.pwa-status-action,
+.pwa-status-close {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  cursor: pointer;
+}
+.pwa-status-action {
+  padding: 0.45rem 0.85rem;
+  background: var(--accent);
+  color: #FFFFFF;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pwa-status-action:hover { filter: brightness(1.08); }
+.pwa-status-action:disabled { cursor: wait; opacity: 0.65; }
+.pwa-status-close {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+.pwa-status-close:hover {
+  background: var(--bg-warm);
+  color: var(--fg);
+}
+@keyframes pwaStatusIn {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 自动深色与手动深色均通过现有 token 工作；仅强化半透明状态条的边界。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pwa-status {
+    background: color-mix(in srgb, var(--card-bg) 96%, transparent);
+    border-color: color-mix(in srgb, var(--accent-bright) 28%, var(--border));
+  }
+}
+[data-theme="dark"] .pwa-status {
+  background: color-mix(in srgb, var(--card-bg) 96%, transparent);
+  border-color: color-mix(in srgb, var(--accent-bright) 28%, var(--border));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) a[data-continue-learning],
+  :root:not([data-theme="light"]) [data-continue-learning] > a,
+  :root:not([data-theme="light"]) button[data-continue-learning],
+  :root:not([data-theme="light"]) .pwa-status-action {
+    color: #1A1A1E;
+  }
+}
+[data-theme="dark"] a[data-continue-learning],
+[data-theme="dark"] [data-continue-learning] > a,
+[data-theme="dark"] button[data-continue-learning],
+[data-theme="dark"] .pwa-status-action {
+  color: #1A1A1E;
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .pwa-status-region {
+    left: calc(var(--shell-pad-x-tablet) + var(--safe-left));
+    bottom: calc(var(--control-offset-y-tablet) + var(--safe-y) + (2 * var(--control-size-tablet)) + var(--control-gap));
+  }
+}
+
+@media (max-width: 640px) {
+  .lesson-completion-button { width: 100%; }
+  .course-bar-progress-count { display: none; }
+  .pwa-status-region {
+    left: calc(0.65rem + var(--safe-left));
+    bottom: calc(var(--control-offset-y-phone) + var(--safe-y) + (2 * var(--control-size-phone)) + var(--control-gap) + 0.65rem);
+    width: calc(100vw - 1.3rem - var(--safe-left) - var(--safe-right));
+  }
+  .pwa-status {
+    align-items: flex-start;
+    gap: 0.45rem;
+    padding-left: 0.8rem;
+  }
+  .pwa-status-message { padding: 0.65rem 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lesson-completion-button,
+  .course-bar-track[data-course-progress] .course-bar-track-fill,
+  .course-bar-track[data-course-progress] .course-bar-track-cursor,
+  .pwa-status { transition: none; animation: none; }
+}
+
+@media print {
+  .lesson-completion-control,
+  .lesson-completion-button,
+  .pwa-status-region,
+  .pwa-status,
+  [data-continue-learning],
+  [data-learning-progress],
+  .course-bar-progress-count {
+    display: none !important;
   }
 }
