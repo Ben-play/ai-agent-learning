@@ -937,6 +937,44 @@
     });
   }
 
+  function setupCourseBack() {
+    var links = document.querySelectorAll('[data-course-back]');
+    var fallbackTimer = null;
+    var leaving = false;
+
+    function cancelFallback() {
+      leaving = true;
+      clearTimeout(fallbackTimer);
+    }
+
+    function hasSameSiteHistory() {
+      var referrerPath;
+      if (window.history.length <= 1 || !document.referrer) return false;
+      referrerPath = siteRelativePath(document.referrer);
+      return !!referrerPath && referrerPath !== currentPath;
+    }
+
+    window.addEventListener('pagehide', cancelFallback);
+    Array.prototype.forEach.call(links, function (link) {
+      if (link.hasAttribute('data-course-back-bound')) return;
+      link.setAttribute('data-course-back-bound', '');
+      link.addEventListener('click', function (event) {
+        var modified = (typeof event.button === 'number' && event.button !== 0) ||
+          event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+        var fallback = link.href;
+        if (modified || !hasSameSiteHistory()) return;
+        event.preventDefault();
+        leaving = false;
+        saveReadingState();
+        window.history.back();
+        clearTimeout(fallbackTimer);
+        fallbackTimer = window.setTimeout(function () {
+          if (!leaving) window.location.href = fallback;
+        }, 900);
+      });
+    });
+  }
+
   function setupConnectivityStatus() {
     function showOffline() {
       showStatus('connectivity', '当前可能离线');
@@ -1087,6 +1125,7 @@
     setupConnectivityStatus();
     setupStorageSync();
     setupReadingPosition();
+    setupCourseBack();
     setupWorker();
     connectCatalog(0);
     window.setTimeout(renderLearningUi, 250);
