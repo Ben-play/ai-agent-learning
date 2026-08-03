@@ -94,8 +94,8 @@
   @media (max-width:640px){
     .to-top{
       right:calc(var(--control-offset-x-phone, 1.2rem) + var(--safe-x, env(safe-area-inset-right, 0px)));
-      bottom:calc(var(--control-offset-y-phone, 1.2rem) + var(--safe-y, env(safe-area-inset-bottom, 0px)) + var(--control-size-phone, 2.6rem) + var(--control-gap, .85rem));
-      width:var(--control-size-phone, 2.6rem); height:var(--control-size-phone, 2.6rem);
+      bottom:calc(var(--mobile-course-nav-inset, 0px) + var(--control-offset-y-phone, 1.2rem) + max(var(--control-size-phone, 2.6rem), var(--tap-target, 44px)) + var(--control-gap, .85rem));
+      width:max(var(--control-size-phone, 2.6rem), var(--tap-target, 44px)); height:max(var(--control-size-phone, 2.6rem), var(--tap-target, 44px));
     }
     .to-top .disc{ width:2rem; height:2rem; }
   }
