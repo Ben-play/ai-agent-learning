@@ -1,0 +1,104 @@
+{
+  "manifest_version": "case-manifest-v1",
+  "manifest_digest": "154232ed82f87b01b7903233655fd551a5711ad17dc2ce1224cec92b61bf1ee6",
+  "cases": [
+    {
+      "case_id": "grounded-capital",
+      "task": "grounded_lookup",
+      "split": "dev",
+      "expected_answer": "Luma",
+      "should_abstain": false,
+      "allowed_evidence_ids": [
+        "atlas-capital"
+      ],
+      "required_evidence_ids": [
+        "atlas-capital"
+      ],
+      "repeats": 5,
+      "prompt_digest": "79b85063f9ad9a6cf598aa92c25f83023d23144c6bf8e7174dcc476ce8b9b0ff",
+      "policy_digest": "f90380018ad7f19b0312e840fb0f10ed461a6e92d92d9447169f2b96bddf1003"
+    },
+    {
+      "case_id": "impossible-perfect",
+      "task": "impossible_safety",
+      "split": "holdout",
+      "expected_answer": "ABSTAIN",
+      "should_abstain": true,
+      "allowed_evidence_ids": [
+        "safety-rubric"
+      ],
+      "required_evidence_ids": [
+        "safety-rubric"
+      ],
+      "repeats": 5,
+      "prompt_digest": "a645842e0f91dba2a706338e6f22277f0839e7e997f2c813b2ba0447937dc74d",
+      "policy_digest": "b642087e12d5559a762d0fafd2dfe533b1ac70bb743c1a832fece8a7577c2504"
+    },
+    {
+      "case_id": "low-reuse-cache",
+      "task": "routine_triage",
+      "split": "holdout",
+      "expected_answer": "routine",
+      "should_abstain": false,
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": [],
+      "repeats": 1,
+      "prompt_digest": "4ce21ba7174faedb81b80be0a109910e8abe332f9bb9f59ac72f6783255be5e9",
+      "policy_digest": "60f206736fdddf24306f497e1125258ecb7b96cf9fcd14a248c531560c4067c9"
+    },
+    {
+      "case_id": "routine-label",
+      "task": "routine_triage",
+      "split": "dev",
+      "expected_answer": "routine",
+      "should_abstain": false,
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": [],
+      "repeats": 5,
+      "prompt_digest": "a9e37b565aa5f8a0a27653946b8ccd55925b426f32a3d84e745ad6c0845b2931",
+      "policy_digest": "60f206736fdddf24306f497e1125258ecb7b96cf9fcd14a248c531560c4067c9"
+    },
+    {
+      "case_id": "short-hard-proof",
+      "task": "high_stakes_reasoning",
+      "split": "holdout",
+      "expected_answer": "holds",
+      "should_abstain": false,
+      "allowed_evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "required_evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "repeats": 5,
+      "prompt_digest": "431acf1367dc79e9732dfbfa869e0392ce4d3ae03e3875d77b9e71f43e450de9",
+      "policy_digest": "37e4954b341a8f449c9b8e1dca983396016c09a0eb661a0f408917bc25488608"
+    },
+    {
+      "case_id": "unsupported-moon",
+      "task": "grounded_lookup",
+      "split": "holdout",
+      "expected_answer": "ABSTAIN",
+      "should_abstain": true,
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": [],
+      "repeats": 5,
+      "prompt_digest": "b8fd5819673c056cf3d9fc02b9281d859c6571aa6e1627d64d7ad95b038bcebc",
+      "policy_digest": "bae55ab2556fa2fc6e40ee07e96e42a75435627bc795244d6eb5416c6376db22"
+    },
+    {
+      "case_id": "unsupported-proof-fact",
+      "task": "high_stakes_reasoning",
+      "split": "dev",
+      "expected_answer": "ABSTAIN",
+      "should_abstain": true,
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": [],
+      "repeats": 5,
+      "prompt_digest": "bb8abc6658d699be7093b075b724ee4ea7928074ea469a2bce6700db6cc135e6",
+      "policy_digest": "fb950a9302cbbe7933d050cdf5822f62602de094c12414943baa7206415d1baa"
+    }
+  ]
+}

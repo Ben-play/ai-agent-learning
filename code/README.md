@@ -1,16 +1,18 @@
 # 代码练习目录
 
-本目录保存课程示例与阶段级离线综合项目。课件仍以 `../lessons/` 中的 L01–L16 为 Phase 1 线性学习入口；这里的项目不增加课号或课时。
+本目录保存课程示例与阶段级离线综合项目。课件仍以 `../lessons/` 中的正式课程为线性学习入口；这里的项目不增加课号或课时。
 
 ## 当前目录
 
 ```text
 code/
-└── phase1-python/
-    ├── part-a-basics/
-    │   ├── agent-hello/              # L01/L02 使用的锁定 uv 包项目
-    │   └── my-first-agent/           # 入门练习草稿
-    └── phase1-practices-capstone/     # Phase 1 非编号离线综合验收
+├── phase1-python/
+│   ├── part-a-basics/
+│   │   ├── agent-hello/              # L01/L02 使用的锁定 uv 包项目
+│   │   └── my-first-agent/           # 入门练习草稿
+│   └── phase1-practices-capstone/     # Phase 1 非编号离线综合验收
+└── phase2-model-selection/
+    └── phase2-practices-capstone/     # Phase 2 离线模型评测与选型验收
 ```
 
 ## Phase 1 综合项目
@@ -24,6 +26,18 @@ code/
 - “重试整个批次”“只导出 Schema 不实例验证”两个故意失败的反事实。
 
 运行方式见 [`phase1-python/phase1-practices-capstone/README.md`](phase1-python/phase1-practices-capstone/README.md)。对应的阶段决策压缩页位于 [`../best-practices/phase1-python-engineering-practices.html`](../best-practices/phase1-python-engineering-practices.html)。
+
+## Phase 2 综合项目
+
+`phase2-practices-capstone/` 使用固定 fixture 和两个真实 adapter 实现，在不访问模型或网络的前提下验证：
+
+- 模型能力驱动的控制映射与 provider 原生 Token 口径；
+- 重复观测、事实错误、发散、正确弃权与证据覆盖分离；
+- 未缓存输入、缓存写/读、输出、重试和升级的完整成本；
+- 硬门槛先于归一化排名，路由计入升级概率；
+- “一致即真值”“先排名后门槛”两个故意失败的反事实。
+
+公共入口仅为 `build_offline_lab(...)` 和 `AssessmentLab.assess()`；调用者不需要了解 fixture 解析、计数、证据与排名实现。运行方式见 [`phase2-model-selection/phase2-practices-capstone/README.md`](phase2-model-selection/phase2-practices-capstone/README.md)，对应复盘页位于 [`../best-practices/phase2-model-selection-practices.html`](../best-practices/phase2-model-selection-practices.html)。
 
 ## 使用规范
 

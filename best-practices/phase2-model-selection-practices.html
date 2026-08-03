@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F8F6F1">
+    <link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
+  <title>Phase 2 · 模型评测与选型实践阶段复盘</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .phase-practice-reference .reference-masthead {
+      margin-bottom: 1.4rem;
+      padding: 1.5rem 1.6rem;
+      border: 1px solid var(--border);
+      border-top: 5px solid var(--accent);
+      border-radius: var(--radius-md);
+      background: var(--card-bg);
+      box-shadow: var(--shadow-sm);
+    }
+    .phase-practice-reference .reference-kicker,
+    .phase-practice-reference .theme-label {
+      color: var(--accent-bright);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    .phase-practice-reference .reference-masthead h1 { margin-top: 0.25rem; }
+    .phase-practice-reference .reference-masthead > p { margin-bottom: 0; }
+    .phase-practice-reference .reference-use {
+      display: flex;
+      gap: 0.8rem 1.25rem;
+      flex-wrap: wrap;
+      align-items: baseline;
+      margin-bottom: 2rem;
+      padding: 0.85rem 1rem;
+      border-left: 3px solid var(--accent-bright);
+      background: var(--bg-warm);
+    }
+    .phase-practice-reference .reference-use p { margin: 0; }
+    .phase-practice-reference .phase-practice-theme {
+      position: relative;
+      margin: 0 0 1.2rem;
+      padding: 1.25rem 1.35rem;
+      overflow: hidden;
+    }
+    .phase-practice-reference .phase-practice-theme::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 4rem;
+      height: 4rem;
+      background: linear-gradient(135deg, transparent 50%, var(--accent-light) 50%);
+      pointer-events: none;
+    }
+    .phase-practice-reference .theme-head { margin-bottom: 0.9rem; padding-right: 2.5rem; }
+    .phase-practice-reference .theme-head h2 {
+      margin: 0.2rem 0 0;
+      padding: 0 0 0.45rem;
+      font-size: 1.34rem;
+    }
+    .phase-practice-reference .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem;
+    }
+    .phase-practice-reference .decision-item {
+      min-width: 0;
+      padding: 0.72rem 0.8rem;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+    }
+    .phase-practice-reference .decision-item.rule { grid-column: 1 / -1; }
+    .phase-practice-reference .decision-item h3 {
+      margin: 0 0 0.2rem;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .phase-practice-reference .decision-item p { margin: 0; font-size: 0.9rem; }
+    .phase-practice-reference .source-row {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 0.85rem;
+    }
+    .phase-practice-reference .source-row > strong { font-size: 0.78rem; }
+    .phase-practice-reference .source-row a {
+      max-width: 100%;
+      padding: 0.2rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-pill);
+      background: var(--card-bg);
+      font-size: 0.76rem;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .phase-practice-reference .source-row a:hover { border-color: var(--accent-bright); }
+    .phase-practice-reference .cross-check {
+      margin: 0.75rem 0 0;
+      padding: 0.58rem 0.72rem;
+      border-left: 3px solid var(--accent-bright);
+      background: var(--accent-light);
+      color: var(--fg-soft);
+      font-size: 0.86rem;
+    }
+    .phase-practice-reference .stage-gate { margin-top: 2.4rem; }
+    .phase-practice-reference .stage-gate h2 { margin-top: 0; }
+    .phase-practice-reference .stage-gate details ol {
+      margin: 0;
+      padding: 0.85rem 1.1rem 0.85rem 2.4rem;
+    }
+    .phase-practice-reference .stage-gate details li { max-width: none; }
+    .phase-practice-reference .nav { gap: 0.8rem; flex-wrap: wrap; }
+    @media (max-width: 640px) {
+      .phase-practice-reference .reference-masthead,
+      .phase-practice-reference .phase-practice-theme { padding: 1rem; }
+      .phase-practice-reference .decision-grid { grid-template-columns: 1fr; }
+      .phase-practice-reference .decision-item.rule { grid-column: auto; }
+      .phase-practice-reference .source-row { align-items: stretch; }
+      .phase-practice-reference .source-row > strong { flex-basis: 100%; }
+      .phase-practice-reference .source-row a { flex: 1 1 12rem; }
+      .phase-practice-reference .nav { justify-content: flex-start; }
+    }
+    @media print {
+      .phase-practice-reference .reference-masthead,
+      .phase-practice-reference .phase-practice-theme,
+      .phase-practice-reference .decision-item { box-shadow: none; }
+      .phase-practice-reference .phase-practice-theme::after { display: none; }
+      .phase-practice-reference .source-row a { border-color: var(--border); }
+      .phase-practice-reference .nav { display: none; }
+    }
+  </style>
+</head>
+<body class="phase-practice-reference">
+<main>
+  <aside class="toc" id="toc" aria-label="页面目录"></aside>
+
+  <header class="reference-masthead">
+    <div class="reference-kicker">Phase 2 · Stage Review &amp; Final Acceptance</div>
+    <h1>模型评测与选型实践阶段复盘索引</h1>
+    <p>把 L17–L23 的 10 个局部工程决策压缩成 5 个可迁移主题，并在后文单列 L24 的“先过硬门、再排名”最终决策纪律。这里用于回看来源、重做沿途检查点并完成离线综合验收；它不是第一次实践，也不是新增课程。</p>
+  </header>
+
+  <div class="reference-use" aria-label="使用方法">
+    <strong>阶段复盘用法</strong>
+    <p>先通过“源片段”复习局部决策，再返回“实践索引”重做迁移任务；最后运行离线模型评测项目，检查是否真正做到先立契约、再取证、后选型。</p>
+  </div>
+
+  <article class="phase-practice-theme card" data-phase-practice="request-contract" aria-labelledby="theme-request-contract">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Request Contract</div>
+      <h2 id="theme-request-contract">让控制字段、运行规范与 Token 口径都归目标模型所有</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>业务层表达“要稳定、要多样、要多少推理投入”等语义意图；provider adapter 根据模型能力映射请求字段，并用目标模型自己的计数方式估算，调用后再以 usage 对账。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>跨模型、跨版本或跨厂商调用，参数/Tokenizer/响应 usage 不同。<strong>非触发：</strong>单一固定模型的短期实验，且调用代码已被一个受控 adapter 完整封装。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>能力 profile 阻止无效字段进入请求；运行规范指纹记录可控变量；模型原生计数避免把另一套词表或消息开销冒充账单。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>需要维护能力目录、adapter 与用量对账。只接一个模型时可保留一个直接 adapter，但业务层仍不应散布厂商字段；模型能力变化时以官方文档或 Models API 更新。</p></div>
+      <div class="decision-item"><h3>依赖与边界</h3><p>必须固定 model、prompt、tools、控制配置与 evaluator；离线 profile 只能验证映射逻辑，不能证明线上模型当前支持某字段，调用前计数也不是最终账单。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0021-L17-llm-essence-and-parameters.html#bp-l17-capability-driven-controls">L17 · 能力驱动控制</a>
+      <a href="../lessons/0021-L17-llm-essence-and-parameters.html#bp-l17-reproducibility-contract">L17 · 复现契约</a>
+      <a href="../lessons/0022-L18-tokenization.html#bp-l18-model-native-token-accounting">L18 · 模型原生计数</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0022-L18-tokenization.html#stage-practice-request-contract">L18 · 请求契约阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="reliability-gate" aria-labelledby="theme-reliability-gate">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Reliability Gate</div>
+      <h2 id="theme-reliability-gate">把输出稳定性当风险信号，把事实发布权交给证据</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>重复观测用于发现发散和升级风险；事实结论必须由 ground truth、可验证引用、确定性工具或人工 rubric 支持，一致回答不得自动获得发布资格。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>回答包含外部事实、金额、法律承诺或将驱动后续工具动作。<strong>非触发：</strong>纯创意任务没有外部真值，或结果会被确定性 verifier 完整判定。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>发散暴露模型对答案不稳定；独立证据区分“一致地对”与“一致地错”；硬发布门阻止流畅错误继续触发 Agent 副作用。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>多次采样、检索和人工核验增加成本与延迟。低风险文本可只记录风险信号；可程序验证的计算、ID 和库存应优先直接调用确定性工具。</p></div>
+      <div class="decision-item"><h3>依赖与边界</h3><p>题目必须有可判定证据契约，并允许弃权或升级。Self-Consistency 不能发现所有共享偏差；LLM-as-judge 也只是带误差的 evaluator。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0021-L17-llm-essence-and-parameters.html#bp-l17-reproducibility-contract">L17 · 非确定输出契约</a>
+      <a href="../lessons/0023-L19-hallucination.html#bp-l19-consistency-is-risk-signal">L19 · 一致性只是风险信号</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0023-L19-hallucination.html#stage-practice-reliability-gate">L19 · 可靠性发布门检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="capability-policy" aria-labelledby="theme-capability-policy">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Capability Policy</div>
+      <h2 id="theme-capability-policy">先定位缺口，再决定推理投入与外部能力</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>用业务 eval 选择满足门槛的最低 effort；若任务缺的是新鲜数据、私有证据、确定性计算或跨会话状态，就分别接工具、直接上下文/RAG、代码和应用状态，而不是继续提高模型思考投入。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>提高 effort 后质量仍无增益，或失败可归因于知识/工具/状态缺口。<strong>非触发：</strong>输入完整、真值可从上下文推出，错误主要来自多步推理不足。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>effort 只改变模型的响应投入；外部能力把模型原本拿不到的数据、计算或状态真正带入系统。先诊断可避免用更贵推理掩盖缺失依赖。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>需要维护试验集、工具、检索质量和状态生命周期。稳定且重复的行为技能、有充足训练数据时可把微调列为候选；小文档直接放上下文通常比先建 RAG 简单。</p></div>
+      <div class="decision-item"><h3>依赖与边界</h3><p>effort 是软指导而非硬 Token 预算；能力映射必须区分“模型不会推理”和“系统没有提供所需信息”。增加 RAG 或工具也不自动保证正确。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0024-L20-reasoning-models.html#bp-l20-eval-driven-effort">L20 · 评测驱动 effort</a>
+      <a href="../lessons/0025-L21-model-capabilities.html#bp-l21-capability-gap-augmentation">L21 · 缺口驱动能力补偿</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0025-L21-model-capabilities.html#stage-practice-capability-policy">L21 · 能力策略阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="private-evaluation" aria-labelledby="theme-private-evaluation">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Private Evaluation</div>
+      <h2 id="theme-private-evaluation">公开成绩只缩小候选，隔离业务评测才有拍板权</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>先用公开资料和硬约束筛选候选；固定开发集用于改 prompt、adapter、effort 与工具，隔离测试集只在方案冻结后比较，最终记录模型、scaffold、预算、运行次数和失败样本。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>模型将进入生产、承担风险或存在多种配置可调。<strong>非触发：</strong>低风险探索只需粗筛，尚未形成可重复任务和验收 rubric。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>业务样本让评测分布贴近真实请求；隔离 holdout 阻止反复调参把测试集变成开发集；固定 scaffold 避免把提示和工具差异误归因给基础模型。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>需要采样、标注、版本管理和重复运行。数据少时可先用专家 rubric 与人工双评；高风险场景还要做灰度 A/B 和持续漂移监控。</p></div>
+      <div class="decision-item"><h3>依赖与边界</h3><p>必须先定义业务损失、硬门槛和样本切分。一次 toy eval、公开 benchmark 或单个平均分都不能证明线上适用性。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0024-L20-reasoning-models.html#bp-l20-eval-driven-effort">L20 · 执行投入试验</a>
+      <a href="../lessons/0025-L21-model-capabilities.html#bp-l21-capability-gap-augmentation">L21 · 能力约束</a>
+      <a href="../lessons/0026-L22-benchmarks-and-selection.html#bp-l22-private-eval-over-leaderboard">L22 · 私有评测优先</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0026-L22-benchmarks-and-selection.html#stage-practice-private-evaluation">L22 · 私有评测阶段检查点</a></p>
+  </article>
+
+  <article class="phase-practice-theme card" data-phase-practice="cost-aware-routing" aria-labelledby="theme-cost-aware-routing">
+    <header class="theme-head">
+      <div class="theme-label">工程主题 · Cost-aware Routing</div>
+      <h2 id="theme-cost-aware-routing">按完整成本构成优化，并只路由到已证明达标的策略</h2>
+    </header>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>阶段规则</h3><p>分别计算未缓存输入、缓存写、缓存读、输出、重试和升级成本；路由器自身的计算与运维开销另列为系统成本；静态前缀先规范化再测命中；路由只在业务 eval 达标的候选之间选择最低预期成本。</p></div>
+      <div class="decision-item"><h3>触发 / 非触发</h3><p><strong>触发：</strong>重复前缀、多档模型/effort、难度混合流量或重试/升级占比可观。<strong>非触发：</strong>调用量低、流量同质、前缀太短或频繁变化，固定单模型更易维护。</p></div>
+      <div class="decision-item"><h3>因果机制</h3><p>成本分项暴露真正金额热点；字节稳定前缀创造缓存命中条件；质量门槛和升级概率阻止“便宜首调 + 高频返工”伪装成降本。</p></div>
+      <div class="decision-item"><h3>代价 / 替代</h3><p>需要 tracing、价目版本、命中率和路由漂移监控。非实时大批量任务可比较厂商 Batch；输出占比最高时先收紧输出，比引入路由更直接。</p></div>
+      <div class="decision-item"><h3>依赖与边界</h3><p>缓存倍率、最小前缀与厂商价格会变化，应查当前官方文档和 usage；本地 digest 只证明前缀稳定，不证明服务端命中；第三方案例比例不是收益承诺。</p></div>
+    </div>
+    <div class="source-row"><strong>源片段</strong>
+      <a href="../lessons/0022-L18-tokenization.html#bp-l18-model-native-token-accounting">L18 · 原生 Token 口径</a>
+      <a href="../lessons/0026-L22-benchmarks-and-selection.html#bp-l22-private-eval-over-leaderboard">L22 · 达标证据</a>
+      <a href="../lessons/0027-L23-token-economics.html#bp-l23-cost-composition-first">L23 · 成本分项优先</a>
+      <a href="../lessons/0027-L23-token-economics.html#bp-l23-cache-stable-prefix">L23 · 稳定缓存前缀</a>
+      <a href="../lessons/0027-L23-token-economics.html#bp-l23-eval-driven-routing">L23 · 评测驱动路由</a>
+    </div>
+    <p class="cross-check"><strong>实践索引：</strong><a href="../lessons/0027-L23-token-economics.html#stage-practice-cost-aware-routing">L23 · 成本感知路由检查点</a></p>
+  </article>
+
+  <section class="stage-gate" aria-labelledby="final-decision-discipline">
+    <h2 id="final-decision-discipline">最终决策纪律：先过硬门槛，再比较相对优劣</h2>
+    <p>归一化与加权只能形成合格候选的比较排名，不能把安全、事实或合规缺陷折算成“价格便宜一点就可以接受”；它也不等同于后续按最低期望成本执行的每请求路由。回到 <a href="../lessons/0028-L24-phase2-capstone.html#bp-l24-gate-before-ranking">L24 · 先门槛后排名</a>，检查无候选合格时是否明确返回“需要调整方案或人工决策”，而不是强行选一个最高分。</p>
+  </section>
+
+  <section class="stage-gate" aria-labelledby="capstone-project">
+    <h2 id="capstone-project">离线综合项目：从 provider 契约到选型报告</h2>
+    <p>项目位于 <a href="../code/phase2-model-selection/phase2-practices-capstone/README.md"><code>code/phase2-model-selection/phase2-practices-capstone/</code></a>。它只读取固定的虚构 provider、观察值、证据目录和价格 fixture，不访问网络、真实模型或密钥。离线证据目录用内容摘要和封闭 ID 验证<strong>教学 fixture 的身份与防篡改</strong>；它不声称能自动证明任意自然语言材料蕴含某个事实，生产系统仍需确定性解析器或人工 rubric。</p>
+    <div class="decision-grid">
+      <div class="decision-item rule"><h3>内部调用链</h3><pre><code>SemanticPolicy → ProviderAdapter → fixed Observation
+                         ↓
+                 repeated assessment
+                         ↓
+Evidence metrics + full cost → hard gates ─┬→ qualified comparison ranking
+                                             └→ minimum-expected-cost route policy</code></pre><p>这些类型属于模块实现；调用者不需要跨过内部 seam。</p></div>
+      <div class="decision-item"><h3>公共接口</h3><p><code>build_offline_lab(fixture_root=None)</code> 构建实验室；调用者只需执行 <code>AssessmentLab.assess()</code> 获取不可变报告。计数、控制映射、证据、成本和排名留在实现内部。</p></div>
+      <div class="decision-item"><h3>反事实</h3><p>“把一致当真值”和“先排名后门槛”两个模块必须到达明确的 <code>CounterfactualReached</code> 失败哨兵并以非零状态退出；若成功退出或未到达该哨兵，说明最关键的可靠性纪律没有被验收。</p></div>
+    </div>
+    <details class="bp-check">
+      <summary><strong>离线运行命令</strong></summary>
+      <pre><code>cd code/phase2-model-selection/phase2-practices-capstone
+uv lock --check --offline
+uv run --offline --locked pytest -q
+uv run --offline --locked mypy phase2_practices tests main.py
+uv run --offline --locked python main.py
+uv run --offline --locked python -m phase2_practices.counterfactuals.consistency_as_truth
+uv run --offline --locked python -m phase2_practices.counterfactuals.rank_before_gate</code></pre>
+      <p class="bp-result"><strong>通过：</strong>测试和 mypy 无错误，主入口只输出一次阶段接受标记；两个 counterfactual 必须到达预期的 <code>CounterfactualReached</code> 哨兵、以非零状态退出，且不能输出成功标记。</p>
+    </details>
+  </section>
+
+  <section class="stage-gate" aria-labelledby="stage-acceptance">
+    <h2 id="stage-acceptance">阶段验收总览</h2>
+    <details class="bp-check">
+      <summary><strong>展开最终验收项（打印时自动展开）</strong></summary>
+      <ol>
+        <li><strong>请求契约：</strong>业务意图不等于厂商字段；每个 adapter 只发送目标模型支持的控制，并使用目标模型计数方式。</li>
+        <li><strong>运行证据：</strong>模型、prompt、工具、控制、fixture、evaluator 和重复次数可追踪；非确定输出不被要求逐字节相等。</li>
+        <li><strong>可靠性：</strong>发散会升级风险，一致不会自动发布；事实结论有 ground truth、证据、工具或人工 rubric。</li>
+        <li><strong>能力策略：</strong>推理不足才调整 effort；数据、证据、计算和状态缺口由对应外部能力补齐。</li>
+        <li><strong>私有评测：</strong>开发集与隔离测试集职责分开，固定 scaffold、预算、rubric 与运行次数，公榜只负责初筛。</li>
+        <li><strong>成本路由：</strong>成本分项完整，缓存命中用 usage 验证，路由考虑质量门槛、误路由与升级成本。</li>
+        <li><strong>最终选择：</strong>所有硬门槛在归一化和加权前执行，无合格候选时不强行给出赢家。</li>
+      </ol>
+    </details>
+  </section>
+</main>
+
+<nav class="nav" aria-label="手动导航">
+  <a href="../lessons/0029-phase2-ai-knowledge-outline.html">← Phase 2 详细大纲</a>
+  <a href="../lessons/0001-ai-agent-learning-path-overview.html">学习路径总览 →</a>
+</nav>
+
+<footer>AI Agent 高级开发工程师课程 · Phase 2 模型评测与选型实践阶段复盘</footer>
+
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

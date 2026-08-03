@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F8F6F1">
+<link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
 <title>L22 · 看懂 Benchmark 与模型选型</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -14,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">60</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>看懂 Benchmark 与模型选型</h1>
     <p class="subtitle">厂商都吹自己第一——你得会自己判断，因为"跑分高≠适合你的场景"</p>
@@ -164,7 +167,68 @@
       <li><strong>重复运行：</strong>非确定任务至少多跑几次，报告均值与失败案例，别把一次好运当能力。</li>
     </ul>
     <p>真实业务样本更相关，但只有遵守这些规则，结果才比公开榜单更可信。</p>
-    <p style="margin-top:1rem;"><strong>核心口号（贴墙上）：</strong>「<strong>别信榜单，信你自己的评测集；别记版本号，记决策方法。</strong>」模型版本三个月一换，但这套框架永远适用。</p>
+    <p style="margin-top:1rem;"><strong>核心口号（贴墙上）：</strong>「<strong>别信榜单，信你自己的评测集；别记版本号，记决策方法。</strong>」模型版本与榜单会持续变化，但这套决策框架可以复用。</p>
+  </div>
+
+  <div class="best-practice-point" id="bp-l22-private-eval-over-leaderboard">
+    <h3>最佳实践：公开榜单只初筛，固定开发集调优，隔离留出集拍板</h3>
+    <p class="bp-scenario"><strong>适用：</strong>公开 benchmark 能缩小候选范围，但业务质量必须由私有样本决定，且 prompt、阈值或路由还需要调优。<strong>不适用：</strong>一次性低风险试验只需粗略可行性判断时，可先做小型 smoke test，但不能把它写成生产结论。本卡只决定<strong>候选模型的业务验收顺序</strong>，不同时决定部署地域或成本架构。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 同一接口，公开分最高者直接胜出</span><pre><code>def select_model(public_scores, dev_scores, holdout_scores):
+    return max(public_scores, key=public_scores.get)</code></pre><p>开发集与隔离留出集虽已提供，却完全没参与决策；结果只是复述公开排名。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 同一接口，初筛→开发→留出</span><pre><code>def select_model(public_scores, dev_scores, holdout_scores):
+    candidates = screen(public_scores, floor=0.80)
+    tuned = tune_on_dev(candidates, dev_scores)
+    return decide_on_holdout(tuned, holdout_scores)</code></pre><p>榜单只排除明显不相关候选；调参只看固定开发集，最终胜者只由未参与调优的业务留出集决定。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先用公开证据低成本筛选，再把配置调优限制在开发集，最后由隔离留出集估计泛化表现，因此选择更相关、可复现，也减少看答案调参造成的乐观偏差。真实成本是准备标注、维护隔离、重复运行与人工复核；若留出样本过少或业务分布变化，就补充新样本并重新验收；若只有低风险探索预算，可先用公开榜单 + 少量 smoke test，但一旦要上线或比较接近候选，就切换到开发/留出分离。</p>
+    <p class="bp-term"><strong>边界：</strong><span class="bp-term-name">公开榜单</span>是外部初筛证据；<span class="bp-term-name">开发集</span>允许反复查看并调 prompt/阈值；<span class="bp-term-name">隔离留出集</span>在配置冻结后才用于最终决定，不能回流参与本轮调优。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库；离线、确定性、通过时静默）</strong></summary><pre><code>from inspect import signature
+
+
+def screen(public_scores, *, floor):
+    return [name for name, score in public_scores.items() if score &gt;= floor]
+
+
+def tune_on_dev(candidates, dev_scores):
+    return {
+        name: max(dev_scores[name], key=dev_scores[name].get)
+        for name in candidates
+    }
+
+
+def decide_on_holdout(tuned, holdout_scores):
+    return max(
+        tuned,
+        key=lambda name: holdout_scores[(name, tuned[name])],
+    )
+
+
+def select_model(public_scores, dev_scores, holdout_scores):
+    candidates = screen(public_scores, floor=0.80)
+    tuned = tune_on_dev(candidates, dev_scores)
+    return decide_on_holdout(tuned, holdout_scores)
+
+
+public = {"atlas": 0.92, "birch": 0.84, "cedar": 0.70}
+dev = {
+    "atlas": {"brief": 0.73, "evidence": 0.78},
+    "birch": {"brief": 0.82, "evidence": 0.86},
+}
+holdout = {
+    ("atlas", "evidence"): 0.71,
+    ("birch", "evidence"): 0.89,
+}
+
+assert max(public, key=public.get) == "atlas"
+assert screen(public, floor=0.80) == ["atlas", "birch"]
+assert tune_on_dev(["atlas", "birch"], dev) == {
+    "atlas": "evidence", "birch": "evidence"
+}
+assert list(signature(tune_on_dev).parameters) == ["candidates", "dev_scores"]
+assert select_model(public, dev, holdout) == "birch"
+assert holdout[("birch", "evidence")] &gt; holdout[("atlas", "evidence")]</code></pre></details>
+    <p class="bp-result"><strong>失败诊断：</strong>胜者仍是 <code>atlas</code> 表示公开榜单越权拍板；<code>tune_on_dev</code> 出现 holdout 参数表示留出集泄漏进调优；<code>cedar</code> 进入调优表示初筛门槛无效；开发配置不是 <code>evidence</code> 表示调优逻辑错误；留出排名不能反转公开排名则 fixture 没有证明私有评测能改变决定。</p>
   </div>
 
   <div class="quiz" data-quiz="q3">
@@ -240,6 +304,179 @@
   </div>
 </div>
 
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：保修工单的私有评测</h2>
+  <p class="best-practice-lead">先独立为保修工单候选模型设计公开初筛、固定开发集与隔离留出集；参考 fixture 会故意让私有留出结果反转公开排名。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>按公开分数门槛初筛候选。</li><li>在留出对象尚不存在时，只用开发集选择 prompt。</li><li>冻结配置后才创建隔离留出集并决定胜者。</li><li>记录调优读取的数据来源与留出评估次数。</li><li>只打印最终验收标记。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>公开排名第一是 <code>atlas</code>。</li><li>未过门槛的 <code>cedar</code> 不参与调优。</li><li>开发集为候选冻结配置。</li><li>留出集最终选择 <code>birch</code>，明确反转公开排名。</li><li>标准输出只有验收标记。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>不要根据参考答案反向改 fixture；先写接口、数据流和“留出不进入调优”的断言，再展开离线参考。</p>
+    <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>def public_screen(scores, *, minimum):
+    return [model for model, score in scores.items() if score &gt;= minimum]
+
+
+def tune_prompts(candidates, development, reads):
+    reads.append("development")
+    return {
+        model: max(development[model], key=development[model].get)
+        for model in candidates
+    }
+
+
+def holdout_decision(configurations, holdout, evaluations):
+    evaluations.append("holdout")
+    return max(
+        configurations,
+        key=lambda model: holdout[(model, configurations[model])],
+    )
+
+
+public = {"atlas": 0.94, "birch": 0.86, "cedar": 0.69}
+development = {
+    "atlas": {"plain": 0.76, "policy": 0.81},
+    "birch": {"plain": 0.84, "policy": 0.88},
+}
+tuning_reads = []
+holdout_evaluations = []
+
+candidates = public_screen(public, minimum=0.80)
+configurations = tune_prompts(candidates, development, tuning_reads)
+frozen_configurations = tuple(sorted(configurations.items()))
+assert tuning_reads == ["development"]
+assert frozen_configurations == (("atlas", "policy"), ("birch", "policy"))
+assert "holdout" not in globals()
+
+holdout = {
+    ("atlas", "policy"): 0.72,
+    ("birch", "policy"): 0.91,
+}
+winner = holdout_decision(dict(frozen_configurations), holdout, holdout_evaluations)
+
+assert max(public, key=public.get) == "atlas"
+assert candidates == ["atlas", "birch"]
+assert holdout_evaluations == ["holdout"]
+assert winner == "birch"
+assert winner != max(public, key=public.get)
+
+print("L22 ACCEPTED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong><code>cedar</code> 留在候选表示公开筛选失效；调优结束前已存在 holdout、读取来源不只 development，表示隔离被破坏；冻结后留出评估次数不是 1 表示反复窥视留出；最终仍选 <code>atlas</code> 表示公开分数越权或留出 fixture 未反转。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-private-evaluation" data-phase-practice="private-evaluation">
+  <h2>阶段实践检查点：私有评测驱动的执行策略</h2>
+  <p class="best-practice-lead">在新的理赔分流域，把 L21 能力约束、L20 评测驱动的最低 effort 与本课开发/留出隔离组合起来：先剔除能力不合格候选，再用开发集选择最低达标 effort，冻结后才让留出集拍板。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>先剔除不能满足实时保单查询或精确金额计算的候选。</li><li>对每个可行候选，只在开发集上筛选质量与延迟门。</li><li>从达标 trials 中选择最低 effort，并保留质量、延迟与输出 Token 证据。</li><li>冻结配置后才创建留出集，且只评估一次。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>缺少工具能力的公开高分候选被剔除。</li><li>高质量但超延迟的 effort 不入选；达标时不盲选最高档。</li><li>冻结配置包含所选 trial 的质量、延迟和输出 Token。</li><li>调优时留出对象尚不存在；隔离留出能反转剩余候选公开排名。</li><li>标准输出只有检查点标记。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>只使用已学的能力缺口、effort 业务试验和开发/留出分离；不要引入 L23 的价格、缓存或成本路由。</p>
+    <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+ORDER = ("low", "medium", "high")
+
+
+@dataclass(frozen=True)
+class Candidate:
+    name: str
+    public_score: float
+    augmentation: str
+
+
+@dataclass(frozen=True)
+class Trial:
+    effort: str
+    quality: float
+    latency_ms: int
+    output_tokens: int
+
+
+def capability_filter(candidates):
+    return [candidate for candidate in candidates if candidate.augmentation == "tool"]
+
+
+def tune_effort(candidates, development, reads, *, min_quality, max_latency_ms):
+    reads.append("development")
+    chosen = {}
+    for candidate in candidates:
+        eligible = [
+            trial for trial in development[candidate.name]
+            if trial.quality &gt;= min_quality and trial.latency_ms &lt;= max_latency_ms
+        ]
+        if not eligible:
+            raise ValueError(f"no effort trial passes for {candidate.name}")
+        chosen[candidate.name] = min(
+            eligible,
+            key=lambda trial: ORDER.index(trial.effort),
+        )
+    return chosen
+
+
+def decide(configurations, holdout, evaluations):
+    evaluations.append("holdout")
+    return max(
+        configurations,
+        key=lambda name: holdout[(name, configurations[name].effort)],
+    )
+
+
+candidates = [
+    Candidate("fast-public-leader", 0.96, "none"),
+    Candidate("atlas", 0.91, "tool"),
+    Candidate("birch", 0.85, "tool"),
+]
+development = {
+    "atlas": (
+        Trial("low", 0.84, 300, 110),
+        Trial("medium", 0.91, 620, 220),
+        Trial("high", 0.96, 910, 410),
+    ),
+    "birch": (
+        Trial("low", 0.86, 260, 100),
+        Trial("medium", 0.92, 580, 205),
+        Trial("high", 0.95, 760, 370),
+    ),
+}
+reads = []
+evaluations = []
+
+feasible = capability_filter(candidates)
+configurations = tune_effort(
+    feasible,
+    development,
+    reads,
+    min_quality=0.90,
+    max_latency_ms=800,
+)
+frozen = tuple(sorted(configurations.items()))
+assert reads == ["development"]
+assert "holdout" not in globals()
+
+holdout = {
+    ("atlas", "medium"): 0.75,
+    ("birch", "medium"): 0.91,
+}
+winner = decide(dict(frozen), holdout, evaluations)
+
+assert [candidate.name for candidate in feasible] == ["atlas", "birch"]
+assert configurations["atlas"] == Trial("medium", 0.91, 620, 220)
+assert configurations["birch"] == Trial("medium", 0.92, 580, 205)
+assert all(trial.effort != "high" for trial in configurations.values())
+assert all(trial.output_tokens &gt; 0 for trial in configurations.values())
+assert evaluations == ["holdout"]
+assert max(feasible, key=lambda item: item.public_score).name == "atlas"
+assert winner == "birch"
+
+print("P2 CHECKPOINT PRIVATE-EVALUATION PASSED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong><code>fast-public-leader</code> 未被剔除表示能力硬约束失效；低 effort 未达质量仍入选或 high 超延迟仍入选，表示 effort 门失效；选中最高档而 medium 已达标表示没有选择最低可行投入；配置未保留 <code>output_tokens</code> 表示投入证据丢失；调优前已有 holdout、冻结后评估多次或最终仍选公开领先者，表示留出隔离/决定权失效。</p>
+    <p class="bp-rationale"><strong>工程主题链接：</strong><a href="../best-practices/phase2-model-selection-practices.html#theme-private-evaluation">Private Evaluation · 先满足能力约束，再用开发集选择最低达标 effort、隔离留出集拍板</a>。</p>
+  </div>
+</div>
+
 <div class="section">
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
@@ -289,11 +526,13 @@
 
 <aside class="toc" id="toc"></aside>
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/quiz.js"></script>
 <script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
 </body>
 </html>

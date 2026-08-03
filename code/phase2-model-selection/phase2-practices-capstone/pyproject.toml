@@ -1,0 +1,22 @@
+[project]
+name = "phase2-practices-capstone"
+version = "0.1.0"
+description = "Provider-neutral offline fixture lab for model assessment"
+requires-python = ">=3.11,<3.15"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0",
+    "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["phase2_practices", "tests", "main.py"]

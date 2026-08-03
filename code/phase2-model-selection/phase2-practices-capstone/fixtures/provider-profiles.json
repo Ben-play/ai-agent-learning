@@ -1,0 +1,135 @@
+{
+  "fiction_notice": "Virtual providers and models for deterministic education only.",
+  "candidates": [
+    {
+      "candidate_id": "Spruce-S",
+      "provider": "Northstar Virtual",
+      "adapter_kind": "sampling",
+      "supported_controls": [
+        "creativity",
+        "response_budget"
+      ],
+      "control_mapping": {
+        "creativity": "sample_spread",
+        "response_budget": "output_limit"
+      },
+      "usage_container": "meter",
+      "usage_mapping": {
+        "uncached_input": "fresh_in",
+        "cache_write": "saved_write",
+        "cache_read": "saved_read",
+        "output": "generated_out"
+      },
+      "counter_container": "attempts",
+      "counter_mapping": {
+        "retries": "replays",
+        "escalations": "handoffs"
+      },
+      "capability_tier": 1,
+      "config_id": "cfg-spruce-s-v1",
+      "estimate_container": "preflight_count",
+      "estimate_mapping": {
+        "uncached_input": "estimated_fresh_in",
+        "output": "estimated_generated_out"
+      }
+    },
+    {
+      "candidate_id": "Cedar-S",
+      "provider": "Northstar Virtual",
+      "adapter_kind": "sampling",
+      "supported_controls": [
+        "creativity",
+        "response_budget"
+      ],
+      "control_mapping": {
+        "creativity": "sample_spread",
+        "response_budget": "output_limit"
+      },
+      "usage_container": "meter",
+      "usage_mapping": {
+        "uncached_input": "fresh_in",
+        "cache_write": "saved_write",
+        "cache_read": "saved_read",
+        "output": "generated_out"
+      },
+      "counter_container": "attempts",
+      "counter_mapping": {
+        "retries": "replays",
+        "escalations": "handoffs"
+      },
+      "capability_tier": 3,
+      "config_id": "cfg-cedar-s-v1",
+      "estimate_container": "preflight_count",
+      "estimate_mapping": {
+        "uncached_input": "estimated_fresh_in",
+        "output": "estimated_generated_out"
+      }
+    },
+    {
+      "candidate_id": "Quartz-E",
+      "provider": "Blueharbor Virtual",
+      "adapter_kind": "effort",
+      "supported_controls": [
+        "creativity",
+        "response_budget"
+      ],
+      "control_mapping": {
+        "creativity": "response_variance",
+        "response_budget": "response_cap"
+      },
+      "usage_container": "consumption",
+      "usage_mapping": {
+        "uncached_input": "direct_units",
+        "cache_write": "memoized_write_units",
+        "cache_read": "memoized_read_units",
+        "output": "answer_units"
+      },
+      "counter_container": "events",
+      "counter_mapping": {
+        "retries": "retry_events",
+        "escalations": "escalation_events"
+      },
+      "capability_tier": 2,
+      "config_id": "cfg-quartz-e-v1",
+      "estimate_container": "precheck",
+      "estimate_mapping": {
+        "uncached_input": "projected_direct_units",
+        "output": "projected_answer_units"
+      }
+    },
+    {
+      "candidate_id": "Flint-E",
+      "provider": "Blueharbor Virtual",
+      "adapter_kind": "effort",
+      "supported_controls": [
+        "creativity",
+        "response_budget",
+        "reasoning_depth"
+      ],
+      "control_mapping": {
+        "creativity": "response_variance",
+        "response_budget": "response_cap",
+        "reasoning_depth": "reasoning_effort"
+      },
+      "usage_container": "consumption",
+      "usage_mapping": {
+        "uncached_input": "direct_units",
+        "cache_write": "memoized_write_units",
+        "cache_read": "memoized_read_units",
+        "output": "answer_units"
+      },
+      "counter_container": "events",
+      "counter_mapping": {
+        "retries": "retry_events",
+        "escalations": "escalation_events"
+      },
+      "capability_tier": 4,
+      "config_id": "cfg-flint-e-v1",
+      "estimate_container": "precheck",
+      "estimate_mapping": {
+        "uncached_input": "projected_direct_units",
+        "output": "projected_answer_units"
+      }
+    }
+  ]
+}

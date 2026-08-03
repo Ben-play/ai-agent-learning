@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F8F6F1">
+    <link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
   <title>AI Agent 高级开发工程师 · 学习路径总览</title>
   <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -123,7 +126,7 @@
       <strong>Module 2.1 · LLM 本质与核心概念：</strong><br>
       · <strong>LLM 是什么</strong> — 语言模型本质（概率预测）、Transformer 直觉（不写代码）、注意力机制的作用<br>
       · <strong>Token 深度理解</strong> — Tokenization 原理、BPE 算法、中文 vs 英文 Token 差异、tiktoken 计数、Token 与成本关系<br>
-      · <strong>生成参数解密</strong> — Temperature / Top-P 的解码原理与厂商字段边界；当前 Claude 新模型不接受这些 sampling 参数<br><br>
+      · <strong>生成参数解密</strong> — Temperature / Top-P 的解码原理与厂商字段边界；部分新 Claude 模型会拒绝这些 sampling 控制的非默认值<br><br>
       <strong>Module 2.2 · 模型能力、局限与选型：</strong><br>
       · <strong>幻觉问题全解</strong> — 预训练统计错误、评估鼓励猜测与其他工程成因；Self-Consistency/RAG/引用核验的能力边界<br>
       · <strong>模型能力边界</strong> — 能做什么 vs 不能做什么、Base Model vs Instruction-Tuned Model<br>
@@ -132,8 +135,10 @@
       · <strong>模型选型实战</strong> — 区分开放权重、托管服务与自托管；合规看地域/合同/保留策略，总成本用真实负载测算，不按“开源/闭源”标签拍板<br><br>
       <strong>Module 2.3 · Token 经济学：</strong>理解多轮累计成本；按静态前缀占比和命中率评估 Prompt Caching，按业务质量评测 Model Routing；案例降幅不作保证，Batch/压缩/输出控制均按厂商和场景验证<br><br>
       <div class="interview-box">“解码概念与厂商参数如何区分” / “不同模型怎样准确计数 Token” / “幻觉有哪些机制与检测边界” / “Adaptive Thinking 与 effort 怎么用” / “Benchmark 为什么不是模型真值” / “开放权重与自托管有何区别” / “如何按证据优化成本” — 共 9+ 道高频题</div><br>
-      <strong>实战项目：</strong>用 Provider Adapter 对比候选系统，离线验证一致性筛查、ground truth 错误率、成本数学与归一化选型，输出带样本数和评测配置的综合报告<br><br>
+      <strong>实战项目：</strong>用 Provider Adapter 对比候选系统，离线验证一致性筛查、ground truth 错误率、完整成本、硬门槛与合格候选排名，输出带样本数和评测配置的综合报告<br>
+      <strong>渐进实践：</strong>11 张局部决策卡 + 8 个单课验收；5 个跨课检查点分别在 L18/L19/L21/L22/L23 及时完成，最终页只做复盘、索引与综合验收<br><br>
       <a href="0029-phase2-ai-knowledge-outline.html" style="font-weight:600;">📋 查看 Phase 2 详细大纲（L17–L24）→</a><br>
+      <a href="../best-practices/phase2-model-selection-practices.html" style="font-weight:600;">✓ Phase 2 阶段复盘与离线综合验收（不计为新课）→</a><br>
       <a href="../qa/phase2-qa.html" style="font-weight:600;">❓ Phase 2 疑难解答 Q&amp;A →</a>
     </div>
   </div>
@@ -489,11 +494,13 @@
 </footer>
 
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/toc.js"></script>
 <script src="../assets/overview-toggle.js"></script>
+<script src="../assets/pwa.js"></script>
 </body>
 </html>

@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F8F6F1">
+<link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
 <title>L23 · Token 经济学与降本</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -14,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">60</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Token 经济学与降本杠杆</h1>
     <p class="subtitle">先测钱花在哪，再用缓存、路由、批处理和输出控制逐项验证收益</p>
@@ -36,7 +39,7 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>说清 Agent 场景里成本<strong>从哪来、为什么被放大</strong></li>
-      <li>用 <strong>Prompt Caching</strong> 把重复的静态前缀降到约 0.1× 价格（省约 90%）</li>
+      <li>按 Anthropic 当前官方边界，用 <strong>Prompt Caching</strong> 把命中的重复静态前缀按约 0.1× 基础输入价计费（约省 90%）</li>
       <li>设计「<strong>静态前缀 + 动态后缀</strong>」的缓存友好结构</li>
       <li>用 <strong>Model Routing</strong> 让便宜模型兜底、贵模型只接难活</li>
       <li>给一个 Agent<strong>制定 token 预算</strong>并估算月成本</li>
@@ -47,7 +50,7 @@
 <div class="section">
   <h2>1. 快速回顾：成本公式（细节看 L18）</h2>
   <div class="card">
-    <p>一句话把 <a href="0022-L18-tokenization.html">L18</a> 的结论捡回来。API 按 Token 收费，输入和输出<strong>分开定价</strong>，输出通常是输入的 <strong>3~5 倍</strong>：</p>
+    <p>一句话把 <a href="0022-L18-tokenization.html">L18</a> 的结论捡回来。API 按 Token 收费，输入和输出<strong>分开定价</strong>；输入/输出价差取决于厂商、模型、计费层级和日期，下面的 <strong>$3/M 与 $12/M 只是一组教学示例</strong>，不能外推成通用的 3~5 倍规律：</p>
     <pre><code>成本 = (输入Token数 × 输入单价 + 输出Token数 × 输出单价) / 1,000,000
 
 例：输入 2200 token、输出 300 token，输入 $3/M、输出 $12/M
@@ -55,6 +58,52 @@
 
 单次不起眼，但 Agent 一天调 10 万次，就是 ~$1000/天。</code></pre>
     <p>这课不重复整节 L18，只做一件事：<strong>把公式里的每一项往下压</strong>。想复习"怎么数 Token、中英文谁更省"，回 <a href="0022-L18-tokenization.html">L18</a>。</p>
+  </div>
+
+  <div class="best-practice-point" id="bp-l23-cost-composition-first">
+    <h3>最佳实践：先拆完整美元成本，再选择一根降本杠杆</h3>
+    <p class="bp-scenario"><strong>适用：</strong>一次任务同时含未缓存输入、缓存写入、缓存读取、输出、重试与升级调用，需要知道哪一项真正主导账单。<strong>不适用：</strong>还没有可代表生产的 usage、价格表或调用概率时，只能做带日期/来源的情景估算，不能宣称已找到主因。本卡只决定<strong>第一根优化杠杆</strong>。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 按 Token 最大项直接优化</span><pre><code>largest = max(tokens, key=tokens.get)
+lever = LEVER_BY_COMPONENT[largest]</code></pre><p>忽略不同价格倍数与概率；Token 最多不一定美元最多。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 同一 usage，逐项换算美元</span><pre><code>costs = component_costs(usage, rates)
+largest = max(costs, key=costs.get)
+lever = LEVER_BY_COMPONENT[largest]</code></pre><p>先把缓存写/读、输出和期望重试/升级成本放进同一货币量纲，再选杠杆。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>逐项执行 Token×适用费率×发生概率，把异质 usage 转成可比美元，因此优化会命中真实账单主因，而不是体量最大的 Token 桶，提升成本效率与决策可解释性。代价是维护带生效日期的价格表、记录重试/升级概率并持续对账；若缺少真实 usage，先采样 tracing；若输出美元最大就收紧输出/rubric，若缓存写入最大且复用不足就取消或缩短缓存，若升级最大则先修路由质量。</p>
+    <p class="bp-term"><strong>边界：</strong><span class="bp-term-name">未缓存输入</span>按基础输入价；<span class="bp-term-name">缓存写/读</span>按目标厂商当前倍数；<span class="bp-term-name">输出</span>按输出价；<span class="bp-term-name">重试/升级</span>是额外调用的期望成本，不能藏在“平均一次请求”里。生产计算必须使用带来源与生效日期的当前价格；下面 fixture 的费率只为证明算法，不代表任何真实模型报价。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库；离线、确定性、通过时静默）</strong></summary><pre><code>def component_costs(usage, rates):
+    return {
+        name: usage[name] * rates[name] / 1_000_000
+        for name in usage
+    }
+
+
+usage = {
+    "uncached_input": 9_000,
+    "cache_write": 1_000,
+    "cache_read": 5_000,
+    "output": 800,
+    "retry": 200,
+    "escalation": 100,
+}
+rates = {
+    "uncached_input": 2.0,
+    "cache_write": 2.5,
+    "cache_read": 0.2,
+    "output": 40.0,
+    "retry": 2.0,
+    "escalation": 30.0,
+}
+
+costs = component_costs(usage, rates)
+assert max(usage, key=usage.get) == "uncached_input"
+assert max(costs, key=costs.get) == "output"
+assert round(costs["uncached_input"], 6) == 0.018
+assert round(costs["output"], 6) == 0.032
+assert sum(costs.values()) &gt; costs["output"]
+assert set(costs) == set(usage) == set(rates)</code></pre></details>
+    <p class="bp-result"><strong>失败诊断：</strong>最大 Token 项与最大美元项相同则 fixture 没证明价格构成的重要性；未缓存输入不是 0.018 或输出不是 0.032 表示百万 Token 换算错误；遗漏 retry/escalation 表示期望额外调用成本仍被隐藏；直接依据 Token 选杠杆表示尚未完成成本组成分析。</p>
   </div>
 </div>
 
@@ -82,12 +131,12 @@
   <h2>3. Prompt Caching：静态前缀占比高时的强杠杆</h2>
   <div class="card">
     <p><strong>原理：</strong>把<strong>静态的、重复的前缀</strong>（长 system prompt、固定的少样本示例、反复出现的文档）缓存起来。后续请求只要前缀<strong>逐字节命中</strong>缓存，这部分就<strong>大幅降价</strong>——你不再为"每次都一样的内容"付全价。</p>
-    <p>各家的数量级（以官方文档为准，这里用"约"）：</p>
+    <p>下表是按本课引用的官方文档整理的边界快照；价格与支持范围会变化，实施时必须重新核对目标模型与平台：</p>
     <table>
       <thead><tr><th>厂商</th><th>缓存读（命中）</th><th>缓存写（首次）</th><th>TTL</th></tr></thead>
       <tbody>
         <tr><td><strong>Anthropic</strong></td><td>约 <strong>0.1×</strong> 输入价<br>（省约 90%）</td><td>约 <strong>1.25×</strong><br>（首次略贵）</td><td>默认约 5 分钟；另有 1 小时选项（写约 2×）</td></tr>
-        <tr><td><strong>OpenAI</strong></td><td>命中约省 <strong>50%~90%</strong>（视模型代次，较新模型可达 ~90%）</td><td>自动，无额外写入费</td><td>自动前缀缓存</td></tr>
+        <tr><td><strong>OpenAI</strong></td><td colspan="3">缓存折扣、写入计费与保留时间按模型/产品变化；本课不固定数值，实施时查下方 OpenAI 当前官方文档</td></tr>
       </tbody>
     </table>
     <p>数据出处：<a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。按相对输入价粗算：5 分钟缓存一次写入 1.25×，之后一次读取 0.1×，两次使用合计 1.35×，低于两次全价 2×；1 小时缓存写 2×，通常要到第三次使用（2×+0.1×+0.1×）才低于三次全价。实际收益还取决于命中时机、并发和静态前缀占比。</p>
@@ -109,6 +158,79 @@
 ⚠️ 反例：system prompt 开头写 "当前时间：{now}"
    → 前缀每次都变 → 缓存永远不命中 → 白交钱</code></pre>
     <p>ProjectDiscovery 的案例报告了 <strong>59%~70%</strong> 的降幅（<a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">案例原文</a>），但这是其请求结构和命中率下的结果，不是普遍保证。长 system prompt + 固定工具集通常是良好候选；若前缀太短、频繁变化、并发请求来不及读取刚写入的缓存，收益会显著下降。</p>
+  </div>
+
+  <div class="best-practice-point" id="bp-l23-cache-stable-prefix">
+    <h3>最佳实践：规范化稳定前缀，把动态请求严格追加在后</h3>
+    <p class="bp-scenario"><strong>适用：</strong>工具定义、系统规则或固定示例足够长且会在 TTL 内重复使用。<strong>不适用：</strong>前缀低于目标模型/平台的最小缓存长度，或首段内容每次都不同且没有可复用前缀时，不应为零命中支付写入溢价。本卡只决定<strong>缓存前缀边界与字节稳定性</strong>。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 动态字段混进前缀</span><pre><code>prefix = {
+    "request_id": request_id,
+    "tools": tools,
+    "system": system,
+}</code></pre><p>业务接口相同，但每个请求 ID 都改变摘要，后续前缀无法完全一致。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 固定序列化 + 动态后缀</span><pre><code>prefix = stable_prefix(tools, system)
+suffix = {"request_id": request_id, "question": question}</code></pre><p>工具按名排序、JSON 固定序列化；请求 ID 和问题位于边界之后。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先规范化工具顺序与序列化，再对稳定部分设置边界，缓存机制才能对 100% 相同的前缀复用，结果是更高命中率、更低重复输入成本与可诊断摘要。代价是冻结顺序、维护版本与接受首次写入溢价；5 分钟写入按基础输入价 1.25×、1 小时写入 2×、读取 0.1×，所以复用不足时切回不缓存或较短 TTL；工具定义确实变化时必须让摘要变化并重新写入，不能为命中伪造旧工具集。</p>
+    <p class="bp-term"><strong>官方边界：</strong>支持默认 <span class="bp-term-name">5 分钟</span>与显式 <span class="bp-term-name">1 小时</span> TTL；命中要求缓存断点前的 prompt 前缀完全一致；最小可缓存长度依模型且有平台差异，过短会静默不缓存。用 <code>usage.input_tokens</code>、<code>cache_creation_input_tokens</code>、<code>cache_read_input_tokens</code> 分别核对未缓存、写入和读取 Token，三者之和才是总输入。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库；离线摘要模拟、确定性、通过时静默）</strong></summary><pre><code>import hashlib
+import json
+
+
+def stable_prefix(tools, system):
+    normalized = {
+        "tools": sorted(tools, key=lambda tool: tool["name"]),
+        "system": system,
+    }
+    return json.dumps(
+        normalized,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def digest(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def request(tools, system, *, request_id, question):
+    prefix = stable_prefix(tools, system)
+    dynamic_suffix = json.dumps(
+        {"request_id": request_id, "question": question},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return digest(prefix), prefix + dynamic_suffix
+
+
+tools = [
+    {"name": "search", "description": "查当前公告"},
+    {"name": "calculate", "description": "执行精确计算"},
+]
+first_digest, first_request = request(
+    tools, "遵循市政服务规则", request_id="r-1", question="今天开放吗？"
+)
+second_digest, second_request = request(
+    list(reversed(tools)),
+    "遵循市政服务规则",
+    request_id="r-2",
+    question="现在排队多久？",
+)
+changed_tools = [*tools, {"name": "status", "description": "读取申请状态"}]
+third_digest, _ = request(
+    changed_tools,
+    "遵循市政服务规则",
+    request_id="r-3",
+    question="我的申请在哪一步？",
+)
+
+assert first_digest == second_digest
+assert first_request != second_request
+assert third_digest != first_digest
+assert len(first_digest) == 64</code></pre></details>
+    <p class="bp-result"><strong>失败诊断：</strong>动态请求改变前缀摘要表示边界放错；仅交换工具顺序就改变摘要表示没有规范化；工具定义新增后摘要不变表示缓存会错误复用陈旧接口；重复请求 usage 的读取字段始终为 0 时，应再检查最小长度、TTL、完全一致性与并发写入时机。</p>
   </div>
   <div class="tip">
     验证 Anthropic 缓存是否命中：看 <code>usage.cache_read_input_tokens</code>；首次写入看 <code>cache_creation_input_tokens</code>，<code>input_tokens</code> 是未缓存的剩余部分。若重复请求的读取字段一直为 0，检查前缀长度、时间戳 / 随机 ID、工具顺序和并发时机。
@@ -137,11 +259,68 @@
 
 思路：先用便宜模型试；不确定 / 判为难，再升级到贵模型。</code></pre>
     <p>为什么可能有效：不同模型单价差异大，若流量中确有一批简单请求，且路由器能在不显著损害质量的前提下识别它们，就能降低平均成本。TrueFoundry 的文章汇总了 <strong>40%~85%</strong> 的案例区间（<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">案例原文</a>）；这不是保证，误路由、二次升级和路由器自身调用也会产生质量与成本。</p>
-    <p><strong>工程落地：</strong>用一个 <strong>gateway</strong>（如 <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a>，见课程 RESOURCES）统一路由，业务代码不用管背后是哪个模型，换模型 / 调路由策略只改配置。这直接连回两条已学的原则：</p>
+    <p><strong>工程落地：</strong>用 provider-neutral adapter / gateway 隔离厂商请求与响应（例如可评估 <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a>，见课程 RESOURCES），业务层只依赖统一任务结果；具体网关仍要按你锁定的版本、支持矩阵和评测验证，不能假设换配置就自动获得公平或无损路由。这直接连回两条已学的原则：</p>
     <ul>
       <li>👉 <a href="0024-L20-reasoning-models.html">L20</a>：推理模型（思考更多）<strong>更贵更慢</strong>——别对"翻译一句话""判断正负面"这种简单活开推理，纯属烧钱。</li>
       <li>👉 <a href="0026-L22-benchmarks-and-selection.html">L22</a>：选型不是"永远选最强"，而是<strong>按任务难度匹配</strong>。路由就是把"选型"从一次性决策变成<strong>每请求的动态决策</strong>。</li>
     </ul>
+  </div>
+
+  <div class="best-practice-point" id="bp-l23-eval-driven-routing">
+    <h3>最佳实践：在质量门槛内选择期望成本最低的路由策略</h3>
+    <p class="bp-scenario"><strong>适用：</strong>候选策略已有私有评测通过率、首轮成本、升级概率和升级成本。<strong>不适用：</strong>只有“请求长/短”或公开榜单，没有业务质量证据时，不应上线自动路由。本卡只决定<strong>每类请求采用哪条已评测策略</strong>。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 按文本长度猜难度</span><pre><code>strategy = "cheap_only" if len(request) &lt; 80 else "strong_only"</code></pre><p>短而困难的请求会被误路由；也没有计入便宜模型失败后的二次调用。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 质量先过门，成本含升级概率</span><pre><code>qualified = [s for s in strategies if s.pass_rate &gt;= gate]
+strategy = min(qualified, key=expected_cost)</code></pre><p>同一任务接口下，只比较达标策略；级联期望成本包含首轮和概率加权的升级调用。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先用私有评测执行质量硬门，再按 <code>first_cost + escalation_probability × escalation_cost</code> 排序，机制上阻止廉价但不合格的策略胜出，同时把二次调用纳入账单，因此兼顾可靠性、成本可预测性与可解释性。代价是维护按任务分层的评测和持续校准升级率；若短而困难类在低成本策略上不过门，就切换为直接强模型；若级联达标且升级率低则保留级联；若没有任何策略达标，升级为人工/拒绝上线，而不是降低门槛。</p>
+    <p class="bp-term"><strong>边界：</strong><span class="bp-term-name">质量门</span>先淘汰不合格策略；<span class="bp-term-name">升级概率</span>来自同分布私有评测，不是拍脑袋；<span class="bp-term-name">期望成本</span>比较策略平均美元成本，不保证每个请求都恰好花该金额。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库；离线、确定性、通过时静默）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Strategy:
+    name: str
+    pass_rate: float
+    first_cost: float
+    escalation_probability: float = 0.0
+    escalation_cost: float = 0.0
+
+
+def expected_cost(strategy):
+    return (
+        strategy.first_cost
+        + strategy.escalation_probability * strategy.escalation_cost
+    )
+
+
+def choose(strategies, *, quality_gate):
+    qualified = [s for s in strategies if s.pass_rate &gt;= quality_gate]
+    if not qualified:
+        raise RuntimeError("no strategy passes the quality gate")
+    return min(qualified, key=expected_cost)
+
+
+short_but_hard = [
+    Strategy("cheap-only", 0.62, 0.001),
+    Strategy("cheap-then-strong", 0.93, 0.001, 0.35, 0.020),
+    Strategy("strong-only", 0.97, 0.020),
+]
+
+winner = choose(short_but_hard, quality_gate=0.90)
+assert winner.name == "cheap-then-strong"
+assert round(expected_cost(winner), 6) == 0.008
+assert expected_cost(winner) &lt; expected_cost(short_but_hard[2])
+assert len("修复并证明这个竞态") &lt; 80  # 短不等于简单
+
+try:
+    choose([Strategy("cheap-only", 0.62, 0.001)], quality_gate=0.90)
+except RuntimeError:
+    pass
+else:
+    raise AssertionError("no-qualified strategy must not be selected")</code></pre></details>
+    <p class="bp-result"><strong>失败诊断：</strong><code>cheap-only</code> 胜出表示质量门未先执行；<code>strong-only</code> 胜出表示期望成本或升级概率计算错误；短请求被自动标为简单表示路由特征替代了私有评测；无达标策略仍返回候选表示系统会为省钱牺牲硬质量要求。</p>
   </div>
 
   <div class="quiz" data-quiz="q1">
@@ -164,8 +343,8 @@
       <thead><tr><th>杠杆</th><th>怎么省</th></tr></thead>
       <tbody>
         <tr><td><strong>压缩历史 / 对话（compaction）</strong></td><td>多轮太长时，<strong>只保留摘要而非全文</strong>回传，砍掉①号放大器。深入见 <strong>Phase 5</strong>（Agent 上下文工程）</td></tr>
-        <tr><td><strong>控制输出长度</strong></td><td>输出是输入的 3~5 倍价，最贵。设 <code>max_tokens</code>、在 prompt 里明确"简洁作答 / 只返回 JSON"，别让模型啰嗦</td></tr>
-        <tr><td><strong>批处理（厂商能力）</strong></td><td>例如 Anthropic Message Batches 对非实时请求提供 50% 价格折扣；其他厂商的折扣、限制和完成时限不同，接入前查当前官方定价</td></tr>
+        <tr><td><strong>控制输出长度</strong></td><td>输出单价与输入单价的关系取决于具体厂商/模型/日期；当 usage 证明输出美元占大头时，再用 <code>max_tokens</code>、明确 rubric 或结构化格式减少无用输出，避免低上限截断答案</td></tr>
+        <tr><td><strong>批处理（厂商能力）</strong></td><td>Anthropic 官方 Message Batches 以标准价格的 50% 异步处理 Messages 请求，适合不要求即时响应的离线评测/分析等工作；多数批次在 1 小时内完成，但不是同步交互替代品。其他厂商的折扣、限制和时限需查其当前官方文档</td></tr>
       </tbody>
     </table>
     <p>优化顺序取决于测量结果：静态前缀占比高且会重复命中时先测缓存；请求难度分层明显时再评估路由；离线任务可比较 Batch；若输出本身占大头，先控制输出可能更直接。没有一项对所有系统都“几乎无副作用”。</p>
@@ -250,7 +429,7 @@ $1020 → 约 $480，稳态账单下降约 53%
 <div class="section">
   <h2>🎯 速查卡：Token 经济学与降本</h2>
   <div class="card">
-    <pre><code>【成本公式】(in×in价 + out×out价) / 1e6；输出通常 3~5× 输入（细节→L18）
+    <pre><code>【成本公式】(in×in价 + out×out价) / 1e6；输入/输出价差以目标厂商与模型当前价格为准（细节→L18）
 
 【钱从哪来·Agent 放大器】几乎都是"重复的静态输入"
   ① 历史每轮重发  ② 长 system prompt 每次都算
@@ -264,18 +443,294 @@ $1020 → 约 $480，稳态账单下降约 53%
 【Model Routing】按业务评测分流，监控误路由、升级率和失败成本
   第三方 40~85% 仅案例，不是保证；路由器本身也有成本
 
-【其他】历史压缩 / 控输出 / 厂商 Batch（如 Anthropic 非实时折扣50%）
+【其他】历史压缩 / 控输出 / 厂商 Batch（Anthropic：异步、非即时工作负载按标准价50%）
 
 【预算】单次量 × 频次 × 单价只是起点；还要加重试、路由、缓存写入
 【原则】先测成本构成，再选杠杆；同时验证质量、延迟和失败率</code></pre>
   </div>
 </div>
 
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：夜间内容处理的工作负载计划</h2>
+  <p class="best-practice-lead">三张知识点卡分别证明单次成本、单个前缀和单类任务的决策。本练习迁移到一批夜间内容任务：按流量汇总美元成本、按前缀分组决定是否缓存，并为不同任务切片生成路由表与总期望成本。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>把多个 trace 的成本分量乘以调用频次，汇总工作负载级美元组成。</li><li>按稳定前缀 digest 分组；只为有复用的组规划一次写入与后续读取，单次组不缓存。</li><li>为普通清洗和事实审查分别使用各自的私有通过率与流量占比选择路线。</li><li>输出分组缓存计划、按切片路由表和流量加权总期望成本。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>高频升级切片能改变工作负载级最大美元项。</li><li>相同稳定前缀的不同动态请求进入同组，工具版本变化进入新组。</li><li>零复用组明确不缓存，不为一次使用支付缓存写入。</li><li>普通切片可直达低成本候选，事实审查切片必须走达标级联。</li><li>任一切片无达标路线时整体明确失败；标准输出只有验收标记。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>不要再复制三个卡片的单样本断言。本题要利用卡片产物形成<strong>工作负载级计划</strong>：频次会改变成本主因，digest 用于分组，私有评测决定每个切片可用哪些路线。</p>
+    <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>from dataclasses import dataclass
+import hashlib
+import json
+
+
+COMPONENTS = (
+    "uncached_input",
+    "cache_write",
+    "cache_read",
+    "output",
+    "retry",
+    "escalation",
+)
+
+
+@dataclass(frozen=True)
+class Trace:
+    name: str
+    calls: int
+    unit_costs: dict[str, float]
+
+
+@dataclass(frozen=True)
+class Request:
+    request_id: str
+    tools: tuple[tuple[str, int], ...]
+    system: str
+    question: str
+
+
+@dataclass(frozen=True)
+class Route:
+    name: str
+    pass_rate: float
+    first_cost: float
+    escalation_probability: float = 0.0
+    escalation_cost: float = 0.0
+
+
+def workload_costs(traces: tuple[Trace, ...]) -&gt; dict[str, float]:
+    return {
+        component: sum(
+            trace.calls * trace.unit_costs[component]
+            for trace in traces
+        )
+        for component in COMPONENTS
+    }
+
+
+def prefix_digest(request: Request) -&gt; str:
+    stable = json.dumps(
+        {
+            "system": request.system,
+            "tools": sorted(request.tools),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(stable.encode()).hexdigest()
+
+
+def cache_plan(requests: tuple[Request, ...]) -&gt; dict[str, tuple[str, int, int]]:
+    grouped: dict[str, list[Request]] = {}
+    for request in requests:
+        grouped.setdefault(prefix_digest(request), []).append(request)
+    return {
+        digest: (
+            "cache" if len(group) &gt; 1 else "skip",
+            1 if len(group) &gt; 1 else 0,
+            len(group) - 1 if len(group) &gt; 1 else 0,
+        )
+        for digest, group in grouped.items()
+    }
+
+
+def expected_cost(route: Route) -&gt; float:
+    return route.first_cost + route.escalation_probability * route.escalation_cost
+
+
+def choose_route(routes: tuple[Route, ...], gate: float) -&gt; Route:
+    qualified = [route for route in routes if route.pass_rate &gt;= gate]
+    if not qualified:
+        raise RuntimeError("no route passes this task slice")
+    return min(qualified, key=expected_cost)
+
+
+traces = (
+    Trace("cleanup", 1_000, {
+        "uncached_input": 0.0010,
+        "cache_write": 0.0002,
+        "cache_read": 0.0001,
+        "output": 0.0015,
+        "retry": 0.0001,
+        "escalation": 0.0000,
+    }),
+    Trace("fact-review", 400, {
+        "uncached_input": 0.0015,
+        "cache_write": 0.0003,
+        "cache_read": 0.0001,
+        "output": 0.0030,
+        "retry": 0.0002,
+        "escalation": 0.0100,
+    }),
+)
+composition = workload_costs(traces)
+assert composition == {
+    "uncached_input": 1.6,
+    "cache_write": 0.32,
+    "cache_read": 0.14,
+    "output": 2.7,
+    "retry": 0.18,
+    "escalation": 4.0,
+}
+assert max(composition, key=composition.get) == "escalation"
+
+requests = (
+    Request("r-1", (("normalize", 1),), "cleanup-v1", "修正标点"),
+    Request("r-2", (("normalize", 1),), "cleanup-v1", "统一空格"),
+    Request("r-3", (("normalize", 2),), "cleanup-v1", "处理新版格式"),
+)
+plan = cache_plan(requests)
+shared = prefix_digest(requests[0])
+versioned = prefix_digest(requests[2])
+assert shared == prefix_digest(requests[1])
+assert shared != versioned
+assert plan[shared] == ("cache", 1, 1)
+assert plan[versioned] == ("skip", 0, 0)
+assert requests[0].question != requests[1].question
+
+routes = {
+    "routine-cleanup": (
+        0.85,
+        0.70,
+        (
+            Route("cheap-direct", 0.93, 0.0010),
+            Route("cheap-then-strong", 0.98, 0.0010, 0.10, 0.0200),
+        ),
+    ),
+    "fact-review": (
+        0.15,
+        0.92,
+        (
+            Route("cheap-direct", 0.62, 0.0010),
+            Route("cheap-then-strong", 0.95, 0.0010, 0.25, 0.0200),
+            Route("strong-direct", 0.99, 0.0200),
+        ),
+    ),
+}
+route_table = {
+    task: choose_route(options, gate)
+    for task, (_, gate, options) in routes.items()
+}
+assert route_table["routine-cleanup"].name == "cheap-direct"
+assert route_table["fact-review"].name == "cheap-then-strong"
+weighted_expected_cost = sum(
+    routes[task][0] * expected_cost(route)
+    for task, route in route_table.items()
+)
+assert round(weighted_expected_cost, 6) == 0.00175
+
+try:
+    choose_route((Route("unsafe", 0.40, 0.0001),), gate=0.90)
+except RuntimeError:
+    pass
+else:
+    raise AssertionError("a slice with no qualified route must fail")
+
+print("L23 ACCEPTED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>没有乘调用频次会把成本主因错误留在单次请求；同前缀动态请求未分组表示把后缀混入缓存键；工具版本变化仍命中旧组表示稳定前缀过期；单次组被缓存表示忽略写入回本；事实审查落到不达标直达路线或总成本未按流量加权，表示路由政策没有使用切片评测。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-cost-aware-routing" data-phase-practice="cost-aware-routing">
+  <h2>阶段实践检查点：成本感知的翻译路由</h2>
+  <p class="best-practice-lead">在新的翻译工作负载中组合原生 Token 计数接口、effort、私有评测、完整成本、缓存与升级路由；不能用字符数、长度启发式或公开排名替代其中任何一层。</p>
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-grid">
+      <div><h3>操作清单</h3><ol><li>通过注入的目标模型计数函数获取输入 Token，不使用通用字符近似。</li><li>为短但法律术语密集的请求保留 high effort/升级可能。</li><li>用私有留出通过率执行质量门。</li><li>把缓存读写、输出和升级概率纳入策略期望成本。</li></ol></div>
+      <div class="practice-pass"><strong>通过标准</strong><ul><li>计数器恰好收到完整提示一次。</li><li>短但困难样本不会因长度进入 cheap-only。</li><li>未过私有质量门的策略不能入选。</li><li>达标候选按完整期望成本排序。</li><li>标准输出只有检查点标记。</li></ul></div>
+    </div>
+    <p class="bp-term"><strong>先独立完成：</strong>只使用当前/先前知识：L18 的目标模型原生计数、L20 effort、L22 私有评测，加上本课完整成本/缓存/路由；不依赖下一课的综合排名。</p>
+    <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）</strong></summary><pre><code>from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class TranslationStrategy:
+    name: str
+    effort: str
+    input_rate: float
+    cache_write_cost: float
+    cache_read_cost: float
+    output_cost: float
+    retry_cost: float
+    escalation_probability: float
+    escalation_cost: float
+
+
+def expected_cost(strategy, input_tokens):
+    counted_input_cost = input_tokens * strategy.input_rate / 1_000_000
+    return (
+        counted_input_cost
+        + strategy.cache_write_cost
+        + strategy.cache_read_cost
+        + strategy.output_cost
+        + strategy.retry_cost
+        + strategy.escalation_probability * strategy.escalation_cost
+    )
+
+
+def route(prompt, counter, strategies, private_pass_rates, gate):
+    input_tokens = counter(prompt)
+    qualified = [
+        strategy for strategy in strategies
+        if private_pass_rates[strategy.name] &gt;= gate
+    ]
+    if not qualified:
+        raise RuntimeError("no translation strategy passes holdout")
+    winner = min(qualified, key=lambda strategy: expected_cost(strategy, input_tokens))
+    return winner, input_tokens
+
+
+calls = []
+
+def native_counter(prompt):
+    calls.append(prompt)
+    return 137
+
+
+prompt = "Translate: notwithstanding the foregoing"
+assert len(prompt) &lt; 80
+
+strategies = [
+    TranslationStrategy("cheap-only", "low", 2.0, 0, 0, 0.001, 0.0001, 0, 0),
+    TranslationStrategy("cached-escalation", "high", 2.0, 0.001, 0.0002, 0.003, 0.0005, 0.20, 0.020),
+    TranslationStrategy("strong-only", "high", 6.0, 0, 0, 0.010, 0.0005, 0, 0),
+]
+private_pass_rates = {
+    "cheap-only": 0.70,
+    "cached-escalation": 0.94,
+    "strong-only": 0.98,
+}
+winner, counted_tokens = route(
+    prompt, native_counter, strategies, private_pass_rates, 0.90
+)
+assert calls == [prompt]
+assert counted_tokens == 137
+assert private_pass_rates["cheap-only"] &lt; 0.90
+assert winner.name == "cached-escalation"
+assert winner.effort == "high"
+expected = expected_cost(winner, counted_tokens)
+assert round(expected, 6) == 0.008974
+assert expected == (
+    137 * 2.0 / 1_000_000
+    + 0.001
+    + 0.0002
+    + 0.003
+    + 0.0005
+    + 0.20 * 0.020
+)
+
+print("P2 CHECKPOINT COST-AWARE-ROUTING PASSED")</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>计数器未收到实际短难 prompt、调用不止一次或计数未进入 input 美元项，表示原生计数与路由断开；<code>cheap-only</code> 因文本短而入选表示长度绕过私有质量门；精确期望成本不等于 counted input + cache write/read + output + retry + 概率升级，表示至少一项遗漏；结果不是 <code>cached-escalation</code> 表示达标策略排序错误。</p>
+    <p class="bp-rationale"><strong>工程主题链接：</strong><a href="../best-practices/phase2-model-selection-practices.html#theme-cost-aware-routing">Cost-aware Routing · 原生计数、私有质量门与完整期望成本共同决定路由</a>。</p>
+  </div>
+</div>
+
 <div class="section">
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
-    <p><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank"><strong>Anthropic: Prompt Caching</strong></a></p>
-    <p>官方文档用于核对缓存读写倍数、TTL、最小前缀、前缀匹配和 usage 字段。<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry</a> 与 <a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery</a> 只作为案例阅读：学习它们如何测量，不把其节省百分比当成你的预测值。</p>
+    <p><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank"><strong>Anthropic: Prompt Caching</strong></a></p>
+    <p>官方文档用于核对缓存读写倍数、TTL、模型/平台相关最小前缀、完全一致的前缀匹配和 usage 字段。异步非即时工作负载的 50% 定价边界见 <a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing" target="_blank">Anthropic: Batch processing</a>。<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry</a> 与 <a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery</a> 只作为案例阅读：学习它们如何测量，不把其节省百分比当成你的预测值。</p>
   </div>
 </div>
 
@@ -304,7 +759,7 @@ $1020 → 约 $480，稳态账单下降约 53%
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>成本 = 输入输出<strong>分开</strong>算，输出通常 3~5× 输入；Agent 因多轮/长 prompt/工具循环，token 消耗<strong>远超</strong>单次 chat</li>
+      <li>成本 = 输入输出<strong>分开</strong>算，输入/输出价差以目标厂商与模型当前价格为准；Agent 因多轮/长 prompt/工具循环，token 消耗<strong>远超</strong>单次 chat</li>
       <li>费钱的几乎都是<strong>重复的静态输入</strong>——这正是两根杠杆的靶心</li>
       <li><strong>Prompt Caching</strong>：适合足够长、重复且字节稳定的前缀；Anthropic 5m 写约 1.25×、1h 写约 2×、读约 0.1×，必须看 usage 验证命中</li>
       <li><strong>Model Routing</strong>：按业务评测分流并监控误路由/升级率；第三方节省区间只作案例</li>
@@ -320,11 +775,13 @@ $1020 → 约 $480，稳态账单下降约 53%
 
 <aside class="toc" id="toc"></aside>
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/quiz.js"></script>
 <script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
 </body>
 </html>

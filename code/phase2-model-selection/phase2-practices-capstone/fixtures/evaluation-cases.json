@@ -1,0 +1,260 @@
+{
+  "fiction_notice": "All prompts and expected outputs are synthetic educational fixtures.",
+  "task_policies": [
+    {
+      "task": "grounded_lookup",
+      "hard_gates": {
+        "minimum_quality": 0.72,
+        "maximum_factual_error_rate": 0.1,
+        "maximum_divergence_rate": 0.35,
+        "minimum_correct_abstention_rate": 0.9,
+        "minimum_evidence_coverage": 0.8,
+        "maximum_mean_fixed_latency_ms": 1000
+      },
+      "weights": {
+        "quality": 0.25,
+        "factuality": 0.2,
+        "consistency": 0.1,
+        "abstention": 0.1,
+        "evidence": 0.1,
+        "usage_accuracy": 0.05,
+        "cost": 0.15,
+        "latency": 0.05
+      },
+      "policy_id": "policy-grounded_lookup-v1",
+      "holdout_only_negative_policy": false,
+      "require_every_holdout_run": false,
+      "manual_review_unit_cost": 6.0
+    },
+    {
+      "task": "routine_triage",
+      "hard_gates": {
+        "minimum_quality": 0.6,
+        "maximum_factual_error_rate": 0.1,
+        "maximum_divergence_rate": 0.35,
+        "minimum_correct_abstention_rate": 0.9,
+        "minimum_evidence_coverage": 0.8,
+        "maximum_mean_fixed_latency_ms": 700
+      },
+      "weights": {
+        "quality": 0.2,
+        "factuality": 0.2,
+        "consistency": 0.1,
+        "abstention": 0.1,
+        "evidence": 0.05,
+        "usage_accuracy": 0.1,
+        "cost": 0.2,
+        "latency": 0.05
+      },
+      "policy_id": "policy-routine_triage-v1",
+      "holdout_only_negative_policy": false,
+      "require_every_holdout_run": false,
+      "manual_review_unit_cost": 6.0
+    },
+    {
+      "task": "high_stakes_reasoning",
+      "hard_gates": {
+        "minimum_quality": 0.84,
+        "maximum_factual_error_rate": 0.02,
+        "maximum_divergence_rate": 0.2,
+        "minimum_correct_abstention_rate": 1.0,
+        "minimum_evidence_coverage": 0.9,
+        "maximum_mean_fixed_latency_ms": 1600
+      },
+      "weights": {
+        "quality": 0.3,
+        "factuality": 0.25,
+        "consistency": 0.1,
+        "abstention": 0.1,
+        "evidence": 0.1,
+        "usage_accuracy": 0.05,
+        "cost": 0.05,
+        "latency": 0.05
+      },
+      "policy_id": "policy-high_stakes_reasoning-v1",
+      "holdout_only_negative_policy": false,
+      "require_every_holdout_run": true,
+      "manual_review_unit_cost": 20.0
+    },
+    {
+      "task": "impossible_safety",
+      "hard_gates": {
+        "minimum_quality": 0.99,
+        "maximum_factual_error_rate": 0.0,
+        "maximum_divergence_rate": 0.0,
+        "minimum_correct_abstention_rate": 1.0,
+        "minimum_evidence_coverage": 1.0,
+        "maximum_mean_fixed_latency_ms": 100
+      },
+      "weights": {
+        "quality": 0.25,
+        "factuality": 0.2,
+        "consistency": 0.1,
+        "abstention": 0.15,
+        "evidence": 0.1,
+        "usage_accuracy": 0.05,
+        "cost": 0.1,
+        "latency": 0.05
+      },
+      "policy_id": "policy-impossible_safety-v1",
+      "holdout_only_negative_policy": true,
+      "require_every_holdout_run": true,
+      "manual_review_unit_cost": 30.0
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "grounded-capital",
+      "task": "grounded_lookup",
+      "prompt": "In the supplied fictional atlas, what is the capital of Aurelia? Cite the atlas.",
+      "expected_answer": "Luma",
+      "should_abstain": false,
+      "evidence_required": 1,
+      "repeats": 5,
+      "policy": {
+        "controls": {
+          "creativity": "low",
+          "response_budget": 120
+        },
+        "maximum_estimated_input_units": 125
+      },
+      "split": "dev",
+      "allowed_evidence_ids": [
+        "atlas-capital"
+      ],
+      "required_evidence_ids": [
+        "atlas-capital"
+      ]
+    },
+    {
+      "case_id": "unsupported-moon",
+      "task": "grounded_lookup",
+      "prompt": "The fixture contains no moon count for Aurelia. Answer only if supported and cite evidence.",
+      "expected_answer": "ABSTAIN",
+      "should_abstain": true,
+      "evidence_required": 0,
+      "repeats": 5,
+      "policy": {
+        "controls": {
+          "creativity": "low",
+          "response_budget": 80
+        },
+        "maximum_estimated_input_units": 100
+      },
+      "split": "holdout",
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": []
+    },
+    {
+      "case_id": "routine-label",
+      "task": "routine_triage",
+      "prompt": "Classify the synthetic note 'scheduled maintenance completed' as routine or urgent.",
+      "expected_answer": "routine",
+      "should_abstain": false,
+      "evidence_required": 0,
+      "repeats": 5,
+      "policy": {
+        "controls": {
+          "creativity": "low",
+          "response_budget": 40
+        },
+        "maximum_estimated_input_units": 65
+      },
+      "split": "dev",
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": []
+    },
+    {
+      "case_id": "low-reuse-cache",
+      "task": "routine_triage",
+      "prompt": "Classify one synthetic incident after a single cache write and no reuse.",
+      "expected_answer": "routine",
+      "should_abstain": false,
+      "evidence_required": 0,
+      "repeats": 1,
+      "policy": {
+        "controls": {
+          "creativity": "low",
+          "response_budget": 40
+        },
+        "maximum_estimated_input_units": 65
+      },
+      "split": "holdout",
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": []
+    },
+    {
+      "case_id": "short-hard-proof",
+      "task": "high_stakes_reasoning",
+      "prompt": "Short prompt, hard proof: use the fictional rules to decide if the bridge invariant holds.",
+      "expected_answer": "holds",
+      "should_abstain": false,
+      "evidence_required": 2,
+      "repeats": 5,
+      "policy": {
+        "controls": {
+          "creativity": "low",
+          "response_budget": 160,
+          "reasoning_depth": "high"
+        },
+        "maximum_estimated_input_units": 90
+      },
+      "split": "holdout",
+      "allowed_evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "required_evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ]
+    },
+    {
+      "case_id": "unsupported-proof-fact",
+      "task": "high_stakes_reasoning",
+      "prompt": "A required premise is absent. Abstain rather than inventing the premise.",
+      "expected_answer": "ABSTAIN",
+      "should_abstain": true,
+      "evidence_required": 0,
+      "repeats": 5,
+      "policy": {
+        "controls": {
+          "creativity": "low",
+          "response_budget": 120,
+          "reasoning_depth": "high"
+        },
+        "maximum_estimated_input_units": 85
+      },
+      "split": "dev",
+      "allowed_evidence_ids": [],
+      "required_evidence_ids": []
+    },
+    {
+      "case_id": "impossible-perfect",
+      "task": "impossible_safety",
+      "prompt": "Synthetic impossible route requiring perfection and sub-100 ms latency.",
+      "expected_answer": "ABSTAIN",
+      "should_abstain": true,
+      "evidence_required": 1,
+      "repeats": 5,
+      "policy": {
+        "controls": {
+          "creativity": "low",
+          "response_budget": 60
+        },
+        "maximum_estimated_input_units": 65
+      },
+      "split": "holdout",
+      "allowed_evidence_ids": [
+        "safety-rubric"
+      ],
+      "required_evidence_ids": [
+        "safety-rubric"
+      ]
+    }
+  ],
+  "fixture_version": "phase2-fixtures-v2",
+  "evaluator_version": "offline-evaluator-v2",
+  "rubric_version": "reference-rubric-v2",
+  "tool_policy_id": "no-tools-offline-v1"
+}

@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F8F6F1">
+<link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
 <title>第二阶段 · 疑难解答 Q&amp;A</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -36,7 +39,7 @@
     </div>
     <div class="qa-item">
       <div class="qa-q"><span class="qa-badge">Q</span><span class="qa-q-text">temperature 和 top_p 到底该调哪个？两个一起调会怎样？</span></div>
-      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p><strong>只重点调一个，另一个留默认。</strong>两者都在控制"采样有多随机"，但作用点不同：temperature <strong>缩放整个概率分布的形状</strong>（改每个词的相对概率），top_p <strong>裁剪候选集</strong>（先砍长尾再采样）。</p><p>同时把两个都往极端调，行为会互相叠加、很难预测——比如 temperature 已经把分布压得很尖，top_p 再砍一刀，可能只剩一个候选，等于强制贪心。实践惯例：<strong>固定 top_p=1 只调 temperature</strong>（最常见），或反之。抽取/函数调用用低 temperature（0~0.3），创意用高（0.7~1.0+）。</p></div></div>
+      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p><strong>只重点调一个，另一个留默认。</strong>两者都在控制"采样有多随机"，但作用点不同：temperature <strong>缩放整个概率分布的形状</strong>（改每个词的相对概率），top_p <strong>裁剪候选集</strong>（先砍长尾再采样）。</p><p>同时把两个都往极端调，行为会互相叠加、很难预测——比如 temperature 已经把分布压得很尖，top_p 再砍一刀，可能只剩一个候选。<strong>先查目标模型是否接受这些控制。</strong>若支持，通常固定其中一个、只重点调另一个，并用业务评测决定数值；抽取任务可从低 temperature 开始，创意任务再逐步提高。若目标模型拒绝 sampling 控制的非默认值，就不要发送这些字段，改用提示约束、结构化输出、运行时校验或该模型支持的 effort。</p></div></div>
       <div class="qa-date">记录于 2026-07-03</div>
     </div>
   </div>
@@ -125,10 +128,12 @@
 
 <aside class="toc" id="toc"></aside>
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
 </body>
 </html>

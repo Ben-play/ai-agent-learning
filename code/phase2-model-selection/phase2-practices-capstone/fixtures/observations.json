@@ -1,0 +1,3225 @@
+{
+  "fiction_notice": "Synthetic observations from virtual providers; no branded or real model output.",
+  "observations": [
+    {
+      "observation_id": "obs-spruce-s-grounded-capital-1",
+      "candidate_id": "Spruce-S",
+      "case_id": "grounded-capital",
+      "repeat": 1,
+      "answer": "Mira",
+      "quality_score": 0.55,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 80,
+        "saved_read": 0,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 100,
+        "estimated_generated_out": 20
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-spruce-s-grounded-capital-2",
+      "candidate_id": "Spruce-S",
+      "case_id": "grounded-capital",
+      "repeat": 2,
+      "answer": "Mira",
+      "quality_score": 0.55,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 80,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 100,
+        "estimated_generated_out": 20
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-grounded-capital-3",
+      "candidate_id": "Spruce-S",
+      "case_id": "grounded-capital",
+      "repeat": 3,
+      "answer": "Mira",
+      "quality_score": 0.55,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 80,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 100,
+        "estimated_generated_out": 20
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-grounded-capital-4",
+      "candidate_id": "Spruce-S",
+      "case_id": "grounded-capital",
+      "repeat": 4,
+      "answer": "Mira",
+      "quality_score": 0.55,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 80,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 100,
+        "estimated_generated_out": 20
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-grounded-capital-5",
+      "candidate_id": "Spruce-S",
+      "case_id": "grounded-capital",
+      "repeat": 5,
+      "answer": "Mira",
+      "quality_score": 0.55,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 80,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 100,
+        "estimated_generated_out": 20
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-unsupported-moon-1",
+      "candidate_id": "Spruce-S",
+      "case_id": "unsupported-moon",
+      "repeat": 1,
+      "answer": "two",
+      "quality_score": 0.2,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 60,
+        "saved_read": 0,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 80,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-spruce-s-unsupported-moon-2",
+      "candidate_id": "Spruce-S",
+      "case_id": "unsupported-moon",
+      "repeat": 2,
+      "answer": "two",
+      "quality_score": 0.2,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 60,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 80,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-unsupported-moon-3",
+      "candidate_id": "Spruce-S",
+      "case_id": "unsupported-moon",
+      "repeat": 3,
+      "answer": "two",
+      "quality_score": 0.2,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 60,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 80,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-unsupported-moon-4",
+      "candidate_id": "Spruce-S",
+      "case_id": "unsupported-moon",
+      "repeat": 4,
+      "answer": "two",
+      "quality_score": 0.2,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 60,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 80,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-unsupported-moon-5",
+      "candidate_id": "Spruce-S",
+      "case_id": "unsupported-moon",
+      "repeat": 5,
+      "answer": "two",
+      "quality_score": 0.2,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 60,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 80,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-routine-label-1",
+      "candidate_id": "Spruce-S",
+      "case_id": "routine-label",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.83,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 30,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 50,
+        "estimated_generated_out": 8
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-spruce-s-routine-label-2",
+      "candidate_id": "Spruce-S",
+      "case_id": "routine-label",
+      "repeat": 2,
+      "answer": "routine",
+      "quality_score": 0.83,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 30,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 50,
+        "estimated_generated_out": 8
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-routine-label-3",
+      "candidate_id": "Spruce-S",
+      "case_id": "routine-label",
+      "repeat": 3,
+      "answer": "routine",
+      "quality_score": 0.83,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 30,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 50,
+        "estimated_generated_out": 8
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-routine-label-4",
+      "candidate_id": "Spruce-S",
+      "case_id": "routine-label",
+      "repeat": 4,
+      "answer": "routine",
+      "quality_score": 0.83,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 30,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 50,
+        "estimated_generated_out": 8
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-routine-label-5",
+      "candidate_id": "Spruce-S",
+      "case_id": "routine-label",
+      "repeat": 5,
+      "answer": "routine",
+      "quality_score": 0.83,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 30,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 50,
+        "estimated_generated_out": 8
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-low-reuse-cache-1",
+      "candidate_id": "Spruce-S",
+      "case_id": "low-reuse-cache",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.83,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 180,
+      "meter": {
+        "fresh_in": 10,
+        "saved_write": 40,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 50,
+        "estimated_generated_out": 8
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-spruce-s-impossible-perfect-1",
+      "candidate_id": "Spruce-S",
+      "case_id": "impossible-perfect",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.75,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 25,
+        "saved_read": 0,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 45,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-spruce-s-impossible-perfect-2",
+      "candidate_id": "Spruce-S",
+      "case_id": "impossible-perfect",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.75,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 25,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 45,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-impossible-perfect-3",
+      "candidate_id": "Spruce-S",
+      "case_id": "impossible-perfect",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.75,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 25,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 45,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-impossible-perfect-4",
+      "candidate_id": "Spruce-S",
+      "case_id": "impossible-perfect",
+      "repeat": 4,
+      "answer": "ABSTAIN",
+      "quality_score": 0.75,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 25,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 45,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-spruce-s-impossible-perfect-5",
+      "candidate_id": "Spruce-S",
+      "case_id": "impossible-perfect",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.75,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "meter": {
+        "fresh_in": 20,
+        "saved_write": 0,
+        "saved_read": 25,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 45,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-cedar-s-grounded-capital-1",
+      "candidate_id": "Cedar-S",
+      "case_id": "grounded-capital",
+      "repeat": 1,
+      "answer": "Luma",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 100,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 108,
+        "estimated_generated_out": 22
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-grounded-capital-2",
+      "candidate_id": "Cedar-S",
+      "case_id": "grounded-capital",
+      "repeat": 2,
+      "answer": "Luma",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 100,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 108,
+        "estimated_generated_out": 22
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-grounded-capital-3",
+      "candidate_id": "Cedar-S",
+      "case_id": "grounded-capital",
+      "repeat": 3,
+      "answer": "Luma",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 100,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 108,
+        "estimated_generated_out": 22
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-grounded-capital-4",
+      "candidate_id": "Cedar-S",
+      "case_id": "grounded-capital",
+      "repeat": 4,
+      "answer": "Luma",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 100,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 108,
+        "estimated_generated_out": 22
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-grounded-capital-5",
+      "candidate_id": "Cedar-S",
+      "case_id": "grounded-capital",
+      "repeat": 5,
+      "answer": "Luma",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 100,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 20
+      },
+      "attempts": {
+        "replays": 1,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 120
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 108,
+        "estimated_generated_out": 22
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-unsupported-moon-1",
+      "candidate_id": "Cedar-S",
+      "case_id": "unsupported-moon",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.88,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 80,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 88,
+        "estimated_generated_out": 14
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-unsupported-moon-2",
+      "candidate_id": "Cedar-S",
+      "case_id": "unsupported-moon",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.88,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 80,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 88,
+        "estimated_generated_out": 14
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-unsupported-moon-3",
+      "candidate_id": "Cedar-S",
+      "case_id": "unsupported-moon",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.88,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 80,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 88,
+        "estimated_generated_out": 14
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-unsupported-moon-4",
+      "candidate_id": "Cedar-S",
+      "case_id": "unsupported-moon",
+      "repeat": 4,
+      "answer": "ABSTAIN",
+      "quality_score": 0.88,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 80,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 88,
+        "estimated_generated_out": 14
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-unsupported-moon-5",
+      "candidate_id": "Cedar-S",
+      "case_id": "unsupported-moon",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.88,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 80,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 12
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 80
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 88,
+        "estimated_generated_out": 14
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-routine-label-1",
+      "candidate_id": "Cedar-S",
+      "case_id": "routine-label",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 50,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 58,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-routine-label-2",
+      "candidate_id": "Cedar-S",
+      "case_id": "routine-label",
+      "repeat": 2,
+      "answer": "routine",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 50,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 58,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-routine-label-3",
+      "candidate_id": "Cedar-S",
+      "case_id": "routine-label",
+      "repeat": 3,
+      "answer": "routine",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 50,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 58,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-routine-label-4",
+      "candidate_id": "Cedar-S",
+      "case_id": "routine-label",
+      "repeat": 4,
+      "answer": "routine",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 50,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 58,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-routine-label-5",
+      "candidate_id": "Cedar-S",
+      "case_id": "routine-label",
+      "repeat": 5,
+      "answer": "routine",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 50,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 58,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-low-reuse-cache-1",
+      "candidate_id": "Cedar-S",
+      "case_id": "low-reuse-cache",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 420,
+      "meter": {
+        "fresh_in": 10,
+        "saved_write": 40,
+        "saved_read": 0,
+        "generated_out": 8
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 40
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 58,
+        "estimated_generated_out": 10
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-impossible-perfect-1",
+      "candidate_id": "Cedar-S",
+      "case_id": "impossible-perfect",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 220,
+      "meter": {
+        "fresh_in": 45,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 53,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-impossible-perfect-2",
+      "candidate_id": "Cedar-S",
+      "case_id": "impossible-perfect",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 220,
+      "meter": {
+        "fresh_in": 45,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 53,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-impossible-perfect-3",
+      "candidate_id": "Cedar-S",
+      "case_id": "impossible-perfect",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 220,
+      "meter": {
+        "fresh_in": 45,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 53,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-impossible-perfect-4",
+      "candidate_id": "Cedar-S",
+      "case_id": "impossible-perfect",
+      "repeat": 4,
+      "answer": "ABSTAIN",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 220,
+      "meter": {
+        "fresh_in": 45,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 53,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-cedar-s-impossible-perfect-5",
+      "candidate_id": "Cedar-S",
+      "case_id": "impossible-perfect",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.9,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 220,
+      "meter": {
+        "fresh_in": 45,
+        "saved_write": 0,
+        "saved_read": 0,
+        "generated_out": 10
+      },
+      "attempts": {
+        "replays": 0,
+        "handoffs": 0
+      },
+      "mapped_controls": {
+        "sample_spread": "low",
+        "output_limit": 60
+      },
+      "preflight_count": {
+        "estimated_fresh_in": 53,
+        "estimated_generated_out": 12
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-quartz-e-grounded-capital-1",
+      "candidate_id": "Quartz-E",
+      "case_id": "grounded-capital",
+      "repeat": 1,
+      "answer": "Luma",
+      "quality_score": 0.85,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 80,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 104,
+        "projected_answer_units": 21
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-quartz-e-grounded-capital-2",
+      "candidate_id": "Quartz-E",
+      "case_id": "grounded-capital",
+      "repeat": 2,
+      "answer": "Luma",
+      "quality_score": 0.85,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 80,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 104,
+        "projected_answer_units": 21
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-grounded-capital-3",
+      "candidate_id": "Quartz-E",
+      "case_id": "grounded-capital",
+      "repeat": 3,
+      "answer": "Mira",
+      "quality_score": 0.45,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 80,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 104,
+        "projected_answer_units": 21
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-grounded-capital-4",
+      "candidate_id": "Quartz-E",
+      "case_id": "grounded-capital",
+      "repeat": 4,
+      "answer": "Luma",
+      "quality_score": 0.85,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 80,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 104,
+        "projected_answer_units": 21
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-grounded-capital-5",
+      "candidate_id": "Quartz-E",
+      "case_id": "grounded-capital",
+      "repeat": 5,
+      "answer": "Luma",
+      "quality_score": 0.85,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 80,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 104,
+        "projected_answer_units": 21
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-unsupported-moon-1",
+      "candidate_id": "Quartz-E",
+      "case_id": "unsupported-moon",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.84,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 60,
+        "memoized_read_units": 0,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 84,
+        "projected_answer_units": 13
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-quartz-e-unsupported-moon-2",
+      "candidate_id": "Quartz-E",
+      "case_id": "unsupported-moon",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.84,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 60,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 84,
+        "projected_answer_units": 13
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-unsupported-moon-3",
+      "candidate_id": "Quartz-E",
+      "case_id": "unsupported-moon",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.84,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 60,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 84,
+        "projected_answer_units": 13
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-unsupported-moon-4",
+      "candidate_id": "Quartz-E",
+      "case_id": "unsupported-moon",
+      "repeat": 4,
+      "answer": "two",
+      "quality_score": 0.35,
+      "factual_errors": 1,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 60,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 84,
+        "projected_answer_units": 13
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-unsupported-moon-5",
+      "candidate_id": "Quartz-E",
+      "case_id": "unsupported-moon",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.84,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 60,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 84,
+        "projected_answer_units": 13
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-routine-label-1",
+      "candidate_id": "Quartz-E",
+      "case_id": "routine-label",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 30,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 54,
+        "projected_answer_units": 9
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-quartz-e-routine-label-2",
+      "candidate_id": "Quartz-E",
+      "case_id": "routine-label",
+      "repeat": 2,
+      "answer": "routine",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 30,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 54,
+        "projected_answer_units": 9
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-routine-label-3",
+      "candidate_id": "Quartz-E",
+      "case_id": "routine-label",
+      "repeat": 3,
+      "answer": "routine",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 30,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 54,
+        "projected_answer_units": 9
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-routine-label-4",
+      "candidate_id": "Quartz-E",
+      "case_id": "routine-label",
+      "repeat": 4,
+      "answer": "routine",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 30,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 54,
+        "projected_answer_units": 9
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-routine-label-5",
+      "candidate_id": "Quartz-E",
+      "case_id": "routine-label",
+      "repeat": 5,
+      "answer": "routine",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 30,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 1,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 54,
+        "projected_answer_units": 9
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-low-reuse-cache-1",
+      "candidate_id": "Quartz-E",
+      "case_id": "low-reuse-cache",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.86,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 300,
+      "consumption": {
+        "direct_units": 10,
+        "memoized_write_units": 40,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 54,
+        "projected_answer_units": 9
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-quartz-e-impossible-perfect-1",
+      "candidate_id": "Quartz-E",
+      "case_id": "impossible-perfect",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.92,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 180,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 25,
+        "memoized_read_units": 0,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 49,
+        "projected_answer_units": 11
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-quartz-e-impossible-perfect-2",
+      "candidate_id": "Quartz-E",
+      "case_id": "impossible-perfect",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.92,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 180,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 25,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 49,
+        "projected_answer_units": 11
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-impossible-perfect-3",
+      "candidate_id": "Quartz-E",
+      "case_id": "impossible-perfect",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.92,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 180,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 25,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 49,
+        "projected_answer_units": 11
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-impossible-perfect-4",
+      "candidate_id": "Quartz-E",
+      "case_id": "impossible-perfect",
+      "repeat": 4,
+      "answer": "ABSTAIN",
+      "quality_score": 0.92,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 180,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 25,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 49,
+        "projected_answer_units": 11
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-quartz-e-impossible-perfect-5",
+      "candidate_id": "Quartz-E",
+      "case_id": "impossible-perfect",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.92,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 180,
+      "consumption": {
+        "direct_units": 20,
+        "memoized_write_units": 0,
+        "memoized_read_units": 25,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 49,
+        "projected_answer_units": 11
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": true,
+      "cache_origin": "prior-repeat-write"
+    },
+    {
+      "observation_id": "obs-flint-e-grounded-capital-1",
+      "candidate_id": "Flint-E",
+      "case_id": "grounded-capital",
+      "repeat": 1,
+      "answer": "Luma",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 100,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 112,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-grounded-capital-2",
+      "candidate_id": "Flint-E",
+      "case_id": "grounded-capital",
+      "repeat": 2,
+      "answer": "Luma",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 100,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 112,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-grounded-capital-3",
+      "candidate_id": "Flint-E",
+      "case_id": "grounded-capital",
+      "repeat": 3,
+      "answer": "Luma",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 100,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 112,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-grounded-capital-4",
+      "candidate_id": "Flint-E",
+      "case_id": "grounded-capital",
+      "repeat": 4,
+      "answer": "Luma",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 100,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 112,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-grounded-capital-5",
+      "candidate_id": "Flint-E",
+      "case_id": "grounded-capital",
+      "repeat": 5,
+      "answer": "Luma",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 100,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120
+      },
+      "precheck": {
+        "projected_direct_units": 112,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [
+        "atlas-capital"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-moon-1",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-moon",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.97,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 80,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 92,
+        "projected_answer_units": 16
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-moon-2",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-moon",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.97,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 80,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 92,
+        "projected_answer_units": 16
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-moon-3",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-moon",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.97,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 80,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 92,
+        "projected_answer_units": 16
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-moon-4",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-moon",
+      "repeat": 4,
+      "answer": "ABSTAIN",
+      "quality_score": 0.97,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 80,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 92,
+        "projected_answer_units": 16
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-moon-5",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-moon",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.97,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 80,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 12
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 80
+      },
+      "precheck": {
+        "projected_direct_units": 92,
+        "projected_answer_units": 16
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-routine-label-1",
+      "candidate_id": "Flint-E",
+      "case_id": "routine-label",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 50,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 62,
+        "projected_answer_units": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-routine-label-2",
+      "candidate_id": "Flint-E",
+      "case_id": "routine-label",
+      "repeat": 2,
+      "answer": "routine",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 50,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 62,
+        "projected_answer_units": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-routine-label-3",
+      "candidate_id": "Flint-E",
+      "case_id": "routine-label",
+      "repeat": 3,
+      "answer": "routine",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 50,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 62,
+        "projected_answer_units": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-routine-label-4",
+      "candidate_id": "Flint-E",
+      "case_id": "routine-label",
+      "repeat": 4,
+      "answer": "routine",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 50,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 62,
+        "projected_answer_units": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-routine-label-5",
+      "candidate_id": "Flint-E",
+      "case_id": "routine-label",
+      "repeat": 5,
+      "answer": "routine",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 50,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 62,
+        "projected_answer_units": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-low-reuse-cache-1",
+      "candidate_id": "Flint-E",
+      "case_id": "low-reuse-cache",
+      "repeat": 1,
+      "answer": "routine",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 900,
+      "consumption": {
+        "direct_units": 10,
+        "memoized_write_units": 40,
+        "memoized_read_units": 0,
+        "answer_units": 8
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 40
+      },
+      "precheck": {
+        "projected_direct_units": 62,
+        "projected_answer_units": 12
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-short-hard-proof-1",
+      "candidate_id": "Flint-E",
+      "case_id": "short-hard-proof",
+      "repeat": 1,
+      "answer": "holds",
+      "quality_score": 0.94,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 1300,
+      "consumption": {
+        "direct_units": 75,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 30
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 1
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 160,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 87,
+        "projected_answer_units": 32
+      },
+      "evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-short-hard-proof-2",
+      "candidate_id": "Flint-E",
+      "case_id": "short-hard-proof",
+      "repeat": 2,
+      "answer": "holds",
+      "quality_score": 0.94,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 1300,
+      "consumption": {
+        "direct_units": 75,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 30
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 160,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 87,
+        "projected_answer_units": 32
+      },
+      "evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-short-hard-proof-3",
+      "candidate_id": "Flint-E",
+      "case_id": "short-hard-proof",
+      "repeat": 3,
+      "answer": "holds",
+      "quality_score": 0.94,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 1300,
+      "consumption": {
+        "direct_units": 75,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 30
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 160,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 87,
+        "projected_answer_units": 32
+      },
+      "evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-short-hard-proof-4",
+      "candidate_id": "Flint-E",
+      "case_id": "short-hard-proof",
+      "repeat": 4,
+      "answer": "holds",
+      "quality_score": 0.94,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 1300,
+      "consumption": {
+        "direct_units": 75,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 30
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 160,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 87,
+        "projected_answer_units": 32
+      },
+      "evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-short-hard-proof-5",
+      "candidate_id": "Flint-E",
+      "case_id": "short-hard-proof",
+      "repeat": 5,
+      "answer": "holds",
+      "quality_score": 0.94,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": false,
+      "fixed_latency_ms": 1300,
+      "consumption": {
+        "direct_units": 75,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 30
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 160,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 87,
+        "projected_answer_units": 32
+      },
+      "evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-proof-fact-1",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-proof-fact",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 1100,
+      "consumption": {
+        "direct_units": 70,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 82,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-proof-fact-2",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-proof-fact",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 1100,
+      "consumption": {
+        "direct_units": 70,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 82,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-proof-fact-3",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-proof-fact",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 1100,
+      "consumption": {
+        "direct_units": 70,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 82,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-proof-fact-4",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-proof-fact",
+      "repeat": 4,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 1100,
+      "consumption": {
+        "direct_units": 70,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 82,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-unsupported-proof-fact-5",
+      "candidate_id": "Flint-E",
+      "case_id": "unsupported-proof-fact",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 1100,
+      "consumption": {
+        "direct_units": 70,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 20
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 120,
+        "reasoning_effort": "high"
+      },
+      "precheck": {
+        "projected_direct_units": 82,
+        "projected_answer_units": 24
+      },
+      "evidence_ids": [],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-impossible-perfect-1",
+      "candidate_id": "Flint-E",
+      "case_id": "impossible-perfect",
+      "repeat": 1,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 160,
+      "consumption": {
+        "direct_units": 45,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 57,
+        "projected_answer_units": 14
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-impossible-perfect-2",
+      "candidate_id": "Flint-E",
+      "case_id": "impossible-perfect",
+      "repeat": 2,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 160,
+      "consumption": {
+        "direct_units": 45,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 57,
+        "projected_answer_units": 14
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-impossible-perfect-3",
+      "candidate_id": "Flint-E",
+      "case_id": "impossible-perfect",
+      "repeat": 3,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 160,
+      "consumption": {
+        "direct_units": 45,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 57,
+        "projected_answer_units": 14
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-impossible-perfect-4",
+      "candidate_id": "Flint-E",
+      "case_id": "impossible-perfect",
+      "repeat": 4,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 160,
+      "consumption": {
+        "direct_units": 45,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 57,
+        "projected_answer_units": 14
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    },
+    {
+      "observation_id": "obs-flint-e-impossible-perfect-5",
+      "candidate_id": "Flint-E",
+      "case_id": "impossible-perfect",
+      "repeat": 5,
+      "answer": "ABSTAIN",
+      "quality_score": 0.96,
+      "factual_errors": 0,
+      "facts_checked": 1,
+      "abstained": true,
+      "fixed_latency_ms": 160,
+      "consumption": {
+        "direct_units": 45,
+        "memoized_write_units": 0,
+        "memoized_read_units": 0,
+        "answer_units": 10
+      },
+      "events": {
+        "retry_events": 0,
+        "escalation_events": 0
+      },
+      "mapped_controls": {
+        "response_variance": "low",
+        "response_cap": 60
+      },
+      "precheck": {
+        "projected_direct_units": 57,
+        "projected_answer_units": 14
+      },
+      "evidence_ids": [
+        "safety-rubric"
+      ],
+      "cache_entry_available_before": false,
+      "cache_origin": "none"
+    }
+  ],
+  "provenance": {
+    "fixture_version": "phase2-fixtures-v2",
+    "evaluator_version": "offline-evaluator-v2",
+    "rubric_version": "reference-rubric-v2",
+    "tool_policy_id": "no-tools-offline-v1",
+    "candidate_config_ids": [
+      "cfg-cedar-s-v1",
+      "cfg-flint-e-v1",
+      "cfg-quartz-e-v1",
+      "cfg-spruce-s-v1"
+    ],
+    "case_manifest_digest": "154232ed82f87b01b7903233655fd551a5711ad17dc2ce1224cec92b61bf1ee6"
+  }
+}

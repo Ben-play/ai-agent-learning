@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F8F6F1">
+<link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
 <title>L17 · LLM 本质与生成参数</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -14,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>LLM 本质与生成参数</h1>
     <p class="subtitle">LLM 只是在"猜下一个词"——但怎么猜，你能调</p>
@@ -95,7 +98,7 @@
     </ul>
     <p>直觉记法：<strong>温度高 = 脑洞大，温度低 = 循规蹈矩</strong>。数学上，temperature 通常是在 softmax 前对 logits 除以 T——T 越小，分布越集中；部分实现把 <code>T=0</code> 特判为贪心 / argmax（详见 <a href="https://huggingface.co/blog/mlabonne/decoding-strategies" target="_blank">Hugging Face: Decoding Strategies</a>）。</p>
     <div class="tip">
-      <strong>先分清“解码概念”和“API 字段”。</strong>Temperature / top-p 是理解采样的基础，但并非每个模型都开放这些字段。例如当前 Claude Opus 4.8 / 4.7 与 Claude Sonnet 5 不接受 <code>temperature</code>、<code>top_p</code>、<code>top_k</code>；使用这些模型时，应通过清晰提示词约束输出，并在需要推理深度控制时使用 <code>output_config.effort</code>（L20 再展开）。所以表里的数值只适用于<strong>确实支持该采样参数</strong>的 API，接入前先查模型文档。</div>
+      <strong>先分清“解码概念”和“API 字段”。</strong>Temperature / top-p 是理解采样的基础，但并非每个模型都开放这些字段。例如当前 Claude Fable 5 / Mythos 5、Claude Opus 4.8 / 4.7 与 Claude Sonnet 5 会拒绝 <code>temperature</code>、<code>top_p</code>、<code>top_k</code> 的<strong>非默认值</strong>；这不等于字段名在所有情况下都被类别性拒绝。可移植做法是：能力档案未声明支持时就不发送这些字段，改用清晰提示词约束输出，并在需要推理深度控制时使用 <code>output_config.effort</code>（L20 再展开）。所以表里的数值只适用于<strong>确实支持该采样参数</strong>的 API，接入前先查模型文档。</div>
     <table>
       <thead><tr><th>任务</th><th>建议 temperature</th><th>为什么</th></tr></thead>
       <tbody>
@@ -106,15 +109,88 @@
     </table>
   </div>
 
-  <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 要让 Agent 抽取字段结果稳定，temperature 应该？</div>
-    <div class="quiz-options">
-      <button data-answer="correct">调低，接近于零</button>
-      <button data-answer="wrong">调高，接近于一</button>
-      <button data-answer="wrong">保持默认不用管</button>
-      <button data-answer="wrong">随机取值最灵活</button>
+  <div class="best-practice-point" id="bp-l17-capability-driven-controls">
+    <h3>最佳实践：先建立能力档案，再生成厂商请求字段</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一任务会路由到多个模型或 provider，请求构造器可能发送 sampling / thinking / effort 控制。<strong>不适用：</strong>只调用一个固定后端，且请求字段已由其官方 SDK 类型和测试完全锁定；仍应在升级模型时重查。<strong>本卡只做一个决定：</strong>先读取模型能力档案，再决定发送哪些控制字段。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 按厂商名猜字段</span><pre><code>request = {
+    "model": model,
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "effort": "high",
+}</code></pre><p>同一任务、输入与 <code>build_request()</code> 接口，却把一组控制无条件塞给所有 adapter；不支持字段可能报错，静默忽略则更难诊断。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 按能力映射投影请求</span><pre><code>profile = PROFILES[provider]
+request = build_request(
+    profile, model=model, prompt=prompt,
+    controls=controls,
+)</code></pre><p>adapter 只投影能力档案允许的字段；fixture 可机械证明不支持字段没有越过边界。</p></div>
     </div>
-    <div class="quiz-explanation">抽取 / 分类 / 函数调用要的是<strong>确定和可复现</strong>，应把 temperature 调到 0~0.3。温度越低，分布越尖、越倾向选最高概率 Token，输出越稳定。高温带来的多样性在这类任务里只会添乱。</div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先维护能力档案，再由 adapter 投影请求，动作上把“任务意图”与“厂商字段”分开；机制上让字段支持范围成为可测试数据；结果是兼容性、可移植性、可审计性和错误可诊断性提高。真实成本是要维护档案、升级 fixture，并在模型发布后重验；档案陈旧也会错误删字段。若只接一个后端，可直接使用其强类型请求对象；当第二个 provider 出现或模型支持范围分叉时，切换到显式能力档案。当前官方文档的边界是：Fable 5 / Mythos 5、Opus 4.8 / 4.7 与 Sonnet 5 拒绝 sampling 控制的<strong>非默认值</strong>，不应夸大成字段在所有情况下都类别性拒绝（<a href="https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking" target="_blank">Anthropic · Adaptive thinking</a>）。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库、离线、静默通过）：</strong></summary><pre><code>PROFILES = {
+    "fictional_a": {
+        "temperature": True,
+        "top_p": True,
+        "effort": False,
+    },
+    "fictional_b": {
+        "temperature": False,
+        "top_p": False,
+        "effort": True,
+    },
+}
+
+
+def build_request(profile, *, model, prompt, controls):
+    request = {"model": model, "prompt": prompt}
+    for field, value in controls.items():
+        if profile.get(field, False):
+            request[field] = value
+    return request
+
+
+TASK = "classify"
+PROMPT = "Classify: museum copy needs review"
+CONTROLS = {"temperature": 0.2, "top_p": 0.9, "effort": "high"}
+
+fixtures = {
+    name: build_request(
+        profile,
+        model=f"{name}-model",
+        prompt=PROMPT,
+        controls=CONTROLS,
+    )
+    for name, profile in PROFILES.items()
+}
+
+assert fixtures["fictional_a"] == {
+    "model": "fictional_a-model",
+    "prompt": PROMPT,
+    "temperature": 0.2,
+    "top_p": 0.9,
+}
+assert fixtures["fictional_b"] == {
+    "model": "fictional_b-model",
+    "prompt": PROMPT,
+    "effort": "high",
+}
+assert all(request["prompt"] == PROMPT for request in fixtures.values())
+assert "effort" not in fixtures["fictional_a"]
+assert "temperature" not in fixtures["fictional_b"]
+assert "top_p" not in fixtures["fictional_b"]
+assert TASK == "classify"</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>无输出且退出码为 0 即通过。若 <code>fictional_b</code> 含 <code>temperature</code>/<code>top_p</code>，说明 adapter 没有删除不支持字段；若两个请求的 prompt 不同，比较已不再是同任务 / 同输入 / 同接口；若档案字段名与生成字段不一致，断言会直接暴露映射漂移。</p>
+    <p class="bp-term"><strong>边界：</strong>能力档案描述“这个模型 / 端点接受什么”，不证明某个控制会提高业务质量；效果仍要交给评测。</p>
+  </div>
+
+  <div class="quiz" data-quiz="q2">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 要让 Agent 抽取字段稳定，第一步应该？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">先把温度降到零</button>
+      <button data-answer="correct">先查目标模型能力</button>
+      <button data-answer="wrong">固定发送全部参数</button>
+      <button data-answer="wrong">随机组合多个旋钮</button>
+    </div>
+    <div class="quiz-explanation">第一步是确认目标模型接受哪些控制。支持 sampling 参数时，可从低 temperature 开始评测，并配结构化输出与运行时校验；模型拒绝这些字段的非默认值时，就不要发送，改用该模型支持的提示约束、结构化输出、校验或 effort。低温提高一致性，也不保证事实正确或逐字节复现。</div>
   </div>
 </div>
 
@@ -126,7 +202,7 @@
 按概率排序累加，取到累计 90% 为止的那批 Token，
 剩下 10% 概率的"长尾低概率词"直接排除。</code></pre>
     <p>它的好处是<strong>自适应</strong>：模型很确定时（一个 Token 就占 95%），候选集自动变小；模型不确定时（概率分散），候选集自动变大。这比固定取前 K 个（top-k）更聪明——出处见 <a href="https://huggingface.co/blog/how-to-generate" target="_blank">Hugging Face: How to generate text</a>。</p>
-    <p style="margin-top:.5rem;"><strong>temperature vs top_p 怎么配？</strong>如果目标 API 同时支持两者，通常只重点调一个、另一个留默认，便于归因；同时把两个都往极端调，行为会很难预测。常见做法是固定 <code>top_p=1</code> 只调 temperature，或反之。若目标模型不接受这些字段，就不要硬塞参数，应改用该厂商支持的控制方式。</p>
+    <p style="margin-top:.5rem;"><strong>temperature vs top_p 怎么配？</strong>如果目标 API 同时支持两者，通常只重点调一个、另一个留默认，便于归因；同时把两个都往极端调，行为会很难预测。常见做法是固定 <code>top_p=1</code> 只调 temperature，或反之。若能力档案没有声明支持，就不要硬塞参数；对会拒绝非默认 sampling 值的新 Claude 模型，portable adapter 应直接省略这些字段，改用该厂商支持的控制方式。</p>
   </div>
   <div class="tip">
     ⚠️ 陷阱题：<strong>"temperature 和 top_p 有什么区别？"</strong> — temperature 是<strong>缩放</strong>整个分布的形状（改变每个 Token 被选中的相对概率）；top_p 是<strong>裁剪</strong>候选集（先砍掉长尾，再采样）。一个改"概率"，一个改"能选谁"。
@@ -169,6 +245,76 @@
   <div class="tip">
     这条对 Agent 工程很实际：<strong>不要把关键逻辑建立在"LLM 输出逐字节稳定"的假设上</strong>。要稳，就用结构化输出 + 校验（后面 <a href="0018-L14-pydantic.html">Pydantic</a> 那套），而不是指望采样完全确定。
   </div>
+
+  <div class="best-practice-point" id="bp-l17-reproducibility-contract">
+    <h3>最佳实践：把可复现性定义成可审计运行契约，而不是逐字节相同</h3>
+    <p class="bp-scenario"><strong>适用：</strong>需要比较回归、重放事故或解释某次模型输出，且模型服务仍可能非确定。<strong>不适用：</strong>结果由纯确定性函数产生并已有内容哈希保证。<strong>本卡只做一个决定：</strong>冻结模型、prompt、tools、controls、fixture 与 evaluator，并为这份 run spec 生成指纹；不要求输出字节完全相同。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 以文本完全相同为复现</span><pre><code>first = run(task)
+second = run(task)
+assert first == second</code></pre><p>同一任务、输入与 <code>run(spec)</code> 接口，却把非确定生成误当成确定函数；一次措辞变化就造成伪回归。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ 固定运行规格与评估门</span><pre><code>fingerprint = run_spec_fingerprint(spec)
+result = run(spec)
+assert evaluate(result, fixture) == "pass"</code></pre><p>规格指纹回答“运行条件是否相同”，evaluator 回答“质量契约是否仍满足”。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>冻结完整 run spec 并稳定序列化，动作上记录真正影响生成的输入；机制上用指纹识别配置漂移，再用 evaluator 评估语义质量；结果是回归判断更正确、重放更可审计、故障更易诊断。真实成本是保存 fixture、工具 schema 与 evaluator 版本，且指纹只能证明规格一致，不能证明服务端实现或输出一致；evaluator 也可能漏检。若下游协议要求逐字节稳定，应把该步骤换成模板、规则引擎或其他确定性组件；当业务只关心结构 / 含义时，使用规格指纹 + 质量门。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库、离线、静默通过）：</strong></summary><pre><code>import hashlib
+import json
+
+
+def fingerprint(spec):
+    payload = json.dumps(
+        spec,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def evaluator(output, fixture):
+    return (
+        output["category"] == fixture["category"]
+        and set(fixture["required_terms"]) &lt;= set(output["terms"])
+    )
+
+
+SPEC = {
+    "model": "fictional-model-v3",
+    "prompt": {"version": "museum-label-v2", "text": "Classify copy."},
+    "tools": [{"name": "lookup_catalog", "schema_version": 1}],
+    "controls": {"effort": "low"},
+    "fixture": {"id": "case-17", "text": "Bronze vessel, verified."},
+    "evaluator": {"version": "label-gate-v1"},
+}
+FIXTURE = {"category": "verified", "required_terms": ["bronze"]}
+
+same_spec_different_order = dict(reversed(list(SPEC.items())))
+assert fingerprint(SPEC) == fingerprint(same_spec_different_order)
+
+changed_values = {
+    "model": "fictional-model-v4",
+    "prompt": {"version": "museum-label-v3", "text": "Classify copy."},
+    "tools": [{"name": "lookup_catalog", "schema_version": 2}],
+    "controls": {"effort": "medium"},
+    "fixture": {"id": "case-18", "text": "Bronze vessel, verified."},
+    "evaluator": {"version": "label-gate-v2"},
+}
+for field in SPEC:
+    omitted = {key: value for key, value in SPEC.items() if key != field}
+    changed = {**SPEC, field: changed_values[field]}
+    assert fingerprint(SPEC) != fingerprint(omitted), field
+    assert fingerprint(SPEC) != fingerprint(changed), field
+
+outputs = [
+    {"text": "Verified bronze object.", "category": "verified", "terms": ["bronze"]},
+    {"text": "Bronze object; catalog evidence is verified.", "category": "verified", "terms": ["bronze", "catalog"]},
+]
+assert outputs[0]["text"] != outputs[1]["text"]
+assert all(evaluator(output, FIXTURE) for output in outputs)</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>无输出且退出码为 0 即通过。相同规格因键顺序得到不同指纹，说明序列化不稳定；模型、prompt、tools、controls、fixture 或 evaluator 改变却不改指纹，说明 run spec 未覆盖审计边界；两份合格措辞被判失败，说明仍在要求字节复现而非质量复现。</p>
+    <p class="bp-term"><strong>边界：</strong>run-spec 指纹是配置身份证，不是输出真值证明，也不等于 provider 服务端版本可被完全冻结。</p>
+  </div>
 </div>
 
 <div class="section">
@@ -176,7 +322,7 @@
   <details>
     <summary><strong>🧪 Agent 场景练习：</strong>为抽取、创作和代码任务选择控制方式（先自己判断）</summary>
     <div class="card" style="margin-top:.8rem;">
-      <p><strong>题目：</strong>Provider A 支持 <code>temperature</code> / <code>top_p</code>；当前 Claude Opus 4.8 不支持这些采样字段，但支持清晰提示词与 <code>output_config.effort</code>。分别为“发票字段抽取”“广告创意”“复杂代码审查”选择控制方式。</p>
+      <p><strong>题目：</strong>Provider A 支持 <code>temperature</code> / <code>top_p</code>；当前 Claude Opus 4.8 会拒绝这些采样字段的非默认值，因此 portable adapter 不发送它们，而使用清晰提示词与 <code>output_config.effort</code>。分别为“发票字段抽取”“广告创意”“复杂代码审查”选择控制方式。</p>
       <p><strong>参考答案：</strong></p>
       <ul>
         <li><strong>发票抽取：</strong>Provider A 可用低 temperature 并配结构化输出；Claude Opus 4.8 不传采样参数，改用严格输出格式、明确字段规则和运行时校验。稳定性主要靠结构化约束，不靠“温度必然可复现”。</li>
@@ -207,13 +353,202 @@
 
 【先看接口再调参】概念通用 ≠ 字段通用
   ├── 支持 sampling 参数的 API：按任务调 temperature / top_p
-  └── 当前 Claude Opus 4.8/4.7、Sonnet 5：不传这些字段
+  └── 当前新 Claude：不传未获能力档案支持的采样字段
       用提示词、结构化输出、校验；推理深度见 L20 effort
 
 【反直觉】即使支持 temperature=0，也不保证 100% 可复现
   └── 浮点非结合 + 硬件/批次差异；seed 也由厂商决定
       要稳 → 结构化输出 + 校验，别赌采样确定</code></pre>
   </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：科学摘要分诊双 Provider A/B 实验清单</h2>
+  <p class="best-practice-lead">先独立完成：为科学摘要分诊发布一份双 provider A/B 实验清单。每个实验臂都要把统一控制意图编译为该 provider 的原生请求结构，并让每条观察记录携带对应的 manifest ID；这里验收的是可追溯实验，而不是逐字复现输出。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>为两个全新虚构 provider 声明不同能力映射，并编译各自的原生控制字段。</li><li>把 endpoint、prompt、tools、controls、abstract batch、rubric 六类受控条件写入每个实验臂的 manifest。</li><li>生成稳定 manifest ID，并把 A/B 输出逐条关联到各自 ID。</li><li>证明 manifest 键顺序打乱不改 ID，而六类受控条件中任一类变化都会生成新 ID。</li><li>在评分前拒绝 manifest ID 不匹配的观察；再用科学摘要分诊 rubric 接受两份字节不同但质量等价的输出。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>Nova 臂只出现 sampling 原生控制，Cedar 臂只出现 reasoning effort；未支持的控制没有越界。</li><li>两个 manifest 都完整覆盖六类受控条件；重排键保持 ID，逐类替换条件均改变 ID。</li><li>每条观察都能按 provider 连接到正确 manifest；伪造 ID 的观察在 rubric 调用前被拒绝。</li><li>两份观察的规范 JSON 字节不同，但都满足目标摘要、分诊结论、证据片段与风险标记 rubric。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+  </div></div>
+  <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import hashlib
+import json
+
+CONTROLLED_CATEGORIES = (
+    "endpoint",
+    "prompt",
+    "tools",
+    "controls",
+    "abstract_batch",
+    "rubric",
+)
+PROVIDER_SPECS = {
+    "nova_bio": {
+        "model": "nova-triage-3",
+        "control_map": {
+            "temperature": ("sampling", "temperature"),
+            "top_p": ("sampling", "top_p"),
+        },
+    },
+    "cedar_compute": {
+        "model": "cedar-review-6",
+        "control_map": {
+            "effort": ("reasoning", "effort"),
+        },
+    },
+}
+
+
+def stable_bytes(value):
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def compile_native_controls(provider, intended):
+    native = {}
+    for intent_name, path in PROVIDER_SPECS[provider]["control_map"].items():
+        if intent_name in intended:
+            section, field = path
+            native.setdefault(section, {})[field] = intended[intent_name]
+    return native
+
+
+def make_manifest(provider, *, prompt, tools, intended, abstract_batch, rubric):
+    spec = PROVIDER_SPECS[provider]
+    return {
+        "endpoint": {"provider": provider, "model": spec["model"]},
+        "prompt": prompt,
+        "tools": tools,
+        "controls": compile_native_controls(provider, intended),
+        "abstract_batch": abstract_batch,
+        "rubric": rubric,
+    }
+
+
+def manifest_id(manifest):
+    return "manifest-" + hashlib.sha256(stable_bytes(manifest)).hexdigest()[:16]
+
+
+score_log = []
+
+
+def score_observation(observation, manifest):
+    expected_id = manifest_id(manifest)
+    if observation["manifest_id"] != expected_id:
+        raise ValueError("manifest ID mismatch")
+    score_log.append((expected_id, observation["abstract_id"]))
+    rubric = manifest["rubric"]
+    return (
+        observation["abstract_id"] == rubric["target_abstract_id"]
+        and observation["decision"] in rubric["allowed_decisions"]
+        and set(rubric["required_evidence"]) &lt;= set(observation["evidence"])
+        and not (set(rubric["forbidden_flags"]) &amp; set(observation["flags"]))
+    )
+
+
+PROMPT = {
+    "version": "abstract-triage-v2",
+    "text": "Prioritize abstracts with randomized human outcome evidence.",
+}
+TOOLS = [{"name": "extract_study_signals", "schema_version": 3}]
+INTENDED_CONTROLS = {"temperature": 0.2, "top_p": 0.85, "effort": "medium"}
+ABSTRACT_BATCH = [
+    {
+        "abstract_id": "ABS-41",
+        "text": "Randomized trial; human participants; outcomes measured at 30 days.",
+    }
+]
+RUBRIC = {
+    "version": "triage-rubric-v1",
+    "target_abstract_id": "ABS-41",
+    "allowed_decisions": ["priority_review"],
+    "required_evidence": ["randomized", "30-day"],
+    "forbidden_flags": ["animal-only", "no-outcome"],
+}
+
+manifests = {
+    provider: make_manifest(
+        provider,
+        prompt=PROMPT,
+        tools=TOOLS,
+        intended=INTENDED_CONTROLS,
+        abstract_batch=ABSTRACT_BATCH,
+        rubric=RUBRIC,
+    )
+    for provider in PROVIDER_SPECS
+}
+manifest_ids = {provider: manifest_id(manifest) for provider, manifest in manifests.items()}
+
+assert manifests["nova_bio"]["controls"] == {
+    "sampling": {"temperature": 0.2, "top_p": 0.85}
+}
+assert manifests["cedar_compute"]["controls"] == {
+    "reasoning": {"effort": "medium"}
+}
+assert all(set(manifest) == set(CONTROLLED_CATEGORIES) for manifest in manifests.values())
+assert manifest_ids["nova_bio"] != manifest_ids["cedar_compute"]
+
+for provider, manifest in manifests.items():
+    shuffled = dict(reversed(list(manifest.items())))
+    assert manifest_id(shuffled) == manifest_ids[provider]
+
+changed_values = {
+    "endpoint": {"provider": "nova_bio", "model": "nova-triage-4"},
+    "prompt": {**PROMPT, "version": "abstract-triage-v3"},
+    "tools": [{"name": "extract_study_signals", "schema_version": 4}],
+    "controls": {"sampling": {"temperature": 0.1, "top_p": 0.85}},
+    "abstract_batch": [{**ABSTRACT_BATCH[0], "abstract_id": "ABS-42"}],
+    "rubric": {**RUBRIC, "version": "triage-rubric-v2"},
+}
+assert set(changed_values) == set(CONTROLLED_CATEGORIES)
+base_manifest = manifests["nova_bio"]
+for category in CONTROLLED_CATEGORIES:
+    changed = {**base_manifest, category: changed_values[category]}
+    assert manifest_id(changed) != manifest_ids["nova_bio"], category
+
+observations = [
+    {
+        "provider": "nova_bio",
+        "manifest_id": manifest_ids["nova_bio"],
+        "abstract_id": "ABS-41",
+        "decision": "priority_review",
+        "evidence": ["randomized", "30-day"],
+        "flags": [],
+        "summary": "Randomized human trial with a 30-day endpoint.",
+    },
+    {
+        "provider": "cedar_compute",
+        "manifest_id": manifest_ids["cedar_compute"],
+        "abstract_id": "ABS-41",
+        "decision": "priority_review",
+        "evidence": ["30-day", "randomized"],
+        "flags": [],
+        "summary": "Human outcomes are reported after random assignment.",
+    },
+]
+assert stable_bytes(observations[0]) != stable_bytes(observations[1])
+assert all(
+    observation["manifest_id"] == manifest_ids[observation["provider"]]
+    for observation in observations
+)
+assert all(
+    score_observation(observation, manifests[observation["provider"]])
+    for observation in observations
+)
+
+mismatched = {**observations[0], "manifest_id": manifest_ids["cedar_compute"]}
+score_calls_before_rejection = len(score_log)
+try:
+    score_observation(mismatched, manifests["nova_bio"])
+    raise AssertionError("mismatched observation reached scoring")
+except ValueError as error:
+    assert str(error) == "manifest ID mismatch"
+assert len(score_log) == score_calls_before_rejection
+
+print("L17 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>任一请求同时出现 sampling 与 reasoning 控制，说明能力编译越界；manifest 缺少六类条件、重排后 ID 改变或某类条件变化后 ID 不变，说明实验身份不可审计；观察携带错误 ID 却进入 <code>score_log</code>，说明连接校验放在评分之后；两份字节不同但证据等价的观察不能同时通过，说明 rubric 又退化成了文本复现检查。</p>
 </div>
 
 <div class="section">
@@ -253,7 +588,7 @@
       <li><strong>temperature</strong> 缩放分布形状，<strong>top_p</strong> 裁剪候选集；它们是通用解码概念，但不是每个 API 都开放的字段</li>
       <li><strong>frequency_penalty</strong> 按次数罚、<strong>presence_penalty</strong> 按有无罚；同样要先确认目标厂商支持</li>
       <li>控制输出的顺序是：明确任务行为 → 查模型能力 → 选采样参数、提示约束或结构化校验</li>
-      <li>即便 API 支持 <strong>temperature=0 / seed</strong>，也不能保证逐字节复现；当前 Claude 模型还可能不接受这些采样字段</li>
+      <li>即便 API 支持 <strong>temperature=0 / seed</strong>，也不能保证逐字节复现；部分新 Claude 模型会拒绝 sampling 字段的非默认值</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
@@ -265,11 +600,13 @@
 
 <aside class="toc" id="toc"></aside>
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/quiz.js"></script>
 <script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
 </body>
 </html>

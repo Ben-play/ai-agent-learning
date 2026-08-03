@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F8F6F1">
+<link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
 <title>L18 · Token 与 Tokenization 深入</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -14,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第二阶段 · AI 知识与模型选型</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">60</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Token 与 Tokenization 深入</h1>
     <p class="subtitle">模型眼里没有"字"，只有 Token——而 Token 直接等于钱</p>
@@ -114,7 +117,92 @@ count = client.messages.count_tokens(
     messages=[{"role": "user", "content": "解释什么是 Token。"}],
 )
 print(count.input_tokens)</code></pre>
-    <p><strong>怎么区分：</strong><code>tiktoken</code> 是本地 OpenAI tokenizer；<code>messages.count_tokens</code> 会按你指定的 Claude 模型和完整消息结构估算输入 Token。官方也提醒计数结果仍可能与真正创建消息时的计费量有小幅差异，因此请求前用它做预算，调用后再以 <code>response.usage</code> 对账。不要拿一个厂商的 tokenizer 冒充所有模型的精确账单。</p>
+    <p><strong>怎么区分：</strong><code>tiktoken</code> 是本地 OpenAI tokenizer；<code>messages.count_tokens</code> 会按你指定的 Claude 模型和完整消息结构估算输入 Token。官方也提醒计数结果仍可能与真正创建消息时的计费量有小幅差异，因此请求前用它做预算，调用后再以 <code>response.usage</code> 作为该次调用的权威用量记录。若 provider 把缓存输入拆为独立字段，总输入应组装为 <code>input_tokens + cache_creation_input_tokens + cache_read_input_tokens</code>；不要只读 <code>input_tokens</code>，也不要拿一个厂商的 tokenizer 冒充所有模型的精确账单。</p>
+  </div>
+
+  <div class="best-practice-point" id="bp-l18-model-native-token-accounting">
+    <h3>最佳实践：请求前用模型原生估算，请求后用 response usage 对账</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一内容可能发往不同 provider / 模型，需要在发送前做上下文与成本门控，并在返回后记录真实用量。<strong>不适用：</strong>完全不经过模型的本地字符串处理。<strong>本卡只做一个决定：</strong>每个 adapter 使用自己的原生计数器估算，并在响应后用同一 provider 的 usage 完成 reconciliation。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">❌ 一把跨厂商尺子当账单</span><pre><code>estimated = generic_count(request)
+ledger.record(provider, estimated)</code></pre><p>同一任务、输入与 <code>meter.measure()</code> 接口，却忽略模型 tokenizer 和消息包装差异；预算与账单漂移没有被观测。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">✅ adapter 估算 + usage 对账</span><pre><code>estimated = adapter.estimate(request)
+response = adapter.send(request)
+actual = total_input_tokens(response["usage"])
+meter.reconcile(estimated, actual)</code></pre><p>请求前数字只用于门控；请求后从权威 usage 组装总输入并保存 estimate、actual 与 delta，同时记录 adapter / counter 身份及其收到的精确请求。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>为什么更优：</strong>把计数放进 provider adapter，并把估算与 usage 成对落账，动作上绑定了目标模型和完整请求；机制上记录 adapter / counter 身份与精确计数输入，并在 provider 拆分缓存计数时用 <code>input_tokens + cache_creation_input_tokens + cache_read_input_tokens</code> 组装实际总输入；结果提高预算正确性、账单可审计性、路由可靠性和漂移可诊断性。真实成本是额外计数调用、计数端点速率限制、遥测存储以及 adapter 维护；estimate 还可能因系统优化与真正消息创建量有小幅差异。极低价值且绝不会接近窗口的流量可用经校准的本地近似；一旦用于拒绝请求、选模型或预测账单，就切换到模型原生估算并以 response usage 对账。不同原生 tokenizer 也可能碰巧得到相同数字，因此“数字不同”不是 adapter 归属的证明；调用身份和精确请求记录才是。Anthropic 官方明确说明 <code>count_tokens</code> 是估算，实际输入用量可能有小幅差异（<a href="https://platform.claude.com/docs/en/build-with-claude/token-counting" target="_blank">Claude token counting</a>）。</p>
+    <details class="bp-check"><summary><strong>动手自检（纯标准库、离线、静默通过）：</strong></summary><pre><code>def total_input_tokens(usage):
+    return sum(
+        usage.get(field, 0)
+        for field in (
+            "input_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+        )
+    )
+
+
+class FixtureAdapter:
+    def __init__(self, name, counter_id, estimate, usage):
+        self.name = name
+        self.counter_id = counter_id
+        self._estimate = estimate
+        self._usage = usage
+        self.counted_requests = []
+
+    def estimate(self, request):
+        self.counted_requests.append(request)
+        return self._estimate
+
+    def send(self, request):
+        return {"usage": self._usage}
+
+
+def measure(adapter, request):
+    estimated = adapter.estimate(request)
+    usage = adapter.send(request)["usage"]
+    actual = total_input_tokens(usage)
+    return {
+        "provider": adapter.name,
+        "counter_id": adapter.counter_id,
+        "estimated": estimated,
+        "actual": actual,
+        "delta": actual - estimated,
+    }
+
+
+REQUEST = {"task": "subtitle", "text": "博物馆 closes at six."}
+adapters = [
+    FixtureAdapter(
+        "fictional_a",
+        "counter-a-v2",
+        estimate=11,
+        usage={"input_tokens": 12},
+    ),
+    FixtureAdapter(
+        "fictional_b",
+        "counter-b-v5",
+        estimate=8,
+        usage={
+            "input_tokens": 3,
+            "cache_creation_input_tokens": 2,
+            "cache_read_input_tokens": 3,
+        },
+    ),
+]
+records = [measure(adapter, REQUEST) for adapter in adapters]
+
+assert records == [
+    {"provider": "fictional_a", "counter_id": "counter-a-v2", "estimated": 11, "actual": 12, "delta": 1},
+    {"provider": "fictional_b", "counter_id": "counter-b-v5", "estimated": 8, "actual": 8, "delta": 0},
+]
+assert [adapter.counter_id for adapter in adapters] == ["counter-a-v2", "counter-b-v5"]
+assert all(adapter.counted_requests == [REQUEST] for adapter in adapters)
+assert total_input_tokens({"input_tokens": 6}) == 6
+assert total_input_tokens({"input_tokens": 1, "cache_creation_input_tokens": 2, "cache_read_input_tokens": 3}) == 6</code></pre></details>
+    <p class="bp-result"><strong>结果诊断：</strong>无输出且退出码为 0 即通过。counter identity 不符或记录的请求不是 <code>REQUEST</code>，说明计数没有归属到正确 adapter / 精确输入；缓存 fixture 的 actual 不是 6，说明漏加 cache creation / read；ledger 没有 actual / delta，表示只做预算没有对账；把 estimate 覆盖为 usage 会丢失漂移证据。两个 provider 计数相同本身不是错误，因为不同 tokenizer 可能碰巧返回相同数字。</p>
+    <p class="bp-term"><strong>边界：</strong>原生 token count 是模型请求的预算信号，不是文本“长度”的跨模型统一单位；response usage 才是该次调用的权威用量记录。对拆分缓存字段的 provider，总输入需由 usage 各输入分量组装。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -152,7 +240,7 @@ print(count.input_tokens)</code></pre>
 <div class="section">
   <h2>5. Token = 钱：成本换算</h2>
   <div class="card">
-    <p>API 按 Token 收费，且<strong>输入和输出分开定价，输出通常是输入的 3~5 倍</strong>（<a href="https://redis.io/blog/llm-token-optimization-speed-up-apps" target="_blank">Redis: LLM Token Optimization</a>）。基本公式：</p>
+    <p>API 按 Token 收费，且<strong>输入和输出分开定价；两者价差随厂商、模型、计费层级和日期变化</strong>（<a href="https://redis.io/blog/llm-token-optimization-speed-up-apps" target="_blank">Redis: LLM Token Optimization</a>）。基本公式：</p>
     <pre><code>成本 = (输入Token数 × 输入单价 + 输出Token数 × 输出单价) / 1,000,000
 
 例：一句 5-token 的中文输入，假设输入价 $3 / 百万 token：
@@ -176,7 +264,7 @@ print(count.input_tokens)</code></pre>
       <button data-answer="wrong">两者价格必然相同</button>
       <button data-answer="wrong">所有输出都完全免费</button>
     </div>
-    <div class="quiz-explanation">主流 API <strong>输出 Token 通常是输入的 3~5 倍价</strong>（生成比读取更耗算力）。所以省钱既要压输入（长 system prompt、累积历史用缓存/压缩），也要控输出（别让模型啰嗦）。算成本时务必<strong>输入、输出分开算</strong>。</div>
+    <div class="quiz-explanation">输入与输出使用<strong>不同单价</strong>，价差必须查目标模型当前价格，不能背固定倍数。所以省钱既要压输入（长 system prompt、累积历史用缓存/压缩），也要根据账单控制无用输出。算成本时务必<strong>输入、输出分开算</strong>。</div>
   </div>
 </div>
 
@@ -189,7 +277,7 @@ print(count.input_tokens)</code></pre>
       <p><strong>参考答案：</strong></p>
       <ul>
         <li><strong>OpenAI 模型：</strong>请求前可用匹配编码的 <code>tiktoken</code> 本地计数；完整聊天请求仍需考虑角色、工具等格式开销，调用后查看该厂商 usage。</li>
-        <li><strong>Claude：</strong>不要把 o200k 数字当精确值。用 <code>client.messages.count_tokens(model="claude-opus-4-8", ...)</code> 估算完整结构；请求完成后以 <code>response.usage.input_tokens</code> / <code>output_tokens</code> 等字段核对实际用量。</li>
+        <li><strong>Claude：</strong>不要把 o200k 数字当精确值。用 <code>client.messages.count_tokens(model="claude-opus-4-8", ...)</code> 估算完整结构；请求完成后以 <code>response.usage</code> 为权威记录。若启用了 prompt caching，总输入要把 <code>input_tokens</code>、<code>cache_creation_input_tokens</code> 与 <code>cache_read_input_tokens</code> 相加；输出 Token 另行保留。</li>
         <li><strong>跨厂商横向比较：</strong>先使用各自官方计数方式，再乘各自输入/输出单价。用同一个 tokenizer 数所有模型只能做粗略代理，不能冒充账单。</li>
       </ul>
     </div>
@@ -209,19 +297,353 @@ print(count.input_tokens)</code></pre>
 【计数工具要匹配模型】
   OpenAI 匹配编码：tiktoken 本地计数
   Claude：client.messages.count_tokens(...) 请求前估算
-         response.usage 调用后对账
+         response.usage 调用后权威对账（缓存输入分量相加）
   跨厂商拿 tiktoken 一把尺子量 → 只能粗估，不能冒充账单
 
 【"中文更费 token"？】取决于分词器！(实测)
   "我喜欢学习语言。"  cl100k=11  →  o200k=5
   结论是词表设计的产物，不是语言固有 → 去实测别背结论
 
-【成本换算】输出通常 3~5× 输入
+【成本换算】输入/输出单价分开，价差以目标模型当前价格为准
   成本 = (in×in价 + out×out价) / 1e6
   警报：历史累加 / system prompt 每次都算 / 爆窗口报错
 
 【经验值】英文 ~4 字符≈1 token、~0.75 词≈1 token（仅启发式）</code></pre>
   </div>
+</div>
+
+<div class="section best-practice-lesson">
+  <h2 id="lesson-best-practices">本课最佳实践验收：仓库导入规划器批量预约账本</h2>
+  <p class="best-practice-lead">先独立完成：为仓库导入规划器准备一批带 tool definition 的请求，并让两个虚构 provider 分别使用自己的原生 counter。必须先完成整批计数与预算预约，再发送获准成员；返回后把缓存与非缓存 usage 对账到 provider 账本。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>构造收货、库存和退货三项仓库导入请求，每项都携带可审计的 tool definition。</li><li>为两个 provider 注入不同的原生 counter / model 身份，并记录 counter 收到的最终请求。</li><li>在任何 send 发生前完成整批 estimate 与累计预算预约；剩余预算不足的成员标记为拒绝。</li><li>只发送已预约成员，分别用含缓存和不含缓存的 response usage 计算 actual 与 delta。</li><li>按 provider 形成账本，证明相同 estimate 可以来自不同 counter，且 request digest、counter ID、发送次数都可追查。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>两个 batch plan 完成时发送记录仍为空；第三个成员虽单项小于总预算，也因累计余额不足而未发送。</li><li>每个 counter 依次收到该 provider 的三份完整请求；plan 与 ledger 都保留 counter ID 和稳定 request digest。</li><li>两个 provider 对首项都估算为 12 不会被当成身份冲突；身份由 counter 与精确请求证明。</li><li>已发送项满足 <code>actual = input + cache creation + cache read</code> 与 <code>delta = actual - estimated</code>；拒绝项不进入账本。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+  </div>
+  <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import hashlib
+import json
+
+
+def stable_digest(request):
+    payload = json.dumps(
+        request,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def total_input_tokens(usage):
+    return sum(
+        usage.get(field, 0)
+        for field in (
+            "input_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+        )
+    )
+
+
+def tool_definition(name):
+    return {
+        "name": name,
+        "description": "Plan one warehouse import without executing it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_uri": {"type": "string"},
+                "target_table": {"type": "string"},
+                "mode": {"type": "string"},
+            },
+            "required": ["source_uri", "target_table", "mode"],
+        },
+    }
+
+
+def build_requests(model):
+    jobs = [
+        ("receipts", "receipts.csv", "plan_receipts_import"),
+        ("inventory", "inventory.json", "plan_inventory_import"),
+        ("returns", "returns.ndjson", "plan_returns_import"),
+    ]
+    return [
+        {
+            "request_id": request_id,
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Plan the import for {source}; do not execute it.",
+                }
+            ],
+            "tools": [tool_definition(tool_name)],
+        }
+        for request_id, source, tool_name in jobs
+    ]
+
+
+class NativeWarehouseProvider:
+    def __init__(self, name, model, counter_id, estimates, usages):
+        self.name = name
+        self.model = model
+        self.counter_id = counter_id
+        self.estimates = estimates
+        self.usages = usages
+        self.counted_requests = []
+        self.sent_requests = []
+
+    def count(self, request):
+        self.counted_requests.append(request)
+        return self.estimates[request["request_id"]]
+
+    def send(self, request):
+        self.sent_requests.append(request)
+        return {"usage": self.usages[request["request_id"]]}
+
+
+def reserve_batch(provider, requests, budget):
+    estimates = [provider.count(request) for request in requests]
+    remaining = budget
+    plan = []
+    for request, estimated in zip(requests, estimates):
+        reserved = estimated &lt;= remaining
+        if reserved:
+            remaining -= estimated
+        plan.append(
+            {
+                "provider": provider.name,
+                "counter_id": provider.counter_id,
+                "request_id": request["request_id"],
+                "request_digest": stable_digest(request),
+                "estimated": estimated,
+                "reserved": reserved,
+                "request": request,
+            }
+        )
+    return plan
+
+
+def execute_reserved(provider, plan):
+    ledger = []
+    for reservation in plan:
+        if not reservation["reserved"]:
+            continue
+        usage = provider.send(reservation["request"])["usage"]
+        actual = total_input_tokens(usage)
+        ledger.append(
+            {
+                "provider": provider.name,
+                "counter_id": provider.counter_id,
+                "request_id": reservation["request_id"],
+                "request_digest": reservation["request_digest"],
+                "estimated": reservation["estimated"],
+                "actual": actual,
+                "delta": actual - reservation["estimated"],
+            }
+        )
+    return ledger
+
+
+providers = [
+    NativeWarehouseProvider(
+        "bayline_systems",
+        "bayline-import-2",
+        "bayline-native-counter-v3",
+        estimates={"receipts": 12, "inventory": 12, "returns": 9},
+        usages={
+            "receipts": {"input_tokens": 13},
+            "inventory": {
+                "input_tokens": 3,
+                "cache_creation_input_tokens": 4,
+                "cache_read_input_tokens": 6,
+            },
+        },
+    ),
+    NativeWarehouseProvider(
+        "ridgeway_compute",
+        "ridgeway-tools-5",
+        "ridgeway-native-counter-v8",
+        estimates={"receipts": 12, "inventory": 10, "returns": 5},
+        usages={
+            "receipts": {
+                "input_tokens": 4,
+                "cache_creation_input_tokens": 3,
+                "cache_read_input_tokens": 5,
+            },
+            "inventory": {"input_tokens": 11},
+        },
+    ),
+]
+requests_by_provider = {
+    provider.name: build_requests(provider.model)
+    for provider in providers
+}
+plans = {
+    provider.name: reserve_batch(
+        provider,
+        requests_by_provider[provider.name],
+        budget=24,
+    )
+    for provider in providers
+}
+
+assert all(provider.sent_requests == [] for provider in providers)
+assert all([item["reserved"] for item in plan] == [True, True, False] for plan in plans.values())
+assert plans["bayline_systems"][0]["estimated"] == 12
+assert plans["ridgeway_compute"][0]["estimated"] == 12
+assert providers[0].counter_id != providers[1].counter_id
+
+for provider in providers:
+    requests = requests_by_provider[provider.name]
+    assert provider.counted_requests == requests
+    assert [item["request_digest"] for item in plans[provider.name]] == [
+        stable_digest(request) for request in requests
+    ]
+
+ledgers = {
+    provider.name: execute_reserved(provider, plans[provider.name])
+    for provider in providers
+}
+
+for provider in providers:
+    rejected = [item for item in plans[provider.name] if not item["reserved"]]
+    assert [item["request_id"] for item in rejected] == ["returns"]
+    assert all("actual" not in item and "delta" not in item for item in rejected)
+    assert [request["request_id"] for request in provider.sent_requests] == [
+        "receipts",
+        "inventory",
+    ]
+    assert len(ledgers[provider.name]) == 2
+    assert all(
+        record["counter_id"] == provider.counter_id
+        and record["request_digest"] == stable_digest(provider.sent_requests[index])
+        and record["delta"] == record["actual"] - record["estimated"]
+        for index, record in enumerate(ledgers[provider.name])
+    )
+
+summaries = {
+    provider_name: {
+        "estimated": sum(record["estimated"] for record in ledger),
+        "actual": sum(record["actual"] for record in ledger),
+        "delta": sum(record["delta"] for record in ledger),
+    }
+    for provider_name, ledger in ledgers.items()
+}
+assert summaries == {
+    "bayline_systems": {"estimated": 24, "actual": 26, "delta": 2},
+    "ridgeway_compute": {"estimated": 22, "actual": 23, "delta": 1},
+}
+assert all(
+    "returns" not in {record["request_id"] for record in ledger}
+    for ledger in ledgers.values()
+)
+
+print("L18 ACCEPTED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>plan 完成前已有 <code>sent_requests</code>，说明没有先做整批预约；<code>returns</code> 被发送或进入 ledger，说明累计预算门失效；缓存项 actual 没有汇总三个输入字段，说明 usage 对账漏项；相同 estimate 被当成 counter 相同，或 digest 与 <code>counted_requests</code> 对不上，说明审计身份错误；provider 汇总不等于明细之和，说明账本丢项。</p>
+</div>
+</div>
+
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-request-contract" data-phase-practice="request-contract">
+  <h2>阶段实践检查点：请求契约</h2>
+  <p class="best-practice-lead">把 L17 能力映射与 L18 模型原生计数迁移到新的“活动通知”领域：同一通知任务先由 adapter 删除不支持控制，再用该 adapter 的原生估算做发送门控，并在返回后保留 usage 差值。</p>
+  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+    <div><h3>操作清单</h3><ol><li>为活动通知 provider 定义不同控制能力与专属计数器。</li><li>经同一 <code>NotificationAdapter.prepare()</code> 生成请求。</li><li>证明不支持字段不在 payload，counter 收到的正是投影后的最终 payload。</li><li>加入一个超预算项，在 send 前拒绝；对已发送请求用含缓存 / 不含缓存 usage 完成 reconciliation。</li></ol></div>
+    <div class="practice-pass"><strong>通过标准</strong><ul><li>同一活动、同一 prompt、同一接口下公平比较。</li><li>能力映射发生在计数之前；counter identity 与精确计数 payload 都可验证。</li><li>未发送项没有 actual / delta 且不增加 send 次数；已发送项保留 estimate、总 actual 与 delta。</li><li>标准输出只有检查点标记。</li></ul></div>
+  </div>
+  <p class="bp-term"><strong>先独立完成：</strong>只使用 L17 的能力档案 / 可审计请求思想与 L18 的原生计数 / usage 对账；不要引入后续课的幻觉或 effort 质量门。</p>
+  <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>def total_input_tokens(usage):
+    return sum(
+        usage.get(field, 0)
+        for field in (
+            "input_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+        )
+    )
+
+
+class NotificationAdapter:
+    def __init__(self, name, counter_id, capabilities, estimates, usages):
+        self.name = name
+        self.counter_id = counter_id
+        self.capabilities = capabilities
+        self.estimates = estimates
+        self.usages = usages
+        self.counted_payloads = []
+        self.sent_payloads = []
+
+    def prepare(self, *, event, prompt, controls):
+        supported = {
+            key: value
+            for key, value in controls.items()
+            if self.capabilities.get(key, False)
+        }
+        return {"event": event, "prompt": prompt, "controls": supported}
+
+    def count(self, payload):
+        self.counted_payloads.append(payload)
+        return self.estimates[payload["event"]["id"]]
+
+    def send(self, payload):
+        self.sent_payloads.append(payload)
+        return {"usage": self.usages[payload["event"]["id"]]}
+
+
+def deliver(adapter, *, event, prompt, controls, limit):
+    payload = adapter.prepare(event=event, prompt=prompt, controls=controls)
+    estimated = adapter.count(payload)
+    if estimated &gt; limit:
+        return {"provider": adapter.name, "counter_id": adapter.counter_id, "payload": payload, "estimated": estimated, "sent": False, "actual": None, "delta": None}
+    usage = adapter.send(payload)["usage"]
+    actual = total_input_tokens(usage)
+    return {"provider": adapter.name, "counter_id": adapter.counter_id, "payload": payload, "estimated": estimated, "sent": True, "actual": actual, "delta": actual - estimated}
+
+
+EVENT = {"id": "EV-9", "title": "Night at the Museum", "start": "20:00"}
+OVERSIZE_EVENT = {"id": "EV-10", "title": "All-Day Archive Marathon", "start": "08:00"}
+PROMPT = "Create one concise event notification from the supplied fields."
+CONTROLS = {"temperature": 0.3, "top_p": 0.9, "effort": "low"}
+adapters = [
+    NotificationAdapter(
+        "fictional_spark",
+        "spark-counter-v1",
+        {"temperature": True, "top_p": True, "effort": False},
+        {"EV-9": 18},
+        {"EV-9": {"input_tokens": 19}},
+    ),
+    NotificationAdapter(
+        "fictional_steady",
+        "steady-counter-v3",
+        {"temperature": False, "top_p": False, "effort": True},
+        {"EV-9": 21, "EV-10": 31},
+        {"EV-9": {"input_tokens": 5, "cache_creation_input_tokens": 7, "cache_read_input_tokens": 10}},
+    ),
+]
+spark = deliver(adapters[0], event=EVENT, prompt=PROMPT, controls=CONTROLS, limit=24)
+steady = deliver(adapters[1], event=EVENT, prompt=PROMPT, controls=CONTROLS, limit=24)
+rejected = deliver(adapters[1], event=OVERSIZE_EVENT, prompt=PROMPT, controls=CONTROLS, limit=24)
+
+assert spark["payload"]["controls"] == {"temperature": 0.3, "top_p": 0.9}
+assert steady["payload"]["controls"] == {"effort": "low"}
+assert rejected["payload"]["controls"] == {"effort": "low"}
+assert spark["payload"]["event"] == steady["payload"]["event"] == EVENT
+assert spark["payload"]["prompt"] == steady["payload"]["prompt"] == PROMPT
+assert adapters[0].counter_id == "spark-counter-v1"
+assert adapters[1].counter_id == "steady-counter-v3"
+assert adapters[0].counted_payloads == [spark["payload"]]
+assert adapters[1].counted_payloads == [steady["payload"], rejected["payload"]]
+assert adapters[0].sent_payloads == [spark["payload"]]
+assert adapters[1].sent_payloads == [steady["payload"]]
+assert spark["actual"] == 19 and spark["delta"] == 1
+assert steady["actual"] == 22 and steady["delta"] == 1
+assert rejected["sent"] is False
+assert rejected["actual"] is None and rejected["delta"] is None
+assert rejected["payload"] not in adapters[1].sent_payloads
+
+print("P2 CHECKPOINT REQUEST-CONTRACT PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>不支持字段仍在 payload 表示 L17 能力边界失败；<code>counted_payloads</code> 与投影后 payload 不同表示计数发生在错误边界；counter identity 不符表示 L18 原生 adapter 归属缺失；缓存 actual 不是 usage 三个输入字段之和表示对账漏项；超预算项进入 <code>sent_payloads</code> 或出现 actual / delta，表示请求前预算门失效。不同 provider 的 estimate 相同本身不是故障。</p>
+  <p class="bp-rationale"><strong>工程主题链接：</strong><a href="../best-practices/phase2-model-selection-practices.html#theme-request-contract">Request Contract · 先按能力构造真实请求，再用模型原生计数闭合预算与账本</a>。</p>
+</div>
 </div>
 
 <div class="section">
@@ -258,9 +680,9 @@ print(count.input_tokens)</code></pre>
     <ul>
       <li>Token 是<strong>子词片段</strong>，不是字/词/字母；必须用分词器实际数，不能靠数字数</li>
       <li><strong>BPE</strong> 是常见 tokenizer 家族；byte-level BPE 学习高频合并规则，中文可能回退成字节碎片</li>
-      <li><code>tiktoken</code> 对匹配 OpenAI 编码本地计数；Claude 请求前用 <code>messages.count_tokens</code>，请求后看 <code>response.usage</code></li>
+      <li><code>tiktoken</code> 对匹配 OpenAI 编码本地计数；Claude 请求前用 <code>messages.count_tokens</code>，请求后以 <code>response.usage</code> 为权威记录，缓存输入分量需相加</li>
       <li>"中文更费 Token"<strong>取决于分词器</strong>——同句中文 cl100k 要 11、o200k 只要 5</li>
-      <li>成本 = 输入输出<strong>分开</strong>算，输出通常 3~5× 输入；历史与 system prompt 会累加计费</li>
+      <li>成本 = 输入输出<strong>分开</strong>按目标模型当前单价计算；历史与 system prompt 会累加计费</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
@@ -272,11 +694,13 @@ print(count.input_tokens)</code></pre>
 
 <aside class="toc" id="toc"></aside>
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/quiz.js"></script>
 <script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
 </body>
 </html>

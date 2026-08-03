@@ -42,7 +42,8 @@
   }
 
   .quiz-question{
-    display:flex;align-items:baseline;gap:.55rem;
+    display:flex;align-items:baseline;gap:.55rem;min-width:0;
+    overflow-wrap:anywhere;word-break:break-word;
     font-weight:600;font-size:1rem;line-height:1.6;
     margin-bottom:.95rem;color:var(--fg, #1C1917);
   }
@@ -79,7 +80,7 @@
     color:var(--muted,#78716C);background:var(--bg-warm,#F3F0E8);
     border-radius:8px;transition:background .2s, color .2s, transform .25s cubic-bezier(.34,1.56,.64,1);
   }
-  .quiz-option .q-text{flex:1 1 auto;}
+  .quiz-option .q-text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;word-break:break-word;}
   .quiz-option .q-status{
     position:absolute;width:1px;height:1px;padding:0;margin:-1px;
     overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;

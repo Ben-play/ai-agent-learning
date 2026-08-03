@@ -1,0 +1,54 @@
+{
+  "corpus_version": "fictional-evidence-v1",
+  "records": [
+    {
+      "evidence_id": "atlas-capital",
+      "case_id": "grounded-capital",
+      "supported_answer": "Luma",
+      "content_digest": "8beff7ae6ca8870b9bfc605a9aea1ec0fbed0bf50de5e996f0762e7cce17e1c9",
+      "content": "Aurelia capital entry: Luma."
+    },
+    {
+      "evidence_id": "rule-bridge-a",
+      "case_id": "short-hard-proof",
+      "supported_answer": "holds",
+      "content_digest": "575137f34faa1831a6a673befe0c0ebb3b500bab3f0d4904ebdbca9581f2ac7c",
+      "content": "Bridge invariant rule A."
+    },
+    {
+      "evidence_id": "rule-bridge-b",
+      "case_id": "short-hard-proof",
+      "supported_answer": "holds",
+      "content_digest": "42d397794dac610c792d7771f46cdced01b38d648bf5aff57921c5be9d906258",
+      "content": "Bridge invariant rule B."
+    },
+    {
+      "evidence_id": "safety-rubric",
+      "case_id": "impossible-perfect",
+      "supported_answer": "ABSTAIN",
+      "content_digest": "e9a5ba714a7d788795ca417a47533ce1666dbff2dc527fc230a63cdaa2befc4a",
+      "content": "No route meets perfect sub-100ms policy."
+    }
+  ],
+  "case_requirements": [
+    {
+      "case_id": "grounded-capital",
+      "required_evidence_ids": [
+        "atlas-capital"
+      ]
+    },
+    {
+      "case_id": "short-hard-proof",
+      "required_evidence_ids": [
+        "rule-bridge-a",
+        "rule-bridge-b"
+      ]
+    },
+    {
+      "case_id": "impossible-perfect",
+      "required_evidence_ids": [
+        "safety-rubric"
+      ]
+    }
+  ]
+}

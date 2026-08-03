@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F8F6F1">
+    <link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
   <title>阶段 2 详细大纲 · AI 知识与模型选型</title>
   <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -16,7 +19,11 @@
 
 <div class="total-bar">
   <span>📚 共 3 个模块 · 8 课</span>
-  <span>⏱ 预计 1.5 周完成</span>
+  <span>⏱ 深度学习约 430 分钟</span>
+</div>
+
+<div class="tip">
+  <strong>阶段实践边学边做：</strong>本阶段含 11 张知识点决策卡、8 个单课近迁移验收，以及 5 个跨课检查点。检查点在最后一个先修知识学完后立即出现：L18 请求契约、L19 可靠性门、L21 能力策略、L22 私有评测、L23 成本感知路由。完成 L24 后，再打开 <a href="../best-practices/phase2-model-selection-practices.html">Phase 2 阶段复盘索引</a>并运行<a href="../code/phase2-model-selection/phase2-practices-capstone/README.md">离线模型评测综合项目</a>；复盘页不计为新课。
 </div>
 
 <div class="tip">
@@ -40,15 +47,15 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L17</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L17</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0021-L17-llm-essence-and-parameters.html">LLM 本质与生成参数</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">语言模型本质、注意力与生成直觉；区分 Temperature / Top-P / 重复惩罚的<strong>解码概念</strong>与厂商 API 字段——当前 Claude 新模型不接受这些 sampling 参数；理解低温/seed 也不能保证逐字节复现</div>
+        <div class="lesson-desc">语言模型本质、注意力与生成直觉；区分 Temperature / Top-P / 重复惩罚的<strong>解码概念</strong>与厂商 API 字段——部分新 Claude 模型会拒绝 sampling 控制的非默认值；理解低温/seed 也不能保证逐字节复现</div>
         <div class="exercise">为抽取、创作、代码审查选择控制方式：支持 sampling 的 provider 如何调参，当前 Claude 如何用提示约束、结构化校验与 effort</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L18</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L18</span><span class="lesson-num-time">60min</span>
       <div>
         <div class="lesson-title"><a href="0022-L18-tokenization.html">Token 与 Tokenization 深入</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">Token 是子词片段；BPE 是常见 tokenizer 家族而非唯一实现；中文/英文效率取决于目标 tokenizer；<code>tiktoken</code> 对匹配 OpenAI 编码计数，Claude 用官方 <code>messages.count_tokens</code> 估算并以 response usage 对账</div>
@@ -69,7 +76,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L19</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L19</span><span class="lesson-num-time">55min</span>
       <div>
         <div class="lesson-title"><a href="0023-L19-hallucination.html">幻觉全解（多因素视角）</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">什么是幻觉；两层重要机制（预训练统计错误如何产生、评估为何鼓励猜测）与其他工程成因；Self-Consistency 发散只作风险信号，一致不证明正确；RAG / 引用 / 工具 / 人工组合兜底</div>
@@ -85,7 +92,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L21</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L21</span><span class="lesson-num-time">60min</span>
       <div>
         <div class="lesson-title"><a href="0025-L21-model-capabilities.html">模型能力边界与 Base vs Instruct</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">Base/Instruct 的行为倾向；预训练、SFT 与偏好优化（RLHF/DPO 类路线）；微调与 RAG 的边界；区分直接文档输入、RAG、实时工具；API 默认无状态不等于应用不能保存记忆</div>
@@ -93,7 +100,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L22</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L22</span><span class="lesson-num-time">60min</span>
       <div>
         <div class="lesson-title"><a href="0026-L22-benchmarks-and-selection.html">看懂 Benchmark 与模型选型</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">主流 benchmark 各测什么；污染、针对性优化、场景不匹配、harness/scaffold/预算如何影响成绩；开放权重、托管与自托管边界；开发集/隔离测试集、固定 rubric 与重复运行</div>
@@ -114,7 +121,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L23</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L23</span><span class="lesson-num-time">60min</span>
       <div>
         <div class="lesson-title"><a href="0027-L23-token-economics.html">Token 经济学与降本杠杆</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">请求历史与累计成本、Token 预算；Prompt Caching 的 5m/1h 写入、读取、盈亏平衡、最小前缀和 usage；Model Routing 的误路由/升级成本；案例百分比不作保证；厂商 Batch、压缩和输出控制边界</div>
@@ -136,7 +143,8 @@
 <div class="tip">
   <strong>Module 2.1 打底</strong>——LLM 本质 + Token 是后面一切的地基，务必用 tiktoken 亲手数一遍，建立"Token=钱"的体感。<br>
   <strong>Module 2.2 是面试重灾区</strong>——幻觉成因（校准视角）、推理模型何时用、六大能力局限、benchmark 判读 + 选型框架，每一条都是资深岗必问。别死记结论，理解"为什么"。<br>
-  <strong>Module 2.3 收尾</strong>——成本工程是生产级思维的起点（Phase 3 起会一直用"原生缓存优先 + 路由"），最后用 L24 把整个 Phase 2 串成一个能跑的项目。<br><br>
+  <strong>Module 2.3 收尾</strong>——成本工程是生产级思维的起点（Phase 3 起会一直用“先测量，再验证缓存与路由”），最后用 L24 把整个 Phase 2 串成一个能跑的项目。<br>
+  <strong>实践顺序</strong>——每张卡先读决策与边界，单课验收和阶段检查点都先独立实现、再展开参考程序；全部课程结束后才用复盘页压缩主题并完成最终项目。<br><br>
   <strong>关于"最新资料"：</strong>模型版本、价格、跑分迭代极快，本阶段刻意<strong>不写死具体版本号/分数</strong>，重点是"怎么想、怎么选、怎么算"。用到时以各厂商<strong>当时的官方文档</strong>为准。
 </div>
 
@@ -168,10 +176,12 @@
 </footer>
 
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
 </body>
 </html>
