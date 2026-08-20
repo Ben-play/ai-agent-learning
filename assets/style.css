@@ -839,9 +839,15 @@ blockquote {
 .bp-result { border-left: 3px solid var(--success); }
 .bp-compare {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.8rem;
   margin: 0.8rem 0;
+}
+/* 代码对比优先使用完整行宽；只有纯文字短对比在桌面端并排。 */
+@media (min-width: 641px) {
+  .bp-compare:not(:has(pre)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .bp-wrong,
 .bp-right {
