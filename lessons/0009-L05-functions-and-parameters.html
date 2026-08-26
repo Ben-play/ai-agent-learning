@@ -479,11 +479,14 @@ print(search_tool("x", 999)["max_results"])  # 50  （被夹住）</code></pre>
 <!-- ==================== 本课最佳实践 ==================== -->
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：Python 映射/工具契约</h2>
-  <p class="best-practice-lead">换一个会议室预订工具，验证映射绑定、签名约束、显式运行时校验、默认对象隔离和精确结果契约；这里检查的是 Python 调用边界，不是 JSON 解析。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>实现会议室预订工具的 Python 调用边界，证明签名绑定、运行时数据校验、默认对象隔离和规范化返回结果分别承担清晰责任。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>用 <code>tool(**mapping)</code> 绑定具名字段。</li><li>验证必填字段、未知字段和仅关键字约束。</li><li>显式拒绝错误类型与越界值。</li><li>验证默认列表每次调用都新建。</li><li>精确比较完整返回结果。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>合法映射可执行</li><li>三类绑定错误均失败</li><li>类型和值在函数边界校验</li><li>默认容器不共享</li><li>最后打印唯一验收标记</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>合法映射可执行</li><li>三类绑定错误均失败</li><li>类型和值在函数边界校验</li><li>默认容器不共享</li><li>最后打印唯一验收标记</li></ul></div>
     </div>
     <details class="bp-check"><summary><strong>课末自检（整块复制即可运行）：</strong></summary><pre><code>def reserve_room(
     room: str,

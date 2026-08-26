@@ -317,10 +317,14 @@ print(answer)   # abcd</code></pre>
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：用真正生成器证明惰性与清理</h2>
-  <p class="best-practice-lead">这次不复演普通上下文管理：必须写出含 <code>yield</code> 的生成器，用事件轨迹证明调用惰性、按需拉取、提前停止不计算后续，并让正常、关闭与异常三条路径都经过 <code>finally</code>。对暂停在 <code>yield</code> 的生成器调用 <code>close()</code> 会在暂停点注入 <code>GeneratorExit</code>，栈展开时执行 <code>finally</code>；下面的纯标准库验收据此验证显式生命周期。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>实现一个真正惰性的事件流生成器，证明创建、按需拉取、提前关闭、正常耗尽和源异常都遵守明确的计算与清理生命周期。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>生成器调用后先检查轨迹为空。</li><li>逐次 <code>next()</code> 核对拉取轨迹。</li><li>提前停止后显式 <code>close()</code>。</li><li>验证正常耗尽与资源关闭。</li><li>验证源异常原样传播且仍清理。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>函数体含 <code>yield</code></li><li>调用本身不执行</li><li>停止后数据未计算</li><li>正常耗尽关闭</li><li>异常不被吞掉</li><li>末尾唯一打印指定验收标记</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>函数体含 <code>yield</code></li><li>调用本身不执行</li><li>停止后数据未计算</li><li>正常耗尽关闭</li><li>异常不被吞掉</li><li>末尾唯一打印指定验收标记</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末自检（纯标准库，整块复制即可运行）：</strong></summary><pre><code>def traced_stream(items, events, fail_at=None):
     events.append("open")
@@ -371,10 +375,15 @@ print("L12 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-resource-lifecycle" data-phase-practice="resource-lifecycle">
   <h2>阶段实践检查点：资源生命周期</h2>
-  <p class="best-practice-lead">组合 L09 的同目录临时文件 + 原子 JSON 替换与 L12 的显式流所有权：所有消费路径关闭上游，只有成功消费才把严格 JSON 快照提交为新可见状态。</p>
-  <div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>把流消费与原子 JSON 快照提交组合成完整资源生命周期，证明所有消费出口都会关闭上游，只有完整成功的结果才成为新可见状态。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>用 tracked generator 记录 open、pull 与 close。</li><li>验证正常耗尽、提前 break、源异常均显式关闭。</li><li>成功消费后原子提交新 JSON 快照。</li><li>注入 replace 失败并核对旧文件与临时文件。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>三条流路径都出现 close</li><li>提前停止不拉取后续数据</li><li>源异常保持原对象身份</li><li>成功快照是严格 JSON</li><li>替换失败保留旧 JSON 且清理临时文件</li><li>stdout 只有指定检查点标记</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>三条流路径都出现 close</li><li>提前停止不拉取后续数据</li><li>源异常保持原对象身份</li><li>成功快照是严格 JSON</li><li>替换失败保留旧 JSON 且清理临时文件</li><li>stdout 只有指定检查点标记</li></ul></div>
+  </div>
   </div>
   <p class="bp-term"><strong>先独立完成：</strong>先自行定义流 owner 与原子提交顺序，并为提前停止、源异常和替换失败写测试；完成后再展开参考验收程序。</p>
   <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import json

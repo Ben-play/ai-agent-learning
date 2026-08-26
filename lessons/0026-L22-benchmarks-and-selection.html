@@ -306,11 +306,14 @@ assert holdout[("birch", "evidence")] &gt; holdout[("atlas", "evidence")]</code>
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：保修工单的私有评测</h2>
-  <p class="best-practice-lead">先独立为保修工单候选模型设计公开初筛、固定开发集与隔离留出集；参考 fixture 会故意让私有留出结果反转公开排名。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>建立“公开初筛 → 开发集调优 → 隔离留出拍板”的私有评测流程，证明公开排名不能越权决定最终模型，留出集不会泄漏到调优阶段。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>按公开分数门槛初筛候选。</li><li>在留出对象尚不存在时，只用开发集选择 prompt。</li><li>冻结配置后才创建隔离留出集并决定胜者。</li><li>记录调优读取的数据来源与留出评估次数。</li><li>只打印最终验收标记。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>公开排名第一是 <code>atlas</code>。</li><li>未过门槛的 <code>cedar</code> 不参与调优。</li><li>开发集为候选冻结配置。</li><li>留出集最终选择 <code>birch</code>，明确反转公开排名。</li><li>标准输出只有验收标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>公开排名第一是 <code>atlas</code>。</li><li>未过门槛的 <code>cedar</code> 不参与调优。</li><li>开发集为候选冻结配置。</li><li>留出集最终选择 <code>birch</code>，明确反转公开排名。</li><li>标准输出只有验收标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>不要根据参考答案反向改 fixture；先写接口、数据流和“留出不进入调优”的断言，再展开离线参考。</p>
     <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>def public_screen(scores, *, minimum):
@@ -367,11 +370,14 @@ print("L22 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-private-evaluation" data-phase-practice="private-evaluation">
   <h2>阶段实践检查点：私有评测驱动的执行策略</h2>
-  <p class="best-practice-lead">在新的理赔分流域，把 L21 能力约束、L20 评测驱动的最低 effort 与本课开发/留出隔离组合起来：先剔除能力不合格候选，再用开发集选择最低达标 effort，冻结后才让留出集拍板。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>构建受能力硬门约束的理赔分流选型流程，证明候选能力、开发集最低达标投入和隔离留出结论按顺序拥有不同决定权。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>先剔除不能满足实时保单查询或精确金额计算的候选。</li><li>对每个可行候选，只在开发集上筛选质量与延迟门。</li><li>从达标 trials 中选择最低 effort，并保留质量、延迟与输出 Token 证据。</li><li>冻结配置后才创建留出集，且只评估一次。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>缺少工具能力的公开高分候选被剔除。</li><li>高质量但超延迟的 effort 不入选；达标时不盲选最高档。</li><li>冻结配置包含所选 trial 的质量、延迟和输出 Token。</li><li>调优时留出对象尚不存在；隔离留出能反转剩余候选公开排名。</li><li>标准输出只有检查点标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>缺少工具能力的公开高分候选被剔除。</li><li>高质量但超延迟的 effort 不入选；达标时不盲选最高档。</li><li>冻结配置包含所选 trial 的质量、延迟和输出 Token。</li><li>调优时留出对象尚不存在；隔离留出能反转剩余候选公开排名。</li><li>标准输出只有检查点标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>只使用已学的能力缺口、effort 业务试验和开发/留出分离；不要引入 L23 的价格、缓存或成本路由。</p>
     <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）</strong></summary><pre><code>from dataclasses import dataclass

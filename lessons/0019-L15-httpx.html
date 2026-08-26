@@ -368,10 +368,14 @@ with httpx.Client(
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：共享 Client 与唯一 UpstreamTransport</h2>
-  <p class="best-practice-lead">做一次近迁移：目录查询和预约创建只依赖同一个 transport。外层拥有唯一 Client；transport 独占 raw-httpx 的操作级分类、解析、截止时间记账、等待和重试。这里的同步实现不是硬总时限：它在请求前后按单调时钟检测越界，越界后拒绝成功/错误结果，并且不再等待或重试；传给 httpx 的 <code>timeout=remaining</code> 仍只是阶段/连接池超时，无法抢占正在进行且持续有数据到达的同步响应。若需要到点发起取消，请在 L16 使用异步操作与取消机制；取消后的清理仍可能使墙钟总时长略超截止时刻。若选官方 SDK，则不装配这个 transport。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为目录查询和预约创建建立唯一 <code>UpstreamTransport</code>，证明共享 Client、HTTP 分类、重试所有权和预算记账集中在同一边界，并明确同步超时不等于硬取消。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>只暴露 JSON GET/POST。</li><li>让 Catalog 和 Reservations 只接收 transport。</li><li>用公开接口覆盖严格数字秒、HTTP-date、显式后备和截止时间记账。</li><li>验证操作上下文决定 409，并保留原始 header。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ol><li>Client 与 transport 身份共享，且只有 transport 重试。</li><li>有效等待不截短；请求前已到截止时间或完整等待会越界时，不 sleep、不重试。</li><li>请求前后都读取单调时钟；若同步请求返回时已经越界，拒绝其成功或普通错误结果，并以 <code>BudgetExceeded</code> 表示“已检测/已记账的越界”，而非已抢占请求。</li><li><code>timeout=remaining</code> 仅约束 httpx 各阶段/连接池等待，不宣称硬墙钟总时限；最终尝试后不 sleep；目录 409 一次，预约 409 可恢复或三次耗尽。</li><li>标准输出严格为 <code>L15 ACCEPTED</code>。</li></ol></div>
+    <div class="practice-pass"><h3>通过标准</h3><ol><li>Client 与 transport 身份共享，且只有 transport 重试。</li><li>有效等待不截短；请求前已到截止时间或完整等待会越界时，不 sleep、不重试。</li><li>请求前后都读取单调时钟；若同步请求返回时已经越界，拒绝其成功或普通错误结果，并以 <code>BudgetExceeded</code> 表示“已检测/已记账的越界”，而非已抢占请求。</li><li><code>timeout=remaining</code> 仅约束 httpx 各阶段/连接池等待，不宣称硬墙钟总时限；最终尝试后不 sleep；目录 409 一次，预约 409 可恢复或三次耗尽。</li><li>标准输出严格为 <code>L15 ACCEPTED</code>。</li></ol></div>
   </div>
   <details class="bp-check"><summary><strong>课末自检（近迁移，整块复制即可运行）：</strong></summary><pre><code>from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime

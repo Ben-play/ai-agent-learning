@@ -314,10 +314,14 @@ assert total_input_tokens({"input_tokens": 1, "cache_creation_input_tokens": 2, 
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：仓库导入规划器批量预约账本</h2>
-  <p class="best-practice-lead">先独立完成：为仓库导入规划器准备一批带 tool definition 的请求，并让两个虚构 provider 分别使用自己的原生 counter。必须先完成整批计数与预算预约，再发送获准成员；返回后把缓存与非缓存 usage 对账到 provider 账本。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为一批仓库导入请求建立“原生计数 → 累计预算预约 → 获准发送 → usage 对账”的账本，证明发送前预算门和发送后实际用量可完整追踪。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>构造收货、库存和退货三项仓库导入请求，每项都携带可审计的 tool definition。</li><li>为两个 provider 注入不同的原生 counter / model 身份，并记录 counter 收到的最终请求。</li><li>在任何 send 发生前完成整批 estimate 与累计预算预约；剩余预算不足的成员标记为拒绝。</li><li>只发送已预约成员，分别用含缓存和不含缓存的 response usage 计算 actual 与 delta。</li><li>按 provider 形成账本，证明相同 estimate 可以来自不同 counter，且 request digest、counter ID、发送次数都可追查。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>两个 batch plan 完成时发送记录仍为空；第三个成员虽单项小于总预算，也因累计余额不足而未发送。</li><li>每个 counter 依次收到该 provider 的三份完整请求；plan 与 ledger 都保留 counter ID 和稳定 request digest。</li><li>两个 provider 对首项都估算为 12 不会被当成身份冲突；身份由 counter 与精确请求证明。</li><li>已发送项满足 <code>actual = input + cache creation + cache read</code> 与 <code>delta = actual - estimated</code>；拒绝项不进入账本。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>两个 batch plan 完成时发送记录仍为空；第三个成员虽单项小于总预算，也因累计余额不足而未发送。</li><li>每个 counter 依次收到该 provider 的三份完整请求；plan 与 ledger 都保留 counter ID 和稳定 request digest。</li><li>两个 provider 对首项都估算为 12 不会被当成身份冲突；身份由 counter 与精确请求证明。</li><li>已发送项满足 <code>actual = input + cache creation + cache read</code> 与 <code>delta = actual - estimated</code>；拒绝项不进入账本。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import hashlib
 import json
@@ -545,10 +549,14 @@ print("L18 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-request-contract" data-phase-practice="request-contract">
   <h2>阶段实践检查点：请求契约</h2>
-  <p class="best-practice-lead">把 L17 能力映射与 L18 模型原生计数迁移到新的“活动通知”领域：同一通知任务先由 adapter 删除不支持控制，再用该 adapter 的原生估算做发送门控，并在返回后保留 usage 差值。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>构建活动通知的请求契约，证明 provider 能力投影发生在原生计数之前，超预算项不会发送，已发送项能保留估算与实际 usage 差值。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>为活动通知 provider 定义不同控制能力与专属计数器。</li><li>经同一 <code>NotificationAdapter.prepare()</code> 生成请求。</li><li>证明不支持字段不在 payload，counter 收到的正是投影后的最终 payload。</li><li>加入一个超预算项，在 send 前拒绝；对已发送请求用含缓存 / 不含缓存 usage 完成 reconciliation。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>同一活动、同一 prompt、同一接口下公平比较。</li><li>能力映射发生在计数之前；counter identity 与精确计数 payload 都可验证。</li><li>未发送项没有 actual / delta 且不增加 send 次数；已发送项保留 estimate、总 actual 与 delta。</li><li>标准输出只有检查点标记。</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>同一活动、同一 prompt、同一接口下公平比较。</li><li>能力映射发生在计数之前；counter identity 与精确计数 payload 都可验证。</li><li>未发送项没有 actual / delta 且不增加 send 次数；已发送项保留 estimate、总 actual 与 delta。</li><li>标准输出只有检查点标记。</li></ul></div>
   </div>
   <p class="bp-term"><strong>先独立完成：</strong>只使用 L17 的能力档案 / 可审计请求思想与 L18 的原生计数 / usage 对账；不要引入后续课的幻觉或 effort 质量门。</p>
   <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>def total_input_tokens(usage):

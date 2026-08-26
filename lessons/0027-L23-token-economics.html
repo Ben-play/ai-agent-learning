@@ -452,11 +452,14 @@ $1020 → 约 $480，稳态账单下降约 53%
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：夜间内容处理的工作负载计划</h2>
-  <p class="best-practice-lead">三张知识点卡分别证明单次成本、单个前缀和单类任务的决策。本练习迁移到一批夜间内容任务：按流量汇总美元成本、按前缀分组决定是否缓存，并为不同任务切片生成路由表与总期望成本。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为夜间内容批次形成工作负载级成本、缓存和分片路由计划，证明流量、稳定前缀、私有质量门与完整期望成本共同决定策略。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>把多个 trace 的成本分量乘以调用频次，汇总工作负载级美元组成。</li><li>按稳定前缀 digest 分组；只为有复用的组规划一次写入与后续读取，单次组不缓存。</li><li>为普通清洗和事实审查分别使用各自的私有通过率与流量占比选择路线。</li><li>输出分组缓存计划、按切片路由表和流量加权总期望成本。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>高频升级切片能改变工作负载级最大美元项。</li><li>相同稳定前缀的不同动态请求进入同组，工具版本变化进入新组。</li><li>零复用组明确不缓存，不为一次使用支付缓存写入。</li><li>普通切片可直达低成本候选，事实审查切片必须走达标级联。</li><li>任一切片无达标路线时整体明确失败；标准输出只有验收标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>高频升级切片能改变工作负载级最大美元项。</li><li>相同稳定前缀的不同动态请求进入同组，工具版本变化进入新组。</li><li>零复用组明确不缓存，不为一次使用支付缓存写入。</li><li>普通切片可直达低成本候选，事实审查切片必须走达标级联。</li><li>任一切片无达标路线时整体明确失败；标准输出只有验收标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>不要再复制三个卡片的单样本断言。本题要利用卡片产物形成<strong>工作负载级计划</strong>：频次会改变成本主因，digest 用于分组，私有评测决定每个切片可用哪些路线。</p>
     <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>from dataclasses import dataclass
@@ -634,11 +637,14 @@ print("L23 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-cost-aware-routing" data-phase-practice="cost-aware-routing">
   <h2>阶段实践检查点：成本感知的翻译路由</h2>
-  <p class="best-practice-lead">在新的翻译工作负载中组合原生 Token 计数接口、effort、私有评测、完整成本、缓存与升级路由；不能用字符数、长度启发式或公开排名替代其中任何一层。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为法律术语翻译建立成本感知路由，证明原生 Token 计数和私有质量门不可被长度或公开排名替代，达标策略按完整期望成本排序。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>通过注入的目标模型计数函数获取输入 Token，不使用通用字符近似。</li><li>为短但法律术语密集的请求保留 high effort/升级可能。</li><li>用私有留出通过率执行质量门。</li><li>把缓存读写、输出和升级概率纳入策略期望成本。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>计数器恰好收到完整提示一次。</li><li>短但困难样本不会因长度进入 cheap-only。</li><li>未过私有质量门的策略不能入选。</li><li>达标候选按完整期望成本排序。</li><li>标准输出只有检查点标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>计数器恰好收到完整提示一次。</li><li>短但困难样本不会因长度进入 cheap-only。</li><li>未过私有质量门的策略不能入选。</li><li>达标候选按完整期望成本排序。</li><li>标准输出只有检查点标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>只使用当前/先前知识：L18 的目标模型原生计数、L20 effort、L22 私有评测，加上本课完整成本/缓存/路由；不依赖下一课的综合排名。</p>
     <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）</strong></summary><pre><code>from dataclasses import dataclass

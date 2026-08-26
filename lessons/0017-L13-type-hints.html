@@ -334,10 +334,14 @@ print(truncate([1, 2, 3, 4], 2))     # [1, 2]</code></pre>
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：把缓存策略守在运行时边界</h2>
-  <p class="best-practice-lead">换到不同领域的 <code>CachePolicy = Literal["use", "refresh", "bypass"]</code>：先保存一份可通过 mypy 的静态正例，再用独立负例核对预期 Literal 错误；运行时实验另行证明普通函数不自动校验，而 parser 才把外部字符串转换为可信内部值。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为缓存策略建立静态与运行时双重边界，证明 <code>Literal</code> 能约束类型检查，而 parser 才负责把外部字符串转换为可信内部值。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>定义三个缓存策略。</li><li>保存静态正例并运行 mypy。</li><li>用独立负例核对预期 Literal 错误。</li><li>单独运行 Python，证明注解不自动校验。</li><li>让 parser 拒绝非法值、合法值进入内部函数。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>正例 mypy 无问题</li><li>负例报告非法 Literal</li><li>运行时元数据准确</li><li>普通调用不自动校验</li><li>parser 拒绝非法边界输入</li><li>运行时脚本打印 <code>L13 ACCEPTED</code></li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>正例 mypy 无问题</li><li>负例报告非法 Literal</li><li>运行时元数据准确</li><li>普通调用不自动校验</li><li>parser 拒绝非法边界输入</li><li>运行时脚本打印 <code>L13 ACCEPTED</code></li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末自检（从仓库根运行；离线调用锁定 mypy）：</strong></summary><pre><code>import subprocess
 from pathlib import Path

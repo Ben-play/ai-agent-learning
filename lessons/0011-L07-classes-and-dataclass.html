@@ -300,10 +300,14 @@ print(ToolCall("search", {"q": "天气"}))   # ToolCall(name='search', args={'q'
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：区分默认隔离与显式共享</h2>
-  <p class="best-practice-lead">使用 <code>RunState(errors, usage)</code> 同时证明两条边界：省略字段时工厂创建独立容器；显式传入同一个外部容器时，dataclass 不会替你复制。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>用 <code>RunState</code> 明确运行状态的所有权，证明默认容器归各实例独立持有，而调用方显式传入的同一对象会按引用共享。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>定义两个 default_factory 字段。</li><li>验证省略字段的两个实例互不共享。</li><li>把同一外部列表显式传给两个实例。</li><li>证明显式输入按引用共享。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>断言省略字段时，两个实例的 errors/usage 都是新对象</li><li>断言显式传入同一列表时，两个实例都保留该对象的身份</li><li>断言修改共享列表后，两个实例都观察到同一内容</li><li>程序执行完毕并打印唯一的 <code>L07 ACCEPTED</code></li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>断言省略字段时，两个实例的 errors/usage 都是新对象</li><li>断言显式传入同一列表时，两个实例都保留该对象的身份</li><li>断言修改共享列表后，两个实例都观察到同一内容</li><li>程序执行完毕并打印唯一的 <code>L07 ACCEPTED</code></li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末自检：证明默认隔离不等于复制显式输入</strong></summary><pre><code>from dataclasses import dataclass, field
 
@@ -338,11 +342,14 @@ print("L07 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-state-ownership" data-phase-practice="state-ownership">
   <h2>阶段实践检查点：状态所有权与回调绑定</h2>
-  <p class="best-practice-lead">串联 L03 的可变容器、L06 的闭包绑定和本课的 dataclass：默认状态归实例所有，显式共享归调用方所有，延迟执行的回调保留创建时的标签与路由。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>构建带状态的延迟路由回调，证明默认状态、显式共享状态和闭包创建时绑定三种所有权不会相互串线。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>用两个 <code>default_factory</code> 字段证明新实例默认隔离。</li><li>显式传入同一容器，证明身份保留且原地修改双方可见。</li><li>为三条配置创建延迟执行的零参数回调。</li><li>精确检查工厂、构建函数和回调签名，以及三组 label/route。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>默认 list/dict 均不是同一对象</li><li>显式共享容器保持同一身份和可观察内容</li><li>三个回调签名均为 <code>()</code> 且绑定互不串线</li><li>标准输出仅有唯一标记 <code>P1 CHECKPOINT STATE-OWNERSHIP PASSED</code></li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>默认 list/dict 均不是同一对象</li><li>显式共享容器保持同一身份和可观察内容</li><li>三个回调签名均为 <code>()</code> 且绑定互不串线</li><li>标准输出仅有唯一标记 <code>P1 CHECKPOINT STATE-OWNERSHIP PASSED</code></li></ul></div>
     </div>
   </div>
   <p class="bp-term"><strong>先独立完成：</strong>先按操作清单设计状态模型和回调工厂，并写出自己的身份/调用结果断言；完成后再展开参考验收程序对照遗漏。</p>
