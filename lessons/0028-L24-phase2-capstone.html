@@ -469,11 +469,14 @@ else:
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：资助申请的 provider-neutral 迷你评估</h2>
-  <p class="best-practice-lead">先独立实现一个资助申请评审骨架：adapter 只返回中立观察，重复运行保留分布，事实必须由证据支持，完整成本含重试/升级，最后先过硬门再排名。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>完成一个 provider-neutral 资助申请迷你评估，证明中立观察、重复运行、独立事实/证据评分和完整成本必须先通过逐次硬门，再参与排名。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>用两个具体 adapter 把 provider 的答案与证据 ID 映射为同一 Observation。</li><li>用独立 ground truth 与证据语料计算事实正确和证据覆盖，不信 provider 自报分数。</li><li>让所有候选在同一 case/fixture 上使用不同 repeat ID 重复运行。</li><li>保留答案、证据、成功/失败、逐次派生指标与完整成本。</li><li>逐次执行联合硬门，再覆盖便宜不安全、失败、均值补偿与无合格候选。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>adapter 规范化答案/证据 ID；事实与证据分由独立真值计算。</li><li>伪造高 factual/evidence 自评分但答错或缺证据的原始结果仍被拒绝。</li><li>所有候选共享同一 fixture，且候选内 repeat ID 互异。</li><li>失败详情与逐次答案/证据/质量/事实/覆盖/成本元组均被保留。</li><li>有效去重证据决定覆盖率，重试与升级精确进入完整成本。</li><li>每次运行必须联合过门；无合格方案明确失败。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>adapter 规范化答案/证据 ID；事实与证据分由独立真值计算。</li><li>伪造高 factual/evidence 自评分但答错或缺证据的原始结果仍被拒绝。</li><li>所有候选共享同一 fixture，且候选内 repeat ID 互异。</li><li>失败详情与逐次答案/证据/质量/事实/覆盖/成本元组均被保留。</li><li>有效去重证据决定覆盖率，重试与升级精确进入完整成本。</li><li>每次运行必须联合过门；无合格方案明确失败。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>这是刻意保持较小的单文件近迁移课程验收；多文件工程 capstone 与跨课 review 页面用途不同。先写中立数据结构、两个 adapter 和断言，再展开参考。</p>
     <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>from dataclasses import dataclass

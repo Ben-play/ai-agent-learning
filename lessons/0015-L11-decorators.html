@@ -431,11 +431,14 @@ expect_unchanged(duplicate, ValueError, "scalar_tool", "已注册")</code></pre>
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：失败安全注册</h2>
-  <p class="best-practice-lead">先运行第 4 节规范实现，再运行下面的验收代码。场景改为物流报价，避免照抄前文示例。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>实现物流报价工具的失败安全注册流程，证明装饰器元数据、Schema 构建和 endpoint 适配互不污染，任何无效注册都在唯一提交前失败。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>验证参数化装饰器与叠放顺序。</li><li>注册一个物流工具并核对中立条目的精确字段。</li><li>核对两个 endpoint adapter 的精确结构与不变性。</li><li>逐一触发缺注解、复杂类型、三种坏 kind、重复名称。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>name/doc/signature 与调用结果保留</li><li>Schema 拒绝额外关键字</li><li>每次失败后 registry 完全不变</li><li>adapter 不改 registry</li><li>运行时不校验的边界有实证</li><li>最后只打印一行验收标记</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>name/doc/signature 与调用结果保留</li><li>Schema 拒绝额外关键字</li><li>每次失败后 registry 完全不变</li><li>adapter 不改 registry</li><li>运行时不校验的边界有实证</li><li>最后只打印一行验收标记</li></ul></div>
     </div>
     <details class="bp-check"><summary><strong>课末自检（整块可独立运行）：</strong></summary><pre><code>import copy
 import functools
@@ -662,10 +665,15 @@ print("L11 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-extensibility" data-phase-practice="extensibility">
   <h2>阶段实践检查点：可扩展分发与注册</h2>
-  <p class="best-practice-lead">组合 L08 的 registry dispatch 与 L11 的 build → validate → single commit：执行器保持稳定，新增实现只扩展注册表；所有无效注册都在唯一写点之前失败。</p>
-  <div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>构建可扩展的注册表分发流程，证明新增实现无需修改通用执行器，且重复名称、坏签名或不支持注解不会留下任何写入。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>建立可观察写入次数的 registry 与通用执行器。</li><li>注册首个实现，再新增一个有效实现。</li><li>核对执行器对象身份与字节码均未改变。</li><li>分别触发重复名称、坏签名和不支持注解。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>新增实现无需修改执行器</li><li>有效注册恰好提交一次</li><li>三种失败路径均零写入</li><li>失败后的 registry 快照完全相同</li><li>stdout 只有指定检查点标记</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>新增实现无需修改执行器</li><li>有效注册恰好提交一次</li><li>三种失败路径均零写入</li><li>失败后的 registry 快照完全相同</li><li>stdout 只有指定检查点标记</li></ul></div>
+  </div>
   </div>
   <p class="bp-term"><strong>先独立完成：</strong>先自行实现稳定执行器、可观察 registry 和 build→validate→commit 注册流程；用失败快照证明零写入后，再展开参考验收程序。</p>
   <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开）：</strong></summary><pre><code>import copy

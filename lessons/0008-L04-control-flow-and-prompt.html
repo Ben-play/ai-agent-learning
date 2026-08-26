@@ -686,11 +686,14 @@ print(result)</code></pre>
 <!-- ==================== 本课最佳实践 ==================== -->
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：离线任务事件轮询器</h2>
-  <p class="best-practice-lead">把本课的控制流迁移到另一个领域：轮询离线作业事件，而不是复制或改名 Agent 卡片。实现必须区分继续等待、成功终态、次数耗尽和未知事件。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>实现一个完全离线且受读取次数约束的作业事件轮询器，证明继续、成功、耗尽和协议违约都有明确、最小化且可测试的结果。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>实现 <code>poll_job(read_event, limit)</code>，每次读取一个作业事件。</li><li><code>queued</code> 与 <code>running</code> 表示继续轮询。</li><li><code>succeeded</code> 是终态，返回作业结果和实际轮询次数。</li><li>先验证 <code>limit</code> 是正整数；耗尽时返回诊断，未知事件错误只报告 <code>kind</code> 与 Python 类型。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>完全离线，不需要模型、密钥或网络</li><li>四条核心路径和非法 <code>limit</code> 都有精确断言</li><li>成功结果、轮询次数与错误文本均不可含糊</li><li>只打印一次唯一标记 <code>L04 ACCEPTED</code></li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>完全离线，不需要模型、密钥或网络</li><li>四条核心路径和非法 <code>limit</code> 都有精确断言</li><li>成功结果、轮询次数与错误文本均不可含糊</li><li>只打印一次唯一标记 <code>L04 ACCEPTED</code></li></ul></div>
     </div>
     <details class="bp-check"><summary><strong>课末自检（默认折叠；整块复制即可运行）：</strong></summary><pre><code>def event_reader(*events):
     """依次读取离线事件；事件用完后重复最后一个。"""
@@ -795,11 +798,14 @@ print("L04 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-bounded-control" data-phase-practice="bounded-control">
   <h2>阶段实践检查点：有界控制与精确 Prompt</h2>
-  <p class="best-practice-lead">串联 L03 的映射与本课的分支、循环和字符串组装：先把离线事件归一化，再用步数边界执行，并逐项锁定 Prompt 片段矩阵。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>构建一条“事件归一化 → 有界执行 → 精确 Prompt 组装”的离线流程，证明映射契约、控制流出口和可选片段组合能够稳定协作。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>用映射把成功、未知和持续处理中事件转成统一动作。</li><li>成功返回终态；未知动作立即失败；持续处理中达到上限后返回耗尽结果。</li><li>实现工具、上下文、严格模式三开关的 Prompt 组装。</li><li>对八种片段组合做精确字符串断言。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>完全离线且结果可重复</li><li>归一化动作和三个控制流出口均有精确断言</li><li>Prompt 八种组合逐字匹配</li><li>标准输出仅有唯一标记 <code>P1 CHECKPOINT BOUNDED-CONTROL PASSED</code></li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>完全离线且结果可重复</li><li>归一化动作和三个控制流出口均有精确断言</li><li>Prompt 八种组合逐字匹配</li><li>标准输出仅有唯一标记 <code>P1 CHECKPOINT BOUNDED-CONTROL PASSED</code></li></ul></div>
     </div>
   </div>
   <p class="bp-term"><strong>先独立完成：</strong>先根据上方操作清单写出自己的事件循环与 Prompt 组合，再展开参考验收程序核对边界；不要把复制运行当作完成实践。</p>

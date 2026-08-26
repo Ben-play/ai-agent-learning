@@ -364,10 +364,14 @@ assert all(evaluator(output, FIXTURE) for output in outputs)</code></pre></detai
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：科学摘要分诊双 Provider A/B 实验清单</h2>
-  <p class="best-practice-lead">先独立完成：为科学摘要分诊发布一份双 provider A/B 实验清单。每个实验臂都要把统一控制意图编译为该 provider 的原生请求结构，并让每条观察记录携带对应的 manifest ID；这里验收的是可追溯实验，而不是逐字复现输出。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>发布一份可审计的双 Provider A/B 实验清单，证明统一控制意图可映射为各自原生请求，受控条件和观察结果能通过稳定 manifest 关联。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>为两个全新虚构 provider 声明不同能力映射，并编译各自的原生控制字段。</li><li>把 endpoint、prompt、tools、controls、abstract batch、rubric 六类受控条件写入每个实验臂的 manifest。</li><li>生成稳定 manifest ID，并把 A/B 输出逐条关联到各自 ID。</li><li>证明 manifest 键顺序打乱不改 ID，而六类受控条件中任一类变化都会生成新 ID。</li><li>在评分前拒绝 manifest ID 不匹配的观察；再用科学摘要分诊 rubric 接受两份字节不同但质量等价的输出。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>Nova 臂只出现 sampling 原生控制，Cedar 臂只出现 reasoning effort；未支持的控制没有越界。</li><li>两个 manifest 都完整覆盖六类受控条件；重排键保持 ID，逐类替换条件均改变 ID。</li><li>每条观察都能按 provider 连接到正确 manifest；伪造 ID 的观察在 rubric 调用前被拒绝。</li><li>两份观察的规范 JSON 字节不同，但都满足目标摘要、分诊结论、证据片段与风险标记 rubric。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>Nova 臂只出现 sampling 原生控制，Cedar 臂只出现 reasoning effort；未支持的控制没有越界。</li><li>两个 manifest 都完整覆盖六类受控条件；重排键保持 ID，逐类替换条件均改变 ID。</li><li>每条观察都能按 provider 连接到正确 manifest；伪造 ID 的观察在 rubric 调用前被拒绝。</li><li>两份观察的规范 JSON 字节不同，但都满足目标摘要、分诊结论、证据片段与风险标记 rubric。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
   </div></div>
   <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import hashlib
 import json

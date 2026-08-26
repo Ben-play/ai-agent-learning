@@ -366,10 +366,14 @@ print(track("calc", 15))
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：批量创建独立的事件路由回调</h2>
-  <p class="best-practice-lead">从事件路由配置循环创建零参数回调，循环结束后再调用；用 <code>inspect.signature</code> 证明统一接口，并验证每个回调保留独立的标签和路由。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>批量生成统一的零参数事件回调，证明每个回调保留创建时的路由绑定，同时准确暴露共享可变配置的引用语义。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>实现具名工厂 <code>make_route_callback(label, route, options)</code>。</li><li>在循环中为两条事件配置创建回调，循环结束后再调用。</li><li>断言每个回调都是零参数，且标签、路由彼此独立。</li><li>修改源配置，证明不可变字段的创建时绑定与可变引用边界。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>所有回调保持零参数接口</li><li>延后调用仍返回各自 label/route</li><li>替换源 label/route 不改变已创建回调</li><li>原地修改共享 options 可被观察</li><li>标准输出仅有唯一 <code>L06 ACCEPTED</code></li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>所有回调保持零参数接口</li><li>延后调用仍返回各自 label/route</li><li>替换源 label/route 不改变已创建回调</li><li>原地修改共享 options 可被观察</li><li>标准输出仅有唯一 <code>L06 ACCEPTED</code></li></ul></div>
   </div>
   <p><strong>适用：</strong>调用方要求同一零参数协议、回调由已知的少量固定字段批量配置且稍后执行。<strong>不适用：</strong>立即调用、没有循环变量捕获，或调用方本应传参的场景；此时直接函数调用更简单。</p>
   <p><strong>机制与属性：</strong>工厂每调用一次就建立独立作用域，在创建时绑定当次 <code>label</code>/<code>route</code>；这保证路由正确性、接口一致性和可测试性。<strong>成本与替代：</strong>多一个函数层级；已有多参数函数时可用 <code>functools.partial</code>。配置字段未知、嵌套复杂、需要验证、状态或多个行为时，应使用配置对象配合可调用类或专门工厂，而不是继续扩张闭包参数。</p>

@@ -879,11 +879,14 @@ else:
 <!-- ==================== 本课最佳实践 ==================== -->
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：按契约解析新响应</h2>
-  <p class="best-practice-lead">使用不同于正文练习的 fixture，同时证明可变默认值隔离、四种容器语义，以及 <code>safe_get</code> 的缺失与错误边界。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>在全新响应 fixture 中实现可靠解析，证明容器选择能表达数据语义、可变默认值不会串状态，<code>safe_get</code> 能清楚区分缺失、默认值和非法路径。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>证明两次默认调用互不共享列表。</li><li>证明 list 保序保重复、dict 具名访问、tuple 仅浅层不可变、set 去重并支持集合运算。</li><li>区分存储的 <code>None</code>、<code>MISSING</code>、指定默认值和 list 越界。</li><li>精确诊断 bool/string 下标、不兼容遍历，并验证必填 <code>id</code> 缺失。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>所有断言通过</li><li>非法路径消息包含位置、值、实际类型与所需类型</li><li>必填字段精确抛 <code>KeyError('id')</code></li><li>最后只打印一次验收标记</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>所有断言通过</li><li>非法路径消息包含位置、值、实际类型与所需类型</li><li>必填字段精确抛 <code>KeyError('id')</code></li><li>最后只打印一次验收标记</li></ul></div>
     </div>
     <details class="bp-check"><summary><strong>课末自检（整块复制即可运行）：</strong></summary><pre><code>def collect(item, items=None):
     if items is None:

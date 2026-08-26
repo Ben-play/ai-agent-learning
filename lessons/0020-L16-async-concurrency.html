@@ -469,10 +469,14 @@ asyncio.run(main())</code></pre>
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：档案馆文档预览协调器</h2>
-  <p class="best-practice-lead">这是近迁移验收：不再复刻 item worker 的命名和 fixture 结构，而是在陌生的“数字档案馆并行文档预览”领域实现域级 <code>PreviewCoordinator</code>。注入的 renderer 仍满足 <code>Callable[[Document], Awaitable[Preview]]</code>，并已通过异步 adapter 落实 L15 的唯一重试 owner / 最终异常原则；协调器只负责并发、截止时间、取消传播与逐文档隔离。验收还必须机械地区分 renderer 自己的最终 <code>TimeoutError</code> 与协调器截止时间：前者保留错误身份与消息，后者才落为 <code>timeout</code>。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>实现文档预览协调器，证明并发上限、逐项隔离、调度截止时间和取消传播由 scheduler 负责，而 renderer 的最终错误语义保持原样。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>由 <code>PreviewCoordinator</code> 并发渲染五份档案文档，最多两个 renderer 同时活动。</li><li>让一份损坏文档抛出最终渲染异常，只把该文档落为失败。</li><li>让另一份文档由 renderer 自己抛出带精确消息的最终 <code>TimeoutError</code>，确认不会误分为协调器 timeout。</li><li>让一份超慢手稿越过截止时间，确认 renderer 收到取消并完成清理。</li><li>另起一次渲染批次，由上层取消整个协调器调用，确认取消继续传播。</li><li>两次场景后都确认许可全部恢复、活动数归零且没有 pending task。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>五份文档各有一个最终结果；两个成功预览的 renderer 调用次数均为 1。</li><li>损坏文档的最终失败不影响其它文档，实测峰值活动并发恰为 2。</li><li>renderer 自己的 <code>TimeoutError</code> 精确保留错误类名与消息；超慢手稿才落为 timeout，且取消清理完成。</li><li>外部取消传播 <code>CancelledError</code>，没有被伪装成文档失败。</li><li>许可全部可重新获取、无活动 renderer、无 pending task；标准输出恰为 <code>L16 ACCEPTED</code>。</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>五份文档各有一个最终结果；两个成功预览的 renderer 调用次数均为 1。</li><li>损坏文档的最终失败不影响其它文档，实测峰值活动并发恰为 2。</li><li>renderer 自己的 <code>TimeoutError</code> 精确保留错误类名与消息；超慢手稿才落为 timeout，且取消清理完成。</li><li>外部取消传播 <code>CancelledError</code>，没有被伪装成文档失败。</li><li>许可全部可重新获取、无活动 renderer、无 pending task；标准输出恰为 <code>L16 ACCEPTED</code>。</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末近迁移验收（纯标准库；离线、无网络/密钥/文件、无 httpx/Tenacity）：</strong></summary><pre><code>import asyncio
 import time
@@ -668,11 +672,14 @@ asyncio.run(main())</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-failure-ownership" data-phase-practice="failure-ownership">
   <h2>阶段实践检查点：失败责任归属</h2>
-  <p class="best-practice-lead">用纯标准库把 L10 根因链、L15 单一重试 owner 与 L16 独立项隔离接起来：adapter 独自完成单项重试和异常翻译，scheduler 只并发收齐结果，绝不重试整个 batch。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>划清 adapter 与 scheduler 的失败责任：adapter 独占单项重试和异常翻译，scheduler 只并发收集最终结果，稳定项不会因其他失败被重跑。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>让 adapter 对临时失败项独自重试 1 次并成功。</li><li>把永久传输失败翻译为领域异常，并保留 <code>__cause__</code>。</li><li>并发调度临时项、永久失败项与两个稳定项。</li><li>把每项最终成功或异常隔离为独立结果，并核对每项调用次数。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>临时项只由 adapter 调用 2 次，第二次成功。</li><li>永久项返回失败结果，领域异常的 <code>__cause__</code> 是原始永久错误。</li><li>两个稳定项各调用 1 次，所有四项都有独立结果。</li><li>scheduler 的 batch 调度次数为 1，没有批次重试。</li><li>标准输出只有检查点标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>临时项只由 adapter 调用 2 次，第二次成功。</li><li>永久项返回失败结果，领域异常的 <code>__cause__</code> 是原始永久错误。</li><li>两个稳定项各调用 1 次，所有四项都有独立结果。</li><li>scheduler 的 batch 调度次数为 1，没有批次重试。</li><li>标准输出只有检查点标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>先自行划分 adapter 与 scheduler 的责任，写出临时恢复、永久失败根因和成功项不重跑的断言；完成后再展开参考验收程序。</p>
     <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）</strong></summary><pre><code>import asyncio

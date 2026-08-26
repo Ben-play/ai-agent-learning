@@ -395,10 +395,14 @@ except APIError as e:
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：配置错误翻译、根因与清理</h2>
-  <p class="best-practice-lead">用纯标准库把 <code>JSONDecodeError</code> 翻译为 <code>ConfigError</code>，保留 cause，并验证失败时清理与 traceback 日志仍执行；Tenacity 继续作为独立可选块。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>构建配置加载的异常边界，证明只有目标解析错误会被翻译，根因、traceback 和清理行为在失败路径上仍完整保留。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>读取合法 JSON 配置。</li><li>翻译 JSONDecodeError。</li><li>断言 ConfigError 保留 cause。</li><li>验证 finally 清理。</li><li>在 except 内记录 traceback。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>公共边界验证 str</li><li>只翻译 JSONDecodeError</li><li>无关 TypeError 原样传播</li><li>异常链与 traceback 完整</li><li>失败路径仍执行清理</li><li>打印唯一验收标记</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>公共边界验证 str</li><li>只翻译 JSONDecodeError</li><li>无关 TypeError 原样传播</li><li>异常链与 traceback 完整</li><li>失败路径仍执行清理</li><li>打印唯一验收标记</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末自检：在配置边界证明分类、根因、日志与清理</strong></summary><pre><code>from contextlib import contextmanager
 from io import StringIO

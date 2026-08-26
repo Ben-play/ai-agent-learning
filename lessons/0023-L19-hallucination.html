@@ -271,10 +271,14 @@ Agent：  幻觉 → Agent 当成事实 → 调用了错误的工具 / 传了错
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：合成医疗设备事件公告发布门</h2>
-  <p class="best-practice-lead">先独立完成：为一家虚构实验室的合成医疗设备事件公告生成发布清单。每条 claim 必须携带 claim ID、evidence ID 与风险等级；样本一致性只能决定是否升级，自动发布必须得到证据精确支持，高风险 claim 还需要多个独立证据来源，否则转人工。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为合成医疗设备公告建立证据驱动的发布门，证明样本一致性只用于识别风险，精确证据和风险等级才决定发布、拒绝或人工升级。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>定义带 claim ID、evidence IDs、risk tier 与生成样本的公告条目。</li><li>准备一致但错误、发散且有多数派、试探措辞但无支持、低风险证据支持、高风险证据不独立五类 fixture。</li><li>先用语义 claim 分歧决定升级，不用多数票判真。</li><li>再逐条验证 evidence ID 存在且精确支持 claim。</li><li>高风险条目只有多个独立来源支持才可发布，否则记录人工升级。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>一致错误与“可能……”式无支持 claim 都不能发布。</li><li>发散样本即使多数派得到证据支持也必须升级。</li><li>证据精确支持的低风险 claim 可以发布。</li><li>高风险 claim 即使有两个 evidence ID，只要来源不独立仍必须人工升级。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>一致错误与“可能……”式无支持 claim 都不能发布。</li><li>发散样本即使多数派得到证据支持也必须升级。</li><li>证据精确支持的低风险 claim 可以发布。</li><li>高风险 claim 即使有两个 evidence ID，只要来源不独立仍必须人工升级。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>from dataclasses import dataclass
 
@@ -394,10 +398,14 @@ print("L19 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-reliability-gate" data-phase-practice="reliability-gate">
   <h2>阶段实践检查点：可靠性门</h2>
-  <p class="best-practice-lead">把 L17 非确定性契约与 L19 一致性 / 证据角色迁移到新的“档案征集”领域：同一可审计 run spec 允许措辞不同；样本分歧只负责升级，来源证据才负责发布。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为非确定的档案征集输出建立可审计可靠性门，证明可复现对象是冻结的运行规格，分歧负责升级、来源证据负责发布。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>冻结模型、prompt、tools、controls、fixture 与 evaluator，生成稳定指纹。</li><li>对同一捐赠档案声明收集多份非确定输出。</li><li>分开检查语义 claim、一致性风险与登记证据。</li><li>覆盖措辞不同但 claim 相同、均匀发散、存在严格多数但仍发散、共识错误四条路径。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>键顺序不改变规格指纹，受控条件变化会改变。</li><li>措辞不同不构成失败，只要 claim 相同且证据支持即可。</li><li>claim 发散必须升级；共识错误必须拒绝。</li><li>标准输出只有检查点标记。</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>键顺序不改变规格指纹，受控条件变化会改变。</li><li>措辞不同不构成失败，只要 claim 相同且证据支持即可。</li><li>claim 发散必须升级；共识错误必须拒绝。</li><li>标准输出只有检查点标记。</li></ul></div>
   </div>
   <p class="bp-term"><strong>先独立完成：</strong>只使用 L17 的“规格可复现而非字节复现”和 L19 的“分歧是风险、证据才判真”；不要引入下一课的 effort 路由。</p>
   <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import hashlib

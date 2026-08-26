@@ -478,8 +478,11 @@ if __name__ == "__main__":
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：独立、安全的 Shell 证据</h2>
-  <p class="best-practice-lead">在课程仓库内打开新的 Windows Git Bash，整段复制执行。脚本自行定位现有的 <code>code/phase1-python/part-a-basics/agent-hello</code> 项目；它可能按锁文件创建或同步本地 <code>.venv</code>，但不执行依赖声明或锁文件修改命令，并会核对 <code>pyproject.toml</code> 与 <code>uv.lock</code> 前后字节未变。脚本只使用临时占位值，不读取或要求真实密钥；临时证据文件与探针文件会由 <code>trap</code> 清理。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>在现有 <code>agent-hello</code> 项目中建立一份可重复、安全的离线环境证据，证明解释器、项目 <code>.venv</code>、锁定依赖和本地秘密边界均符合课程约定，且验收不会改写依赖输入。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div>
         <h3>操作清单</h3>
@@ -540,7 +543,7 @@ printf '%s\n' 'L01 ACCEPTED'</code></pre>
         <p><strong>安全边界：</strong>证据只显示 <code>secret-loaded: True</code>，不会显示占位值、其前缀或真实密钥。最后一行必须且只在全部检查通过后显示 <code>L01 ACCEPTED</code>。该验收无法反证历史 Git、旧日志或截图中没有泄露；若真实密钥曾出现过，必须在服务端撤销并轮换。</p>
       </div>
       <div class="practice-pass">
-        <strong>精确通过标准</strong>
+        <h3>精确通过标准</h3>
         <ul><li><code>project-root: PASS</code></li><li><code>manifest-lock-inputs: PASS</code></li><li><code>local-files-git-state: PASS</code></li><li><code>python-version: PASS</code></li><li><code>project-interpreter: PASS</code></li><li><code>locked-import-provenance: PASS</code>（三个包均来自项目 <code>.venv</code> 的 <code>site-packages</code>）</li><li><code>secret-loaded: True</code>（加载值与临时占位值精确相等）</li><li><code>manifest-lock-unchanged: PASS</code></li><li>证据扫描未发现占位密钥值或前缀</li><li>最后一行恰为 <code>L01 ACCEPTED</code></li></ul>
       </div>
     </div>
@@ -550,8 +553,11 @@ printf '%s\n' 'L01 ACCEPTED'</code></pre>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-environment" data-phase-practice="environment">
   <h2>阶段实践检查点：开发环境证据闭环</h2>
-  <p class="best-practice-lead">把本课学到的 uv 项目边界、离线锁定执行、项目虚拟环境、依赖来源、锁文件不变性与安全占位诊断组合成一次可重复验收；它只检查当前 <code>agent-hello</code>，不读取真实密钥，也不访问网络。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为当前 <code>agent-hello</code> 建立可重复的开发环境证据闭环，证明 <code>uv</code> 项目边界、依赖来源、锁文件不变性和占位诊断可在无网络、无真实密钥的条件下共同成立。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div>
         <h3>操作清单</h3>

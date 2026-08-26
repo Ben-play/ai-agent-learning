@@ -347,10 +347,14 @@ else:
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：发票处理多阶段执行策略</h2>
-  <p class="best-practice-lead">先独立完成：把故意无序的离线 trials 转成一张发票处理执行策略表。每个阶段有不同的质量门、延迟门与可用 effort 子集；逐阶段选择最低过门档，保留该档输出 Token 证据，并为没有任何过门档的阶段写出明确人工升级记录。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>把无序业务 trials 转换为分阶段执行策略，证明每个阶段按自身质量与延迟门选择最低达标 <code>effort</code>，无可用档位时明确转人工。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>定义多个发票阶段各自的质量门、延迟门与 supported efforts。</li><li>为每个支持档位准备质量、延迟、输出 Token 固定 trial，并故意打乱顺序。</li><li>按阶段过滤门槛，再按 API effort 顺序选择最低过门档。</li><li>把阶段、档位、门槛和所选 trial 的 output_tokens 写进策略表。</li><li>对无档过门阶段返回显式 escalation row，不静默选最高档。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>表头抽取与行项目核对使用不同门槛和 effort 子集。</li><li>trial 输入顺序不能决定选择结果；多个档过门时取最低可行档。</li><li>每个 use row 保留所选 trial 的 output_tokens。</li><li>异常复核阶段无档过门时包含原因、人工路由与全部 trial Token 证据。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>表头抽取与行项目核对使用不同门槛和 effort 子集。</li><li>trial 输入顺序不能决定选择结果；多个档过门时取最低可行档。</li><li>每个 use row 保留所选 trial 的 output_tokens。</li><li>异常复核阶段无档过门时包含原因、人工路由与全部 trial Token 证据。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>from dataclasses import dataclass
 

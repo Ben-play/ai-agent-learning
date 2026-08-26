@@ -405,11 +405,14 @@ print(calculate(validated))                        # 7.0
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：在路由分发前验证原始数据</h2>
-  <p class="best-practice-lead">换到不同的 Dispatch/Route 场景：不复用上面的转账模型，独立验收“描述与验证分离”以及“无效原始数据零执行、有效数据恰好执行一次”。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>在路由分发前建立 Pydantic 验证边界，证明 Schema 描述不触发业务验证，无效原始数据零执行，合法数据经转换后只执行一次。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>用 Pydantic v2 API 离线运行整段自检。</li><li>导出 <code>Route</code> Schema 后检查 validator 调用数。</li><li>提交非法原始 mapping 后检查 handler 执行记录。</li><li>提交合法原始 mapping，检查类型转换后的 handler 结果。</li><li>全部提交完成后检查 handler 的精确执行次数。</li><li>所有断言通过后打印验收标记。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>离线执行成功，且调用的是 <code>model_json_schema()</code>/<code>model_validate()</code>。</li><li>Schema 导出对应 validator 调用数严格为 0。</li><li>非法原始数据对应 handler 执行数严格为 0。</li><li>合法数据把 <code>priority="2"</code> 转为整数；handler 用 <code>type(priority) is int</code> 证明后返回 <code>queued:support</code>。</li><li>handler 最终精确执行 1 次，唯一记录为 <code>support:2</code>。</li><li>标准输出严格为一行 <code>L14 ACCEPTED</code>，且标记只出现 1 次。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>离线执行成功，且调用的是 <code>model_json_schema()</code>/<code>model_validate()</code>。</li><li>Schema 导出对应 validator 调用数严格为 0。</li><li>非法原始数据对应 handler 执行数严格为 0。</li><li>合法数据把 <code>priority="2"</code> 转为整数；handler 用 <code>type(priority) is int</code> 证明后返回 <code>queued:support</code>。</li><li>handler 最终精确执行 1 次，唯一记录为 <code>support:2</code>。</li><li>标准输出严格为一行 <code>L14 ACCEPTED</code>，且标记只出现 1 次。</li></ul></div>
     </div>
     <details class="bp-check"><summary><strong>课末自检（Pydantic v2，整块复制即可运行）：</strong></summary><pre><code>from collections.abc import Callable
 from typing import Any
@@ -476,11 +479,14 @@ print("L14 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-boundary-contracts" data-phase-practice="boundary-contracts">
   <h2>阶段实践检查点：数据边界契约</h2>
-  <p class="best-practice-lead">把 L03 字段契约、L05 关键字绑定、L13 <code>Literal</code> 与 L14 Pydantic v2 串成一道执行前边界：原始 mapping 只有完整、无多余字段且值合法时，才进入关键字专用 handler。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>构建从原始 <code>Mapping</code> 到仅关键字 handler 的单一执行前边界，证明字段契约、<code>Literal</code>、严格类型和 Pydantic 验证能够共同阻止无效输入产生副作用。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>定义 Pydantic v2 输入模型，并在 dispatch 边界用显式字段集合拒绝缺失或额外字段。</li><li>分别提交缺字段、额外字段和非法 <code>Literal</code> 的 mapping。</li><li>用 <code>model_validate()</code> 验证后，以 <code>**model_dump()</code> 绑定关键字专用 handler。</li><li>最后提交合法 mapping，并核对 handler 的调用记录与整数精确类型。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>缺字段/额外字段由显式字段契约拒绝，非法 <code>Literal</code> 由 Pydantic 拒绝；三组输入后 handler 调用数保持 0。</li><li>合法 mapping 才进入 handler，且只进入 1 次。</li><li>handler 收到 <code>type(retries) is int</code> 的值，关键字绑定结果准确。</li><li>标准输出只有检查点标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>缺字段/额外字段由显式字段契约拒绝，非法 <code>Literal</code> 由 Pydantic 拒绝；三组输入后 handler 调用数保持 0。</li><li>合法 mapping 才进入 handler，且只进入 1 次。</li><li>handler 收到 <code>type(retries) is int</code> 的值，关键字绑定结果准确。</li><li>标准输出只有检查点标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>先自行定义 mapping 字段集合、Pydantic 模型和关键字专用 handler，并写出三组无效输入零副作用断言；完成后再展开参考验收程序。</p>
     <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，需 Pydantic v2）</strong></summary><pre><code>from collections.abc import Mapping

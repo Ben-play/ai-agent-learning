@@ -451,10 +451,14 @@ print(parse_complete_jsonl(stream))</code></pre>
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：故障原子更新与三层 JSONL 校验</h2>
-  <p class="best-practice-lead">验收只使用标准库：成功更新 <code>settings.json</code>；再注入替换失败，证明旧目标仍是合法 JSON、临时文件清零且原始异常原样传播。JSONL 则按完整行、合法 JSON 值、应用对象事件契约分层，并精确区分 <code>syntax</code> / <code>non-object</code> / <code>contract</code>。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>实现故障原子的 JSON 更新与分层 JSONL 校验，证明写入失败不会破坏旧状态，流式输入错误能在 framing、语法和应用契约层被准确分类。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>先完成一次成功原子更新。</li><li>注入 <code>replace</code> 失败并核对旧目标。</li><li>证明失败路径无临时文件且异常对象未被替换。</li><li>仅解析完整 JSONL 行。</li><li>校验已知事件种类、必需字段与类型。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>成功路径读回新 settings</li><li>失败路径保留可解析旧目标</li><li>两条路径均无临时文件残留</li><li>原始注入异常对象继续向上传播</li><li>三类诊断均含准确行号和非空消息</li><li>最终打印本课唯一验收标记</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>成功路径读回新 settings</li><li>失败路径保留可解析旧目标</li><li>两条路径均无临时文件残留</li><li>原始注入异常对象继续向上传播</li><li>三类诊断均含准确行号和非空消息</li><li>最终打印本课唯一验收标记</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末自检（整块复制即可运行）：</strong></summary><pre><code>import json
 import os

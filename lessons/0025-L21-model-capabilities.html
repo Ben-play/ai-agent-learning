@@ -316,11 +316,14 @@ else:
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：实验室运营助手的多缺口计划</h2>
-  <p class="best-practice-lead">知识点卡只决定“一个缺口先试哪个候选”；本练习迁移到<strong>一个请求同时包含多个已诊断缺口</strong>的情况。上游已经给出缺口到候选的解析表，你只负责验证全部输入、去重共享能力，并生成最小计划。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>把多个已诊断能力缺口组合成稳定、去重的最小计划，证明共享能力不会重复，输入顺序不影响结果，无效组合不会留下部分计划。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>接收一个请求的多个已诊断 <code>gaps</code> 和给定解析表。</li><li>先验证全部 gap，再生成计划，未知值不能留下半份结果。</li><li>把实时查询与确定性计算共享的 <code>tool</code> 去重。</li><li>把 <code>none</code> 视为“没有缺口”，禁止与真实缺口混用。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>组合请求得到稳定、无重复的最小能力序列。</li><li>相同能力只出现一次，输入顺序不改变计划顺序。</li><li>纯改写返回空计划，不强加外部能力。</li><li>未知缺口和矛盾的 <code>none</code> 都在计划生成前失败。</li><li>标准输出只有验收标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>组合请求得到稳定、无重复的最小能力序列。</li><li>相同能力只出现一次，输入顺序不改变计划顺序。</li><li>纯改写返回空计划，不强加外部能力。</li><li>未知缺口和矛盾的 <code>none</code> 都在计划生成前失败。</li><li>标准输出只有验收标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>不要重写卡片里的“缺口 → 候选”决策；把它当成上游已经验证的输入。本题新增约束是<strong>组合、去重与失败原子性</strong>，不能复制单缺口自检直接交卷。</p>
     <details class="bp-check"><summary><strong>课末参考验收（纯标准库；离线、确定性）</strong></summary><pre><code>from dataclasses import dataclass
@@ -399,11 +402,14 @@ print("L21 ACCEPTED")</code></pre></details>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-capability-policy" data-phase-practice="capability-policy">
   <h2>阶段实践检查点：能力与推理策略</h2>
-  <p class="best-practice-lead">输入已由上游诊断为 <code>gap</code>，并附带当前模型在各 effort 档位上的固定业务试验。先按 L21 选择外部能力，再按 L20 的质量/延迟门选择<strong>最低达标 effort</strong>；两个决策不能互相代替。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为已诊断缺口同时选择外部能力和最低达标 <code>effort</code>，证明能力补全与推理投入是两个独立决策，任何一方都不能替代另一方。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><ol><li>由已诊断 gap 独立选择 direct context、RAG、tool、state、fine-tune candidate 或 none。</li><li>从固定 trials 中筛选同时通过质量与延迟门的 effort。</li><li>在达标项中按 low → medium → high 选择最低档，并保留质量、延迟与输出 Token 证据。</li><li>覆盖同一能力缺口但不同试验结果的请求，以及无档位达标的失败路径。</li></ol></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>短但需要实时容量的请求仍使用工具。</li><li>同一 fresh-data 缺口始终选 tool，但可以因试验不同选择不同 effort。</li><li>困难但资料已给齐的任务只提高 effort，不强加 RAG。</li><li>无 effort 达标时明确失败，不能静默使用最高档。</li><li>所选 trial 保留 <code>output_tokens</code>，标准输出只有检查点标记。</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>短但需要实时容量的请求仍使用工具。</li><li>同一 fresh-data 缺口始终选 tool，但可以因试验不同选择不同 effort。</li><li>困难但资料已给齐的任务只提高 effort，不强加 RAG。</li><li>无 effort 达标时明确失败，不能静默使用最高档。</li><li>所选 trial 保留 <code>output_tokens</code>，标准输出只有检查点标记。</li></ul></div>
     </div>
     <p class="bp-term"><strong>先独立完成：</strong>只使用 L20 的评测驱动 effort 和 L21 的缺口映射。不要用请求长度猜难度，也不要引入 L22 的候选模型排名。</p>
     <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）</strong></summary><pre><code>from dataclasses import dataclass

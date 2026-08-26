@@ -766,8 +766,11 @@ if __name__ == "__main__":
 <!-- ==================== 本课最佳实践 ==================== -->
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：验证结构、接口、依赖与测试</h2>
-  <p class="best-practice-lead">从仓库根进入现有 <code>agent-hello</code> 项目，在 Windows Git Bash 运行整段命令。命令使用 <code>uv --offline</code>，不会访问网络；临时证据会在成功或失败时保存到项目外的系统临时目录，并删除项目内证据，全部检查通过后只打印一次最终接受标记。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>为现有 <code>agent-hello</code> 产出一份可审计的离线模块验收证据，证明文件结构、公开接口、静默导入、稳定消费者入口、单向依赖和现有测试彼此一致。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div><h3>操作清单</h3><p>展开课末自检，整段运行；按右侧标准核对结果。</p><details class="bp-check"><summary><strong>课末自检：运行完整 L02 验收</strong></summary><pre><code>set -euo pipefail
 cd code/phase1-python/part-a-basics/agent-hello
@@ -983,7 +986,7 @@ cp "$project_evidence" "$saved_evidence"
 rm -f "$project_evidence"
 trap - EXIT
 printf 'L02 ACCEPTED\n'</code></pre></details></div>
-      <div class="practice-pass"><strong>通过标准</strong><ul><li>文件集合精确等于当前 <code>main.py</code>、四个 <code>agent/*.py</code> 与 <code>tests/test_core.py</code></li><li><code>__all__</code> 精确匹配，两个 re-export 与子模块原对象逐一满足 <code>is</code>；<code>main.py</code> 对 <code>agent</code> 的顶层导入只能是 <code>from agent import create_response</code>，可保留其他标准库导入</li><li><code>import agent</code> 的 stdout 与 stderr 都为空</li><li>所有目标文件通过 AST，函数内 import 精确为空</li><li>运行时依赖边精确匹配当前单向图，覆盖两种 import 语法并排除 <code>TYPE_CHECKING</code> 分支，不假设 <code>tools.py</code></li><li><code>main.py</code> 真实执行并输出精确的 Message repr；现有 pytest 全部通过</li><li>项目内临时证据被清理，证据副本保存在系统临时目录</li><li>所有检查成功后，最后一行打印唯一的最终接受标记</li></ul></div>
+      <div class="practice-pass"><h3>通过标准</h3><ul><li>文件集合精确等于当前 <code>main.py</code>、四个 <code>agent/*.py</code> 与 <code>tests/test_core.py</code></li><li><code>__all__</code> 精确匹配，两个 re-export 与子模块原对象逐一满足 <code>is</code>；<code>main.py</code> 对 <code>agent</code> 的顶层导入只能是 <code>from agent import create_response</code>，可保留其他标准库导入</li><li><code>import agent</code> 的 stdout 与 stderr 都为空</li><li>所有目标文件通过 AST，函数内 import 精确为空</li><li>运行时依赖边精确匹配当前单向图，覆盖两种 import 语法并排除 <code>TYPE_CHECKING</code> 分支，不假设 <code>tools.py</code></li><li><code>main.py</code> 真实执行并输出精确的 Message repr；现有 pytest 全部通过</li><li>项目内临时证据被清理，证据副本保存在系统临时目录</li><li>所有检查成功后，最后一行打印唯一的最终接受标记</li></ul></div>
     </div>
     <details class="think-q"><summary><span class="think-q-tag">排错</span>怎样定位失败类别？</summary><div class="think-q-answer"><p><code>structure mismatch</code> 会列出缺少或多出的文件；<code>agent.__all__ mismatch</code> 或 re-export 来源断言指向公开接口；<code>main.py stable entry mismatch</code> 会显示实际导入并要求稳定包入口；<code>import agent wrote ...</code> 会显示副作用输出；AST 会带文件名和语法位置；<code>function imports not allowed</code> 给出 <code>路径:行:列</code>；<code>runtime dependency mismatch</code> 分别列出缺失边与额外边；pytest 失败则按测试报告定位。任何失败都会打印 <code>L02 REJECTED</code> 和证据路径，不会打印接受标记。</p></div></details>
   </div>
@@ -991,8 +994,11 @@ printf 'L02 ACCEPTED\n'</code></pre></details></div>
 
 <div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-modules" data-phase-practice="modules">
   <h2>阶段实践检查点：模块边界可重构</h2>
-  <p class="best-practice-lead">把本课学到的包入口 re-export、静默导入、消费者稳定路径、实现模块重命名与 AST 单向依赖组合成一个临时迷你包实验，验证内部文件布局变化不会泄漏给调用方。</p>
   <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>在临时迷你包中完成一次内部实现重命名，证明包入口可以隔离文件布局变化，消费者源码、导入路径和行为保持稳定。</p>
+    </div>
     <div class="practice-acceptance-grid">
       <div>
         <h3>操作清单</h3>

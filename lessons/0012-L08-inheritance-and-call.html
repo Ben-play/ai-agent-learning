@@ -324,10 +324,14 @@ for call in calls:
 
 <div class="section best-practice-lesson">
   <h2 id="lesson-best-practices">本课最佳实践验收：扩展文本转换插件</h2>
-  <p class="best-practice-lead">将课堂中的工具注册表迁移到文本转换领域：所有转换都遵守 <code>transform(text)</code>；已有带前缀状态的转换器，新增大写转换器时只能扩展注册表，不能修改执行器。</p>
-  <div class="practice-acceptance"><div class="practice-acceptance-grid">
+  <div class="practice-acceptance">
+    <div class="practice-acceptance-goal">
+      <h3>任务目标</h3>
+      <p>扩展一个注册表驱动的文本转换系统，证明新插件可在不修改执行器的情况下加入，并保持抽象契约、状态继承和注册失败安全。</p>
+    </div>
+    <div class="practice-acceptance-grid">
     <div><h3>操作清单</h3><ol><li>定义共享 <code>transform(text)</code> 的 BaseTransform 抽象契约。</li><li>实现带实例状态的 PrefixTransform。</li><li>新增 UpperTransform 并注册。</li><li>证明两个实现统一调用且父类状态完整。</li><li>默认拒绝重复名称与未知名称。</li></ol></div>
-    <div class="practice-pass"><strong>通过标准</strong><ul><li>失败明确指向未实现的抽象方法 <code>transform</code></li><li>子类通过 super 获得 name/owner</li><li>重复注册失败后旧条目不变</li><li>新增插件不修改 execute</li><li>成功路径与精确错误诊断均通过，最后打印唯一验收标记</li></ul></div>
+    <div class="practice-pass"><h3>通过标准</h3><ul><li>失败明确指向未实现的抽象方法 <code>transform</code></li><li>子类通过 super 获得 name/owner</li><li>重复注册失败后旧条目不变</li><li>新增插件不修改 execute</li><li>成功路径与精确错误诊断均通过，最后打印唯一验收标记</li></ul></div>
   </div>
   <details class="bp-check"><summary><strong>课末自检：证明跨领域插件可组合扩展</strong></summary><pre><code>from abc import ABC, abstractmethod
 
