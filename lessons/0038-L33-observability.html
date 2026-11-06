@@ -98,11 +98,11 @@
       <li><strong>输入 / 输出 Token 数</strong>：直接决定成本，对应 <a href="0027-L23-token-economics.html">L23</a> 的账单公式。</li>
       <li><strong>延迟</strong>：尤其是 <strong>TTFT</strong>（首 Token 时间，见 <a href="0031-L26-streaming.html">L26</a>）——流式体验的核心指标。</li>
       <li><strong>成本</strong>：由 Token × 单价算出，是告警与预算的基础。</li>
-      <li><strong>prompt / completion 内容</strong>：出问题时要能回看"到底喂了什么、模型答了什么"。</li>
-      <li><strong>工具调用</strong>：调了哪个工具、参数是什么、返回了什么。</li>
+      <li><strong>prompt / completion 内容</strong>：默认不采集完整正文；确需诊断时，在授权、脱敏、采样、访问控制与保留期限制下启用，避免把敏感输入发送到遥测后端。</li>
+      <li><strong>工具调用</strong>：默认记录名称、状态、耗时和关联ID；参数/结果正文同样采用显式采集与脱敏策略。</li>
       <li><strong>错误</strong>：超时、限流、解析失败……（<a href="0036-L31-error-handling-retry.html">L31</a> 说过：错误也要可观测）。</li>
     </ul>
-    <p>记住一句话：<strong>凡是会影响"慢 / 贵 / 错"的信号，都要进 span</strong>。下一节的问题是——这些字段该<strong>叫什么名字</strong>。</p>
+    <p>记录能解释“慢 / 贵 / 错”的最小必要信号；不能因此默认收集所有正文和工具参数。下一节统一字段名，同时固定约定版本并验证后端映射。</p>
   </div>
 </div>
 
@@ -120,8 +120,8 @@ gen_ai.response.time_to_first_chunk   # 首 Token 时间（TTFT）
 gen_ai.tool.name               # 工具调用：工具名（在"执行工具"这类 span 上）
 # 注：工具调用的参数/结果不是顶层 span 属性，而是放在 gen_ai.input/output.messages 的消息部件里
 error.type                     # 出错类型（复用通用约定）</code></pre>
-    <p>它正在<strong>成为厂商无关的通用标准</strong>：OTel 的 GenAI 语义约定持续演进中（仍标记为 Experimental，属性名以官方最新版为准），Langfuse、OpenLLMetry 等已按它接入。方向明确——别自造字段，向标准靠。</p>
-    <p><strong>为什么这是"厂商无关的答案"？</strong>因为字段名由中立标准定义，不属于任何一家监控厂商。你按 <code>gen_ai.*</code> 记录，<strong>换 Langfuse、换 Datadog、换自建后端，甚至换模型厂商，可观测代码都不用重写</strong>——这就是不被单一厂商绑定（vendor lock-in）的关键。</p>
+    <p>GenAI语义约定仍在演进，不应只凭属性以 <code>gen_ai.</code> 开头就认定它是稳定标准。2026-11-06复核时，原文档已指向<a href="https://github.com/open-telemetry/semantic-conventions-genai" target="_blank">GenAI独立官方仓库</a>；固定采用的版本，逐项核实属性/事件/指标及单位，不把历史示例字段当永久契约。</p>
+    <p><strong>为什么这是"厂商无关的答案"？</strong>因为字段名由中立标准定义，不属于任何一家监控厂商。你按 <code>gen_ai.*</code> 记录，<strong>能降低更换后端与模型厂商时的映射成本，但不能保证零改动</strong>——这就是不被单一厂商绑定（vendor lock-in）的关键。</p>
   </div>
   <div class="tip">
     <strong>面试高频：「LLM 应用怎么做可观测性？」</strong> 标准答法：用 <strong>Trace</strong>（把每次 LLM/工具调用记成 span，串成调用树）+ <strong>Metrics</strong>（Token / 延迟 / 成本 / 错误率）+ <strong>Logs</strong>；字段用 <strong>OpenTelemetry GenAI 语义约定（<code>gen_ai.*</code>）</strong>这套厂商无关标准，配 <strong>Langfuse</strong> 等工具落地；再基于成本 metrics <strong>设告警</strong>。一句话点出 OTel GenAI 是厂商无关的标准，基本就答到点子上了。
@@ -130,12 +130,12 @@ error.type                     # 出错类型（复用通用约定）</code></pr
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> 为什么用 OpenTelemetry GenAI 的 <code>gen_ai.*</code> 标准字段，而不是自定义字段名？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">因为它能让模型跑得更快</button>
-      <button data-answer="correct">换工具换厂商都不用重写</button>
-      <button data-answer="wrong">自定义字段一定不被支持</button>
-      <button data-answer="wrong">它可以帮你省掉 Token 费</button>
+      <button data-answer="wrong">可以直接提高模型推理速度</button>
+      <button data-answer="correct">减少迁移后端时的映射工作</button>
+      <button data-answer="wrong">自定义字段在所有后端禁用</button>
+      <button data-answer="wrong">自动减少模型生成内容费用</button>
     </div>
-    <div class="quiz-explanation"><strong>OTel GenAI 语义约定</strong>由中立的 CNCF 标准定义了厂商无关的字段名（<code>gen_ai.request.model</code>、<code>gen_ai.usage.input_tokens</code> 等）。按它记录，<strong>换监控工具、换模型厂商，仪表盘/告警/查询都不用重写</strong>，避免被单一厂商绑定。它不会让模型更快、也不省 Token——它省的是你的<strong>迁移与维护成本</strong>。自定义字段并非"不被支持"，只是各家不互通、迁移即返工。</div>
+    <div class="quiz-explanation"><strong>OTel GenAI 语义约定</strong>由中立的 CNCF 标准定义了厂商无关的字段名（<code>gen_ai.request.model</code>、<code>gen_ai.usage.input_tokens</code> 等）。按它记录，<strong>减少跨工具迁移时的字段映射工作；仍须固定语义约定和埋点库版本，验收后端对字段/单位的支持</strong>，避免被单一厂商绑定。它不会让模型更快、也不省 Token——它省的是你的<strong>迁移与维护成本</strong>。自定义字段并非"不被支持"，只是各家不互通、迁移即返工。</div>
   </div>
 </div>
 
@@ -175,10 +175,10 @@ Traceloop.init()                     # 一行初始化，之后自动追踪
   <div class="quiz" data-quiz="q3">
     <div class="quiz-question"><span class="quiz-q">Q</span> "日成本超过阈值就自动报警"主要靠哪根支柱？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">靠 Logs 一条条翻出来</button>
-      <button data-answer="correct">靠 Metrics 设阈值告警</button>
-      <button data-answer="wrong">靠 trace 树逐个人工看</button>
-      <button data-answer="wrong">靠模型自己上报花费</button>
+      <button data-answer="wrong">逐条人工翻阅文本日志记录</button>
+      <button data-answer="correct">聚合成本指标设置阈值告警</button>
+      <button data-answer="wrong">逐个手工查看完整调用链条</button>
+      <button data-answer="wrong">让模型自行猜测当前总费用</button>
     </div>
     <div class="quiz-explanation"><strong>成本、Token、延迟这类可聚合数字属于 Metrics</strong>，天然适合设阈值告警（超 X 就通知）。因为已按 <code>gen_ai.usage.*</code> 等标准记录，加告警只是在后端配规则、不用改埋点。Trace 用于<strong>事后定位是哪一步</strong>贵/慢，Logs 用于翻查细节，都不是"自动越线报警"的主力；模型本身也不会主动上报你的账单。</div>
   </div>

@@ -4,266 +4,115 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#F8F6F1">
-    <link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+  <link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
   <link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
-  <title>MCP & A2A 协议参考 · 2026</title>
+  <title>MCP / A2A 协议参考 · 2026-07-28 基线</title>
   <link rel="stylesheet" href="../assets/style.css">
-  <style>
-    .protocol { 
-      margin-bottom: 2rem; 
-      padding: 1.5rem; 
-      background: var(--bg); 
-      border-radius: 8px;
-      border: 1px solid #ddd;
-    }
-    .protocol h2 { 
-      margin-top: 0; 
-      color: var(--accent); 
-      border-bottom: 2px solid var(--accent);
-      padding-bottom: 0.5rem;
-    }
-    .use-case { 
-      background: #f8f9fa; 
-      padding: 1rem; 
-      border-radius: 4px; 
-      margin: 1rem 0;
-    }
-    .use-case h4 { 
-      margin-top: 0; 
-      color: var(--accent); 
-    }
-    .comparison-table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      margin: 1rem 0;
-    }
-    .comparison-table th, .comparison-table td { 
-      padding: 0.75rem; 
-      border: 1px solid #ddd; 
-      text-align: left;
-    }
-    .comparison-table th { 
-      background: var(--accent); 
-      color: white;
-    }
-    .comparison-table tr:nth-child(even) { 
-      background: #f8f9fa;
-    }
-  </style>
 </head>
 <body>
+<main>
+<h1>MCP / A2A 协议参考</h1>
+<p>先明确要连接的是工具与数据，还是远程 Agent；再固定协议与 SDK 版本，不把“接上协议”当作授权或生产就绪。</p>
 
-<h1>MCP & A2A 协议参考</h1>
-<p>2026 年 AI Agent 通信的两大标准协议。理解它们的区别和适用场景是 Agent 开发的必备技能。</p>
-
-<h2>协议全景</h2>
-
-<table class="comparison-table">
-  <thead>
-    <tr>
-      <th>协议</th>
-      <th>全称</th>
-      <th>发起方</th>
-      <th>解决的问题</th>
-      <th>类比</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><strong>MCP</strong></td>
-      <td>Model Context Protocol</td>
-      <td>Anthropic</td>
-      <td>Agent 如何访问外部工具和数据</td>
-      <td>USB-C（统一接口）</td>
-    </tr>
-    <tr>
-      <td><strong>A2A</strong></td>
-      <td>Agent-to-Agent Protocol</td>
-      <td>Google</td>
-      <td>Agent 之间如何相互通信</td>
-      <td>HTTP（通信协议）</td>
-    </tr>
-    <tr>
-      <td><strong>ACP</strong></td>
-      <td>Agent Communication Protocol</td>
-      <td>社区</td>
-      <td>Agent 间消息传递的语义标准</td>
-      <td>SMTP（消息格式）</td>
-    </tr>
-    <tr>
-      <td><strong>ANP</strong></td>
-      <td>Agent Network Protocol</td>
-      <td>社区</td>
-      <td>分布式 Agent 网络发现和通信</td>
-      <td>DNS（服务发现）</td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="protocol">
-  <h2>MCP（Model Context Protocol）</h2>
-  
-  <p><strong>核心问题</strong>：Agent 如何统一地访问各种外部工具和数据源？</p>
-  
-  <p>MCP 定义了 Agent 与外部资源交互的标准方式。无论你用的是数据库、API、文件系统还是其他工具，都通过统一的 MCP 接口访问。</p>
-  
-  <h3>关键特性</h3>
-  <ul>
-    <li><strong>工具标准化</strong>：所有工具通过统一接口暴露</li>
-    <li><strong>上下文注入</strong>：动态向 LLM 注入相关上下文</li>
-    <li><strong>权限控制</strong>：细粒度的工具访问权限管理</li>
-    <li><strong>跨框架兼容</strong>：不同 Agent 框架可以共享工具</li>
-  </ul>
-  
-  <div class="use-case">
-    <h4>典型使用场景</h4>
-    <ul>
-      <li>Agent 需要查询数据库获取用户信息</li>
-      <li>Agent 需要调用外部 API 发送邮件</li>
-      <li>Agent 需要读取本地文件处理文档</li>
-      <li>Agent 需要访问企业内部系统</li>
-    </ul>
-  </div>
-  
-  <h3>代码示例（Python）</h3>
-  <pre><code># MCP 工具定义
-from mcp import Tool, Server
-
-# 定义一个工具
-@server.tool()
-async def get_weather(city: str) -> str:
-    """获取指定城市的天气信息"""
-    weather = await fetch_weather(city)
-    return f"{city}今天天气：{weather}"
-
-# Agent 调用工具
-result = await agent.call_tool("get_weather", {"city": "北京"})</code></pre>
+<div class="info">
+  <strong>核验日期：2026-11-06。MCP 规范基线：2026-07-28。</strong>
+  本页依据官方发布说明、变更记录、传输与授权规范；这是版本化参考，不是可运行 SDK 工程。Phase 6/10 正文仍在规划，所列实验是后续验收目标；SDK 是否支持本基线须单独验证。
 </div>
 
-<div class="protocol">
-  <h2>A2A（Agent-to-Agent Protocol）</h2>
-  
-  <p><strong>核心问题</strong>：不同框架构建的 Agent 如何相互通信和协作？</p>
-  
-  <p>A2A 定义了 Agent 之间通信的标准协议。当一个 Agent 需要另一个 Agent 帮忙时，使用 A2A 进行协调。</p>
-  
-  <h3>关键特性</h3>
-  <ul>
-    <li><strong>Agent 发现</strong>：如何找到能完成特定任务的 Agent</li>
-    <li><strong>任务委托</strong>：如何将子任务分配给其他 Agent</li>
-    <li><strong>状态同步</strong>：如何跟踪远程 Agent 的执行状态</li>
-    <li><strong>结果聚合</strong>：如何整合多个 Agent 的结果</li>
-  </ul>
-  
-  <div class="use-case">
-    <h4>典型使用场景</h4>
-    <ul>
-      <li>研究 Agent 委托写作 Agent 生成报告</li>
-      <li>前端 Agent 与后端 Agent 协调 API 设计</li>
-      <li>主 Agent 调度多个专家 Agent 并行工作</li>
-      <li>不同公司的 Agent 之间安全协作</li>
-    </ul>
-  </div>
-  
-  <h3>代码示例（Python）</h3>
-  <pre><code># A2A 任务委托
-from a2a import AgentCard, Task
-
-# 发现远程 Agent
-writer_agent = await discover_agent(
-    skill="technical_writing",
-    min_rating=4.5
-)
-
-# 委托任务
-task = await writer_agent.delegate(
-    task="撰写技术博客文章",
-    context={"topic": "Agent Harness", "length": 2000},
-    timeout=300
-)
-
-# 等待结果
-result = await task.wait()</code></pre>
-</div>
-
-<h2>MCP vs A2A：何时用哪个？</h2>
-
-<table class="comparison-table">
-  <thead>
-    <tr>
-      <th>场景</th>
-      <th>使用协议</th>
-      <th>原因</th>
-    </tr>
-  </thead>
+<h2>先选集成边界</h2>
+<table>
+  <thead><tr><th>方式</th><th>主要用途</th><th>何时考虑</th></tr></thead>
   <tbody>
-    <tr>
-      <td>Agent 需要查询数据库</td>
-      <td>MCP</td>
-      <td>这是工具访问，不是 Agent 间通信</td>
-    </tr>
-    <tr>
-      <td>Agent 需要调用天气 API</td>
-      <td>MCP</td>
-      <td>外部 API 是工具，用 MCP 标准化</td>
-    </tr>
-    <tr>
-      <td>Agent 需要另一个 Agent 帮忙写代码</td>
-      <td>A2A</td>
-      <td>这是 Agent 间协作，需要任务委托</td>
-    </tr>
-    <tr>
-      <td>多个 Agent 并行处理子任务</td>
-      <td>A2A</td>
-      <td>需要协调多个 Agent 的执行</td>
-    </tr>
-    <tr>
-      <td>Agent 需要访问企业内部系统</td>
-      <td>MCP</td>
-      <td>内部系统是工具资源</td>
-    </tr>
-    <tr>
-      <td>不同公司的 Agent 安全协作</td>
-      <td>A2A</td>
-      <td>需要跨组织的 Agent 互操作</td>
-    </tr>
+    <tr><td>普通函数 / API</td><td>应用内确定性操作</td><td>不需要协议互操作时，保持最简单可行方案</td></tr>
+    <tr><td>MCP · Model Context Protocol</td><td>Host 经 Client 连接 Server，使用工具、资源和提示等标准接口</td><td>多个宿主需要复用外部工具或数据接入</td></tr>
+    <tr><td>A2A · Agent-to-Agent Protocol</td><td>远程 Agent 的发现、任务委托、状态与结果交互</td><td>确有跨系统 Agent 互操作需求；本地并行或多 Agent 不自动需要 A2A</td></tr>
+    <tr><td><a href="0004-agent-skills.html">Agent Skills</a></td><td>打包可复用的流程知识、参考资料与脚本</td><td>复用“怎么做”的业务步骤；可调用工具/MCP，但本身不是传输或授权协议</td></tr>
   </tbody>
 </table>
+<p>MCP 与 A2A 可以互补，但不要求同时采用。协议标准化了交互方式，不自动保证对端可信、任务成功或细粒度业务权限。</p>
 
-<h2>2026 年协议生态</h2>
+<h2>MCP 核心概念与本版边界</h2>
+<ul>
+  <li><strong>Host / Client / Server：</strong>Host 是集成 MCP 的应用，Client 负责协议交互，Server 提供能力；不等于模型可绕过应用直接执行任意操作。</li>
+  <li><strong>Tools / Resources / Prompts：</strong>分别用于工具操作、上下文资源与提示模板；工具定义、资源内容和返回结果均需校验，外部内容按不可信输入处理。</li>
+  <li><strong>stdio：</strong>本地进程通过标准输入/输出通信；日志不要混入协议输出。凭证从环境获取，遵守最小权限并避免写入示例、日志或代码库。</li>
+  <li><strong>Streamable HTTP：</strong>每条客户端 JSON-RPC 消息使用独立 POST；请求可返回 JSON 对象或请求范围内的 SSE 响应流，客户端须支持两者。</li>
+</ul>
 
-<p>根据 <a href="https://developers.googleblog.com/developers-guide-to-ai-agent-protocols/">Google 开发者指南</a>（2026-03），Agent 协议正在标准化：</p>
+<div class="warning">
+  <strong>不要混用旧教程：</strong>2026-07-28 已移除 <code>initialize</code> / <code>notifications/initialized</code> 握手、协议级 session 和 MCP 端点的 GET 通知流；<strong>不等于移除了 SSE 响应</strong>。旧版 HTTP+SSE 传输与新版 Streamable HTTP 的 SSE 响应不是同一个概念。
+</div>
+<ul>
+  <li><strong>逐请求版本与能力：</strong>请求 <code>_meta</code> 携带 <code>io.modelcontextprotocol/protocolVersion</code> 和 <code>io.modelcontextprotocol/clientCapabilities</code>；Server 必须实现 <code>server/discover</code>，Client 可预先调用以了解版本和能力。</li>
+  <li><strong>无协议 session：</strong>不再依赖 <code>Mcp-Session-Id</code>；业务确需跨调用状态时用显式句柄等应用机制。Agent 的持久任务、审批状态与数据库检查点仍由应用负责。</li>
+  <li><strong>变更通知：</strong>使用 <code>subscriptions/listen</code> 的长时 POST 响应流接收已选择的变更通知；进度等请求范围通知留在对应请求的响应流。</li>
+  <li><strong>Tasks：</strong>已从核心移到官方可选扩展 <code>io.modelcontextprotocol/tasks</code>，不是“非官方提案”，也不是所有客户端/服务端必有的能力。采用前核实扩展版本、双方支持和失败行为。</li>
+</ul>
 
+<h2>授权是独立的工程边界</h2>
+<p>MCP 授权能力在协议层面是<strong>可选</strong>的；采用 HTTP 授权时，官方要求实现应遵循该版授权规范（SHOULD），其中具体 MUST/SHOULD 按原文执行。不能把“可选”理解为企业受限资源可以不做鉴权。</p>
+<table>
+  <thead><tr><th>场景</th><th>应落实的边界</th><th>验收目标</th></tr></thead>
+  <tbody>
+    <tr><td>远程 HTTP 授权</td><td>保护资源元数据与授权服务器发现、客户端注册、PKCE、目标 resource / audience、issuer 校验、最小 scope；OAuth 2.1 引用仍是 IETF 草案</td><td>缺失/过期令牌被拒；错误 audience 或 issuer 失败；scope 不足不执行工具；审批不隐式扩大 scope</td></tr>
+    <tr><td>stdio 凭证</td><td>不套用此 HTTP OAuth 流程，从环境取得所需凭证；宿主控制进程与环境可见范围</td><td>缺凭证明确失败；无敏感值泄露；子进程只获得必要权限</td></tr>
+    <tr><td>业务执行授权</td><td>应用与 Server 在执行前校验用户/租户、对象、动作、参数与审批状态；工具展示/发现不是授权</td><td>已发现但无权执行的工具零执行；同名资源不能跨租户读取；高风险动作需要有效审批</td></tr>
+    <tr><td>下游系统令牌</td><td>验证令牌确实面向当前 MCP Server，不接收/透传任意其他资源令牌；安全保存凭证并审计</td><td>错误受众与越权调用失败，日志脱敏；不把 MCP 令牌当作所有下游 API 的通行证</td></tr>
+  </tbody>
+</table>
+<p>“MCP 自动提供细粒度授权”是错误表述。协议授权流程不替代文档 ACL、行级权限、每次工具 dispatch 的允许集合或人工审批；即使模型/Skill 选择了工具，仍必须过执行侧检查。</p>
+
+<h2>跨版本迁移检查表</h2>
+<p>先记录旧规范、目标规范、客户端/服务端 SDK 锁定版本与运行环境。不要只升级依赖后假定兼容；规范发布日期也不是 SDK 已支持的证明。</p>
+<table>
+  <thead><tr><th>检查项</th><th>迁移到 2026-07-28</th><th>应保留的测试证据</th></tr></thead>
+  <tbody>
+    <tr><td>初始化与版本</td><td>移除新版链路的 initialize 握手；逐请求传版本/能力，验证 server/discover 与不支持版本错误</td><td>发现、兼容版本成功、不兼容版本可解释失败；旧版适配分支与新版不混用</td></tr>
+    <tr><td>HTTP 元数据</td><td>按规范传 MCP-Protocol-Version、Mcp-Method 及适用的 Mcp-Name；头与 body 一致；工具指定 x-mcp-header 时遵循映射规则</td><td>缺字段、头/body 不一致、编码边界被正确拒绝，不把所有 400 都当作旧版服务</td></tr>
+    <tr><td>协议 session</td><td>移除 Mcp-Session-Id、依赖 session 的路由/清理；业务状态用显式机制管理</td><td>跨连接调用不依赖隐式 session，应用检查点仍可恢复且租户隔离</td></tr>
+    <tr><td>通知流</td><td>移除 MCP GET 流；变更通知改为 subscriptions/listen 的 POST 响应流</td><td>订阅与请求进度分别走正确通道；新版端点不依赖 GET/DELETE session 流程</td></tr>
+    <tr><td>响应与断线</td><td>同时处理 JSON / SSE；本版无 Last-Event-ID 恢复或消息重投，断流后以新请求 ID 重发</td><td>完整响应、断流、取消、重发都有测试；可能已发生的业务副作用由幂等机制处理，不能仅换请求 ID</td></tr>
+    <tr><td>结果与补充输入</td><td>适配 resultType 和 MRTR 补充输入；兼容早期结果缺 resultType 时按 complete 处理</td><td>普通结果、input_required 与旧版结果分开覆盖，不等待旧式服务端主动请求</td></tr>
+    <tr><td>Tasks 与其他扩展</td><td>核心和扩展分开；不沿用旧实验 Tasks API，按扩展规范及 SDK 实际支持选用</td><td>不支持扩展时有明确降级；不以协议任务句柄冒充应用的持久恢复保证</td></tr>
+    <tr><td>HTTP 授权</td><td>采用时按本版发现、注册、PKCE、resource/audience、issuer 与 scope 流程实现；stdio 单独处理</td><td>401/403、错误受众/签发者、权限不足、用户取消与最小权限测试</td></tr>
+  </tbody>
+</table>
+<p>若仍需支持 2025-11-25 等旧端点，应隔离并标注其版本流程。现代请求返回可识别的版本/头校验错误时，先按错误修正请求，不盲目降级到旧握手。完整兼容规则见官方传输文档。</p>
+
+<h2>SDK 与最小实验</h2>
+<p>原页将未定义的 <code>server</code> / <code>agent</code> 与假定导入混在一起，不能直接执行，现已移除。这里不虚构替代 API；从官方 SDK 的对应版本示例开始，锁定依赖，再逐步增加能力。</p>
 <ol>
-  <li><strong>MCP</strong> 成为工具集成的事实标准</li>
-  <li><strong>A2A</strong> 成为 Agent 间通信的标准</li>
-  <li><strong>ACP</strong> 和 <strong>ANP</strong> 补充特定场景需求</li>
-  <li>协议之间<strong>互补而非竞争</strong>，需要同时掌握</li>
+  <li>查官方 SDK 的发行说明与所支持规范：<a href="https://github.com/modelcontextprotocol/python-sdk">MCP Python SDK</a>、<a href="https://github.com/modelcontextprotocol/typescript-sdk">MCP TypeScript SDK</a>。若尚未支持目标版，保留明确标注的旧版实验，不谎称已完成迁移。</li>
+  <li>本地只用无敏感数据、无外部副作用的测试工具，验证发现 → 列表 → 调用 → 结构化结果/错误；无密钥的协议 fixture 与真实互操作测试分别记录。</li>
+  <li>按上表测试 JSON/SSE、版本不兼容、断线重发、权限拒绝与幂等；记录规范、SDK、测试配置和未测项。</li>
 </ol>
 
-<h2>参考资源</h2>
+<h2>A2A：按需了解</h2>
+<p>A2A 面向远程 Agent 互操作，关注能力发现、任务委托、状态与产出。先证明单 Agent 不足，再决定是否需要远程委托；认证、信任边界与业务授权仍要设计。本页未逐版本审查 A2A，不提供假定可运行的 SDK 样例；实现时另固定其规范与 SDK 版本，参见<a href="https://a2a-protocol.org/latest/">A2A 官方文档</a>与<a href="https://github.com/a2aproject/A2A">官方仓库</a>。</p>
 
-<ul>
-  <li><a href="https://developers.googleblog.com/developers-guide-to-ai-agent-protocols/">Google: Developer's Guide to AI Agent Protocols</a>（2026-03）</li>
-  <li><a href="https://auth0.com/blog/mcp-vs-a2a/">Auth0: MCP vs A2A</a></li>
-  <li><a href="https://arxiv.org/html/2505.02279v1">arXiv:2505.02279 - A Survey of Agent Interoperability Protocols</a></li>
-  <li><a href="https://modelcontextprotocol.io">MCP 官方文档</a></li>
-  <li><a href="https://github.com/google/A2A">A2A GitHub 仓库</a></li>
-</ul>
+<div class="source">
+  <strong>官方来源与审查依据：</strong>报告链接指向仓库源文档，随本批更新合并后可访问；不依赖 Pages 发布研究目录。
+  <ul>
+    <li><a href="https://blog.modelcontextprotocol.io/posts/2026-07-28/">MCP 2026-07-28 正式发布说明</a></li>
+    <li><a href="https://modelcontextprotocol.io/specification/2026-07-28/changelog">2026-07-28 变更记录</a>：握手、session、通知、MRTR 与 Tasks</li>
+    <li><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http">Streamable HTTP</a>：POST、JSON/SSE、元数据与兼容策略</li>
+    <li><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">授权规范</a>：HTTP 可选能力、stdio、令牌与权限边界</li>
+    <li><a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">2026-11-06 课程可靠性审查</a>：证据范围与完整官方来源</li>
+  </ul>
+</div>
+<div class="tip"><strong>提问提醒：</strong>遇到 MCP 教程冲突时，请提供双方规范日期、SDK 锁定版本、传输类型、错误/响应与期望行为（先脱敏）；不要只问“为什么 MCP 连不上”。</div>
+</main>
 
 <div class="nav">
   <a href="../lessons/0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
-  <a href="0002-agent-harness.html">Agent Harness 架构 →</a>
+  <a href="0004-agent-skills.html">Agent Skills 参考 →</a>
 </div>
-
-<footer>
-  AI Agent 高级开发工程师课程 · MCP & A2A 协议参考 · 2026-06-27 更新
-</footer>
-
+<footer>AI Agent 高级开发工程师课程 · MCP / A2A 参考 · 2026-11-06 核验</footer>
 <script src="../assets/content-tools.js"></script>
 <script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
 <script src="../assets/course-bar.js"></script>
 <script src="../assets/pwa.js"></script>
 </body>

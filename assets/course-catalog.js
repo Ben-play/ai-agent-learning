@@ -48,8 +48,8 @@
     { file: '0039-L34-tool-schema-design.html', title: 'Tool Schema 设计', phase: '第三阶段' },
     { file: '0040-L35-function-calling-loop.html', title: '完整 Function Calling 循环', phase: '第三阶段' },
     { file: '0041-L36-tool-robustness-registry.html', title: '工具健壮性与注册系统', phase: '第三阶段' },
-    { file: '0042-L37-cost-engineering.html', title: '成本工程：2026 降本优先级', phase: '第三阶段' },
-    { file: '0043-L38-phase3-capstone.html', title: 'Phase 3 综合实战：多模型 Agent 客户端', phase: '第三阶段' }
+    { file: '0042-L37-cost-engineering.html', title: '成本工程：负载驱动的成本决策', phase: '第三阶段' },
+    { file: '0043-L38-phase3-capstone.html', title: 'Phase 3 综合实战：可验收的 Agent 客户端', phase: '第三阶段' }
   ];
 
   var PHASE_NUMBERS = {

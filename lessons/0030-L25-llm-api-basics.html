@@ -10,270 +10,167 @@
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-
 <main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>主流 LLM API 上手</h1>
+  <p class="subtitle">共享任务契约，保留原生接口差异：Responses、Messages 与兼容接口</p>
+  <div class="lesson-progress"><div class="lesson-progress-fill" style="width:7%"></div></div>
+</div></div>
 
-<div class="section">
-  <div class="lesson-header">
-    <div class="lesson-meta-row">
-      <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">20</span><span class="lesson-time-unit">分钟</span></span>
-    </div>
-    <h1>主流 LLM API 上手</h1>
-    <p class="subtitle">OpenAI / Anthropic / Google 三家，一套心智模型全搞定</p>
-    <div class="lesson-progress"><div class="lesson-progress-fill" style="width:7%"></div></div>
-  </div>
+<div class="section"><div class="card">
+  <strong>💡 为什么这课重要？</strong>
+  <p>Phase 2 已经讲过模型选型和 Token 成本。本课把同一个任务交给不同接口，比较输入、终止状态、正文和用量。目标不是背字段，而是为后面的工具循环建立<strong>有边界的适配层</strong>。</p>
+  <p>截至 2026-11-06 核验，OpenAI 官方推荐新项目使用 Responses，Chat Completions 仍受支持。本课两者都讲：前者用于新项目实践，后者用于理解后续兼容接口示例。Claude 使用官方 Anthropic SDK；Google 等厂商的原生 API 不在本课冒充已实现。</p>
+</div></div>
+
+<div class="section"><h2>学习目标</h2><div class="card"><ul>
+  <li>区分模型推理、应用历史与服务端会话存储。</li>
+  <li>看懂 Responses / Messages / Chat Completions 的输入和返回差异。</li>
+  <li>先检查终止状态和拒答，再消费正文；不假设第一个内容块必然是文本。</li>
+  <li>记录模型、API 和 SDK 版本；区分在线集成测试与离线 fixture 验收。</li>
+</ul></div></div>
+
+<div class="section"><h2>1. 共同契约不等于相同字段</h2><div class="card">
+  <p><strong>角色</strong>表示输入是谁提供的；<strong>内容块 / Item</strong>表示文本、工具请求等不同类型的数据。不同厂商不一定都返回“一条文本消息”。应用先明确任务、允许操作和输出目标，再由 Adapter（适配器）转换成厂商接口。</p>
+  <table><thead><tr><th>职责</th><th>应用负责什么</th></tr></thead><tbody>
+    <tr><td>任务与权限</td><td>可信规则、用户输入、可执行工具和业务门槛</td></tr>
+    <tr><td>厂商适配</td><td>输入结构、事件类型、工具关联 ID、终止原因和 usage</td></tr>
+    <tr><td>历史管理</td><td>选择手动回传或服务端会话；保留工具交互和必要的不透明状态</td></tr>
+  </tbody></table>
+  <p>模型不会自动记住另一次独立请求，但 API 可以在应用之外保存会话。Responses 的 <code>previous_response_id</code> 或 Conversations 与手动重放是不同方案；有状态服务不等于免费历史、不等于长期业务记忆，也不替代数据保留审查。见<a href="https://developers.openai.com/api/docs/guides/migrate-to-responses" target="_blank">官方迁移指南</a>。</p>
 </div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 使用服务端会话后，哪项判断仍然成立？</div><div class="quiz-options">
+<button data-answer="wrong">历史内容从此不会计费</button><button data-answer="wrong">应用不必再管理访问权</button><button data-answer="correct">仍需核查保留与计费项</button><button data-answer="wrong">模型获得永久业务记忆</button>
+</div><div class="quiz-explanation">状态可以由服务保存，但访问权限、保留策略和历史输入计费仍要核查。手动回传历史不是唯一方案。</div></div></div>
 
-<div class="section">
-  <div class="card" style="border-left: 4px solid var(--accent-bright);">
-    <strong>💡 为什么这课重要？</strong>
-    <p>Phase 2 你搞懂了 LLM 是什么、怎么选、怎么算钱。现在开始<strong>真正把它调起来</strong>。Agent 的每一次"思考"，本质都是一次 LLM API 调用——这是你后面所有工程能力的原点。</p>
-    <p>好消息：虽然有三大厂商（OpenAI / Anthropic / Google），但它们的请求<strong>心智模型几乎一样</strong>——都是「发一串 <code>messages</code>，收一条回复」。学会一家，另外两家半小时就能上手。这一课我们用<strong>真实 SDK 的正确写法</strong>（已核对 openai 2.x / anthropic 0.x），并教你一个让代码"一次写好、随处可换"的关键技巧。</p>
-  </div>
-</div>
-
-<div class="section">
-  <h2>学习目标</h2>
-  <div class="card">
-    <p>完成本课后，你将能够：</p>
-    <ul>
-      <li>用 <code>messages</code> 数组（system / user / assistant 角色）表达一次对话</li>
-      <li>用 openai / anthropic 两个官方 SDK 各发一次请求</li>
-      <li>从环境变量读 API Key（<strong>绝不硬编码</strong>）</li>
-      <li>用 <strong>OpenAI 兼容模式</strong>（<code>base_url</code>）一套代码切换不同厂商</li>
-      <li>知道 OpenAI 的 Chat Completions vs Responses API 之别</li>
-    </ul>
-  </div>
-</div>
-
-<div class="section">
-  <h2>1. 统一心智模型：messages 进，message 出</h2>
-  <div class="card">
-    <p>无论哪家，一次基础调用都是这个形状：<strong>你发一个消息列表，模型回一条新消息</strong>。消息有<strong>角色</strong>：</p>
-    <pre><code>[
-  {"role": "system",    "content": "你是一个简洁的助手。"},   # 设定行为（可选）
-  {"role": "user",      "content": "用一句话解释向量数据库。"}, # 用户说的话
-  # 模型会回一条 {"role": "assistant", "content": "..."}
-]</code></pre>
-    <ul>
-      <li><strong>system</strong>：设定模型的角色 / 规则（整段对话的"人设"，见 <a href="0008-L04-control-flow-and-prompt.html">L04 Prompt 构造</a>）。</li>
-      <li><strong>user</strong>：用户的输入。</li>
-      <li><strong>assistant</strong>：模型的历史回复——<strong>多轮对话时，你要把之前的往返都放回列表里</strong>，模型才有记忆（它本身无状态，见 <a href="0025-L21-model-capabilities.html">L21</a>）。</li>
-    </ul>
-    <p>记住这个形状，你就掌握了 90% 的 API 调用。剩下的都是参数细节。</p>
-  </div>
-
-  <div class="quiz" data-quiz="q1">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 多轮对话里，模型怎么"记得"前面聊过什么？</div>
-    <div class="quiz-options">
-      <button data-answer="wrong">服务端自动存住会话</button>
-      <button data-answer="correct">每次把历史都发回</button>
-      <button data-answer="wrong">靠模型的长期记忆</button>
-      <button data-answer="wrong">用会话编号去检索</button>
-    </div>
-    <div class="quiz-explanation">LLM <strong>本身无状态</strong>（L21）——它不记得任何跨请求的东西。多轮对话要"有记忆"，靠的是<strong>你每次把之前的 user/assistant 往返都塞回 <code>messages</code> 列表</strong>再发出去。这也是为什么对话越长、输入 Token 越多、越费钱（L18/L23）。</div>
-  </div>
-</div>
-
-<div class="section">
-  <h2>2. OpenAI：Chat Completions</h2>
-  <div class="card">
-    <p>最经典、最通用的接口。<strong>Key 从环境变量读</strong>（SDK 默认会找 <code>OPENAI_API_KEY</code>）：</p>
-    <pre><code>pip install openai        # 或 uv pip install openai
-# 运行前：export OPENAI_API_KEY="sk-..."（Windows: setx）
-
+<div class="section"><h2>2. OpenAI 主线：Responses API</h2><div class="card">
+  <p>在项目中先用 <code>uv add openai</code> 声明依赖并保留锁文件；设置 <code>OPENAI_API_KEY</code> 和具备访问权的 <code>OPENAI_MODEL</code>。以下是<strong>联网且会计费</strong>的可选实践，不会被离线验收自动执行。API 形状按<a href="https://developers.openai.com/api/docs/guides/migrate-to-responses" target="_blank">官方文档</a>核对。</p>
+  <pre><code class="language-python" id="l25-responses">import os
 from openai import OpenAI
 
-client = OpenAI()   # 自动读环境变量 OPENAI_API_KEY，别把 key 写进代码
-
-resp = client.chat.completions.create(
-    model="gpt-5.5",                # 具体型号以官网为准，别写死在生产逻辑里
-    messages=[
-        {"role": "system", "content": "你是一个简洁的助手。"},
-        {"role": "user",   "content": "用一句话解释向量数据库。"},
-    ],
-    temperature=0.3,                # 见 L17：要稳就调低
+client = OpenAI()  # 凭证由 SDK / 环境提供，不写入源码
+response = client.responses.create(
+    model=os.environ["OPENAI_MODEL"],
+    instructions="用一句中文解释概念。",
+    input="什么是向量数据库？",
+    store=False,  # 本例手动管理历史，不据此推断其他保留政策
 )
+if response.status != "completed":
+    raise RuntimeError(f"响应未完成: {response.status}")
+refused = any(
+    part.type == "refusal"
+    for item in response.output if item.type == "message"
+    for part in item.content
+)
+if refused:
+    raise RuntimeError("模型未提供可消费的答案")
+print(response.output_text)
+print(response.usage)  # Responses: input_tokens / output_tokens 等</code></pre>
+  <p><code>output_text</code> 是文本便捷读取器；完整 <code>output</code> 还可能含工具调用与推理 Items。延续工具循环时，不能只回传这段文本而丢掉其他必要 Items。<code>store=False</code> 下按官方要求保留可重放的完整输出及不透明推理信息；不要自己解析、改写这些信息。</p>
+  <p>本例故意不带通用 <code>temperature</code>：参数支持取决于模型与接口，不能照搬旧参数表。先查询能力，再显式配置。</p>
+</div></div>
 
-print(resp.choices[0].message.content)   # ← 回复文本在这里
-print(resp.usage)                        # ← Token 用量（算成本用，L23）</code></pre>
-    <p>两个你每次都会用到的字段：<code>resp.choices[0].message.content</code>（回复正文）和 <code>resp.usage</code>（<code>prompt_tokens</code> / <code>completion_tokens</code>，直接对应 <a href="0027-L23-token-economics.html">L23</a> 的成本公式）。</p>
-  </div>
-  <div class="tip">
-    <strong>OpenAI 的两个接口</strong>：老牌的 <code>chat.completions</code>（全行业通用、兼容性最好）和较新的 <code>responses</code>（Responses API，OpenAI 现在主推、对推理模型体验更好）。<strong>本课教 <code>chat.completions</code></strong>——因为它是跨厂商的"普通话"，学会它最迁移友好；Responses API 作为 OpenAI 的新方向了解即可（<a href="https://developers.openai.com/api/docs/guides/migrate-to-responses" target="_blank">官方迁移指南</a>）。
-  </div>
-</div>
-
-<div class="section">
-  <h2>3. Anthropic：Messages API</h2>
-  <div class="card">
-    <p>Claude 用 <code>client.messages.create</code>。形状几乎一样，但有<strong>两个关键差异</strong>：</p>
-    <pre><code>pip install anthropic
-# 运行前：export ANTHROPIC_API_KEY="sk-ant-..."
-
+<div class="section"><h2>3. Claude 原生接口：Messages</h2><div class="card">
+  <p>使用 <code>uv add anthropic</code> 并锁定版本。设置 <code>ANTHROPIC_MODEL</code> 和 SDK 支持的凭证来源。本例同样需要网络与调用预算；它不把 OpenAI 字段透传给 Claude。</p>
+  <pre><code class="language-python" id="l25-messages">import os
 from anthropic import Anthropic
 
-client = Anthropic()   # 自动读 ANTHROPIC_API_KEY
+client = Anthropic()
+with client.messages.stream(
+    model=os.environ["ANTHROPIC_MODEL"],
+    max_tokens=4096,
+    system="用一句中文解释概念。",
+    messages=[{"role": "user", "content": "什么是向量数据库？"}],
+) as stream:
+    message = stream.get_final_message()
 
-resp = client.messages.create(
-    model="claude-sonnet-4-6",       # 型号以官网为准
-    max_tokens=1024,                 # ← 差异①：Anthropic 必填 max_tokens
-    system="你是一个简洁的助手。",     # ← 差异②：system 是顶层参数，不放 messages 里
-    messages=[
-        {"role": "user", "content": "用一句话解释向量数据库。"},
-    ],
-)
+if message.stop_reason != "end_turn":
+    raise RuntimeError(f"响应未正常结束: {message.stop_reason}")
+text = "".join(block.text for block in message.content if block.type == "text")
+print(text)
+print(message.usage)  # input_tokens / output_tokens；缓存字段另行核对</code></pre>
+  <p><code>system</code> 使用这里演示的顶层形式，<code>max_tokens</code> 是输出上限。返回的 <code>content</code> 是带类型的块列表，不保证第一块是正文；<code>stop_reason</code> 还可能表示工具请求、拒答或输出耗尽，不能一律当成功。流式细节在 <a href="0031-L26-streaming.html">L26</a>，工具回填在后续课程。</p>
+  <p>官方依据：<a href="https://platform.claude.com/docs/en/api/messages" target="_blank">Messages API</a>。新模型默认行为、参数支持和 SDK 主版本应分别核验，不以本页示例推断所有部署平台支持相同特性。</p>
+</div></div>
 
-print(resp.content[0].text)          # ← 回复在 content[0].text（不是 choices）
-print(resp.usage)                    # input_tokens / output_tokens</code></pre>
-    <p>记住这两个坑：<strong>① <code>max_tokens</code> 必填</strong>（OpenAI 选填）；<strong>② <code>system</code> 是独立顶层参数</strong>，不像 OpenAI 塞进 <code>messages</code>。回复也从 <code>content[0].text</code> 取，不是 <code>choices</code>。</p>
-  </div>
-
-  <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 从 OpenAI 换到 Anthropic，下面哪个差异是真的？</div>
-    <div class="quiz-options">
-      <button data-answer="wrong">Anthropic 不支持角色</button>
-      <button data-answer="correct">system 是顶层参数</button>
-      <button data-answer="wrong">两家返回字段相同</button>
-      <button data-answer="wrong">Claude 不用发消息</button>
-    </div>
-    <div class="quiz-explanation">Anthropic 的两个关键差异：<strong>system 提示是独立的顶层参数</strong>（不放进 messages），且 <strong>max_tokens 必填</strong>。返回结构也不同——Claude 从 <code>content[0].text</code> 取回复，OpenAI 从 <code>choices[0].message.content</code>。角色（user/assistant）两家都用，消息也照发。</div>
-  </div>
-</div>
-
-<div class="section">
-  <h2>4. 关键技巧：OpenAI 兼容模式，一套代码切三家</h2>
-  <div class="card">
-    <p>每家一套 SDK 太累。业界的通用解法：<strong>大多数厂商 / 网关都提供「OpenAI 兼容」端点</strong>——你继续用 <code>openai</code> 这一个 SDK，只改 <code>base_url</code> 和 key，就能打到别家模型。</p>
-    <pre><code>from openai import OpenAI
-
-# 还是 openai SDK，只是把 base_url 指向别的厂商 / 网关
-client = OpenAI(
-    api_key="...",                              # 对应厂商的 key
-    base_url="https://api.anthropic.com/v1/",   # ← 换成目标厂商的兼容端点
-)
-
-# 之后 client.chat.completions.create(...) 照常用，业务代码基本不动
-</code></pre>
-    <p>这就是 <a href="0037-L32-routing-fallback-gateway.html">L32 的 AI Gateway（LiteLLM）</a>能"一个接口统一 100+ 模型"的底层原理——<strong>统一成 OpenAI 的调用格式</strong>。你现在只需记住：<strong>换厂商 ≈ 换 <code>base_url</code> + key</strong>，业务代码几乎不动。Anthropic 官方也提供 OpenAI SDK 兼容层（<a href="https://docs.anthropic.com/en/api/openai-sdk" target="_blank">OpenAI SDK compatibility</a>）。</p>
-  </div>
-  <div class="tip">
-    ⚠️ 兼容模式很方便，但<strong>不是 100% 等价</strong>——各家独有的高级特性（如 Claude 的 Extended Thinking、某些参数）在兼容层下可能用不了。<strong>快速多模型对比、简单调用</strong>→ 兼容模式；<strong>要吃满某家的独门能力</strong>→ 用它自己的原生 SDK。
-  </div>
-</div>
-
-<div class="section">
-  <h2>5. 铁律：Key 永远走环境变量</h2>
-  <div class="card">
-    <p>你可能注意到上面所有例子都<strong>没有把 key 写进代码</strong>。这是不可退让的工程纪律：</p>
-    <ul>
-      <li><strong>绝不硬编码</strong> key 到源码里——一旦 push 到 GitHub 就是泄露，会被爬虫秒扫、盗刷。</li>
-      <li>用<strong>环境变量</strong>：<code>os.environ["OPENAI_API_KEY"]</code>，或让 SDK 自动读（它默认就找这个变量）。</li>
-      <li>本地开发用 <code>.env</code> 文件（<a href="0004-L01-dev-environment-setup.html">L01</a> 学过），并把 <code>.env</code> 加进 <code>.gitignore</code>。</li>
-    </ul>
-    <pre><code>import os
+<div class="section"><h2>4. 兼容接口是边界，不是能力等价证明</h2><div class="card">
+  <p>Chat Completions 在本课程后续若干示例中用于解释工具往返。它仍受支持，但不是 OpenAI 新项目的唯一接口：</p>
+  <pre><code class="language-python" id="l25-chat">import os
 from openai import OpenAI
 
-# 显式读（找不到就早失败，比默默出错好）
-api_key = os.environ["OPENAI_API_KEY"]   # 没设会抛 KeyError，一眼看出问题
-client = OpenAI(api_key=api_key)</code></pre>
-    <p>这不是小题大做——本课程自己的仓库就因为要 push GitHub，专门把带 key 的配置做了 gitignore + 环境变量注入。<strong>key 泄露是 AI 工程最常见、最贵的事故之一。</strong></p>
-  </div>
-
-  <div class="quiz" data-quiz="q3">
-    <div class="quiz-question"><span class="quiz-q">Q</span> API Key 应该怎么放进代码？</div>
-    <div class="quiz-options">
-      <button data-answer="wrong">直接写在源码里</button>
-      <button data-answer="correct">从环境变量读取</button>
-      <button data-answer="wrong">存进公开仓库中</button>
-      <button data-answer="wrong">贴在注释里备用</button>
-    </div>
-    <div class="quiz-explanation">Key <strong>永远从环境变量读</strong>（或 SDK 自动读），<strong>绝不硬编码进源码</strong>。硬编码 + push 到 GitHub = 秒级泄露被盗刷。本地用 <code>.env</code> + <code>.gitignore</code>。这是 AI 工程最基本也最容易翻车的安全纪律。</div>
-  </div>
+client = OpenAI()
+reply = client.chat.completions.create(
+    model=os.environ["OPENAI_MODEL"],
+    messages=[{"role": "user", "content": "什么是向量数据库？"}],
+)
+choice = reply.choices[0]
+if choice.finish_reason != "stop" or choice.message.refusal:
+    raise RuntimeError("本例只消费正常完成的纯文本答案")
+print(choice.message.content)
+print(reply.usage)  # prompt_tokens / completion_tokens</code></pre>
+  <p>自定义 <code>base_url</code> 只能改变目标端点，不能自动补齐缓存、推理状态、工具语义、事件和计费差异。快速试验可以使用已确认支持的兼容端点；需要厂商原生能力时使用官方 SDK。不要把本课 Anthropic 调用替换成 OpenAI shim。</p>
+  <table><thead><tr><th>能力</th><th>Responses</th><th>Messages</th><th>Chat Completions</th></tr></thead><tbody>
+    <tr><td>输入 / 正文</td><td>input / output_text</td><td>messages / text 内容块</td><td>messages / choices 中的 message</td></tr>
+    <tr><td>工具结果关联</td><td>function_call_output + call_id</td><td>tool_result + tool_use_id</td><td>tool 消息 + tool_call_id</td></tr>
+    <tr><td>流式</td><td>带类型的 response.* 事件</td><td>消息 / 内容块事件</td><td>choices 中的 delta</td></tr>
+    <tr><td>结构约束</td><td>text.format</td><td>按原生 output_config / 工具文档</td><td>response_format</td></tr>
+  </tbody></table>
 </div>
+<div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 换成兼容端点后，最需要补做哪项工作？</div><div class="quiz-options">
+<button data-answer="correct">核对能力并验证适配层</button><button data-answer="wrong">假设字段与语义全相同</button><button data-answer="wrong">只改域名就跳过所有测</button><button data-answer="wrong">删除终止状态判断逻辑</button>
+</div><div class="quiz-explanation">兼容表示支持某些接口形状，不表示全部语义等价。适配层要处理能力、状态和 usage 的实际差异。</div></div></div>
 
-<div class="section">
-  <h2>🎯 速查卡：三家 API</h2>
-  <div class="card">
-    <pre><code>【统一心智模型】发 messages 列表 → 收一条 assistant 消息
-  role: system(人设) / user(输入) / assistant(历史回复)
-  ★ 模型无状态：多轮要把历史全塞回 messages
+<div class="section best-practice-lesson"><h2>5. 离线近迁移验收：先辨认接口，再取正文</h2><div class="card">
+  <p>以下 fixture 全为虚构，不发送请求。先独立实现：给三个<strong>纯文本、已正常完成</strong>的响应提取正文，并拒绝未知接口。真实工具/拒答/截断分支由原生 Adapter 负责，L38 会练这些控制路径。</p>
+  <details><summary>参考实现与精确自检（可独立运行）</summary>
+  <pre><code class="language-python" id="l25-adapter-check">def text_only(api, payload):
+    if api == "responses":
+        if payload["status"] != "completed":
+            raise ValueError("incomplete")
+        return payload["output_text"]
+    if api == "messages":
+        if payload["stop_reason"] != "end_turn":
+            raise ValueError("incomplete")
+        return "".join(b["text"] for b in payload["content"] if b["type"] == "text")
+    if api == "chat":
+        choice = payload["choices"][0]
+        if choice["finish_reason"] != "stop" or choice["message"].get("refusal"):
+            raise ValueError("not completed")
+        return choice["message"]["content"]
+    raise ValueError("unknown API")
 
-【OpenAI · Chat Completions】
-  client = OpenAI()                        # 读 OPENAI_API_KEY
-  r = client.chat.completions.create(model=..., messages=[...])
-  回复: r.choices[0].message.content   用量: r.usage
+assert text_only("responses", {"status": "completed", "output_text": "甲"}) == "甲"
+assert text_only("messages", {"stop_reason": "end_turn", "content": [
+    {"type": "thinking"}, {"type": "text", "text": "乙"}
+]}) == "乙"
+assert text_only("chat", {"choices": [{"finish_reason": "stop", "message": {"content": "丙"}}]}) == "丙"
+for api, data in [("unknown", {}), ("responses", {"status": "incomplete"})]:
+    try:
+        text_only(api, data)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("应拒绝未知接口或未完成响应")
+print("L25 ACCEPTED")</code></pre></details>
+  <p><strong>怎么看结果：</strong>只出现 <code>L25 ACCEPTED</code>，证明这几个本地分支通过；不证明 SDK 兼容、网络可用或模型能力。在线实践要另外记录模型、API、SDK版本、终止原因与实际 usage，且先确认调用预算。</p>
+</div></div>
 
-【Anthropic · Messages】
-  client = Anthropic()                     # 读 ANTHROPIC_API_KEY
-  r = client.messages.create(model=..., max_tokens=必填,
-                             system="顶层参数", messages=[...])
-  回复: r.content[0].text
-
-【差异速记】
-  max_tokens: OpenAI 选填 / Anthropic 必填
-  system:     OpenAI 进 messages / Anthropic 顶层参数
-  回复字段:   choices[0].message.content / content[0].text
-
-【一套代码切三家】OpenAI 兼容模式
-  OpenAI(api_key=..., base_url="厂商兼容端点")
-  换厂商 ≈ 换 base_url + key（业务代码不动）→ L32 网关原理
-  但独门特性(如 Extended Thinking)可能用不了 → 要就用原生 SDK
-
-【铁律】key 走环境变量，绝不硬编码 / 绝不进公开仓库</code></pre>
-  </div>
+<div class="section"><h2>总结与下一课</h2><div class="card"><ul>
+  <li>同一个业务目标可以跨厂商复用，但协议状态不能无损地简化成一个字符串。</li>
+  <li>Responses 是 OpenAI 新项目推荐方向；Chat Completions 的兼容价值仍在。</li>
+  <li>Claude 使用原生 SDK；先检查终止状态，再按类型提取内容。</li>
+  <li>凭证不写入源码；项目声明依赖并保留锁文件，生产可使用密钥管理与工作负载身份。</li>
+</ul><p>下一课 <a href="0031-L26-streaming.html">L26 · Streaming</a> 把一次响应拆成有类型、有终态的事件。看不懂接口差异或返回字段，随时向教学代理提问。</p>
+<a class="lesson-qa-link" href="../qa/phase3-qa.html#L25">L25 疑难解答 →</a>
+</div></div>
+<div class="source"><strong>一手资料（2026-11-06 核验）：</strong><br>
+<a href="https://developers.openai.com/api/docs/guides/migrate-to-responses" target="_blank">OpenAI Responses 迁移指南（推荐精读）</a> ·
+<a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank">Function Calling</a> ·
+<a href="https://platform.claude.com/docs/en/api/messages" target="_blank">Claude Messages</a>
 </div>
-
-<div class="section">
-  <h2>📚 primary source（最推荐精读）</h2>
-  <div class="card">
-    <p><a href="https://developers.openai.com/api/docs/quickstart" target="_blank"><strong>OpenAI API Quickstart</strong></a> + <a href="https://docs.anthropic.com/en/api/openai-sdk" target="_blank"><strong>Anthropic: OpenAI SDK compatibility</strong></a></p>
-    <p>前者是最快的官方上手；后者讲清"用一个 SDK 打多家"的兼容层细节与差异（含 system 消息 hoisting 这类坑）。两篇读完，三家 API 就都通了。</p>
-  </div>
-</div>
-
-<div class="section">
-  <h2>❓ 答疑与延伸</h2>
-  <div class="card">
-    <a class="lesson-qa-link" href="../qa/phase3-qa.html#L25">
-      <span class="lesson-qa-icon">❓</span>
-      <span class="lesson-qa-text">学完这课还有疑问？记到 <strong>第三阶段 · 疑难解答</strong>，有不懂随时问我。</span>
-      <span class="lesson-qa-arrow">→</span>
-    </a>
-    <div class="qa-related">
-    <div class="qa-related-label">🔗 关联课程</div>
-    <ul>
-      <li>· <a href="0031-L26-streaming.html">下一课 L26 · Streaming 流式输出</a> — 让回复像 ChatGPT 一样逐字蹦出来</li>
-      <li>· <a href="0037-L32-routing-fallback-gateway.html">L32 · 路由 · Fallback · AI Gateway</a> — 兼容模式的工程化终点</li>
-      <li>· <a href="0027-L23-token-economics.html">L23 · Token 经济学</a> — <code>usage</code> 字段怎么变成账单</li>
-      <li>· <a href="0025-L21-model-capabilities.html">L21 · 模型无状态</a> — 为什么多轮要回传历史</li>
-    </ul>
-  </div>
-  </div>
-</div>
-
-
-<div class="section">
-  <h2>总结</h2>
-  <div class="card">
-    <ul>
-      <li>一次调用 = <strong>发 <code>messages</code> 列表（system/user/assistant），收一条回复</strong></li>
-      <li>模型<strong>无状态</strong>，多轮对话靠把历史全塞回 messages</li>
-      <li>OpenAI：<code>chat.completions.create</code>，回复在 <code>choices[0].message.content</code></li>
-      <li>Anthropic：<code>messages.create</code>，<strong>max_tokens 必填、system 顶层</strong>，回复在 <code>content[0].text</code></li>
-      <li><strong>OpenAI 兼容模式</strong>（改 <code>base_url</code>）能一套代码切多家，是 AI Gateway 的底层原理</li>
-      <li>Key <strong>永远走环境变量</strong>，绝不硬编码</li>
-    </ul>
-  </div>
-  <div class="tip" style="margin-top:1rem;">
-    有 key 的话，把上面 OpenAI / Anthropic 两段各跑一次，对比返回结构——你会对"三家一套模型"有实感。没 key 也没关系，后面 <a href="0043-L38-phase3-capstone.html">L38 综合实战</a>会用 mock 方式让你先跑通流程。有任何疑问随时问我。下一课：让回复<strong>流式</strong>蹦出来。
-  </div>
-</div>
-
 </main>
-
-<aside class="toc" id="toc"></aside>
+<aside class="toc" id="toc" aria-label="页面目录"></aside>
 <script src="../assets/content-tools.js"></script>
 <script src="../assets/course-catalog.js"></script>
 <script src="../assets/bottom-nav.js"></script>

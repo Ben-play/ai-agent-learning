@@ -39,7 +39,7 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>说清 Agent 场景里成本<strong>从哪来、为什么被放大</strong></li>
-      <li>按 Anthropic 当前官方边界，用 <strong>Prompt Caching</strong> 把命中的重复静态前缀按约 0.1× 基础输入价计费（约省 90%）</li>
+      <li>按目标厂商、模型、API版本和 TTL 核实 <strong>Prompt Caching</strong> 写/读费率，再用实际 usage 验证收益</li>
       <li>设计「<strong>静态前缀 + 动态后缀</strong>」的缓存友好结构</li>
       <li>用 <strong>Model Routing</strong> 让便宜模型兜底、贵模型只接难活</li>
       <li>给一个 Agent<strong>制定 token 预算</strong>并估算月成本</li>
@@ -135,11 +135,12 @@ assert set(costs) == set(usage) == set(rates)</code></pre></details>
     <table>
       <thead><tr><th>厂商</th><th>缓存读（命中）</th><th>缓存写（首次）</th><th>TTL</th></tr></thead>
       <tbody>
-        <tr><td><strong>Anthropic</strong></td><td>约 <strong>0.1×</strong> 输入价<br>（省约 90%）</td><td>约 <strong>1.25×</strong><br>（首次略贵）</td><td>默认约 5 分钟；另有 1 小时选项（写约 2×）</td></tr>
+        <tr><td><strong>练习给定的缓存模型</strong><br>非当前统一报价</td><td>假设 <strong>0.1×</strong> 输入价<br>（省约 90%）</td><td>约 <strong>1.25×</strong><br>（首次略贵）</td><td>默认约 5 分钟；另有 1 小时选项（写约 2×）</td></tr>
         <tr><td><strong>OpenAI</strong></td><td colspan="3">缓存折扣、写入计费与保留时间按模型/产品变化；本课不固定数值，实施时查下方 OpenAI 当前官方文档</td></tr>
       </tbody>
     </table>
-    <p>数据出处：<a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。按相对输入价粗算：5 分钟缓存一次写入 1.25×，之后一次读取 0.1×，两次使用合计 1.35×，低于两次全价 2×；1 小时缓存写 2×，通常要到第三次使用（2×+0.1×+0.1×）才低于三次全价。实际收益还取决于命中时机、并发和静态前缀占比。</p>
+    <p><strong>版本边界（2026-11-06复核）：</strong>表中 Anthropic 倍数只作为下方盈亏平衡练习的假设，并非所有当前模型的统一报价。新代际模型读取倍率可能不同，OpenAI也存在不同缓存写价/TTL行为；上线前必须按模型与API重新核对，不直接搬用练习参数。</p>
+    <p>数据出处：<a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://developers.openai.com/api/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。以下仅按练习给定的相对输入价粗算：5 分钟缓存一次写入 1.25×，之后一次读取 0.1×，两次使用合计 1.35×，低于两次全价 2×；1 小时缓存写 2×，通常要到第三次使用（2×+0.1×+0.1×）才低于三次全价。实际收益还取决于命中时机、并发和静态前缀占比。</p>
     <p><strong>还有一个常被漏掉的门槛：</strong>可缓存前缀必须达到目标模型的最小 Token 数，且该阈值随模型/平台变化；太短时不会报错，只是不会建立缓存。因此不要背一个固定阈值，接入时查当前模型文档并看 usage 验证。</p>
 
     <p><strong>关键设计原则</strong>：把 prompt 拆成「<strong>静态前缀（可缓存）+ 动态后缀（每次变）</strong>」，<strong>静态部分放最前面</strong>。因为缓存是<strong>前缀匹配</strong>——前缀里任何一个字节变了，后面全部失效。所以千万别把时间戳、用户 ID、随机数塞进 system prompt 开头：</p>
@@ -369,14 +370,14 @@ else:
   </div>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 关于 Anthropic 的 Prompt Caching，下面哪个说法对？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 若本题给定缓存读取费率 0.1×、5分钟写入1.25×，哪个说法对？</div>
     <div class="quiz-options">
-      <button data-answer="correct">缓存读约 0.1×，但首次写入更贵</button>
-      <button data-answer="wrong">命中后缓存内容就完全不再计费</button>
+      <button data-answer="correct">读取按题定折扣计费但写入并非免费</button>
+      <button data-answer="wrong">只要缓存命中后内容就完全不再计费</button>
       <button data-answer="wrong">动态后缀比稳定前缀更容易命中缓存</button>
-      <button data-answer="wrong">任何长度的前缀都会自动建立缓存</button>
+      <button data-answer="wrong">任何长度的前缀都必定自动建立缓存</button>
     </div>
-    <div class="quiz-explanation">Anthropic 缓存读取约 0.1× 输入价，5 分钟首次写约 1.25×，并非免费。前缀还要达到目标模型的最小缓存长度且保持一致；最终通过 <code>cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code> 验证，而不是只看配置。</div>
+    <div class="quiz-explanation">在本题给定费率下，缓存读取为0.1×、5分钟首次写为1.25×，并非免费；这些不是所有当前模型的统一报价。前缀还要达到目标模型的最小缓存长度且保持一致；最终通过 <code>cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code> 验证，而不是只看配置。</div>
   </div>
 </div>
 

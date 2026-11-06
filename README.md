@@ -1,26 +1,34 @@
 # AI Agent 高级开发工程师学习课程
 
-从 Python 基础到生产级多智能体系统的完整学习路径。
+从 Python 基础到可验收的单 Agent 系统，再按需求扩展到生产与协作。
+
+当前已编写 **38 节正式课（Phase 1–3，L01–L38）**；Phase 4–11 为规划，不代表正文或生产能力已经实现。参考页不计入正式课数。保留基础课号，以 Responses / 厂商原生 adapter、工具闭环和小型评估为主线，优先函数/workflow 与单 Agent，只选一个框架深学。
+
+- [11 阶段学习路径总纲](lessons/0001-ai-agent-learning-path-overview.html)
+- [Agent Skills 参考小单元（非正式课）](reference/0004-agent-skills.html)
+- [2026-11-06 课程可靠性审查与官方来源](docs/research/2026-11-06-curriculum-audit.md)
 
 ## 课程概览
 
-| 阶段 | 主题 | 课时 | 预计时间 |
-|------|------|------|----------|
-| 1 | Python 基础（Agent 导向：含 httpx/异步/Pydantic/装饰器） | 16 课 | 2-3 周 |
-| 2 | AI 知识与模型选型 | 8 课 | 1-2 周 |
-| 3 | LLM API 工程实践（含工具工程/Function Calling、成本工程） | 14 课 | 3 周 |
-| 4 | Prompt Engineering | 6 课 | 1 周 |
-| 5 | Agent 核心架构 | 8 课 | 2 周 |
-| 6 | 框架入门 + MCP | 6 课 | 1-2 周 |
-| 7 | 数据处理 + RAG | 8 课 | 2 周 |
-| 8 | 工程化实践（可观测性/评估/安全/成本/系统设计） | 10-12 课 | 3 周 |
-| 9 | 高级主题 | 8 课 | 2 周 |
-| 10 | 生产框架 + 多智能体 | 8 课 | 2 周 |
-| 11 | 部署与运维 | 6 课 | 1-2 周 |
+周数按学习负载分阶段估算，不承诺固定完成时间；规划数量与总纲同步，正式课以现有 L01–L38 为准。
+
+| 阶段 | 主题 | 已编写 / 规划课数 | 分阶段估算 | 状态 |
+|------|------|-----------------|------------|------|
+| 1 | Python 基础（Agent 导向：含 httpx/异步/Pydantic/装饰器） | 16 课 | 2-3 周 | 已编写 |
+| 2 | AI 知识与模型选型 | 8 课 | 1.5 周 | 已编写 |
+| 3 | LLM API 工程实践（含工具闭环、小型评估、成本工程） | 14 课 | 3 周 | 已编写 |
+| 4 | Prompt / Context / Skills | 6-8 课 | 2 周 | 规划 |
+| 5 | Agent 核心架构与持久执行 | 10-12 课 | 3-4 周 | 规划 |
+| 6 | 主线框架入门 + MCP | 5-6 课 | 1-2 周 | 规划 |
+| 7 | 数据基础 + 企业 RAG | 10-12 课 | 3-4 周 | 规划 |
+| 8 | 工程化实践（可观测性/评估/安全/成本/系统设计） | 10-12 课 | 3 周 | 规划 |
+| 9 | 按需高级能力 | 5-6 课 | 1-2 周 | 规划 |
+| 10 | 编排深化 + 按需多 Agent | 8-10 课 | 2-3 周 | 规划 |
+| 11 | 部署与持续迭代 | 6-8 课 | 2 周 | 规划 |
 
 ## 目录结构
 
-```
+```text
 .
 ├── lessons/              # 课程页面（HTML）
 │   ├── 0001-ai-agent-learning-path-overview.html   # 学习路径总览
@@ -36,7 +44,8 @@
 ├── reference/            # 参考资料
 │   ├── 0001-glossary.html        # 术语表
 │   ├── 0002-agent-harness.html   # Agent Harness
-│   └── 0003-mcp-a2a-protocols.html # MCP/A2A 协议
+│   ├── 0003-mcp-a2a-protocols.html # MCP/A2A 协议（版本化参考）
+│   └── 0004-agent-skills.html      # Skills 参考（非正式课）
 ├── best-practices/       # 非编号的阶段级工程实践综合页
 │   └── phase1-python-engineering-practices.html
 ├── code/                 # 代码练习与离线综合项目
@@ -64,6 +73,12 @@
 - 🧭 **阶段实践检查点与最终复盘** — 学完相关知识后立即完成跨课检查点，避免拖到阶段末遗忘；Phase 1 的 8 个检查点分布在 L01/L02/L04/L07/L11/L12/L14/L16，[Phase 1 复盘页](best-practices/phase1-python-engineering-practices.html)用于最终索引与验收；Phase 2 的 5 个检查点分布在 L18/L19/L21/L22/L23，[Phase 2 复盘页](best-practices/phase2-model-selection-practices.html)汇总模型评测与选型决策
 - 💼 **面试常见问题** — 高频考点
 - 📚 **参考资源** — 延伸阅读
+
+## 第三阶段离线验收
+
+在已有依赖环境中执行 `python -I scripts/check-course-examples.py`，脚本只抽取明确白名单内的 L25/L26/L28/L30/L36/L37/L38 自检，不执行联网示例。L36 需要 Pydantic v2；可使用课程项目现有虚拟环境的 Python。禁止用 `-O` 禁用断言。
+
+通过只证明指定控制路径，不代表真实模型质量、缓存命中或生产准入。在线实验应另行确认调用预算，并记录模型/API/SDK版本、配置和未测项。
 
 ## 特性
 

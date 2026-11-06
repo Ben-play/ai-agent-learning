@@ -15,7 +15,7 @@
 <aside class="toc" id="toc" aria-label="页面目录"></aside>
 
 <h1>阶段 3 · LLM API 工程实践</h1>
-<p>从"会调 API"到"能上生产"——<strong>把 LLM 调用做成健壮、可观测、低成本的工程系统</strong>，覆盖 14+ 道面试高频题。</p>
+<p>从调通 API 到可验收的调用与执行骨架：<strong>原生接口、工具边界、终态、评估与负载驱动成本决策</strong>。离线通过不等于生产准入。</p>
 
 <div class="total-bar">
   <span>📚 共 5 个模块 · 14 课</span>
@@ -30,12 +30,12 @@
   · 输出格式不可靠 → 不会<strong>Structured Outputs</strong>，下游代码天天崩<br>
   · 成本失控 → 不会<strong>缓存分层 + 路由</strong>，月账单翻几倍<br>
   · 线上出问题查不出 → 没有<strong>可观测性</strong>，Agent 上线即失控<br>
-  <strong>这一阶段就是把这些"生产级"能力一个个补上。</strong>每课直接对应一道面试必答题。
+  <strong>这一阶段就是把这些"生产级"能力一个个补上。</strong>每课以可操作验收收束，不凭“生产级”标签代替验证。
 </div>
 
 <!-- ==================== Module 3.1 ==================== -->
 <h2 class="part-header" id="part-1">Module 3.1 · API 基础</h2>
-<p>把三大厂商的 API 用一套心智模型拿下，并让回复像 ChatGPT 一样流式蹦出来。</p>
+<p>复用业务目标，分别理解 Responses、Messages 与 Chat Completions；不把接口兼容误当能力等价。</p>
 
 <div class="module">
   <div class="module-header">
@@ -44,19 +44,19 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L25</span><span class="lesson-num-time">20min</span>
+      <span class="lesson-num">L25</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0030-L25-llm-api-basics.html">主流 LLM API 上手</a> <span class="badge-llm">API</span></div>
-        <div class="lesson-desc">统一心智模型（messages: system/user/assistant，模型无状态需回传历史）、OpenAI Chat Completions / Anthropic Messages 两家 SDK 正确写法与差异（max_tokens、system 位置、返回字段）、<strong>OpenAI 兼容模式（base_url 切厂商）</strong>、Key 走环境变量铁律</div>
-        <div class="exercise">用 openai / anthropic 两个 SDK 各发一次请求，对比返回结构；再用 base_url 兼容模式一套代码切厂商</div>
+        <div class="lesson-desc">OpenAI Responses 新项目实践、Anthropic 原生 Messages、Chat Completions兼容基础；输入/事件/终态/usage与手动或服务端状态管理，显式Adapter和凭证边界</div>
+        <div class="exercise">先完成离线接口辨认验收；可选在线对比需确认预算，并记录模型/API/SDK版本、终态与usage</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L26</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L26</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0031-L26-streaming.html">Streaming 流式输出</a> <span class="badge-llm">API</span></div>
-        <div class="lesson-desc">为什么要流式（降低首字延迟 TTFT、改善长回复体验）、原理是 SSE 逐块推送、OpenAI <code>stream=True</code> + <code>delta.content</code> 增量拼接、Anthropic <code>messages.stream</code>、工程注意（流式下的 usage 统计 / 增量拼工具调用 / 中途断连）</div>
-        <div class="exercise">把一个非流式调用改成流式，逐 token 打印（打字机效果），处理 delta 为 None 的情况</div>
+        <div class="lesson-desc">区分 Chat delta、Responses typed events、Messages内容块；文本临时显示≠成功完成，按终态/异常验收、关闭流资源并处理未知用量</div>
+        <div class="exercise">把一个非流式调用改成流式，逐事件打印（chunk不等于token），处理 delta 为 None 的情况</div>
       </div>
     </div>
   </div>
@@ -81,11 +81,11 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L28</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L28</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0033-L28-structured-outputs.html">Structured Outputs（约束解码）</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc"><strong>面试高频区分题</strong>：纯 prompt < JSON mode（只保证合法 JSON）< <strong>Structured Outputs（strict / 约束解码，token 级<em>保证</em>符合 JSON Schema）</strong>；约束解码原理、配合 Pydantic（呼应 L14）、无法保证时的验证+重试兜底、refusal 处理。<strong>Structured Outputs ≠ JSON mode</strong></div>
-        <div class="exercise">从一段用户评论抽取 {sentiment, score, keywords}，用 Pydantic 定义 schema，说明 Structured Outputs 如何保证输出可直接用</div>
+        <div class="lesson-desc"><strong>面试高频区分题</strong>：纯 prompt < JSON mode（只保证合法 JSON）< <strong>Structured Outputs（strict / 约束解码，在受支持Schema、正常完成且无拒答/截断时约束结构）</strong>；约束解码原理、配合 Pydantic（呼应 L14）、无法保证时的验证+重试兜底、refusal 处理。<strong>Structured Outputs ≠ JSON mode</strong></div>
+        <div class="exercise">从一段用户评论抽取 {sentiment, score, keywords}，用 Pydantic 定义 schema，说明结构约束的范围与拒答/截断、授权和业务校验</div>
       </div>
     </div>
     <div class="lesson-item">
@@ -110,10 +110,10 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L30</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L30</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0035-L30-context-window-management.html">Context Window 管理</a> <span class="badge-agent">Agent 核心</span></div>
-        <div class="lesson-desc">窗口有限 + 越滚越长 + lost-in-the-middle + 成本随长度涨（呼应 L21/L23）；三大策略：滑动窗口 / 摘要记忆（compaction）/ 压缩精简；用 tiktoken 计数触发；保 system + 关键信息、压中间冗余</div>
+        <div class="lesson-desc">窗口有限 + 越滚越长 + lost-in-the-middle + 成本随长度涨（呼应 L21/L23）；三大策略：滑动窗口 / 摘要记忆（compaction）/ 压缩精简；使用目标模型专用计数接缝；按完整工具交互组重组、保留信任边界，预留输出并在压缩后复算，不可容纳时明确失败</div>
         <div class="exercise">给"对话已到 8000 token、上限 8192"的场景，选择策略并重组 messages</div>
       </div>
     </div>
@@ -137,7 +137,7 @@
       <span class="lesson-num">L33</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0038-L33-observability.html">LLM 可观测性</a> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">三大支柱（Traces 调用链 span 树 / Metrics token·延迟·成本·错误率 / Logs）、要追踪什么（模型/token/TTFT/成本/工具/错误）、<strong>OpenTelemetry GenAI 语义约定（<code>gen_ai.*</code> span，厂商无关标准，semconv 已到 1.42）+ Langfuse</strong>、基于成本 metrics 设告警</div>
+        <div class="lesson-desc">三大支柱（Traces 调用链 span 树 / Metrics token·延迟·成本·错误率 / Logs）、要追踪什么（模型/token/TTFT/成本/工具/错误）、<strong>OpenTelemetry GenAI 语义约定与版本固定</strong>、后端映射验收、默认只采元数据和授权脱敏正文、基于成本 metrics 设告警</div>
         <div class="exercise">列出"一次 Agent 任务该记录哪些 span 属性"，说明为什么用 OTel 标准字段而非自定义</div>
       </div>
     </div>
@@ -163,7 +163,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L35</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L35</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0040-L35-function-calling-loop.html">完整 Function Calling 循环</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">把单步 FC（L27）跑成 <strong>while 循环——这就是 Agent Loop 的骨架</strong>：模型请求工具 → 执行 → 回填（带 tool_call_id） → 继续，直到无 tool_calls；并行工具调用全部执行各自回填（可 asyncio.gather 提速）、多轮 vs 并行之别、设最大轮数防死循环</div>
@@ -171,11 +171,11 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L36</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L36</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0041-L36-tool-robustness-registry.html">工具健壮性与注册系统</a> <span class="badge-agent">Agent 核心</span></div>
-        <div class="lesson-desc">健壮性：参数校验失败<strong>把错误回填给模型让它重试</strong>（不崩）、流式下增量拼接工具调用参数、工具定义的 Token 开销控制；<strong>Tool Registry：用装饰器（呼应 L11）自动注册+分发</strong>，闭合 Phase 1「手写 @tool」线，看懂框架 @tool 底层</div>
-        <div class="exercise">写一个 @tool 装饰器骨架，说明它如何自动收集函数名+参数 schema 并登记到 registry</div>
+        <div class="lesson-desc">用装饰器关联参数模型与实现；分开展示清单和执行授权，dispatch真正接入运行时校验、受控错误回填及零执行断言；工具搜索作为后续按需进阶</div>
+        <div class="exercise">验证合法输入成功，未知/未授权/非法参数均不执行；不把Schema导出等同运行时校验</div>
       </div>
     </div>
   </div>
@@ -192,19 +192,19 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L37</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L37</span><span class="lesson-num-time">45min</span>
       <div>
-        <div class="lesson-title"><a href="0042-L37-cost-engineering.html">成本工程：2026 降本优先级</a> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">按性价比排序的完整清单：① 原生 Prompt Caching（前缀逐字节命中）→ ② <strong>语义缓存（按 embedding 相似度命中、跳过整次调用，与前缀缓存的区别是面试高频题）</strong> → ③ 模型路由 → ④ 提示压缩（LLMLingua）→ ⑤ 小模型蒸馏 → ⑥ Batch API；组合心法「原生缓存优先」</div>
-        <div class="exercise">给"客服 Agent 大量重复相似问题"场景，说明为什么语义缓存比前缀缓存更省，以及误命中的阈值风险</div>
+        <div class="lesson-title"><a href="0042-L37-cost-engineering.html">成本工程：负载驱动的成本决策</a> <span class="badge-interview">面试</span></div>
+        <div class="lesson-desc">先测质量门槛、成功任务总成本和延迟；再按负载选择缓存/Batch/effort/路由/压缩。核验API、模型、TTL、写读价和命中边界；语义缓存需权限/租户/知识版本隔离</div>
+        <div class="exercise">用虚构负载淘汰质量不达标方案，比较成功任务成本与缓存写/读盈亏；不能用fixture宣称真实降幅</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L38</span><span class="lesson-num-time">45min</span>
+      <span class="lesson-num">L38</span><span class="lesson-num-time">60min</span>
       <div>
         <div class="lesson-title"><a href="0043-L38-phase3-capstone.html">Phase 3 综合实战</a> <span class="badge-agent">综合</span></div>
-        <div class="lesson-desc">收官项目「生产级多模型 Agent 客户端」：整合 L25–L37——统一客户端（L25/L32）+ 重试+Fallback（L31/L32）+ 完整 FC 循环（L35/L36）+ 结构化输出/流式（L28/L26）+ 成本追踪/可观测（L33/L37），构建一个"能上生产的 LLM 调用层"</div>
-        <div class="exercise">写一个多模型 Agent 客户端：流式 + FC 循环 + 结构化输出 + 退避重试 + Fallback + 缓存 + 成本追踪</div>
+        <div class="lesson-desc">收官项目「可验收的Agent客户端」：完全离线的fixture adapter、消息/工具ID配对、有界重试与fallback、执行权限、text/json/本地流消费、usage账本。明确真实SDK、原生缓存、网络流和持久执行仍需集成</div>
+        <div class="exercise">独立运行自检，覆盖成功、拒答、截断、非法/未授权工具、工具失败、预算、fallback和缓存计费算法；再定义真实模型重复试验</div>
       </div>
     </div>
   </div>
@@ -215,17 +215,17 @@
   <strong>Module 3.1–3.2 打基础</strong>——先把 API 调通、流式、Function Calling、Structured Outputs 拿下，这是后面一切的地基。Structured Outputs 与 JSON mode 的区别务必讲清（面试必问）。<br>
   <strong>Module 3.3 是生产分水岭</strong>——退避+抖动、幂等、Fallback、可观测性，每一条都是"demo 能跑"和"敢上生产"的差距。幂等和抖动是资深护城河。<br>
   <strong>Module 3.4 是 Agent 命脉</strong>——Tool Schema 设计 + FC 循环（Agent Loop 骨架）+ 工具注册，学完你能看懂 LangChain 等框架 @tool 的底层。<br>
-  <strong>Module 3.5 收尾</strong>——成本工程（缓存分层）是生产必修，最后用 L38 把整个 Phase 3 串成一个能跑的客户端。<br><br>
+  <strong>Module 3.5 收尾</strong>——按负载做成本决策，L38验证执行不变量和失败分支。以task/trial/trace/outcome区分程序自检与真实Agent评估，不用一次漂亮答案代替环境结果。<br><br>
   <strong>关于版本号：</strong>模型型号、价格、缓存折扣迭代极快，本阶段刻意<strong>不写死具体数字</strong>，一律以各厂商<strong>当时官方文档</strong>为准；重点是工程模式与决策方法。
 </div>
 
 <div class="source">
   <strong>推荐参考资料（一手来源优先）：</strong><br>
   · <a href="https://developers.openai.com/api/docs/quickstart" target="_blank">OpenAI API Quickstart</a> — 最快官方上手<br>
-  · <a href="https://docs.anthropic.com/en/api/openai-sdk" target="_blank">Anthropic: OpenAI SDK compatibility</a> — 一个 SDK 打多家<br>
+  · <a href="https://docs.anthropic.com/en/api/openai-sdk" target="_blank">Anthropic: OpenAI SDK compatibility</a> — 了解有限兼容边界；原生能力优先原生SDK<br>
   · <a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank">OpenAI: Function Calling Guide</a> — 工具调用与 strict mode<br>
   · <a href="https://developers.openai.com/api/docs/guides/structured-outputs" target="_blank">OpenAI: Structured Outputs</a> — 约束解码保证 schema<br>
-  · <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a> — 降本第一杠杆<br>
+  · <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a> — 按模型/API/TTL核验缓存写读费率<br>
   · <a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/" target="_blank">OpenTelemetry: GenAI Semantic Conventions</a> — 可观测性厂商无关标准<br>
   · <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a> — AI Gateway / 统一 100+ 模型<br>
 </div>

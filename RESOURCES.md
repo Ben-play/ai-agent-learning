@@ -2,6 +2,23 @@
 
 ## Knowledge（知识来源）
 
+### 2026-11-06 课程优化一手依据
+- [OpenAI Responses 迁移指南](https://developers.openai.com/api/docs/guides/migrate-to-responses) · [Function Calling](https://developers.openai.com/api/docs/guides/function-calling) · [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+  Use for: L25/L26/L28/L35 的接口对照、Items回填和拒答/截断边界；Chat Completions仍受支持，不把兼容接口等同原生能力。
+- [OpenAI Prompt Caching](https://developers.openai.com/api/docs/guides/prompt-caching) · [Claude Prompt Caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
+  Use for: L23/L37/L38按模型、API版本、TTL和命中边界核对缓存写/读价格；所有练习费率只是给定参数，不是当前统一报价。
+- [Agent Skills 规范](https://agentskills.io/specification) · [Anthropic Skills 工程文章](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
+  Use for: `SKILL.md`、渐进披露和Skill/工具/MCP分工；格式规范不自动授予工具权限。
+- [MCP 2026-07-28正式发布](https://blog.modelcontextprotocol.io/posts/2026-07-28/) · [变更记录](https://modelcontextprotocol.io/specification/2026-07-28/changelog) · [授权规范](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
+  Use for: 规范基线迁移、HTTP/stdio授权边界、正式核心/可选扩展/提案区分；不混用旧握手/会话流程。
+- [LangGraph Persistence](https://docs.langchain.com/oss/python/langgraph/persistence) · [Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)
+  Use for: 数据库检查点、同线程恢复、节点重放和幂等；检查点不等于exactly-once。
+- [Anthropic Agent Evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+  Use for: task/trial/trace/outcome、重复试验和确定性评分优先；离线fixture仅证明控制逻辑。
+- [Microsoft Foundry RAG](https://learn.microsoft.com/en-us/azure/foundry/concepts/retrieval-augmented-generation) · [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/)
+  Use for: 检索时访问控制与不可信输入，普通函数/工作流/Agent的选择；MAF为Semantic Kernel和AutoGen共同后继，具体语言状态另核。
+
+
 ### 核心指南
 - [Anthropic: Building Effective Agents](https://www.anthropic.com/research/building-effective-agents)
   Anthropic 官方的 Agent 构建指南，涵盖 prompt chaining、routing、parallelization、orchestrator-workers、evaluator-optimizer 五种核心模式。必读。

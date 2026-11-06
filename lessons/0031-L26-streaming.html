@@ -17,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Streaming 流式输出</h1>
     <p class="subtitle">让回复像 ChatGPT 一样逐字往外蹦，而不是干等一大段</p>
@@ -119,7 +119,61 @@ for chunk in stream:                          # 逐块取（生成器，L12）
     <p>要拿到完整文本？边打印边 <code>full += delta</code> 累积即可。<strong>流式的本质就是：把一次"大返回"拆成 for 循环里的一串"小增量"，你负责拼。</strong></p>
   </div>
   <div class="tip">
-    📖 官方权威写法见 <a href="https://developers.openai.com/api/docs/guides/streaming-responses" target="_blank">OpenAI · Streaming responses</a>。里面还讲了 Responses API 的流式事件模型（<code>response.output_text.delta</code> 等），概念一致、字段名不同——记住"取 delta、判空、拼接"这个心法就能举一反三。
+    📖 上面是 Chat Completions 的兼容接口示例，不要把它的 <code>choices[0].delta</code> 套到 Responses。<a href="https://developers.openai.com/api/docs/guides/streaming-responses" target="_blank">官方流式指南</a>按事件类型分别定义文本增量、完成与失败；只有收到正常终态，才能把临时显示的文本当成完整结果。
+  </div>
+</div>
+
+<div class="section">
+  <h2>3.1 Responses 实践：按类型消费，按终态验收</h2>
+  <div class="card">
+    <p>延续 L25 的 OpenAI 主线。以下为会联网计费的可选实践；设置 <code>OPENAI_MODEL</code>，依赖由项目锁文件管理。文本 delta 只是临时片段，不能证明整个响应成功。</p>
+    <pre><code class="language-python" id="l26-responses">import os
+from openai import OpenAI
+
+client = OpenAI()
+parts = []
+completed = False
+with client.responses.create(
+    model=os.environ["OPENAI_MODEL"], input="用一句话介绍 SSE。",
+    store=False, stream=True,
+) as stream:
+    for event in stream:
+        if event.type == "response.output_text.delta":
+            parts.append(event.delta)
+            print(event.delta, end="", flush=True)
+        elif event.type == "response.completed":
+            completed = True
+            usage = event.response.usage
+        elif event.type in {"response.failed", "response.incomplete", "error"}:
+            raise RuntimeError(f"流未完成: {event.type}")
+if not completed or not parts:
+    raise RuntimeError("没有可消费的完整文本；需检查拒答或连接中断")
+text = "".join(parts)
+print()
+print(usage)</code></pre>
+    <p>这个纯文本示例不处理工具事件。<strong>不要自动重放已展示片段或已执行动作：</strong>断流恢复需要应用自己的事件去重与副作用边界。使用 <code>with</code> 关闭资源，<code>usage</code> 以终态为准；提前断开时不能伪造完整用量。</p>
+    <details><summary>离线验收：有增量不等于成功（可独立运行）</summary>
+    <pre><code class="language-python" id="l26-terminal-check">def collect(events):
+    parts = []
+    for kind, value in events:
+        if kind == "delta":
+            parts.append(value)
+        elif kind == "done":
+            return "".join(parts)
+        elif kind == "error":
+            raise ValueError("stream failed")
+    raise ValueError("missing terminal event")
+
+assert collect([("delta", "甲"), ("delta", "乙"), ("done", None)]) == "甲乙"
+for events in [[("delta", "半句")], [("delta", "半句"), ("error", None)]]:
+    try:
+        collect(events)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("未完成的流不应验收成功")
+print("L26 ACCEPTED")</code></pre></details>
+    <p>该 fixture 只测试客户端终态分支，不模拟服务端计费或重连协议。下一节对比 Claude 的原生流式接口。</p>
   </div>
 </div>
 
