@@ -39,7 +39,7 @@
     </div>
     <div class="qa-item">
       <div class="qa-q"><span class="qa-badge">Q</span><span class="qa-q-text">OpenAI、Anthropic 的 SDK 长得不一样，换厂商是不是要重写一大堆代码？</span></div>
-      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p>核心心智是相通的，业务代码<strong>基本不用大改</strong>。两家都是"传一个 messages 列表、拿回一段生成"，差异集中在<strong>调用入口和少数字段名</strong>：OpenAI 是 <code>client.chat.completions.create</code>、Anthropic 是 <code>client.messages.create</code>；system 提示的位置、stop 参数名等略有不同。</p><p>生产上换厂商的标准做法是<strong>加一层网关</strong>（如 LiteLLM），用统一的 OpenAI 兼容接口把多家包在后面，切换只改配置。所以别把厂商 SDK 的调用散落到业务各处——包一个自己的薄封装，未来换厂商只动那一层。</p></div></div>
+      <div class="qa-a"><span class="qa-badge">A</span><div class="qa-a-text"><p>业务目标可以复用，但协议不能只改几个字段。2026-11-06复核：OpenAI新项目推荐 <code>responses</code>，Claude使用原生 <code>messages</code>；工具关联、流式事件、推理状态、缓存与usage语义需要分别适配。</p><p>将厂商调用集中在显式Adapter中，保留原生状态并做能力测试。网关或兼容接口可减少接入工作，但不保证全部特性等价，更不能把切换厂商缩减为只改配置。见更新后的L25和L38。</p></div></div>
       <div class="qa-date">记录于 2026-07-03</div>
     </div>
   </div>
@@ -159,7 +159,7 @@
   <div class="qa-lesson" id="L37">
     <div class="qa-lesson-head">
       <span class="qa-lesson-num">L37</span>
-      <span class="qa-lesson-title"><a href="../lessons/0042-L37-cost-engineering.html">成本工程：2026 降本优先级</a></span>
+      <span class="qa-lesson-title"><a href="../lessons/0042-L37-cost-engineering.html">成本工程：负载驱动的成本决策</a></span>
     </div>
     <div class="qa-empty"><span>🌱</span>还没有问题——学到这课有疑问，随时问我。</div>
   </div>

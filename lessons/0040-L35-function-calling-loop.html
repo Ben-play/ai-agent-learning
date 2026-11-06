@@ -17,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>完整 Function Calling 循环</h1>
     <p class="subtitle">把单步工具调用跑成一个 while 循环——这就是 Agent Loop 的骨架</p>
@@ -29,7 +29,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p><a href="0032-L27-function-calling.html">L27</a> 讲透了 Function Calling 的<strong>原理</strong>：模型只输出"我要调哪个工具、传什么参数"的意图，执行和回填由你完成。但那只是<strong>一来一回的单步</strong>。真实任务往往不是一步能完成的——模型可能<strong>先调工具 A、看结果、再调工具 B、……最后才给答案</strong>。</p>
-    <p>这一课把单步<strong>展开成一个循环</strong>：只要模型还在请求工具，就执行 + 回填，直到它给出最终文本答案。这个 <code>while</code> 循环<strong>不是某个花哨的技巧，它就是 Agent Loop 最核心的骨架</strong>——感知 → 行动 → 观察 → 再感知。Phase 4/6 里所有 Agent 架构，本质都建在这几行代码之上。写对它，你就握住了整个 Agent 的心脏。</p>
+    <p>这一课把单步<strong>展开成一个循环</strong>：只要模型还在请求工具，就执行 + 回填，直到它给出最终文本答案。这个 <code>while</code> 循环<strong>不是某个花哨的技巧，它就是 Agent Loop 最核心的骨架</strong>——感知 → 行动 → 观察 → 再感知。Phase 5/6 中的 Agent 执行架构，本质都建在这几行代码之上。写对它，你就握住了整个 Agent 的心脏。</p>
   </div>
 </div>
 
@@ -76,7 +76,7 @@
 <div class="section">
   <h2>2. 完整循环代码（核心）</h2>
   <div class="card">
-    <p>下面是整个循环的骨架。字段名（<code>choices[0].message</code> / <code>tool_calls</code> / <code>function.name</code> / <code>function.arguments</code> / <code>tool_call_id</code>）都是 OpenAI SDK 的<strong>真实结构</strong>，可对照官方文档逐一核对：</p>
+    <p>下面是使用Chat Completions的教学骨架，不是独立运行程序：client/MODEL/TOOLS由应用提供，ALLOWED由可信权限策略确定；dispatch使用L36的完整实现。字段名（<code>choices[0].message</code> / <code>tool_calls</code> / <code>function.name</code> / <code>function.arguments</code> / <code>tool_call_id</code>）都是 OpenAI SDK 的<strong>真实结构</strong>，可对照官方文档逐一核对：</p>
     <pre><code>import json
 
 messages = [{"role": "user", "content": "查北京天气，再据此推荐穿搭"}]
@@ -93,8 +93,8 @@ while True:
 
     messages.append(msg)             # ① 把模型这条"工具请求"消息加回历史
     for tc in msg.tool_calls:        # ② 逐个执行工具（可能不止一个）
-        args = json.loads(tc.function.arguments)          # arguments 是 JSON 串！
-        result = dispatch(tc.function.name, args)         # 你的工具分发
+        result = dispatch(tc.function.name, tc.function.arguments, allowed=ALLOWED)
+        # arguments是JSON串；由L36先授权、再解析校验，失败也返回受控结果。
         messages.append({            # ③ 把结果作为 tool 消息回填
             "role": "tool",
             "tool_call_id": tc.id,   # ★ 对应哪一次调用
@@ -119,6 +119,44 @@ while True:
       <button data-answer="wrong">只是写法习惯，删掉照样能跑</button>
     </div>
     <div class="quiz-explanation">每个 <code>role:"tool"</code> 消息都要<strong>对应前面某个 <code>tool_call</code></strong>（靠 <code>tool_call_id</code> 配对）。如果不先把模型那条带 <code>tool_calls</code> 的 assistant 消息 <code>append</code> 回历史，回填的 <code>tool</code> 消息就"无主"，API 会直接报错。顺序是固定的：<strong>先放模型的工具请求消息，再逐个放对应的 tool 结果</strong>。</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2.1 Responses 对照：回传 Items，而不是套用 tool 消息</h2>
+  <div class="card">
+    <p>上节使用 <strong>Chat Completions</strong> 讲循环的不变量。L25 的 Responses 主线使用 <code>function_call</code> 与 <code>function_call_output</code>，关联字段是 <code>call_id</code>，不是 <code>tool_call_id</code>。以下是集成片段：需先构造 <code>client</code>、设置模型/工具定义，并使用 L36 中已授权和校验的 <code>dispatch</code>；会联网计费，不属于离线自检。</p>
+    <pre><code class="language-python">import json
+import os
+
+items = [{"role": "user", "content": "查北京天气"}]
+for _ in range(8):
+    response = client.responses.create(
+        model=os.environ["OPENAI_MODEL"], input=items, tools=RESPONSE_TOOLS,
+        store=False,
+    )
+    if response.status != "completed":
+        raise ValueError(f"响应未完成: {response.status}")
+    refused = any(part.type == "refusal"
+                  for item in response.output if item.type == "message"
+                  for part in item.content)
+    if refused:
+        raise ValueError("拒答不进入工具执行路径")
+    # 保留完整输出（含必要的不透明推理Items），不要只保留output_text。
+    items.extend(response.output)
+    calls = [item for item in response.output if item.type == "function_call"]
+    if not calls:
+        print(response.output_text)
+        break
+    for call in calls:
+        # arguments解析/校验、执行权限与受控错误反馈由L36分发层负责。
+        result = dispatch(call.name, call.arguments, allowed=ALLOWED)
+        items.append({"type": "function_call_output", "call_id": call.call_id,
+                      "output": json.dumps(result, ensure_ascii=False)})
+else:
+    raise RuntimeError("tool round budget exhausted")</code></pre>
+    <p><code>RESPONSE_TOOLS</code> 的 function 字段位于工具定义顶层，不能原样复制 Chat 的嵌套 <code>function</code> 形状。以<a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank">官方 Function Calling</a>为准；同理 Messages 用 <code>tool_result/tool_use_id</code>，不能跨协议替换字段。</p>
+    <p><strong>最小评估前移：</strong>从本课开始，为正常、非法参数、无权限和工具异常建立小任务集；检查工具实际结果，不只看最终话术。L38 提供完全离线验收；真实模型还需重复试验并记录成功率、成本与延迟。最大轮数是必要预算，不等于已经实现墙钟超时或生产可靠性。</p>
   </div>
 </div>
 
@@ -178,10 +216,9 @@ for turn in range(MAX_TURNS):        # 用 for 天然带上限，比 while True 
         print(msg.content); break
     messages.append(msg)
     for tc in msg.tool_calls:
-        args = json.loads(tc.function.arguments)
         messages.append({
             "role": "tool", "tool_call_id": tc.id,
-            "content": json.dumps(dispatch(tc.function.name, args)),
+            "content": json.dumps(dispatch(tc.function.name, tc.function.arguments, allowed=ALLOWED)),
         })
 else:                                 # for-else：没 break（跑满上限也没收敛）
     print("达到最大轮数，未能完成——需要人工介入或返回兜底回答")</code></pre>
@@ -197,7 +234,7 @@ else:                                 # for-else：没 break（跑满上限也�
     <pre><code>感知（Perceive） = 模型看当前 messages，输出下一步意图
                     msg = resp.choices[0].message  →  msg.tool_calls
 行动（Act）       = 你的代码真正执行工具
-                    dispatch(tc.function.name, args)
+                    dispatch(tc.function.name, tc.function.arguments, allowed=ALLOWED)
 观察（Observe）   = 把工具结果回填进 messages
                     messages.append({"role":"tool", ...})
 再感知（Loop）     = 回到循环顶，模型基于新观察决定下一步
@@ -253,8 +290,8 @@ else:                                 # for-else：没 break（跑满上限也�
           print(msg.content); break
       messages.append(msg)              # ① 模型的工具请求消息，先放回历史
       for tc in msg.tool_calls:         # ② 遍历全部（并行也在这处理）
-          args = json.loads(tc.function.arguments)   # arguments 是 JSON 串
-          result = dispatch(tc.function.name, args)  # 你执行
+          # arguments保留JSON串，由dispatch先授权再解析校验
+          result = dispatch(tc.function.name, tc.function.arguments, allowed=ALLOWED)
           messages.append({             # ③ 结果回填，带 tool_call_id
               "role":"tool", "tool_call_id": tc.id,
               "content": json.dumps(result)})

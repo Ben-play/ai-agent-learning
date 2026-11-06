@@ -17,19 +17,19 @@
 <!-- Hero -->
 <div class="hero">
   <h1>AI Agent 高级开发工程师</h1>
-  <p>从 Python 基础到生产级多智能体系统，你的完整成长路线图</p>
+  <p>从 Python 基础到可验收的单 Agent 系统，再按需求扩展到生产与协作</p>
   <div class="hero-stats">
     <div class="hero-stat">
       <span class="hero-stat-num">11</span>
       <span class="hero-stat-label">学习阶段</span>
     </div>
     <div class="hero-stat">
-      <span class="hero-stat-num">100+</span>
-      <span class="hero-stat-label">课时</span>
+      <span class="hero-stat-num">38</span>
+      <span class="hero-stat-label">已编写正式课</span>
     </div>
     <div class="hero-stat">
-      <span class="hero-stat-num">18-24</span>
-      <span class="hero-stat-label">周完成</span>
+      <span class="hero-stat-num">分阶段</span>
+      <span class="hero-stat-label">按学习负载估算</span>
     </div>
     <div class="hero-stat">
       <span class="hero-stat-num">30+</span>
@@ -38,7 +38,15 @@
   </div>
 </div>
 
-<p>2024-2026 年，AI Agent 正在从"能聊天的机器人"进化为"能自主完成复杂任务的智能系统"。掌握 Agent 开发，意味着你能构建真正<strong>自主</strong>的智能系统。</p>
+<p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
+
+<div class="info">
+  <strong>发布范围与更新边界（2026-11-06）：</strong>现有正式课程为 Phase 1–3 的 L01–L38；Phase 4–11 仅为规划，以下新增主题是后续编写与验收目标，不代表正文或生产能力已经实现。阶段课数/周数是估算，不承诺固定完成时间；参考页不计为新课。HTML 中的报告入口指向仓库源文档，随本批更新合并后可访问；本地见 <code>docs/research/2026-11-06-curriculum-audit.md</code>。更新依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+</div>
+<div class="tip">
+  <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
+  <strong>学习节奏：</strong>保留基础课号，把长课拆成可暂停的小目标，使用局部决策卡、近迁移、阶段验收；隔日闭卷重建并做跨课变式，不以复制示例通过代替掌握。
+</div>
 
 <h2>学习路径</h2>
 <p style="font-size:0.9rem; color:var(--muted); margin-bottom:1rem;">点击每个阶段可展开/收起详细内容</p>
@@ -160,24 +168,25 @@
   </div>
   <div class="phase-body" id="phase-3-body">
     <div class="card">
-      <strong>Module 3.1 · API 基础：</strong>主流 API 快速上手（OpenAI/Anthropic/Google）、Streaming 流式输出<br><br>
+      <strong>Module 3.1 · API 基础：</strong>OpenAI 以 <strong>Responses</strong> 为主线，保留 Chat Completions 兼容基础；Anthropic 使用原生 SDK 与显式 adapter；Google 原生接入保留为后续选做，当前不声称已实现。对照工具调用关联、流式事件、状态与 usage，不把更换 base_url 当作能力等价。在线集成与离线 fixture 证据分别记录。<br><br>
       <strong>Module 3.2 · 核心能力（Agent 必备）：</strong><br>
       · <strong>Function Calling</strong> — 工具定义、模型调用工具流程、多工具选择<br>
-      · <strong>Structured Output</strong> — <strong>Structured Outputs（约束解码/strict mode，token 级<em>保证</em>符合 Schema）≠ 旧 JSON mode</strong>、Pydantic 约束、无法保证时的验证与重试兜底<br>
+      · <strong>Structured Output</strong> — Structured Outputs 的 Schema 约束不同于旧 JSON mode；按支持的模型/接口验证拒答、截断和解析失败，Schema 合规不等于事实、授权或业务正确<br>
       · <strong>多模态 API</strong> — 图片理解（Vision）、音频转录（Whisper）<br><br>
-      <strong>Module 3.3 · 工程实践（生产级）：</strong><br>
-      · <strong>Context Window 管理</strong> — 上下文压缩、滑动窗口、摘要记忆<br>
-      · <strong>错误处理与重试策略</strong> — 速率限制（429）、指数退避 + <strong>抖动（full jitter，防重试风暴）</strong>、重试预算、<strong>幂等键（idempotency key，让有副作用的工具调用可安全重试）</strong><br>
+      <strong>Module 3.3 · 工程实践与边界：</strong><br>
+      · <strong>Context Window 管理</strong> — 按完整工具交互组重组上下文，计入工具定义、多模态与输出预留；压缩后重新计数，仍超限则降级或退出<br>
+      · <strong>错误处理与重试策略</strong> — 速率限制（429）、指数退避 + <strong>抖动（full jitter，防重试风暴）</strong>、重试预算、<strong>幂等键与业务去重（需执行端支持并验证，不能靠加请求头获得保证）</strong><br>
       · <strong>模型路由与 Fallback</strong> — 主备模型策略、AI Gateway 模式（LiteLLM）<br>
       · <strong>LLM 可观测性基础</strong> — 调用日志、Token 用量追踪、成本告警；<strong>OpenTelemetry GenAI 语义约定（<code>gen_ai.*</code> span，厂商无关标准）+ Langfuse</strong><br><br>
       <strong>Module 3.4 · 工具工程与 Function Calling（v7 新增 · P0 实战必修）：</strong><br>
       · <strong>Tool Schema 设计</strong> — 用 Pydantic / JSON Schema 定义工具、strict mode、参数描述如何影响模型选择<br>
       · <strong>完整 Function Calling 循环</strong> — 模型请求工具 → 执行 → 回填结果 → 再推理，多轮 / 并行调用<br>
       · <strong>健壮性</strong> — 参数校验失败如何反馈给模型重试、流式响应中增量解析工具调用、工具定义占多少 Token<br>
-      · <strong>工具注册系统</strong> — 用装饰器做可扩展的 Tool Registry（衔接 Phase 1）<br><br>
-      <strong>Module 3.5 · 成本工程（v7 强化）：</strong>2026 降本优先级 — <strong>① 原生 Prompt Caching</strong>（OpenAI/Anthropic/Google，零改动、输入成本最高降 ~90%，关键是「静态前缀 + 动态后缀」缓存键设计）＞ ② <strong>语义缓存</strong>（semantic cache：按<em>语义相似度</em>命中，GPTCache/Redis，与前缀缓存互补）＞ ③ 模型路由（LiteLLM）＞ ④ 提示压缩（LLMLingua）＞ ⑤ 小模型蒸馏 ＞ ⑥ Batch API<br><br>
-      <div class="interview-box">"Streaming 好处" / "Function Calling 原理" / "如何设计好的 Tool Schema" / "并行工具调用怎么处理" / "Structured Outputs 与 JSON mode 区别" / "Context Window 超限" / "如何处理速率限制（退避+抖动）" / "有副作用的工具调用如何安全重试（幂等）" / "主模型挂了怎么办" / "Prompt Caching 与语义缓存的区别" / "一个 Agent 每月 $10k 如何砍到 $5k" — 共 14+ 道高频题</div><br>
-      <strong>实战项目：</strong>构建多模型 Agent 客户端 — 流式输出 + <strong>完整 Function Calling 循环</strong> + 结构化输出 + 错误重试 + 模型 Fallback + 原生缓存 + 成本追踪<br><br>
+      · <strong>工具注册系统</strong> — 用装饰器做 Tool Registry（衔接 Phase 1）；展示子集不等于执行授权，dispatch 前单独检查允许集合并做运行时参数校验<br>
+      · <strong>小型 Agent eval（前移至最小工具循环的验收目标）：</strong>区分 task / trial / trace / outcome；用小型任务集重复试验，优先检查环境最终状态，保留轨迹诊断，不把固定工具顺序当唯一正确答案<br><br>
+      <strong>Module 3.5 · 负载驱动的成本工程：</strong>先测成功率、<strong>每个成功任务的总成本</strong>、延迟，再选择前缀缓存、Batch、effort、模型路由或压缩，不背固定优先级。缓存写价、TTL、最小长度与命中边界按模型/API 版本核实；语义缓存另验收用户/租户隔离、数据时效和不可缓存的副作用动作，不承诺降幅。<br><br>
+      <div class="interview-box">"Streaming 好处" / "Function Calling 原理" / "如何设计好的 Tool Schema" / "并行工具调用怎么处理" / "Structured Outputs 与 JSON mode 区别" / "Context Window 超限" / "如何处理速率限制（退避+抖动）" / "有副作用的工具调用如何安全重试（幂等）" / "主模型挂了怎么办" / "Prompt Caching 与语义缓存的区别" / "怎样按负载与质量门槛优化成功任务成本" — 共 14+ 道高频题</div><br>
+      <strong>综合项目与验收目标：</strong>构建可验收的 Agent 客户端 — 工具循环、结构化输出、流式、重试、fallback 和累计 usage；离线覆盖成功、非法输入、拒答、截断、工具异常和预算耗尽。原生接口/缓存接入需单独验证；离线 fixture 只证明本地契约，不能证明真实模型能力、线上缓存命中或生产就绪。<br><br>
       <a href="0044-phase3-api-engineering-outline.html" style="font-weight:600;">📋 查看 Phase 3 详细大纲（L25–L38）→</a><br>
       <a href="../qa/phase3-qa.html" style="font-weight:600;">❓ Phase 3 疑难解答 Q&amp;A →</a>
     </div>
@@ -200,9 +209,11 @@
   </div>
   <div class="phase-body" id="phase-4-body">
     <div class="card">
-      <strong>Prompt Engineering：</strong>System Prompt 设计、Few-shot Learning、Chain-of-Thought 推理、Structured Output 结构化输出、Prompt 模板化与复用、版本管理与 A/B 测试<br><br>
-      <strong>Context Engineering 基础（2026 核心技能 · 对齐 Anthropic 官方术语）：</strong>什么是上下文工程（Prompt Engineering 的自然延伸，管理推理时的<strong>全部</strong> token 而非只有提示词）、<strong>context rot</strong>（token 越多召回越差）与 <strong>attention budget</strong>（注意力预算有限）、"right altitude" 系统提示、动态上下文组装、RAG 检索结果作为上下文注入<br><br>
-      <strong>实战项目：</strong>设计一套 Prompt 模板系统 + 上下文组装管线，支持动态组装、版本管理和效果对比
+      <span class="tag tag-agent">规划 · 验收目标</span><br>
+      <strong>Prompt Engineering：</strong>System Prompt、Few-shot、输出契约、模板复用、版本管理与 A/B 测试。理解 CoT 概念，但不要求所有模型“逐步思考”；推理模型优先明确目标/约束，提示策略以任务评测为准。<br><br>
+      <strong>Context Engineering 基础：</strong>管理推理时的全部输入，包括提示、历史、工具和检索证据；理解长上下文的注意力预算与召回退化风险，按任务选择信息，不把“越多越好”当原则。<br><br>
+      <strong>Skills 小单元：</strong><a href="../reference/0004-agent-skills.html">SKILL.md、元数据匹配与渐进披露</a>；流程知识与工具/MCP 操作接口分离，匹配不等于授权，不增加正式课号。Phase 6 再接入实际工具。<br><br>
+      <strong>验收目标：</strong>为贯穿项目建立可版本化的提示/上下文管线和一个可复用业务 Skill，验证应触发与不应触发的输入，记录质量和上下文开销。
     </div>
   </div>
 </div>
@@ -223,16 +234,14 @@
   </div>
   <div class="phase-body" id="phase-5-body">
     <div class="card">
-      <strong>Agent Loop（核心执行循环）：</strong>Observe → Think → Act → Observe 循环、循环控制、错误恢复与重试策略<br><br>
-      <strong>Agent Harness（2026 主导架构）：</strong>Anthropic 发布 3 篇工程论文定义的新范式。"好模型 + 好 harness > 好模型 + 差 harness"：<br>
-      · <strong>棘轮效应（Ratchet）：</strong>每次 Agent 犯错，就加一条规则防止再犯<br>
-      · <strong>行为驱动设计：</strong>从"期望行为"反推 harness 组件<br>
-      · 生命周期管理、工具执行调度、完成标准、错误恢复<br><br>
-      <strong>Context Engineering 进阶（Anthropic 官方长任务技法）：</strong><strong>compaction</strong>（接近上限时压缩对话、带摘要重启）、<strong>structured note-taking / agentic memory</strong>（上下文外持久化笔记，用时再拉回）、<strong>sub-agent 架构</strong>（子代理用干净窗口探索、只回 1–2k token 精炼摘要）、<strong>just-in-time 检索 / progressive disclosure</strong>（存轻量标识符、运行时按需加载 vs 预取）、滑动窗口、Token 预算分配<br><br>
-      <strong>工具设计哲学（2026 关键技能）：</strong>Schema 设计、错误处理、粒度控制、工具组合、工具测试<br><br>
-      <strong>经典模式：</strong>ReAct、Plan-and-Execute、Reflexion<br><br>
-      <strong>记忆与 Human-in-the-Loop：</strong>短期/长期/工作记忆设计、Mem0、人工审批节点<br><br>
-      <strong>实战项目：</strong>从零实现一个完整的 Agent Harness — ReAct 模式 + 自定义工具 + Context Engineering + 记忆系统 + 人工审批
+      <span class="tag tag-agent">规划 · 验收目标</span><br>
+      <strong>先选执行方式：</strong>普通函数 → 确定性 workflow → 单 Agent，只有动态决策的收益超过成本才增加自主性。Agent Loop 设置最大轮次、预算和退出条件。<br><br>
+      <strong>Agent Harness：</strong>从期望行为反推工具调度、完成标准、上下文预算、执行授权和错误恢复；故障先补回归用例，再决定是否加规则，允许经验证后删改规则。<br><br>
+      <strong>Context Engineering 进阶：</strong>按完整交互组压缩并复算预算；外置有来源的结构化笔记，按需检索和渐进披露。子代理隔离上下文仅作对照，不作为默认架构。<br><br>
+      <strong>工具设计：</strong>Schema、运行时校验、执行权限、错误反馈与测试；先用小工具集建立选择质量/延迟/上下文基线，工具搜索与程序化聚合留作有瓶颈时的进阶。<br><br>
+      <strong>记忆生命周期：</strong>区分短期、工作与长期记忆；每次写入保留依据、来源和时间，支持用户纠正、过期、删除与租户隔离，评测检索质量，不把推测写成永久事实。<br><br>
+      <strong>持久执行与审批（前移）：</strong>数据库检查点 → 暂停审批 → 退出进程 → 重启并恢复同一任务；说明节点可能重放，外部副作用须幂等，检查点不等于 exactly-once。<br><br>
+      <strong>验收目标：</strong>在贯穿项目中手写最小单 Agent Harness，比较函数/workflow 基线；用离线任务验证预算退出、记忆纠正隔离、审批重启及重复执行不重复产生业务副作用。
     </div>
   </div>
 </div>
@@ -253,11 +262,11 @@
   </div>
   <div class="phase-body" id="phase-6-body">
     <div class="card">
-      <strong>轻量框架实战（选一个深入）：</strong><br>
-      · <strong>Pydantic AI</strong> — 类型安全的 Agent 框架，与 Pydantic 技能完美衔接<br>
-      · <strong>OpenAI Agents SDK</strong> — OpenAI 官方轻量框架，API 设计简洁<br><br>
-      <strong>MCP 基础实战：</strong>Server/Client/Transport/Tool/Resource 核心概念、使用现成 MCP Server 为 Agent 添加工具<br><br>
-      <strong>实战项目：</strong>用 Pydantic AI 或 OpenAI Agents SDK 构建完整 Agent — 集成 MCP 工具 + 多步骤推理 + 人工审批
+      <span class="tag tag-agent">规划 · 验收目标</span><br>
+      <strong>一个框架贯穿深学：</strong>为持久图编排目标，主线采用 LangGraph，先学最小状态与工具循环，Phase 10 再深化；Pydantic AI / OpenAI Agents SDK 仅对照类型、事件与授权接缝，不要求再做完整项目。框架选择按任务与证据，不做通用排名。<br><br>
+      <strong>MCP 基础：</strong>Host / Client / Server、Tool / Resource / Prompt 与 stdio / Streamable HTTP。固定规范基线 <strong>2026-07-28</strong>，另锁定实际验证过的 SDK 版本；新版没有 initialize 握手、协议 session 或 GET 通知流，仍支持 SSE 响应。详见<a href="../reference/0003-mcp-a2a-protocols.html">版本化协议与迁移检查表</a>。<br><br>
+      <strong>授权与 Skills 接入：</strong>HTTP 授权是可选能力，采用时按该规范实现发现、PKCE、resource/audience、issuer 与最小 scope；stdio 从环境获取凭证。工具可发现不代表允许执行，Skill 匹配也不授权。<br><br>
+      <strong>验收目标：</strong>将 Phase 5 同一个项目迁入主线框架，复验数据库检查点、审批后进程重启、幂等；MCP 覆盖发现、调用、版本不兼容、JSON/SSE 响应和权限拒绝。Tasks 是官方可选扩展，不是核心必修或恢复机制的替代。
     </div>
   </div>
 </div>
@@ -278,15 +287,12 @@
   </div>
   <div class="phase-body" id="phase-7-body">
     <div class="card">
-      <strong>数据基础（精简版）：</strong>PostgreSQL + SQLAlchemy ORM、Redis 缓存、PDF/HTML/Markdown 解析、数据清洗与分块策略、httpx/Crawl4AI<br><br>
-      <strong>向量数据库：</strong>Embedding 原理与模型选型、Chroma/Pinecone/Weaviate/Milvus 实战、HNSW/IVF 索引、混合检索<br><br>
-      <strong>RAG 体系：</strong><br>
-      · RAG 基础：文档切分 → 向量化 → 检索 → 生成<br>
-      · 检索优化：HyDE、Multi-Query、Reranking<br>
-      · Agentic RAG（2026 核心）：Self-RAG、Corrective RAG、Adaptive RAG<br>
-      · GraphRAG：知识图谱 + 向量检索融合<br>
-      · RAG 评估：RAGAS 框架、Faithfulness/Relevance 指标<br><br>
-      <strong>实战项目：</strong>为阶段 6 的 Agent 添加 RAG 能力 — 文档管线 → 向量数据库 → 自主检索策略 → RAGAS 评估
+      <span class="tag tag-rag">规划 · 验收目标</span><br>
+      <strong>数据基础：</strong>PostgreSQL / SQLAlchemy、PDF/HTML/Markdown 解析、清洗与分块；Embedding、向量索引和混合检索选一种后端实作，其他仅比较需求与运维取舍。<br><br>
+      <strong>企业 RAG 先做可靠性：</strong>文档/片段携带权限、来源定位与版本；检索阶段执行用户/租户访问控制，引用能回到具体证据；更新和删除须传播至索引、缓存与相关派生数据。检索内容是不可信输入，不得覆盖系统规则或直接授权工具。<br><br>
+      <strong>分层评测：</strong>检索层测权限过滤、召回和证据覆盖；生成层测引用定位、忠实度、答案正确性与无证据时的拒答。确定性检查优先，RAGAS / Judge 仅作经校准的补充。<br><br>
+      <strong>需求驱动选修：</strong>混合检索与 Reranking 建立基线后，再按失败案例选择 HyDE、Agentic RAG 或 GraphRAG，不把更复杂的检索视为默认升级。<br><br>
+      <strong>验收目标：</strong>给贯穿项目加入证据问答；两名权限不同的用户问同一问题时不得检索越权文档，能追溯证据，修订/删除后不再返回旧内容，分别报告检索与生成错误。
     </div>
   </div>
 </div>
@@ -307,18 +313,19 @@
   </div>
   <div class="phase-body" id="phase-8-body">
     <div class="card">
-      <strong>可观测性（Observability）：</strong>LangSmith/Langfuse/Phoenix/Helicone 链路追踪、结构化日志、告警机制；<strong>OpenTelemetry GenAI 语义约定</strong>（标准化方向，避免厂商锁定）<br><br>
-      <strong>评估体系（Evaluation · v7 升级为评估驱动开发）：</strong>LLM-as-Judge（2026 标准，并验证 Judge 与人工标注一致性）、<strong>Agentic Metrics</strong>（Tool Correctness / Plan Quality / Step Efficiency / 过度代理）、回归测试、工具（promptfoo / Braintrust / DeepEval / RAGAS）、公开基准（SWE-bench Verified / τ-bench / GAIA）<br><br>
+      <span class="tag tag-deploy">规划 · 验收目标</span><br>
+      <strong>可观测性（Observability）：</strong>选一种追踪工具接入，保留结构化日志、脱敏与告警；按固定版本验证 OpenTelemetry GenAI 语义约定，不把遥测平台数量当学习目标。<br><br>
+      <strong>评估体系（深化 Phase 3 小型 eval）：</strong>区分任务、重复试验、轨迹和最终结果；优先确定性检查环境最终状态，再用与人工标注校准的 Judge 补充。隔离开发/验收集，比较成功率、成功任务成本、延迟与过度代理；工具选择一种实作，公开基准只作外部对照，不替代业务任务集。<br><br>
       <strong>安全基础（Security · v7 加深）：</strong>Prompt Injection（尤其<strong>间接注入</strong>：被污染的检索数据导致误调用工具）、<strong>过度代理（Excessive Agency）</strong>、工具权限模型与 <strong>MCP 权限隔离</strong>、人在环审批、数据隐私、Guardrails 框架<br><br>
       <strong>成本工程（Cost Engineering）：</strong>原生 Prompt Caching、模型路由、Token 预算管理、成本监控<br><br>
-      <strong>🆕 LLM / Agent 系统设计（v7 新增 · P1 面试主战场）：</strong>2026 面试已从「设计推荐系统」转向「设计智能系统」。掌握 5 类经典题：<br>
+      <strong>LLM / Agent 系统设计：</strong>围绕业务约束说明质量、成本、权限、状态与故障取舍，练习 5 类场景题：<br>
       · 设计一个<strong>生产级 RAG 系统</strong>（召回 / 成本 / 监控 / 容错）<br>
       · 设计<strong>多 Agent 客服系统</strong>（协调 / 状态 / 容错）<br>
       · 设计 <strong>LLM 网关</strong>（路由 / 缓存 / 限流 / 成本）<br>
       · 设计<strong>长时运行 Agent</strong>（上下文跨越 / 记忆 / 中断恢复）<br>
       · 设计 <strong>Agent 评估框架</strong>（离线 + 在线指标）<br><br>
-      <div class="interview-box">"如何评估 Agent 好坏 / Tool Correctness vs answer relevance" / "什么是间接 Prompt Injection、过度代理" / "MCP 工具权限怎么隔离" / "设计一个 RAG 系统 / LLM 网关 / 多 Agent 客服" / "成本降 50% 的方案" — 共 8+ 道高频题</div><br>
-      <strong>实战项目：</strong>为你的 Agent 添加可观测性 + LLM-as-Judge & Agentic 评估 + 安全防护 + 成本监控，并产出一份「多 Agent 系统设计」文档（含取舍分析）
+      <div class="interview-box">"如何评估 Agent 好坏 / Tool Correctness vs answer relevance" / "什么是间接 Prompt Injection、过度代理" / "MCP 工具权限怎么隔离" / "设计一个 RAG 系统 / LLM 网关 / 多 Agent 客服" / "如何验证降本没有损害质量或隔离" — 共 8+ 道高频题</div><br>
+      <strong>验收目标：</strong>为贯穿项目补齐追踪、安全、成本和分层评测，输出单 Agent / workflow 的设计取舍；只有质量、成本、延迟对照显示收益时，才规划多 Agent 扩展。
     </div>
   </div>
 </div>
@@ -338,11 +345,13 @@
   </div>
   <div class="phase-body" id="phase-9-body">
     <div class="card">
-      <strong>Extended Thinking：</strong>Claude 深度推理能力、思维链、思考预算管理<br><br>
+      <span class="tag tag-agent">规划 · 按需进阶</span><br>
+      <strong>推理控制：</strong>按具体模型/API 核实 thinking / effort 能力和限制，以任务质量、延迟与成本决定推理投入，不依赖固定思维链模板。<br><br>
+      <strong>大工具集进阶：</strong>工具搜索、按需加载、在受限代码执行环境中聚合中间结果。与小工具集基线比较选择质量、上下文量与延迟；程序化调用仍须执行授权、参数校验和资源预算，不照抄旧文章的 beta/API 字段。<br><br>
       <strong>Computer Use & Browser Agent：</strong>Claude Computer Use、<strong>browser-use</strong>（开源、模型无关，社区活跃）、Playwright MCP、GUI 自动化<br><br>
       <strong>Agentic Coding（2026 爆发）：</strong>真实开源案例剖析 — <strong>OpenHands</strong>（开源编码 Agent）、Claude Code、SWE-agent；Harness + Scaffolding 架构<br><br>
-      <strong>Long-running Agents：</strong>状态持久化、错误恢复、检查点机制<br><br>
-      <strong>实战项目：</strong>用 browser-use 构建 Browser Agent，或剖析 OpenHands 的 Agent 循环并复现其工具调度（选学）
+      <strong>Long-running Agents：</strong>深化 Phase 5/6 的持久恢复基线，评测长任务中的取消、重放、预算和故障恢复，而非此时才首次引入检查点。<br><br>
+      <strong>可选验收目标：</strong>只为贯穿项目中已证明的瓶颈选择工具搜索、浏览器自动化或编码 Agent 源码对照之一，说明收益、授权边界与新增维护成本。
     </div>
   </div>
 </div>
@@ -363,17 +372,12 @@
   </div>
   <div class="phase-body" id="phase-10-body">
     <div class="card">
-      <strong>生产级框架：</strong>LangGraph（状态机编排，图结构、条件分支、持久化检查点，2026 生产首选）、CrewAI（角色协作 + 事件驱动 Flows）<br>
-      <span style="font-size:0.85rem; color:var(--muted);">※ AutoGen 已进入维护模式，作为历史了解；其后继为 Microsoft Agent Framework。</span><br><br>
-      <strong>MCP 深度实战：</strong>自定义 MCP Server 开发、安全模型（权限隔离 / 参数白名单 / 审计日志）、生产环境部署<br><br>
-      <strong>多智能体模式：</strong>Orchestrator-Worker、Hierarchical、Debate、Swarm<br><br>
-      <strong>Agent 协议概览：</strong>MCP（必修基础设施）、A2A（了解）；ANP/ACP/AGNTCY 等生态未定，关注即可<br><br>
-      <strong>Agent 产品架构分析（2026 真实案例教学，均已核实）：</strong><br>
-      · <strong>OpenClaw</strong>（<a href="https://github.com/openclaw/openclaw" target="_blank">openclaw/openclaw</a>，~381K★）— 协调型，本地优先 Gateway 控制平面 + 多 Agent 路由（hub-and-spoke）<br>
-      · <strong>Hermes Agent</strong>（<a href="https://github.com/NousResearch/hermes-agent" target="_blank">NousResearch/hermes-agent</a>，~205K★）— 自主型，"grows with you" 自我进化 / Learning Loop<br>
-      · <strong>OpenHands</strong>（编码型对照）— 真实开源编码 Agent，便于读到完整 Agent 循环源码<br>
-      · 对比三种设计哲学，用 LangGraph + MCP 复现其中一种的核心模块<br><br>
-      <strong>实战项目：</strong>用 LangGraph 构建多步骤多 Agent 工作流 + 剖析 OpenClaw/Hermes/OpenHands 之一的核心模块并重新实现
+      <span class="tag tag-agent">规划 · 验收目标</span><br>
+      <strong>沿主线深化编排：</strong>在 Phase 6 的 LangGraph 项目中深化状态、分支、持久化和故障恢复；CrewAI 仅作角色/流程对照。Microsoft Agent Framework 是 Semantic Kernel 与 AutoGen 的共同后继，按语言与版本核实支持状态，不另开一套必修框架项目。<br><br>
+      <strong>MCP 深化：</strong>固定规范与 SDK 版本开发 Server，单独实现业务权限、参数白名单与审计；按采纳的 HTTP 授权规范测试缺令牌、错误 audience/issuer、scope 不足。Tasks 属官方可选扩展，先核实客户端/服务端支持再采用。<br><br>
+      <strong>多 Agent 决策：</strong>默认保留单 Agent；需要边界清晰的委托时才尝试 Orchestrator-Worker 等模式，比较交接丢失、成功率、总成本与端到端延迟。A2A 仅在远程 Agent 互操作需求下学习，不因本地并行就强行引入协议。<br><br>
+      <strong>源码对照（选一）：</strong>从 <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer">OpenClaw</a>、<a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener noreferrer">Hermes Agent</a> 或 <a href="https://github.com/All-Hands-AI/OpenHands" target="_blank" rel="noopener noreferrer">OpenHands</a> 中固定一个源码版本，分析其状态/权限/恢复边界，不以热度证明架构适用性。<br><br>
+      <strong>验收目标：</strong>为贯穿项目产出函数/workflow、单 Agent、多 Agent 的同任务对照；只有收益超过复杂度与交接成本才保留多 Agent，未采用也须能解释证据。
     </div>
   </div>
 </div>
@@ -394,13 +398,14 @@
   </div>
   <div class="phase-body" id="phase-11-body">
     <div class="card">
-      <strong>部署：</strong>FastAPI 服务化、Docker 容器化、Serverless、CI/CD、限流与容错、灰度发布；<strong>持久执行</strong>（Temporal，长流程自动重试 / 检查点）；<strong>云托管 Agent 服务</strong>（AWS Bedrock AgentCore、Google Vertex AI Agent Engine、Azure AI Foundry Agent Service、LangGraph Platform）—— 含「原型 / MVP / 规模期」选型决策矩阵<br><br>
+      <span class="tag tag-deploy">规划 · 验收目标</span><br>
+      <strong>部署：</strong>FastAPI、Docker、CI/CD、限流、灰度与回滚；在 Phase 5/6 持久执行基线上按需求比较 Temporal 或托管服务，不把编排平台自动重试等同外部副作用 exactly-once。托管平台只做地域、权限、恢复与成本对照，不要求全部部署。<br><br>
       <strong>生产安全加固：</strong>越狱攻击检测、间接注入防御、过度代理限制、合规性、审计日志<br><br>
       <strong>Agent 迭代方法论（2026 核心循环）：</strong><br>
       · 评估驱动开发 — 先定义"好"的标准，再优化 Agent<br>
-      · 棘轮迭代 — 每次故障加一条 harness 规则，只增不减<br>
+      · 证据驱动迭代 — 故障转成回归用例；规则记录来源、适用范围与复核条件，经回归验证后可新增、纠正、合并或删除<br>
       · A/B 测试、数据飞轮、生产事故响应<br><br>
-      <strong>实战项目：</strong>部署到生产环境 + 配置监控告警 + 完成一轮完整迭代改进循环
+      <strong>验收目标：</strong>将贯穿项目部署到受控测试环境，演练进程/依赖故障、审批恢复、重复执行、权限拒绝与回滚；满足环境门槛后再决定生产上线，记录一轮评估驱动改进。
     </div>
   </div>
 </div>
@@ -408,39 +413,39 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 4–11 对应项仍为规划。</p>
 <table>
-  <tr><th>领域</th><th>主要工具</th></tr>
-  <tr><td>语言 & 工程</td><td>Python 3.11+, Git, ruff, mypy, pre-commit, uv</td></tr>
-  <tr><td>LLM API</td><td>OpenAI, Anthropic Claude, Google Gemini, tiktoken</td></tr>
-  <tr><td>工具工程</td><td>Function Calling, Tool Schema (Pydantic / JSON Schema), strict mode, Tool Registry</td></tr>
-  <tr><td>AI Gateway</td><td>LiteLLM, Portkey — 统一 API、自动 Fallback、速率限制、成本追踪</td></tr>
-  <tr><td>Agent 框架（轻量）</td><td>Pydantic AI, OpenAI Agents SDK（阶段 6 快速上手）</td></tr>
-  <tr><td>Agent 框架（生产级）</td><td>LangGraph, CrewAI（阶段 10 深入）</td></tr>
-  <tr><td>Agent 产品案例</td><td>OpenClaw（协调型 ~381K★）, Hermes Agent（自主型 ~205K★）, OpenHands（编码型）— 真实开源、架构剖析</td></tr>
-  <tr><td>Agent 协议</td><td>MCP (深度实战), A2A (了解), ACP/UCP/ANP (关注)</td></tr>
-  <tr><td>Agent 核心</td><td>Agent Loop, Agent Harness, Context Engineering, Ratchet, Extended Thinking</td></tr>
-  <tr><td>Agent 记忆</td><td>Mem0, LangChain Memory, 向量 DB 长期记忆</td></tr>
-  <tr><td>数据库</td><td>PostgreSQL, MySQL, Redis, SQLAlchemy</td></tr>
-  <tr><td>数据处理</td><td>PyMuPDF, BeautifulSoup, httpx, Crawl4AI</td></tr>
-  <tr><td>向量数据库</td><td>Chroma, Pinecone, Weaviate, Milvus</td></tr>
-  <tr><td>RAG</td><td>LlamaIndex, LangChain, Agentic RAG, GraphRAG, Reranking</td></tr>
-  <tr><td>评估</td><td>LLM-as-Judge, Agentic Metrics, RAGAS, DeepEval, promptfoo, Braintrust, SWE-bench / τ-bench / GAIA</td></tr>
-  <tr><td>可观测性</td><td>LangSmith, Langfuse, Phoenix, Helicone, OpenLLMetry, OpenTelemetry GenAI</td></tr>
-  <tr><td>安全</td><td>Guardrails AI, NeMo Guardrails, 间接注入 / 过度代理防御, MCP 权限隔离, 人在环审批, 沙箱</td></tr>
-  <tr><td>成本优化</td><td>原生 Prompt Caching, 模型路由 (LiteLLM), 语义缓存 (GPTCache), 提示压缩 (LLMLingua), Batch API</td></tr>
-  <tr><td>系统设计</td><td>RAG 系统 / LLM 网关 / 多 Agent 客服 / 长时运行 Agent / 评估框架</td></tr>
-  <tr><td>部署</td><td>FastAPI, Docker, Serverless, Temporal, 云托管 Agent (Bedrock AgentCore / Vertex AI Agent Engine / Azure AI Foundry), CI/CD</td></tr>
+  <tr><th>领域</th><th>主线与边界</th></tr>
+  <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>
+  <tr><td>原生 API 与 adapter</td><td>Responses 主线；Chat Completions 兼容；Anthropic / Google 原生接口显式适配。Token 计数按对应模型，不泛化 tiktoken</td></tr>
+  <tr><td>执行方式</td><td>函数 / workflow 优先；默认单 Agent，工具校验与执行授权分离</td></tr>
+  <tr><td>编排框架</td><td>LangGraph 一条主线从入门到持久执行；其他框架仅作能力对照</td></tr>
+  <tr><td>上下文与 Skills</td><td>完整交互组、预算、SKILL.md、渐进披露；工具搜索 / 程序化调用按需</td></tr>
+  <tr><td>工具协议</td><td>MCP 2026-07-28 + 经验证的 SDK 版本；核心 / 官方可选扩展 / 提案分开；A2A 需求驱动了解</td></tr>
+  <tr><td>记忆</td><td>来源、写入依据、纠正、过期、删除、用户隔离与检索评测，产品可替换</td></tr>
+  <tr><td>数据与 RAG</td><td>PostgreSQL / SQLAlchemy、选一种向量后端；权限过滤、证据定位、更新删除、分层评测先于复杂检索</td></tr>
+  <tr><td>评估与可观测性</td><td>Phase 3 小型 eval → Phase 8 扩展；最终状态、重复试验、校准 Judge、累计 usage；追踪平台选一种</td></tr>
+  <tr><td>成本</td><td>按成功率、成功任务成本与延迟选缓存 / Batch / effort / 路由，不固定排序</td></tr>
+  <tr><td>部署与恢复</td><td>数据库检查点、审批重启、幂等；FastAPI / Docker / CI/CD，Temporal 与托管服务按需比较</td></tr>
 </table>
 
-<h2>v7 变化日志</h2>
+<h2>可靠性更新 · 2026-11-06</h2>
+<ul>
+  <li>保留 11 阶段与 L01–L38；明确已编写内容、后续规划和离线验收的证据边界。</li>
+  <li>Responses / 原生 adapter、按负载优化成本、小型 Agent eval；将持久恢复、审批重启和幂等提前至 Phase 5/6。</li>
+  <li>新增 Skills 参考小单元；补 RAG 与记忆生命周期，以单 Agent 和一个深学框架为基线。</li>
+  <li>MCP 固定 2026-07-28 规范；修订旧版握手、session、通知流、授权与 Tasks 定位。</li>
+</ul>
+
+<h2>v7 历史规划记录（已按本次审查修订）</h2>
 <table>
   <tr><th>版本</th><th>变化</th><th>说明</th></tr>
-  <tr><td rowspan="6"><strong>v7.0</strong><br><span style="font-size:0.8rem;color:var(--muted);">资深视角审核</span></td><td><strong>🆕 工具工程与 Function Calling</strong></td><td>Phase 3 新增 Module 3.4 —— Tool Schema / 完整调用循环 / 并行 / 健壮性。补齐最大实战缺口（面试必考）</td></tr>
-  <tr><td><strong>🆕 LLM / Agent 系统设计</strong></td><td>Phase 8 新增 —— RAG 系统 / LLM 网关 / 多 Agent 客服 / 长时运行 Agent / 评估框架，对接 2026 system-design 面试</td></tr>
-  <tr><td><strong>成本工程重排优先级</strong></td><td>以<strong>原生 Prompt Caching</strong> 为第一杠杆（零改动、输入成本最高降 ~90%），而非 GPTCache/LLMLingua</td></tr>
+  <tr><td rowspan="6"><strong>v7.0</strong><br><span style="font-size:0.8rem;color:var(--muted);">历史规划</span></td><td><strong>工具工程与 Function Calling</strong></td><td>Phase 3 增加 Module 3.4：Tool Schema、完整调用循环、并行与健壮性；完成情况以对应课程和测试证据为准</td></tr>
+  <tr><td><strong>LLM / Agent 系统设计</strong></td><td>Phase 8 规划 RAG、网关、客服、长时任务与评估系统的约束分析，不代表对应课程已发布</td></tr>
+  <tr><td><strong>成本工程修订</strong></td><td>撤销固定优化排序和降幅承诺，按负载、版本、成功任务成本与质量门槛选择方案</td></tr>
   <tr><td><strong>评估升级 Agentic Metrics</strong></td><td>Tool Correctness / Plan Quality / Step Efficiency + promptfoo/Braintrust + SWE-bench Verified/τ-bench/GAIA</td></tr>
   <tr><td><strong>部署 + 安全补强</strong></td><td>云托管 Agent 服务（Bedrock AgentCore/Vertex/Foundry）+ Temporal；安全补间接注入、过度代理、MCP 权限隔离</td></tr>
-  <tr><td><strong>案例订正 + 去噪</strong></td><td>OpenClaw/Hermes 经 GitHub API 核实为真实热门项目（曾误判为虚构，已撤回）+ 补 OpenHands 编码型对照；AutoGen 降级；模型版本去硬编码；ANP/AGNTCY 标注「生态未定」</td></tr>
+  <tr><td><strong>案例订正与减法</strong></td><td>案例固定源码版本、按任务需要选读，不以 GitHub 热度作工程证据；框架保留一条深学主线，协议按需求选学</td></tr>
 </table>
 
 <h2>v6 变化日志</h2>
@@ -449,22 +454,21 @@
   <tr><td rowspan="6"><strong>v6.0</strong></td><td><strong>AI + LLM + Prompt 前移</strong></td><td>紧接 Python，形成「Python → AI → LLM API → Prompt」一气呵成的工具链</td></tr>
   <tr><td><strong>框架紧接核心架构</strong></td><td>新增 Phase 6（Agent 框架入门 + MCP），学完理论立即实战</td></tr>
   <tr><td><strong>数据基础 + RAG 合并</strong></td><td>数据库、数据处理、向量DB、RAG 合并为 Phase 7</td></tr>
-  <tr><td><strong>框架分层</strong></td><td>Phase 6 轻量框架（快速上手），Phase 10 生产级框架（LangGraph）</td></tr>
+  <tr><td><strong>框架分层（已修订）</strong></td><td>同一主线框架在 Phase 6 入门、Phase 10 深化，其他框架只作对照</td></tr>
   <tr><td><strong>总数精简</strong></td><td>12 → 11 阶段，更紧凑</td></tr>
-  <tr><td><strong>6 周出 Agent</strong></td><td>Phase 1-6 完成后就能写出可运行的 Agent</td></tr>
+  <tr><td><strong>阶段项目目标（已修订）</strong></td><td>Phase 1–6 逐步构建可验收的单 Agent；完成时间取决于基础、练习和学习负载</td></tr>
   <tr><td rowspan="2"><strong>v6.1</strong></td><td><strong>Phase 2 增强</strong></td><td>新增幻觉全解、推理模型、Token 经济学、模型选型决策框架。覆盖 7+ 道面试高频题</td></tr>
   <tr><td><strong>Phase 3 增强</strong></td><td>新增错误重试、模型 Fallback、AI Gateway、可观测性基础。覆盖 8+ 道面试高频题</td></tr>
   <tr><td><strong>v6.2</strong></td><td><strong>Phase 10 新增</strong></td><td>Agent 产品架构分析：OpenClaw（协调型）vs Hermes Agent（自主型）</td></tr>
 </table>
 
 <div class="tip">
-  <strong>v7 设计原则：</strong><br>
-  · <strong>面试导向 + 实战导向</strong> — 覆盖 30+ 道 AI/LLM/Agent 面试高频题，含系统设计题<br>
-  · <strong>工具工程是 Agent 基本功</strong> — Function Calling / Tool Schema 独立成模块（Phase 3.4）<br>
-  · <strong>先建 Agent，再加知识</strong> — 学完核心架构立即用框架实战，RAG 作为 Agent 能力扩展<br>
-  · <strong>框架分层学习</strong> — 轻量框架（Phase 6）→ 生产级框架（Phase 10）<br>
-  · <strong>生产级思维贯穿</strong> — 从 Phase 3 起就培养错误处理、原生缓存降本、可观测性、评估驱动开发的工程习惯<br>
-  · <strong>紧贴 2026、拒绝失真</strong> — 模型版本不写死、案例用可核实的真实开源项目、强声明必经权威源验证
+  <strong>修订后的设计原则：</strong><br>
+  · 保留 Python / 模型基础；同一业务项目贯穿，不靠重新编号制造进度。<br>
+  · 函数 / workflow 足够时不加 Agent；默认单 Agent，复杂度必须用任务对照证明。<br>
+  · 一个框架深入，工具、数据库、评测平台按能力选用，不全栈集邮。<br>
+  · 小型评估、预算与权限从最小工具循环开始，持久恢复在 Phase 5/6 验收。<br>
+  · 接口、SDK、协议与价格注明适用版本和核验日期；规划、fixture 与真实系统证据分别陈述。
 </div>
 
 <h2>当前阶段建议</h2>
@@ -472,14 +476,19 @@
 
 <div class="source">
   <strong>推荐阅读：</strong><br>
-  · <a href="https://www.anthropic.com/research/building-effective-agents" target="_blank">Anthropic: Building Effective Agents</a> — Agent 设计模式权威指南<br>
+  · <a href="https://www.anthropic.com/engineering/building-effective-agents" target="_blank" rel="noopener noreferrer">Anthropic: Building Effective Agents</a> — 从最简单可行方案开始<br>
+  · <a href="https://developers.openai.com/api/docs/guides/migrate-to-responses" target="_blank" rel="noopener noreferrer">OpenAI: Migrate to Responses</a> — 原生接口与兼容迁移边界<br>
+  · <a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents" target="_blank" rel="noopener noreferrer">Demystifying Evals for AI Agents</a> — 任务、重复试验与结果验收<br>
   · <a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents" target="_blank">Anthropic: Effective Harnesses for Long-Running Agents</a> — Harness 工程实践<br>
   · <a href="https://lilianweng.github.io/posts/2023-06-23-agent/" target="_blank">Lilian Weng: LLM Powered Autonomous Agents</a> — Agent 技术全景综述<br>
   · <a href="https://www.deeplearning.ai/short-courses/" target="_blank">DeepLearning.AI 短课程</a> — 系统学习 Agent 相关课程<br>
   · <a href="https://modelcontextprotocol.io" target="_blank">MCP 官方文档</a> — 工具连接标准协议<br><br>
   <strong>2026 技术参考：</strong><br>
   · <a href="../reference/0001-glossary.html">术语表</a> — Agent 开发核心概念速查<br>
-  · <a href="0007-curriculum-audit-2026.html">大纲审核报告（v7 建议）</a> — 本次更新的依据与逐阶段体检
+  · <a href="../reference/0003-mcp-a2a-protocols.html">MCP / A2A 协议参考</a> — 2026-07-28 基线与跨版本迁移<br>
+  · <a href="../reference/0004-agent-skills.html">Agent Skills 参考</a> — 非编号小单元<br>
+  · <a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">2026-11-06 课程可靠性审查</a> — 本次更新依据、证据边界与官方来源<br>
+  · <a href="0007-curriculum-audit-2026.html">历史大纲审核（v7）</a> — 历史记录，技术结论以本次核验为准
 </div>
 
 </main>

@@ -103,7 +103,7 @@
 
 <dl class="term">
   <dt>Harness Engineering（编排工程）</dt>
-  <dd>2026 年正在取代 Prompt Engineering 的新范式。关注围绕 LLM 的整体脚手架设计，而非单个 Prompt 优化。包括上下文管理、工具编排、错误处理、持久化等。</dd>
+  <dd>围绕模型调用设计执行环境与控制机制，包括上下文管理、工具编排、权限、错误处理、评估和持久化。它与 Prompt Engineering 互补，不代表提示设计已经失效。</dd>
 </dl>
 
 <dl class="term">
@@ -123,7 +123,7 @@
 
 <dl class="term">
   <dt>Ratchet（棘轮效应）</dt>
-  <dd>Harness Engineering 的核心习惯。每次 Agent 犯错，就加一条规则防止再犯。规则只增不减，直到模型能力提升使其多余。AGENTS.md 中每条规则都应追溯到一个具体失败。</dd>
+  <dd>把真实故障转成可复现用例，验证修正能防止回退。规则应追溯到具体失败，并允许在回归证据下合并、改写或删除；不是每次失败都永久添加一条提示。</dd>
 </dl>
 
 <dl class="term">
