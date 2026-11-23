@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L42 · 证据选择、来源与上下文预算</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>证据选择、来源与上下文预算</h1><p class="subtitle">先挑能支持答案的完整证据，再决定哪些放得下</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>客服助手收到一份保留期政策和一份同步时间表。如果两份都发给模型，下一步可能花钱处理无关内容；如果裁掉保留期政策的来源标记，即使答案正确也很难复查。本课处理<strong>这一轮放什么</strong>，不重讲 <a href="0035-L30-context-window-management.html">L30 的多轮历史裁剪</a>。</p><h3>学习目标</h3><p>能构造一个带来源的完整证据片段，说明字节预算与模型 Token 预算的区别，并诊断缺证据、输入超限和错误引用。</p></div>
+<div class="section"><h2>1. 先按任务过滤，再按预算装入</h2>
+  <ol><li><strong>相关性优先：</strong>保留期问题选 KB-01（具体天数），KB-02（过期后的下一步）是补充，无关的 KB-03（同步时间）不选。这里用固定映射，不是 RAG 或权限实现。</li><li><strong>片段要完整：</strong>来源 ID 贴着原文一起放入上下文。若主证据放不下，就不发请求；若只放不下补充材料，可先保留主证据，不截断到剩下半句。</li><li><strong>按实际发送量测：</strong>起始项目算提示、问题、证据和 JSON 序列化后的 UTF-8 字节，不是 Python 字符数，也不是 Token。线上要用目标接口的计数并预留输出。</li><li><strong>原样核对引用：</strong>返回的 ID 必须属于本次发出的集合，摘录也须与原文匹配。ID 在整个知识库里存在，不等于这次有权使用或已经发过。</li></ol>
+  <p>在起始项目，证据片段是字典 <code>{"source_id": "KB-01", "quote": "导出文件生成后保留 7 天。"}</code>；多个片段放进列表，再作为 <code>evidence</code> 加入请求。证据是<strong>待分析的数据</strong>，不是系统指令。分开组织便于检查，但分隔符不会替应用校验权限。引用吻合也不证明材料权威或推论正确；生产还要验来源权限和结论支持度。</p>
+  <div class="best-practice-point"><h3>最佳实践：不要为塞进预算删掉来源</h3><p>保留「ID + 原文」这对最小单元，先尝试不带次要片段；连主证据都放不下时就报告预算不足，不将它伪装成缺证据。</p></div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 已有主证据，但本次输入预算装不下完整片段。应该怎样处理？</div><div class="quiz-options"><button data-answer="wrong">删掉来源继续发出</button><button data-answer="wrong">替换成无关的片段</button><button data-answer="correct">返回输入预算不足</button><button data-answer="wrong">当成缺证据来处理</button></div><div class="quiz-explanation">已有证据与放不下是两个状态。明确报告预算不足，调用方才知道是收紧内容、调整预算或改任务，而不是去重复检索。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>2. 动手：从起始项目确认三条边界</h2>
+  <p>先预测每次调用适配器的次数。将下段保存为 Python 文件，用 <code>python -I 文件名.py</code> 运行（仅标准库、无网络）。路径从当前目录定位：先进入仓库根再运行，或用仓库根作为编辑器的运行目录。</p>
+  <details><summary>展开项目回归与离线自检</summary><pre><code class="language-python" id="l42-context-check">import json
+import runpy
+from pathlib import Path
+
+lab = runpy.run_path(str(Path("code/phase4-prompt-context/main.py")))
+ask = lab["run"]
+question = "导出文件保留多久？"
+normal = ask(question)
+assert normal["status"] == "answered"
+assert normal["selected_ids"] == ["KB-01", "KB-02"]
+assert {row["source_id"] for row in normal["citations"]} == {"KB-01", "KB-02"}
+
+missing = ask("导出文件能否恢复？")
+assert missing["status"] == "needs_evidence" and missing["usage"]["adapter_calls"] == 0
+small = ask(question, input_limit=1)
+assert small["status"] == "budget_exceeded" and small["usage"]["adapter_calls"] == 0
+
+# KB-03 在知识库里，但不是本次发出的证据。
+def wrong_source(_payload):
+    return json.dumps({"status": "completed", "citations": [
+        {"source_id": "KB-03", "quote": "同步任务每天 02:00 运行。"},
+    ]})
+
+rejected = ask(question, adapter=wrong_source)
+assert rejected["status"] == "invalid_response" and rejected["usage"]["adapter_calls"] == 1
+assert rejected["answer"] is None and rejected["citations"] == []
+print("L42 ACCEPTED")</code></pre></details>
+  <p>应只打印 <code>L42 ACCEPTED</code>。前两条失败先于调用，最后一条确实调用了一次本地替身再被拒。<code>runpy.run_path</code> 加载这里指明的课程源码而不运行其命令行入口；不要把任意路径或下载脚本传给它。</p>
+</div>
+<div class="section"><h2>面试自查</h2><details><summary>为何把来源和摘录放一起？</summary><p>便于把回答映射回本次输入，而不是只找到一个可能无关的文档。</p></details><details><summary>字节数为什么不能充当 Token 数？</summary><p>不同分词器对相同序列的划分不同，且真实请求还有接口级开销；本地字节只是可复现的练习单位。</p></details><details><summary>主证据放不下可以先选次要片段吗？</summary><p>仅当它也足以支持任务时可以。此练习不能跳过主证据，避免以看似相关但不足的文本作答。</p></details><details><summary>引用吻合就说明模型回答正确吗？</summary><p>不说明；还要核对引用是否支持结论、材料是否获准使用且可信。</p></details></div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase4-qa.html#L42">L42 疑难解答 →</a><div class="qa-related">延伸：<a href="0035-L30-context-window-management.html">L30 多轮窗口</a> · <a href="0051-L43-progressive-skill-disclosure.html">L43 Skills 按需加载</a>。有疑问时，带上本次选中的 ID 和失败状态。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>选相关证据 → 保留来源和原文 → 核预算 → 检查返回引用。隔日画出「没发请求」和「返回后拒绝」两条路径。</p><p><a href="https://developers.openai.com/api/docs/guides/prompt-engineering">OpenAI · Prompt engineering</a>（见补充上下文和区分内容部分；本课字节预算属于本地练习规则）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>发布范围：</strong>现有正式课程为 Phase 1–3 的 L01–L38；Phase 4–11 已有逐课草案与验收目标，Phase 4 另提供离线起始项目。它们不计入正式课数或学习进度，不代表已经发布课文或具备生产能力。阶段课数/周数是估算，草案不锁定正式课号。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>已有 Phase 1–4 的 44 节正式课（L01–L44）。Phase 5–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -198,7 +198,7 @@
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-4-body">
     <h3>Prompt Engineering 与 Context Engineering 基础</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">6-8 课</span>
+      <span class="phase-meta-item">6 课 · L39–L44</span>
       <span class="phase-meta-item">2 周</span>
     </div>
     <div class="phase-toggle">▼</div>
@@ -209,12 +209,13 @@
   </div>
   <div class="phase-body" id="phase-4-body">
     <div class="card">
-      <span class="tag tag-agent">规划 · 验收目标</span><br>
-      <strong>Prompt Engineering：</strong>System Prompt、Few-shot、输出契约、模板复用、版本管理与 A/B 测试。模板和测试用例放在仓库并随代码版本化，不依赖计划于 2026-11-30 停用的 OpenAI 托管 Prompt 对象；这与 Prompt Caching 无关。理解 CoT 概念，但不要求所有模型“逐步思考”；推理模型优先明确目标/约束，提示策略以任务评测为准。<a href="https://developers.openai.com/api/docs/deprecations">官方弃用清单</a><br><br>
+      <span class="tag tag-agent">已编写 · 离线练习</span><br>
+      <strong>Prompt Engineering：</strong>可判定任务、稳定指令、Few-shot 与反例、提示版本与逐案回归。模板和用例放在仓库，不依赖托管 Prompt 对象。离线对照不等于验证真实模型质量；提示策略以任务评测为准。<a href="https://developers.openai.com/api/docs/deprecations">官方弃用清单</a><br><br>
       <strong>Context Engineering 基础：</strong>管理推理时的全部输入，包括提示、历史、工具和检索证据；理解长上下文的注意力预算与召回退化风险，按任务选择信息，不把“越多越好”当原则。<br><br>
       <strong>Skills 小单元：</strong><a href="../reference/0004-agent-skills.html">SKILL.md、元数据匹配与渐进披露</a>；流程知识与工具/MCP 操作接口分离，匹配不等于授权，不增加正式课号。Phase 6 再接入实际工具。<br><br>
       <strong>验收目标：</strong>从 L38 迁移到「证据问答＋工单草稿」。为同一项目建立可版本化的提示、证据选择和一个可复用业务 Skill，记录触发条件、质量和上下文开销。<br><br>
-      <a href="0045-phase4-prompt-context-outline.html">查看 Phase 4 的 6 节草案与离线起始项目 →</a>
+      <a href="0045-phase4-prompt-context-outline.html">查看 Phase 4 的 6 节课与离线项目 →</a><br>
+      <a href="../qa/phase4-qa.html">Phase 4 疑难解答 →</a>
     </div>
   </div>
 </div>
@@ -421,7 +422,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 4–11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 5–11 对应项仍为规划。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>

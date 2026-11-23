@@ -14,12 +14,12 @@
   <h1>阶段 4 · Prompt 与 Context 工程</h1>
   <p>从 <a href="0043-L38-phase3-capstone.html">L38 的离线调用骨架</a>出发，让模型根据证据答复，并在明确请求时生成工单草稿。先学会判断输出是否更好，再决定要不要增加上下文、启用 Skill 或换模型。</p>
   <div class="total-bar">
-    <span>6 节草案 · 尚未发布正文</span>
-    <span>离线起始项目已提供 · 不计入正式课号</span>
+    <span>6 节正式课 · L39–L44 · 215 分钟</span>
+    <span>离线起始项目不另计课号</span>
   </div>
   <aside class="toc" id="toc" aria-label="本阶段目录"></aside>
   <nav aria-label="本阶段跳转">
-    <a href="#handoff">先修与边界</a> · <a href="#lesson-plan">6 节草案</a> · <a href="#starter">离线起始项目</a>
+    <a href="#handoff">先修与边界</a> · <a href="#lesson-plan">6 节正式课</a> · <a href="#starter">离线起始项目</a> · <a href="../qa/phase4-qa.html">疑难解答</a>
   </nav>
 
   <div class="section">
@@ -31,17 +31,17 @@
   </div>
 
   <div class="section">
-    <h2 id="lesson-plan">6 节草案：每节交付一项可检查的结果</h2>
+    <h2 id="lesson-plan">6 节课：每节交付一项可检查的结果</h2>
     <div class="card">
       <table>
         <thead><tr><th scope="col">顺序</th><th scope="col">主题</th><th scope="col">动手验收</th></tr></thead>
         <tbody>
-          <tr><td>1</td><td>把请求写成可判定任务</td><td>先定答复、缺证据、工单草稿三种结果契约。为每种结果写一个例子和明确通过条件，草稿不能冒充提交成功。</td></tr>
-          <tr><td>2</td><td>Zero-shot、Few-shot 与反例</td><td>只改变是否提供示例，在同一批开发案例上比较。至少用一条措辞相近但不该起草的反例排除过宽规则。</td></tr>
-          <tr><td>3</td><td>Prompt 版本与回归</td><td>提示模板与用例都进仓库。对同一输入比较 v1/v2，记录版本、案例数和变化；保留独立验收集，不拿它调提示。固定响应器只验证管线，不证明模型质量。</td></tr>
-          <tr><td>4</td><td>按任务选择证据、保留来源、验证预算</td><td>从简短政策数据选相关片段，带来源 ID 组装上下文；预算不足时不得丢弃来源标记后硬发。验收缺证据、预算不够、引用不在本次材料中三条路径。</td></tr>
-          <tr><td>5</td><td>渐进披露：只在需要时加载 Skill</td><td>复用 <a href="../reference/0004-agent-skills.html">Skills 参考页</a>，对比「请求起草」和「只询问政策」；后者不加载起草步骤。匹配不是工具授权，不增设独立 Skills 课号。</td></tr>
-          <tr><td>6</td><td>项目验收与交接</td><td>跑完离线回归，交付版本化提示、用例、引用与预算记录；隔日从空白重建缺证据分支。把可复用契约交给 Phase 5，不复制一套新项目。</td></tr>
+          <tr><td>L39 <span class="lesson-num-time">35min</span></td><td><a href="0047-L39-testable-task-contract.html">把请求写成可判定任务</a></td><td>先定答复、缺证据、工单草稿三种结果契约。为每种结果写一个例子和明确通过条件，草稿不能冒充提交成功。</td></tr>
+          <tr><td>L40 <span class="lesson-num-time">35min</span></td><td><a href="0048-L40-few-shot-counterexamples.html">Zero-shot、Few-shot 与反例</a></td><td>同一批开发案例对照有无示例，用近邻反例区分询问和起草。离线只验证对照构造。</td></tr>
+          <tr><td>L41 <span class="lesson-num-time">35min</span></td><td><a href="0049-L41-prompt-versions-regression.html">Prompt 版本与回归</a></td><td>对照 v1/v2，记录版本、案例数与失败项；保留独立验收集。总分相同也不能忽略关键退化。</td></tr>
+          <tr><td>L42 <span class="lesson-num-time">35min</span></td><td><a href="0050-L42-context-evidence-budget.html">证据选择、来源与上下文预算</a></td><td>保留原文与来源；复跑缺证据、预算不足和引用未提供材料三条路径。</td></tr>
+          <tr><td>L43 <span class="lesson-num-time">35min</span></td><td><a href="0051-L43-progressive-skill-disclosure.html">Skills 按需加载与权限边界</a></td><td>复用 <a href="../reference/0004-agent-skills.html">Skills 参考页</a>，对比起草与询问，测加载次数；匹配不等于授权。</td></tr>
+          <tr><td>L44 <span class="lesson-num-time">40min</span></td><td><a href="0052-L44-project-acceptance-handoff.html">项目验收与交接</a></td><td>跑离线回归，留下版本、案例、引用与预算记录；隔日重建缺证据分支。同一业务契约交给 Phase 5。</td></tr>
         </tbody>
       </table>
     </div>
@@ -67,8 +67,11 @@ python -m unittest discover -s tests -v</code></pre>
   </nav>
 </main>
 <script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
 <script src="../assets/theme-toggle.js"></script>
 <script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
 <script src="../assets/toc.js"></script>
 <script src="../assets/pwa.js"></script>
 </body>

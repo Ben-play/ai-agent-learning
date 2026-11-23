@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L40 · Zero-shot、Few-shot 与反例</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>Zero-shot、Few-shot 与反例</h1>
+  <p class="subtitle">给一个能区分「问工单」和「要起草」的边界示例</p>
+</div></div>
+<div class="section">
+  <h2>为什么这课重要？</h2>
+  <p>「工单草稿是什么？」也有“工单”，但用户没有要求起草。单靠关键词会把解释任务误判为起草。本课用 <a href="0047-L39-testable-task-contract.html">L39</a> 的结果契约，把容易混淆的边界写清。</p>
+  <h3>学习目标</h3><p>写出一对正例和近邻反例；用同一批开发用例比较有无示例，不把构造成功当成效果更好。</p>
+</div>
+<div class="section">
+  <h2>1. 规则不变，只改变是否给示例</h2>
+  <p><strong>Zero-shot</strong> 在这次请求中只给任务规则，不提供已标注的输入输出例子；<strong>Few-shot</strong> 在同样的规则下加少量示例。它们都不是训练模型。这里的「反例」不是给错误标签，而是展示<strong>看起来像正例、按规则却应走另一条路径</strong>的输入。</p>
+  <table><thead><tr><th scope="col">输入</th><th scope="col">正确标签</th><th scope="col">分界线</th></tr></thead><tbody>
+    <tr><td>请起草一份说明导出保留期的工单。</td><td><code>draft</code></td><td>明确请求生成草稿。</td></tr>
+    <tr><td>导出保留期工单的草稿是什么？</td><td><code>answer</code></td><td>只是询问，没有请求起草。</td></tr>
+  </tbody></table>
+  <p><strong>系统指令、用户请求、演示不是同一类输入。</strong>应用把稳定的任务规则放入目标接口支持的系统或开发者指令；用户消息是这次要判断的请求；示例只是已标注的演示。下方是应用内部的数据形状，不是某家 API 的请求字段。练习只比较问答和起草；提交意图由应用拒绝。模型的 <code>draft</code> 标签不会授予权限，Phase 4 的草稿始终不提交。</p>
+  <div class="best-practice-point"><h3>最佳实践：先加一条最容易混淆的反例</h3><p>发现“工单”被误判时，不要随手堆十条正常问句。直接配一条含相同术语但只询问的示例，再用不同措辞检验有无改善。评测用例不复制演示句。</p></div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 哪条最适合作为起草正例的近邻反例？</div><div class="quiz-options"><button data-answer="wrong">请写一份工单草稿</button><button data-answer="correct">请说明工单的含义</button><button data-answer="wrong">请先草拟一份工单</button><button data-answer="wrong">请帮忙起草该工单</button></div><div class="quiz-explanation">这句也提到“工单”，但意图是了解含义，能检验是否过度依赖关键词。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>2. 动手：为同一批问题生成两组请求</h2>
+  <p>先写规则、演示对和两条未出现在演示里的开发问题。不运行模型：只检查两组请求除 <code>examples</code> 外一致，并手工标注预期。若日后获准在线对比，两组应固定模型、设置和开发问题，再分别统计误起草、漏起草；不要拿这段离线代码证明示例效果。</p>
+  <details><summary>展开请求对照与自检</summary><pre><code class="language-python" id="l40-few-shot-check">rule = "只有明确请求起草时返回 draft；只询问时返回 answer。不得提交工单。"
+examples = [
+    {"input": "请写一份保留期工单草稿。", "label": "draft"},
+    {"input": "什么是保留期工单草稿？", "label": "answer"},
+]
+cases = [
+    ("工单草稿通常写哪些内容？", "answer"),
+    ("先帮我拟一份保留期确认工单。", "draft"),
+]
+
+def build(question, examples):
+    return {"rules": rule, "input": question, "examples": list(examples)}
+
+for question, expected in cases:
+    zero = build(question, [])
+    few = build(question, examples)
+    base = {"rules": rule, "input": question}
+    assert zero == dict(base, examples=[])
+    assert few == dict(base, examples=examples)
+    assert question not in {item["input"] for item in few["examples"]}
+    assert expected in {"answer", "draft"}
+assert {item["label"] for item in examples} == {"answer", "draft"}
+print("L40 ACCEPTED")</code></pre></details>
+  <p>保存后用 <code>python -I 文件名.py</code> 运行。<code>build(question, [])</code> 是零示例请求；传入字典列表是少量示例请求。若两次只改了措辞而没有固定规则，就不能把差异归因给示例。</p>
+</div>
+<div class="section"><h2>面试自查</h2>
+  <details><summary>Few-shot 会修改权重吗？</summary><p>这里的示例随请求发送，不改变模型权重。</p></details>
+  <details><summary>为什么不用例子里已经出现的句子评测？</summary><p>它只能说明会复用该例子，无法检查对新措辞的迁移。</p></details>
+  <details><summary>反例应怎么挑？</summary><p>选与正例表面相似、正确决策不同的真实边界，不是随便找一句反义句。</p></details>
+  <details><summary>少量示例一定更好吗？</summary><p>不一定。示例增加上下文开销，也可能引入偏差；比较误判与用量再决定。</p></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase4-qa.html#L40">L40 疑难解答 →</a><div class="qa-related">延伸：<a href="0047-L39-testable-task-contract.html">L39 任务契约</a> · <a href="0049-L41-prompt-versions-regression.html">L41 版本与回归</a>。有疑问时，带一对容易误判的虚构请求来问。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>固定规则 → 加正例与反例 → 用未见过的同一批问题比较。隔日为“只想看看草稿格式”写一个反例。</p><p><a href="https://developers.openai.com/api/docs/guides/prompt-engineering">OpenAI · Prompt engineering</a>（推荐精读示例与评测部分）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

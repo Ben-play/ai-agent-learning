@@ -51,7 +51,7 @@
 
     html += '<span class="course-bar-title">' + cur.title + '</span>';
 
-    // 完成度由学习状态模块渐进更新；模块未加载时稳健显示 0/38。
+    // 完成度由学习状态模块渐进更新；模块未加载时显示 0/正式课总数。
     completedPct = Math.round(completed / context.total * 100);
     html += '<div class="course-bar-track is-empty" role="progressbar" aria-valuenow="' + completed +
             '" aria-valuemin="0" aria-valuemax="' + context.total + '" aria-label="已完成 ' +
