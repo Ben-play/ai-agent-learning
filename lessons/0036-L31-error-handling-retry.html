@@ -17,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>错误处理、退避与幂等</h1>
     <p class="subtitle">生产 Agent 必须假设"调用会失败"——退避 + 抖动 + 幂等，是 demo 与上线的分水岭</p>
@@ -29,7 +29,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>前面几课你学会了把 LLM 调起来、流式输出、管理 Context。但那些都是"顺风局"。真实生产里，<strong>调用一定会失败</strong>：限流(429)、服务端崩(5xx)、超时、网络抖动。一个 Agent 完成一次任务要发几十次 API / 工具调用——<strong>任何一次都可能失败</strong>。</p>
-    <p><a href="0014-L10-exceptions-logging-context.html">L10</a> 已经教过你 <code>tenacity</code> 做指数退避重试——那是地基。这一课往上盖两根<strong>生产级的承重柱</strong>：<strong>抖动(jitter)</strong>——防止一群客户端同时重试把服务端二次打垮；<strong>幂等键(idempotency key)</strong>——让"扣款/下单/发消息"这类有副作用的调用重试也安全。没有这两样，你的 Agent 要么被限流拖死、要么重复扣钱。</p>
+    <p><a href="0014-L10-exceptions-logging-context.html">L10</a> 已经教过你 <code>tenacity</code> 做指数退避重试——那是地基。这一课往上盖两根<strong>生产级的承重柱</strong>：<strong>抖动(jitter)</strong>打散重试，避免一群客户端同时重试把服务端二次打垮；<strong>幂等键(idempotency key)</strong>标识同一次业务操作，配合服务端的幂等契约，才能安全重放有副作用的请求。</p>
   </div>
 </div>
 
@@ -38,10 +38,10 @@
   <div class="card">
     <p>完成本课后，你将能够：</p>
     <ul>
-      <li>区分<strong>可重试</strong>（429/5xx/超时）与<strong>不可重试</strong>（400/401）错误</li>
+      <li>区分<strong>可能值得重试</strong>的临时错误（429/5xx/超时）与<strong>不可重试</strong>的错误（400/401）</li>
       <li>理解指数退避为何不够，必须加<strong>抖动（full jitter）</strong>防"重试风暴"</li>
       <li>设置<strong>重试预算</strong>（最大次数 + 总时间上限），到点 fail fast</li>
-      <li>用<strong>幂等键</strong>让有副作用的操作"重试只生效一次"</li>
+      <li>用<strong>作用域内稳定的操作键 + 请求身份</strong>识别重试，验证同库原子提交，并判断外部结果未知时何时该停下来核对</li>
       <li>说清楚这套机制为什么是 Agent"能上生产"的门槛</li>
     </ul>
   </div>
@@ -58,16 +58,16 @@
       <li><strong>网络抖动</strong>：连接被重置、DNS 抽风等瞬时故障。</li>
     </ul>
     <p>但<strong>不是所有错误都该重试</strong>。关键要分两类——重试错类型只会浪费时间、甚至火上浇油：</p>
-    <pre><code>【可重试】临时性、换个时间可能就好了
+    <pre><code>【可能值得重试】临时性、换个时间可能就好了
   429 限流 / 5xx 服务端 / 超时 / 网络抖动
-     → 退避后重试有意义
+     → 确认可安全重放后，再退避重试（见第 5 节）
 
 【不可重试】你自己的请求有问题，重试 100 次还是错
   400 参数错误   → 你的 payload 就是错的，重发没用
   401 鉴权失败   → key 不对，重发只会一直 401
   404 资源不存在 → 目标就是没有
      → 别重试，立即 fail fast 把错误抛给上层</code></pre>
-    <p><strong>Agent 关联</strong>：Agent 循环里一次工具调用失败，先判类型再决定"退避重试"还是"直接报错"。把 401 拿去重试，只会白白拖慢整条链路、还刷爆日志。</p>
+    <p><strong>Agent 关联</strong>：先判错误类型，再判断重放会不会重复触发副作用。把 401 拿去重试，只会白白拖慢整条链路、还刷爆日志；超时则不说明原操作没执行。</p>
   </div>
 
   <div class="quiz" data-quiz="q1">
@@ -78,7 +78,7 @@
       <button data-answer="wrong">503 服务不可用</button>
       <button data-answer="wrong">请求超时</button>
     </div>
-    <div class="quiz-explanation">401 是<strong>鉴权失败</strong>——你的 key 不对，这是确定性的错误，重试 100 次还是 401，纯属浪费时间和配额。它属于<strong>不可重试</strong>类，应立即 fail fast。而 429（限流）、5xx（服务端临时故障）、超时都是<strong>临时性</strong>问题，退避后重试有意义。区分"可重试 vs 不可重试"是错误处理的第一步。</div>
+    <div class="quiz-explanation">401 是<strong>鉴权失败</strong>——不修正凭据，重试只会浪费时间和配额，应立即 fail fast。429（限流）、5xx（如临时服务故障）和超时可能值得退避重试，但要先确认操作可安全重放。错误分类只是第一步。</div>
   </div>
 </div>
 
@@ -91,7 +91,7 @@
 第 3 次失败 → 等 4s → 重试
 第 4 次失败 → 等 8s → 重试
        等待 = base × 2 ** attempt   （指数增长）</code></pre>
-    <p>越等越久，给对方留出恢复时间。<strong>原理你要懂，但生产别自己造轮子</strong>——正如 <a href="0014-L10-exceptions-logging-context.html">L10</a> 讲过的，<code>tenacity</code> 内置了这一切：</p>
+    <p>越等越久，给对方留出恢复时间。<strong>原理你要懂，但生产别自己造轮子</strong>——正如 <a href="0014-L10-exceptions-logging-context.html">L10</a> 讲过的，<code>tenacity</code> 内置了这一切。下面的片段只演示等待和停止策略；实际使用还要限定可重试的错误和可安全重放的操作。</p>
     <pre><code>from tenacity import retry, stop_after_attempt, wait_exponential
 
 @retry(stop=stop_after_attempt(4),
@@ -165,82 +165,150 @@ def call_llm(prompt):
 )
 def call_llm(prompt):
     return client.chat.completions.create(...)</code></pre>
-    <p><strong>fail fast 好过慢慢拖死</strong>：与其让用户等 5 分钟最后还是失败，不如 30 秒内明确报错，让上层去走 <a href="0037-L32-routing-fallback-gateway.html">L32 的 fallback（换模型/换供应商）</a>或友好降级。</p>
+    <p><strong>fail fast 好过慢慢拖死</strong>：与其让用户等 5 分钟最后还是失败，不如及时报错，让上层对可安全重放的调用走 <a href="0037-L32-routing-fallback-gateway.html">L32 的 fallback（换模型/换供应商）</a>或友好降级。若外部副作用结果未知，不自动换路，按第 5 节先核对。</p>
   </div>
 </div>
 
 <div class="section">
-  <h2>5. 幂等键：让有副作用的重试安全 ⚠️ 本课重点</h2>
+  <h2>5. 幂等键：先确认副作用能否安全重放 ⚠️ 本课重点</h2>
   <div class="card">
-    <p>到这里有个被忽略的<strong>致命陷阱</strong>。前面的重试对"读"类操作很安全——多查一次天气无所谓。但如果工具调用有<strong>副作用</strong>呢？</p>
-    <pre><code>场景：Agent 调用"扣款"工具
-  1. 请求发出：扣用户 100 元 ✅ 服务端【已经扣了】
-  2. 但响应在回来的路上超时了 ⏱️
-  3. 你的重试逻辑："没收到成功？那再扣一次！"
-  4. 结果：扣了 200 元 💸💸  ← 真金白银的损失</code></pre>
-    <p>下单、发消息、扣款——这类操作<strong>重试 = 重复执行 = 重复副作用</strong>。超时最阴险：你根本不知道"到底扣没扣"，盲目重试就可能重复扣款。</p>
-    <p><strong>解法：幂等键（idempotency key）</strong>。给每次操作分配一个<strong>唯一确定的 id</strong>，服务端（或你自己）在执行前<strong>先查这个键是否处理过</strong>：处理过就跳过、直接返回上次结果。这样"重试同一操作"无论发多少次，<strong>只会真正生效一次</strong>。</p>
-    <pre><code># 幂等的核心结构（伪代码）
-def do_once(key, action):
-    if already_done(key):        # 先查：这个键处理过吗？
-        return cached_result(key)  # 处理过 → 跳过，返回上次结果
-    result = action()             # 没处理过 → 真正执行
-    mark_done(key, result)        # 记下：这个键已完成
-    return result
-
-# 无论调几次，同一个 key 只会 action() 一次</code></pre>
-    <p><code>already_done</code> / <code>mark_done</code> 靠什么实现？两种业界标准，都利用了"<strong>原子性的唯一约束</strong>"：</p>
-    <ul>
-      <li><strong>Redis <code>SET key NX</code></strong>：只在键不存在时才写入成功（<code>NX</code> = Not eXists）。第一个请求抢到锁执行，重试的请求写入失败 → 知道"已处理"。记得配 TTL（如 24h），避免崩溃留下死锁。</li>
-      <li><strong>数据库唯一约束</strong>：把幂等键设成唯一索引，重复插入直接被数据库拒绝——对"扣款"这类财务操作，这是最权威的一道防线。</li>
-    </ul>
-    <p>成熟的 API 早就这么做了：<strong>Stripe 支持 <code>Idempotency-Key</code> 请求头</strong>，同一个 key 的重复请求返回<strong>缓存的首次结果</strong>而非重复扣款（结果缓存 24h）。你的 Agent 工具也应照此设计。</p>
+    <p>多查一次天气通常没关系，但想象 Agent 调用工具创建一张<strong>虚构工单</strong>：服务端已经写入工单，响应却没到。客户端只看到超时，分不清是请求没执行，还是已提交但丢了响应。直接再建一张，可能留下两条记录。</p>
+    <p><strong>先确定“是不是同一次操作”</strong>：发起方在第一次尝试前生成操作键（如 UUID），随任务持久化，重试或进程恢复后仍复用。服务端在可信的作用域（如租户 + 工具动作）内按键关联操作，并保存<strong>请求身份</strong>（规范化后的业务参数或其指纹）。同作用域、同键、同参数才能重放；同作用域内，同键不同参数应拒绝。两次独立意图即使参数相同，也用不同的键。</p>
+    <p><strong>副作用可写入同一个数据库</strong>：把去重检查、业务写入以及操作记录和结果的写入放在<strong>同一个事务</strong>；并发访问须由数据库协调，不能让两个请求都读到“未处理”后各自提交。下面用 SQLite 的 <code>BEGIN IMMEDIATE</code> 先取得写事务，复合主键约束作用域内的键。提交前失败，两份写入一起回滚；提交后响应丢失，同一请求重放时返回已保存的工单编号，不再写入。只要记录保留，在这个作用域内，同一操作至多有一次已提交的业务变更，不保证一定成功。</p>
+    <p><strong>键、锁和唯一约束都不能单独提供这个保证</strong>：先执行业务、再单独记完成，可能在两步之间崩溃；反过来先记完成也会留下假成功。锁被占用只说明有人持有它，锁过期（TTL）也不能告诉你动作是否已执行。唯一约束能拒绝重复操作记录，却不能撤销在另一事务或系统里做过的副作用。</p>
     <div class="card" style="border-left: 4px solid var(--accent); margin-top:1rem;">
-      <strong>💡 关键细节：key 要在"第一次尝试前"就生成好</strong>
-      <p>幂等键必须<strong>客户端生成、并在所有重试中复用同一个</strong>（如一个 UUID）。如果每次重试都新生成 key，服务端会以为是"全新操作" → 幂等失效、照样重复扣款。</p>
+      <strong>外部副作用：按供应商契约重放，或先核对结果</strong>
+      <p>本地事务管不到外部服务。如果对方明确支持幂等，只有在它支持的端点、账号等作用域和保留窗口内，才用相同键和参数按文档重放；还要看它会返回哪些已保存的结果。不能假定换端点、换供应商或超过保留期后仍会去重。</p>
+      <p>如果没有可信的重放契约（包括键可能已过期），超时后把状态保留为<strong>结果未知</strong>。用业务引用查询对方的权威状态，或等可信回执：确认已完成就记录原结果，确认原请求未执行且不会再生效才考虑补做，仍不确定就交人工核对。暂时查不到不等于未执行；不要盲目重发、换键或自动换供应商。</p>
     </div>
-    <p><strong>Agent 关联</strong>：Agent 最危险的地方就是它会<strong>自主调用有副作用的工具</strong>。没有幂等键，一次网络超时 + 一次盲目重试 = 用户被重复扣款、消息被发两遍。<strong>幂等是让 Agent"敢碰真实世界"的安全带。</strong></p>
   </div>
 
   <div class="quiz" data-quiz="q3">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 幂等键为什么能让"扣款"这类操作重试也安全？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 同库的工单已经提交，但响应丢了。相同作用域、键和参数的重试为何不会再建一张？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">它会自动把重试禁用掉</button>
-      <button data-answer="correct">同一键的重复执行被跳过</button>
-      <button data-answer="wrong">它让请求走更快的通道</button>
-      <button data-answer="wrong">它把超时时间拉得更长</button>
+      <button data-answer="wrong">只要持有带 TTL 的锁，就能证明原操作已成功</button>
+      <button data-answer="correct">业务写入和操作记录、结果一起提交，重放会读取原结果</button>
+      <button data-answer="wrong">单独给操作表加唯一键，外部副作用也会被去掉</button>
+      <button data-answer="wrong">每次重试换一个新键，数据库就能认出原操作</button>
     </div>
-    <div class="quiz-explanation">幂等键给操作一个<strong>唯一确定的 id</strong>，执行前先查这个键是否处理过（Redis <code>SET NX</code> / DB 唯一约束）：<strong>已处理就跳过、返回上次结果</strong>。所以同一个 key 无论重试多少次，真正的扣款动作<strong>只会生效一次</strong>——重复的重试被安全地去重了。注意 key 要客户端生成并在重试间复用同一个。</div>
+    <div class="quiz-explanation">同库事务让业务写入和操作结果一起提交或回滚。只要已提交的记录还在，同键同参数就返回原结果；同键不同参数会被拒绝。锁或唯一约束不能替未参加事务的外部服务做保证。</div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <h3>离线验收：工单已提交，但响应丢了</h3>
+    <p>将下面整段复制到 Python 文件，用 <code>python -I 文件名.py</code> 运行。只用标准库和自动清理的临时 SQLite 文件，不访问网络。每次尝试及状态检查都独立打开、关闭连接，用同一文件模拟服务重启，不在内存里记完成状态。</p>
+    <details><summary>展开 SQLite 示例与验收断言</summary>
+    <pre data-lang="python" data-label="Python · 标准库离线验收"><code id="l31-idempotency-check" class="language-python">import json
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+
+def create_ticket(path, scope, key, title, *, fail_at=None):
+    request = json.dumps({"title": title}, sort_keys=True, separators=(",", ":"))
+    with closing(sqlite3.connect(path, isolation_level=None)) as db, db:
+        db.execute("BEGIN IMMEDIATE")  # 先取得写事务，再判断是否重放
+        saved = db.execute(
+            "SELECT request, ticket_id FROM operations WHERE scope = ? AND op_key = ?",
+            (scope, key),
+        ).fetchone()
+        if saved is not None:
+            original, ticket_id = saved
+            if original != request:
+                raise ValueError("same key, different arguments")
+        else:
+            ticket_id = db.execute(
+                "INSERT INTO tickets (scope, title) VALUES (?, ?)", (scope, title)
+            ).lastrowid
+            db.execute(
+                "INSERT INTO operations (scope, op_key, request, ticket_id) VALUES (?, ?, ?, ?)",
+                (scope, key, request, ticket_id),
+            )
+            if fail_at == "before_commit":
+                raise RuntimeError("before commit")  # 两条 INSERT 都已执行，但未提交
+    # db 的事务上下文已提交，连接也已关闭；现在才模拟丢响应。
+    if fail_at == "after_commit":
+        raise TimeoutError("response lost")
+    return ticket_id
+
+
+def snapshot(path):
+    with closing(sqlite3.connect(path)) as db:
+        return (
+            db.execute("SELECT id, scope, title FROM tickets").fetchall(),
+            db.execute("SELECT scope, op_key, request, ticket_id FROM operations").fetchall(),
+        )
+
+
+def must_fail(error_type, message, *args, **kwargs):
+    try:
+        create_ticket(*args, **kwargs)
+    except error_type as exc:
+        assert str(exc) == message, str(exc)
+    else:
+        raise AssertionError(f"expected {error_type.__name__}")
+
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "tickets.sqlite"
+    with closing(sqlite3.connect(path)) as db:
+        db.executescript("""
+            CREATE TABLE tickets (id INTEGER PRIMARY KEY, scope TEXT NOT NULL, title TEXT NOT NULL);
+            CREATE TABLE operations (
+                scope TEXT NOT NULL, op_key TEXT NOT NULL, request TEXT NOT NULL,
+                ticket_id INTEGER NOT NULL, PRIMARY KEY (scope, op_key)
+            );
+        """)
+
+    scope, key, title = "demo:create_ticket", "op-42", "Training ticket"
+    args = (path, scope, key, title)
+    must_fail(RuntimeError, "before commit", *args, fail_at="before_commit")
+    assert snapshot(path) == ([], [])
+
+    must_fail(TimeoutError, "response lost", *args, fail_at="after_commit")
+    committed = snapshot(path)
+    tickets, operations = committed
+    assert tickets == [(1, scope, title)]
+    assert operations == [(scope, key, '{"title":"Training ticket"}', 1)]
+    assert create_ticket(*args) == operations[0][3]
+    assert snapshot(path) == committed
+
+    must_fail(ValueError, "same key, different arguments", path, scope, key, "Different title")
+    assert snapshot(path) == committed
+
+print("L31 ACCEPTED")</code></pre></details>
+    <p><strong>通过标准：</strong>提交前注入失败，两张表都为空；提交后模拟丢响应，独立连接仍能读取操作记录和唯一一张工单；重放返回保存的编号，同键不同参数被拒绝且表不变。全部通过才应看到一行 <code>L31 ACCEPTED</code>。本例不验证强杀进程、并发压测或外部服务的幂等契约。</p>
   </div>
 </div>
 
 <div class="section">
   <h2>6. 拼起来：这就是"能上生产"的分水岭</h2>
   <div class="card">
-    <p>把五块拼成一张图——这正是 <a href="0014-L10-exceptions-logging-context.html">L10</a> 的地基之上，生产 Agent 该有的完整错误处理姿态：</p>
+    <p>把错误分类、重放判断、退避、抖动和预算拼起来：</p>
     <pre><code>一次 Agent 工具/API 调用失败时：
-  ┌─ 是不可重试错误(400/401/404)？ ── 是 → 立即 fail fast，抛给上层
-  │
-  └─ 是可重试错误(429/5xx/超时)？   ── 是 ↓
-       ┌── 有副作用(扣款/下单/发消息)？→ 带上幂等键，保证只生效一次
-       ├── 指数退避 + full jitter（防重试风暴）
-       └── 受重试预算约束（≤N 次 且 ≤T 秒）── 超了 → fail fast → L32 fallback</code></pre>
-    <p>一个 Agent 完成任务要发几十次调用，<strong>任何一次</strong>都可能踩中失败。缺了这套机制：没退避 → 捶爆服务端；没抖动 → 集群自造重试风暴；没预算 → 请求堆到进程崩；没幂等 → 重复扣款发双消息。<strong>"能跑 demo"和"能上生产"，差的就是这一课。</strong></p>
+  参数或鉴权错误 → 不重试，立即报错
+  临时错误（如 429/503/超时）→ 先判断能否安全重放
+    ├─ 无副作用，或有可信幂等契约 → 按契约重放（有键则复用）
+    │    用指数退避 + full jitter；预算耗尽则停止自动重试
+    └─ 外部副作用结果未知且无可信重放契约 → 停止重放，查询或人工核对</code></pre>
+    <p>退避、抖动和预算决定<strong>何时重试、何时停</strong>，不能让本来不安全的重试变安全。预算用完时也不能把未知结果当作未执行，再交给 L32 自动换路。</p>
   </div>
 
   <div class="card" style="margin-top:1rem;">
     <details>
-      <summary>🧠 动手想一想：超时后"不知道扣没扣"，幂等键怎么救？</summary>
-      <p style="margin-top:.8rem;"><strong>场景：</strong>你的 Agent 调用扣费工具，请求发出后<strong>网络超时</strong>——你收不到任何响应，<strong>完全不知道服务端到底扣款成功了没有</strong>。此时你想重试（万一没扣呢？），但又怕重复扣款（万一扣了呢？）。请说明：引入幂等键后，这次重试为什么就安全了？</p>
+      <summary>动手想一想：外部工单创建超时，还能重试吗？</summary>
+      <p style="margin-top:.8rem;"><strong>场景：</strong>假设把离线示例改成调用虚构的外部工单服务。创建请求已发出，但响应超时。分别说出：① 对方在当前端点、账号和保留期内承诺支持幂等重放；② 对方没提供可信的幂等契约，或键可能已过期。两种情况下怎么处理？只做纸面推演，不调用外部服务。</p>
       <details style="margin-top:.6rem;">
-        <summary>💡 点击查看参考答案</summary>
+        <summary>点击查看参考答案</summary>
         <div style="margin-top:.6rem;">
-          <p>关键在于：<strong>幂等键在第一次请求前就生成好了</strong>（比如一个 UUID <code>op-8f3a...</code>），并且<strong>重试时复用同一个 key</strong>。于是有两种可能，且都安全：</p>
           <ul>
-            <li><strong>情况 A：首次其实已扣款成功</strong>（只是响应超时丢了）。重试带着同一个 key 到达服务端，服务端一查"这个 key 已处理过" → <strong>不再扣款</strong>，直接把上次的成功结果返回给你。✅ 没有重复扣款。</li>
-            <li><strong>情况 B：首次根本没扣成</strong>（请求半路就丢了）。重试带着同一个 key 到达，服务端一查"这个 key 没见过" → <strong>正常执行扣款</strong>。✅ 该扣的扣上了。</li>
+            <li><strong>① 可以按契约重放：</strong>在预算内，用首次保存的键和相同参数重发到同一作用域，并按对方契约解读返回结果。如果首次已提交且结果保留，应读到原结果；不能假定重试总会成功。</li>
+            <li><strong>② 不能盲目重放：</strong>保留“结果未知”，用业务引用核对外部状态或回执。确认已有工单则记录原编号，确认首个请求没创建工单且不会再生效才考虑补做；无法确认就交人工。自己在本地保存一个键，不能让对方去重。</li>
           </ul>
-          <p>所以无论真实情况是 A 还是 B，<strong>带幂等键的重试都恰好让扣款"生效且仅生效一次"</strong>——你不必再纠结"到底扣没扣"，放心重试即可。这就是幂等键把"不确定 + 重试"变安全的原理。（实现上，服务端用 Redis <code>SET NX</code> 或 DB 唯一约束来判断 key 是否处理过。）</p>
         </div>
       </details>
     </details>
@@ -248,12 +316,12 @@ def do_once(key, action):
 
   <div class="tip" style="margin-top:1rem;">
     <strong>🎤 面试高频①："如何处理速率限制（429）？"</strong>
-    <p>答：① <strong>指数退避</strong>——失败后等待时间翻倍，给服务端喘息；② 加 <strong>full jitter</strong>——把重试时间随机打散到 <code>[0, backoff]</code>，<strong>防止大量客户端同步重试引发重试风暴（thundering herd）</strong>；③ 设<strong>重试预算</strong>——最大次数 + 总时间上限，超了 fail fast；④ 先<strong>区分可重试 / 不可重试</strong>（429/5xx/超时才重试，400/401 别重试）。工程上用 <code>tenacity</code> 的 <code>wait_random_exponential</code>，别手写。</p>
+    <p>答：① <strong>指数退避</strong>——失败后等待时间翻倍，给服务端喘息；② 加 <strong>full jitter</strong>——把重试时间随机打散到 <code>[0, backoff]</code>，<strong>防止大量客户端同步重试引发重试风暴（thundering herd）</strong>；③ 设<strong>重试预算</strong>——最大次数 + 总时间上限，超了 fail fast；④ <strong>先确认能否安全重放</strong>（429/5xx/超时是重试候选，400/401 别重试）。工程上用 <code>tenacity</code> 的 <code>wait_random_exponential</code>，别手写。</p>
   </div>
 
   <div class="tip" style="margin-top:1rem;">
     <strong>🎤 面试高频②："有副作用的工具调用怎么安全重试？"</strong>
-    <p>答：用<strong>幂等键（idempotency key）</strong>。给每次操作一个客户端生成、重试间复用的唯一 id；<strong>执行前先查重</strong>（Redis <code>SET NX</code> 或 DB 唯一约束），键已处理就跳过并返回上次结果。这样"重试同一操作只会真正生效一次"，避免超时后盲目重试导致重复扣款/下单。关键坑：key 必须首次请求前生成、重试复用同一个，否则幂等失效。</p>
+    <p>答：首次尝试前保存操作键，重试时复用；在同一作用域内核对请求参数。同库内把业务变更和操作记录、结果<strong>原子提交</strong>，重放返回保存的结果，同键不同参数直接拒绝。外部副作用只能按供应商明确的作用域及保留期重放；没有可信契约且结果未知，就核对状态，不盲重试。</p>
   </div>
 </div>
 
@@ -261,8 +329,8 @@ def do_once(key, action):
   <h2>🎯 速查卡：错误处理·退避·幂等</h2>
   <div class="card">
     <pre><code>【第一步：分类】
-  可重试  → 429 限流 / 5xx 服务端 / 超时 / 网络抖动
-  不可重试 → 400 参数 / 401 鉴权 / 404 → 立即 fail fast
+  429 限流 / 5xx 服务端 / 超时 / 网络抖动 → 先判断能否安全重放
+  400 参数 / 401 鉴权 / 404 → 立即 fail fast
 
 【退避】exponential backoff
   等待 = base × 2**attempt   （1s→2s→4s→8s）给服务端喘息
@@ -278,25 +346,25 @@ def do_once(key, action):
   ① 最大次数(N)  ② 总时间上限(T)  任一触顶 → fail fast
   tenacity: stop_after_attempt(N) | stop_after_delay(T)
 
-【幂等键】idempotency key ⚠️ 灵魂
-  致命：有副作用(扣款/下单/发消息)重试 → 重复副作用 💸
-  解法：唯一 key，执行前查重，已处理就跳过 → 只生效一次
-        if not already_done(key): do_action(); mark_done(key)
-  实现：Redis SET NX（配 TTL）/ DB 唯一约束
-  ★ key 客户端生成 + 重试复用【同一个】，否则失效
+【幂等键】idempotency key
+  同一业务操作 → 同一作用域、复用首次保存的键、核对参数
+  同库 → 业务写入与操作记录、结果原子提交；重放返回保存的结果
+  外部 → 只在供应商支持的作用域和保留期内按契约重放
+  无可信契约且结果未知 → 查状态或交人工；不盲重发或换路
 
 【Agent 分水岭】一次任务几十次调用，任何一次都可能失败
-  缺退避→捶爆服务端  缺抖动→集群自造风暴
-  缺预算→请求堆崩    缺幂等→重复扣款
-  = demo 与生产之别</code></pre>
+  先判能不能重放，再决定怎么退避、何时停止。</code></pre>
   </div>
 </div>
 
 <div class="section">
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
-    <p><a href="https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/" target="_blank"><strong>AWS Architecture Blog: Exponential Backoff And Jitter</strong></a>（Marc Brooker）+ <a href="https://docs.stripe.com/api/idempotent_requests" target="_blank"><strong>Stripe: Idempotent Requests</strong></a></p>
-    <p>前者是"退避为什么要加 jitter"的行业奠基之作——用模拟数据证明 full jitter 显著降低服务端负载、防重试风暴，读完你会彻底理解本课第 3 节。后者是幂等键的工业标准范例：看真实支付 API 如何用 <code>Idempotency-Key</code> 让重试安全（结果缓存、参数校验、key 复用），正是第 5 节的落地形态。</p>
+    <ul>
+      <li><a href="https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/" target="_blank"><strong>AWS Architecture Blog: Exponential Backoff And Jitter</strong></a>（Marc Brooker）— 第 3 节的模拟对比：full jitter 如何降低负载和重试次数。</li>
+      <li><a href="https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/" target="_blank"><strong>AWS Builders’ Library: Making retries safe with idempotent APIs</strong></a> — 调用方指定操作键、原子记录与业务变更，以及同键不同参数和迟到请求的处理。</li>
+      <li><a href="https://docs.stripe.com/api/idempotent_requests" target="_blank"><strong>Stripe: Idempotent Requests</strong></a> — 只阅读契约：文档说明如何比较参数、何时保存或返回结果（包括已保存的 <code>500</code>），以及键保留至少 24 小时后可能被清除。清除后复用键可能变成新请求，不要把该期限或行为套用到其他服务。</li>
+    </ul>
   </div>
 </div>
 
@@ -312,7 +380,7 @@ def do_once(key, action):
     <div class="qa-related-label">🔗 关联课程</div>
     <ul>
       <li>· <a href="0035-L30-context-window-management.html">上一课 L30 · Context 管理</a> — 顺风局的最后一课，接下来直面失败</li>
-      <li>· <a href="0037-L32-routing-fallback-gateway.html">下一课 L32 · 路由与 Fallback</a> — 重试预算耗尽后，怎么换模型/供应商降级</li>
+      <li>· <a href="0037-L32-routing-fallback-gateway.html">下一课 L32 · 路由与 Fallback</a> — 对能安全重放的调用，怎么换模型/供应商降级</li>
       <li>· <a href="0014-L10-exceptions-logging-context.html">L10 · tenacity 重试</a> — 本课的地基（别造轮子，退避/抖动/预算都内置）</li>
       <li>· <a href="0020-L16-async-concurrency.html">L16 · 并发调用要限流</a> — 从源头少触发 429，与退避互补</li>
     </ul>
@@ -325,16 +393,16 @@ def do_once(key, action):
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>生产 Agent 必须假设<strong>调用会失败</strong>；先分<strong>可重试(429/5xx/超时) vs 不可重试(400/401)</strong></li>
+      <li>生产 Agent 必须假设<strong>调用会失败</strong>；临时错误是重试候选，还要判断是否能安全重放</li>
       <li><strong>指数退避</strong>给服务端喘息（1s→2s→4s→8s），原理懂即可，用 tenacity</li>
       <li><strong>抖动(full jitter)</strong>是灵魂：纯退避会让客户端<strong>同步重试→重试风暴</strong>，随机打散才能救场</li>
       <li><strong>重试预算</strong>（最大次数 + 总时间）到点 <strong>fail fast</strong>，别把请求堆死</li>
-      <li><strong>幂等键</strong>是灵魂：有副作用的操作靠<strong>唯一 key + 执行前查重</strong>（SET NX / 唯一约束）做到"只生效一次"，key 要客户端生成、重试复用</li>
-      <li>退避 + 抖动 + 幂等，是 Agent 从"能跑 demo"迈向"能上生产"的分水岭</li>
+      <li><strong>幂等键</strong>在首次尝试前保存，在同一作用域内重试复用并核对参数；同库把业务写入和操作记录、结果原子提交</li>
+      <li><strong>外部副作用</strong>只按供应商支持的作用域和保留期重放；没有可信契约且结果未知时先核对，不盲重试</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    动手把 <code>tenacity</code> 的 <code>wait_random_exponential</code> + <code>stop_after_attempt | stop_after_delay</code> 套到你的一个 LLM 调用上，感受"退避 + 抖动 + 预算"三合一。再想想你的 Agent 有哪些工具带副作用——那些都该配幂等键。下一课 <a href="0037-L32-routing-fallback-gateway.html">L32</a>：当重试也救不回来，如何靠路由与 Fallback 优雅换路。有疑问随时问我。
+    想额外练习，可以给一个本地模拟调用套上 <code>tenacity</code> 的 <code>wait_random_exponential</code> + <code>stop_after_attempt | stop_after_delay</code>，观察退避、抖动和预算。不用发真实 API 请求。下一课 <a href="0037-L32-routing-fallback-gateway.html">L32</a>：对能安全重放的调用，如何用路由与 Fallback 换路。
   </div>
 </div>
 

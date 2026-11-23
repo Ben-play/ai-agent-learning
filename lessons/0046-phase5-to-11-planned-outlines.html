@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" sizes="192x192" href="../assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="../assets/icons/icon-192.png">
+  <title>阶段 5–11 详细大纲 · 规划草案</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<main>
+<aside class="toc" id="toc" aria-label="页面目录"></aside>
+
+<h1>阶段 5–11 · 详细大纲草案</h1>
+<p>依据<a href="0001-ai-agent-learning-path-overview.html">课程总览</a>的阶段目标拆分课题。这里仅规划教学顺序和验收目标，不是已发布的课文，不分配正式课号，也不计入学习进度。</p>
+
+<div class="tip">
+  <strong>贯穿项目：带证据的业务问答 + 受控工单草稿。</strong>沿用<a href="0045-phase4-prompt-context-outline.html">阶段 4 的 Prompt / Context 大纲</a>中的项目：先用已有证据样例回答，再按权限引入检索；应用控制草稿写入，敏感操作不因模型建议而放行。<br>
+  <strong>必修 / 选修：</strong>必修交付物沿主线复用；选修只在基线证明有需求时采用。完成阶段 8 和阶段 10 的必修检查点兼容性演练即可进入部署练习。计划验收使用本地环境、合成数据和模拟依赖，不调用外部服务，也不以离线通过代替生产准入。
+</div>
+
+<nav aria-label="按阶段跳转">
+  <a href="#phase-5">阶段 5</a> · <a href="#phase-6">阶段 6</a> · <a href="#phase-7">阶段 7</a> · <a href="#phase-8">阶段 8</a> · <a href="#phase-9">阶段 9</a> · <a href="#phase-10">阶段 10</a> · <a href="#phase-11">阶段 11</a>
+</nav>
+
+<section class="module" aria-labelledby="phase-5">
+  <h2 class="part-header" id="phase-5">阶段 5 · Agent 核心架构：Loop、Harness 与工具设计</h2>
+  <p><span class="badge badge-agent">必修</span> 10 个拟定课题</p>
+  <p><strong>先修：</strong>阶段 4 的版本化提示、上下文管线、业务 Skill 和证据样例。<strong>交付：</strong>手写单 Agent Harness、函数 / workflow 对照、可持久恢复的工单草稿流程，以及供阶段 6 原样复用的契约测试。</p>
+  <div class="card">
+    <div class="lesson-item"><div>
+      <div class="lesson-title">先选函数、workflow 还是单 Agent</div>
+      <div class="lesson-desc">用同一组证据问答与草稿任务比较三种实现；固定路径交给函数或 workflow，记录动态选工具在哪些任务上确有收益。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">有界 Agent Loop</div>
+      <div class="lesson-desc">定义完成、失败和预算耗尽的不同终态；用固定响应验证达到轮次或资源上限后停止调工具，不把中间文本当作完成。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">小工具集、类型契约与执行校验</div>
+      <div class="lesson-desc">用 Protocol 区分工具适配器与调度器，用泛型约束结果；记录选工具准确率和上下文开销，验证未注册、无权或参数非法时零执行。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">上下文压缩与按需披露</div>
+      <div class="lesson-desc">把带来源的工作笔记外置；按完整工具交互组压缩并复算预算，验证多轮问答仍可定位证据、不会拆散调用与结果。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">记忆的写入、纠正与删除</div>
+      <div class="lesson-desc">区分会话、工作和长期记忆；用带来源、时间和租户的样例验证纠正、过期、删除和隔离，不把推测存成事实。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">人工审批与明确禁止的动作</div>
+      <div class="lesson-desc">审批绑定用户、租户、动作与草稿版本，在执行前重校验；拒绝、撤回、越权或草稿变更时不写入，提交、外发等禁止操作不因审批而开放。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">审批暂停、进程退出与恢复</div>
+      <div class="lesson-desc">把审批暂停和任务标识写入数据库；退出进程后，从新进程恢复同一待审批任务，验证审批前零写入、批准后才能执行原动作。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">副作用已提交但响应丢失</div>
+      <div class="lesson-desc">沿用<a href="0036-L31-error-handling-retry.html">L31 的安全幂等原则</a>：在本地模拟草稿写入已提交、响应未返回，再重复恢复；同一操作沿用同一幂等键，最终只产生一次业务写入。无法核对结果且重试不安全时停止并交人工处理；检查点不保证副作用恰好一次。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">用回归用例改进 Harness</div>
+      <div class="lesson-desc">把依赖失败或错误终止先变成可复现的用例，再增删调度、重试或上下文规则；验证目标故障修复且正常任务不退化。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">阶段验收：固化框架无关契约</div>
+      <div class="lesson-desc">检查答案引用、草稿终态、权限拒绝、预算退出、记忆隔离和重启重放；同时交付预期业务状态与失败样例，不硬编码工具调用顺序。</div>
+    </div></div>
+  </div>
+</section>
+
+<section class="module" aria-labelledby="phase-6">
+  <h2 class="part-header" id="phase-6">阶段 6 · Agent 框架入门与 MCP 实战</h2>
+  <p><span class="badge badge-agent">必修</span> 5 个拟定课题</p>
+  <p><strong>先修：</strong>阶段 5 的手写 Harness、业务契约和恢复测试。<strong>交付：</strong>同一项目的一次 LangGraph 迁移和本地 MCP 测试矩阵；其他框架只作接缝对照，不另立项目。</p>
+  <div class="card">
+    <div class="lesson-item"><div>
+      <div class="lesson-title">将同一 Harness 迁入最小状态图</div>
+      <div class="lesson-desc">用状态、节点与分支替换手写编排，保留工具、权限及业务状态契约；两种实现运行同一组阶段 5 测试，比较终态而非调用顺序。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">LangGraph 检查点、中断与重放</div>
+      <div class="lesson-desc">用数据库 checkpointer 复验审批暂停后退出、重启恢复、拒绝零执行，以及提交后响应丢失再恢复；节点可重跑，草稿写入不能重复生效。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">MCP 先走本地 stdio</div>
+      <div class="lesson-desc">区分 Host / Client / Server 与 Tool / Resource / Prompt；用无敏感数据的子进程验证发现、列表、调用和结构化结果，凭证边界与协议输出分开。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">再接 Streamable HTTP：版本、JSON 与 SSE</div>
+      <div class="lesson-desc">以 2026-07-28 规范为基线，锁定实测的客户端与服务端 SDK，记录兼容矩阵；用本地服务覆盖兼容请求、拒绝不兼容版本、JSON 与 SSE 响应，不沿用旧握手或 GET 通知流。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">接入业务 Skill，但不授予工具权限</div>
+      <div class="lesson-desc">在本地 HTTP 授权样例中验证缺少凭证或 scope 不足时拒绝执行；有协议授权但缺业务权限也零执行。Skill 匹配和工具发现都不授权，Tasks 扩展不替代应用检查点。</div>
+    </div></div>
+  </div>
+</section>
+
+<section class="module" aria-labelledby="phase-7">
+  <h2 class="part-header" id="phase-7">阶段 7 · 数据基础与 RAG</h2>
+  <p><span class="badge badge-agent">必修</span> 10 个拟定课题</p>
+  <p><strong>先修：</strong>阶段 6 的项目与业务权限契约。<strong>交付：</strong>可追溯来源、按权限过滤的证据问答，以及分开的检索和生成报告。新语料与测试数据均为合成数据；安全用例只验证防御，不复现攻击。</p>
+  <div class="card">
+    <div class="lesson-item"><div>
+      <div class="lesson-title">数据模型与行级访问权限</div>
+      <div class="lesson-desc">用 PostgreSQL / SQLAlchemy 表达租户、文档版本与权限；以应用使用的非所有者角色验证两名权限不同的用户查询同一对象，各自只见可访问行。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">解析、清洗与可定位分块</div>
+      <div class="lesson-desc">为合成 PDF、HTML、Markdown 片段保留文档 ID、版本和页码或段落定位；从回答引用能打开对应片段，更新不误指旧证据。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">先做最简单的权限过滤检索</div>
+      <div class="lesson-desc">在单一后端用词法检索建立可解释基线，只把授权片段放入模型上下文；同问不同权限时各自得到可见引用，无可用证据时明确不作答。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">Embedding 与向量检索</div>
+      <div class="lesson-desc">沿用同一后端添加向量索引，按相同权限和任务集比对语义改写题的召回；用本地固定向量验证索引契约，不据此宣称真实模型质量。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">用失败题选择混合检索</div>
+      <div class="lesson-desc">在术语精确匹配与同义改写上对照词法、向量和混合结果；用授权证据覆盖与额外开销决定是否保留混合检索。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">用同一候选集验收重排序</div>
+      <div class="lesson-desc">对照重排前后的证据排序、预算与延迟；重排只能使用授权候选。HyDE、Agentic RAG 或 GraphRAG 不作为默认升级。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">热缓存中的撤权、改版与删除</div>
+      <div class="lesson-desc">先预热检索与答案缓存，再分别撤权、更新版本或删除文档并重复原问题；检查源库、索引、缓存及衍生片段，旧版或无权限内容不得进入上下文、引用或回答。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">证据是数据，不是执行指令</div>
+      <div class="lesson-desc">用带不可信标记的合成片段验证上下文的信任边界：来源能查证不代表内容可信，引用或草稿都不能替代应用授权与人工审批。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">检索评估：权限、召回和覆盖</div>
+      <div class="lesson-desc">按用户标注合法证据，报告权限违规、Recall@k 和所需证据覆盖；区分“没有授权证据”和“有但未召回”。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">生成评估：引用、忠实度与拒答</div>
+      <div class="lesson-desc">用固定证据集独立检查定位、正确性、忠实度和证据不足时的拒答，再对照端到端结果定位故障；判分模型只作经校准的补充。</div>
+    </div></div>
+  </div>
+</section>
+
+<section class="module" aria-labelledby="phase-8">
+  <h2 class="part-header" id="phase-8">阶段 8 · 可观测性、评估、安全、成本与系统设计</h2>
+  <p><span class="badge badge-agent">必修</span> 10 个拟定课题</p>
+  <p><strong>先修：</strong>阶段 7 的授权检索、生成基线和阶段 5–6 的草稿执行契约。<strong>交付：</strong>仓库内任务集、评分规则、可重复的评估入口与 CI 门禁，以及版本化遥测、成本和架构决策记录。</p>
+  <div class="card">
+    <div class="lesson-item"><div>
+      <div class="lesson-title">贯通任务、试验与轨迹</div>
+      <div class="lesson-desc">用同一关联 ID 串起检索、模型、工具、审批和终态；锁定 OpenTelemetry GenAI 语义约定与埋点库版本，使用一个本地追踪接收端验证字段、单位及未知用量。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">遥测最小化与可解释告警</div>
+      <div class="lesson-desc">默认只采元数据，不采提示、证据、票据正文或凭证；用合成样例核对脱敏、保留与访问控制，并验证等待审批不会被报成执行超时。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">在仓库维护任务集和重复试验</div>
+      <div class="lesson-desc">为问答、草稿、拒绝和恢复定义初始状态、预期结果与清理步骤；分离开发集和验收集，记录版本与重复次数，保证入口可离线运行。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">优先按证据和环境终态判分</div>
+      <div class="lesson-desc">验证引用指向真实可读片段、草稿状态符合预期、禁止动作无副作用；轨迹用于定位错误，不把漂亮回答或固定步骤当作成功。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">校准开放式质量评分</div>
+      <div class="lesson-desc">用人工标注检查评分规则对忠实度和完整性的判别；记录分歧与不确定项，Judge 仅补充难以确定性判分的部分。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">限制过度代理与工具权限</div>
+      <div class="lesson-desc">用合成防御用例验证检索内容不能改变权限、MCP scope 不足不执行、高风险草稿操作须审批；区分多余调用建议与实际执行，断言禁用动作零执行。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">按负载比较降本方案</div>
+      <div class="lesson-desc">用固定负载对照前缀缓存、路由和 Token 预算；先过质量与隔离门槛，再比较总开销（含失败尝试）除以成功任务数，以及端到端延迟。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">把验收标准接入 CI 门禁</div>
+      <div class="lesson-desc">CI 离线复测证据结果、成功率、成功任务成本、延迟和过度代理；超过版本化门槛或出现越权、重复写入即阻断，明确模拟数据不能证明线上表现。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">在系统设计中说明取舍</div>
+      <div class="lesson-desc">用贯穿项目对照 RAG、网关、客服交接、长时任务和评估系统；写清质量、权限、状态与恢复约束，以及何时函数或 workflow 已够用。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">阶段验收：提交可复核的基线</div>
+      <div class="lesson-desc">提交可复跑结果、脱敏轨迹和单 Agent / workflow 决策记录；用一次已知退化确认门禁确实失败，再复核修复后的结果。</div>
+    </div></div>
+  </div>
+</section>
+
+<section class="module" aria-labelledby="phase-9">
+  <h2 class="part-header" id="phase-9">阶段 9 · 高级 Agent 能力</h2>
+  <p><span class="badge badge-basic">全阶段选修</span> 5 个拟定课题；不作为部署或后续必修的前置。</p>
+  <p><strong>先修：</strong>阶段 8 的基线和可复现的瓶颈。<strong>交付（若选修）：</strong>为一个已证实的瓶颈提交本地对照记录，包含收益、授权边界与维护成本；没有需求就跳过。</p>
+  <div class="card">
+    <div class="lesson-item"><div>
+      <div class="lesson-title">按任务选择推理投入</div>
+      <div class="lesson-desc">按候选模型和 API 核实可用的 thinking / effort 能力，用既有任务与记录对照质量、成本、延迟；简单题不因配置更强就自动升级。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">工具搜索与受限的结果聚合</div>
+      <div class="lesson-desc">在工具集确实过大时，以本地只读模拟比较按需加载、受限聚合与小工具集；检查选工具质量和上下文量，并保持调度授权、参数校验与预算。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">浏览器或 GUI 自动化</div>
+      <div class="lesson-desc">只有缺少稳定接口才做对照；用本地合成页面验证草稿预览、可观察终态和取消，不登录真实站点，也不执行提交或外发。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">对照编码 Agent 的 Harness</div>
+      <div class="lesson-desc">选一套固定版本做源码阅读，记录工作区、执行和验证边界；用合成任务对照人工审阅的测试结果，不以生成补丁作为完成标准。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">长任务的取消、重放与预算</div>
+      <div class="lesson-desc">沿用阶段 5–6 的检查点，追加长时模拟任务的取消、重启和预算耗尽；取消后不继续执行，重放不重复写草稿。</div>
+    </div></div>
+  </div>
+</section>
+
+<section class="module" aria-labelledby="phase-10">
+  <h2 class="part-header" id="phase-10">阶段 10 · 框架演进与按需协作</h2>
+  <p><span class="badge badge-agent">必修</span> 4 个拟定课题 <span class="badge badge-basic">选修</span> 4 个拟定课题</p>
+  <p><strong>先修：</strong>阶段 6 的 LangGraph 项目与阶段 8 的验收基线，不依赖阶段 9。<strong>交付：</strong>升级前后恢复对照、旧检查点兼容与失败回退记录，以及是否引入协作的决策；部署前必须完成下面的检查点兼容性演练。</p>
+  <div class="card">
+    <div class="lesson-item"><div>
+      <div class="lesson-title">版本化状态与分支 <span class="badge badge-agent">必修</span></div>
+      <div class="lesson-desc">用旧版图实际生成待审批、已批准待执行、已提交但响应未确认的检查点；盘点新旧状态字段、节点和分支变化，明确哪些可读、哪些必须迁移。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">从同一批旧检查点比较恢复 <span class="badge badge-agent">必修</span></div>
+      <div class="lesson-desc">对照旧版恢复与升级后恢复：复制同批旧检查点分别验证原任务、审批绑定、拒绝结果与幂等键仍有效，不以新版本创建的新任务代替兼容性检查。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">演练迁移失败与恢复路径 <span class="badge badge-agent">必修</span></div>
+      <div class="lesson-desc">遇到不可迁移的状态先安全停止，再用经验证的兼容版本或回退路径接续旧任务；重复重启后核对审批仍可处理、权限不扩大且已提交草稿不重复写入。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">记录架构决策：保留单 Agent 也有效 <span class="badge badge-agent">必修</span></div>
+      <div class="lesson-desc">用同任务比较函数、workflow 与单 Agent 的成功率、成功任务成本和延迟；只有存在可度量的委托收益才加多 Agent 对照，无需为了验收实现协作。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">单 Agent 与 Orchestrator–Worker 对照 <span class="badge badge-basic">选修</span></div>
+      <div class="lesson-desc">确有独立委托边界时才做最小协作试验；对照交接丢失、成功率、总成本和延迟，验证委托不会扩大证据或工具权限。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">A2A：只为远程互操作采用 <span class="badge badge-basic">选修</span></div>
+      <div class="lesson-desc">有跨系统委托需求才锁定规范与 SDK，用本地替身验证状态、取消、结果和拒绝授权；本地并行不要求 A2A。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">MCP Server 进阶 <span class="badge badge-basic">选修</span></div>
+      <div class="lesson-desc">沿用锁定的规范和 SDK，验证业务参数白名单、审计与缺令牌、受众或签发方不匹配、scope 不足的拒绝路径；Tasks 只在双方支持且确有需求时采用。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">生产框架与项目源码对照 <span class="badge badge-basic">选修</span></div>
+      <div class="lesson-desc">从现有框架或项目中只选一份固定版本源码，例如 OpenClaw 或 Hermes Agent；比较状态、权限和恢复边界，不另建一套框架项目。</div>
+    </div></div>
+  </div>
+</section>
+
+<section class="module" aria-labelledby="phase-11">
+  <h2 class="part-header" id="phase-11">阶段 11 · 生产部署与持续迭代</h2>
+  <p><span class="badge badge-agent">必修</span> 6 个拟定课题</p>
+  <p><strong>先修：</strong><a href="#phase-8">阶段 8 的验收基线</a>及<a href="#phase-10">阶段 10 的必修旧检查点兼容性演练</a>；阶段 9、多 Agent、A2A 或 MCP 进阶均不阻塞。<strong>交付：</strong>同一项目的受控部署、故障与灰度回滚记录，以及一轮评估驱动的改进。</p>
+  <div class="card">
+    <div class="lesson-item"><div>
+      <div class="lesson-title">封装 FastAPI、Docker 与持久状态</div>
+      <div class="lesson-desc">用本地容器运行问答、草稿和审批入口；模拟依赖中断和进程替换，验证在途审批不随容器丢失。其他持久编排平台仅作对照，自动重试不等于副作用恰好一次。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">CI/CD 设定部署准入</div>
+      <div class="lesson-desc">记录构建版本及对应的状态 schema、配置和回滚目标；阶段 8 门禁或旧检查点恢复测试不通过时拒绝晋级，不把构建成功当作可上线。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">限流、权限与最小化审计</div>
+      <div class="lesson-desc">用受控测试流量验证租户限流、超预算停止、拒绝敏感动作和审批拒绝；审计能关联决定与结果，但不泄露证据正文或凭证。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">灰度指标与停止条件</div>
+      <div class="lesson-desc">用受控任务流对照新旧版本的成功率、错误、延迟与审批恢复，预先设定停止与回滚条件；权限失守或审批无法接续时立即停止扩量。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">回滚必须接住已存在的审批</div>
+      <div class="lesson-desc">演练状态迁移、停止灰度和应用及状态兼容回退；验证发布前及灰度期间已存在的待审批任务在回滚后仍可安全批准或拒绝。对已提交但响应丢失的动作重复恢复，确认草稿不重复写入。</div>
+    </div></div>
+    <div class="lesson-item"><div>
+      <div class="lesson-title">事故响应与评估驱动迭代</div>
+      <div class="lesson-desc">把受控故障转成脱敏回归用例，记录规则依据、范围与复核条件；用对照任务衡量改动是否改善结果，保留或撤销改动，并记录仍未满足的生产条件。</div>
+    </div></div>
+  </div>
+</section>
+
+<div class="source">
+  <strong>备课用一手资料与课程参考：</strong><br>
+  · 持久化与升级：<a href="https://docs.langchain.com/oss/python/langgraph/persistence" target="_blank" rel="noopener noreferrer">LangGraph Persistence</a>、<a href="https://docs.langchain.com/oss/python/langgraph/interrupts" target="_blank" rel="noopener noreferrer">Interrupts</a>、<a href="https://docs.langchain.com/oss/python/langgraph/graph-api#graph-migrations" target="_blank" rel="noopener noreferrer">Graph Migrations</a><br>
+  · 协议：MCP 2026-07-28 <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http" target="_blank" rel="noopener noreferrer">Streamable HTTP</a>、<a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization" target="_blank" rel="noopener noreferrer">授权规范</a>；<a href="../reference/0003-mcp-a2a-protocols.html">版本化协议与迁移检查表</a><br>
+  · 权限、遥测和防御：<a href="https://www.postgresql.org/docs/current/ddl-rowsecurity.html" target="_blank" rel="noopener noreferrer">PostgreSQL 行级安全</a>、<a href="https://github.com/open-telemetry/semantic-conventions-genai/tree/v0.1.0/docs/gen-ai" target="_blank" rel="noopener noreferrer">OpenTelemetry GenAI 语义约定 v0.1.0</a>、<a href="https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html#primary-defense-layers" target="_blank" rel="noopener noreferrer">OWASP：主要防御措施</a><br>
+  · 灰度与回滚：<a href="https://sre.google/workbook/canarying-releases/" target="_blank" rel="noopener noreferrer">Google SRE Workbook · Canarying Releases</a>
+</div>
+</main>
+
+<nav class="nav" aria-label="大纲导航">
+  <a href="0001-ai-agent-learning-path-overview.html">← 回到课程总览</a>
+  <a href="0045-phase4-prompt-context-outline.html">阶段 4 大纲 · 前置项目</a>
+</nav>
+
+<footer>
+  AI Agent 高级开发工程师课程 · 阶段 5–11 规划草案
+</footer>
+
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

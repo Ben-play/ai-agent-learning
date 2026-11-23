@@ -20,7 +20,7 @@
       <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>LLM 本质与生成参数</h1>
-    <p class="subtitle">LLM 只是在"猜下一个词"——但怎么猜，你能调</p>
+    <p class="subtitle">LLM 只是在“猜下一个词”——能不能调、怎么调，要看接口</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:12%"></div></div>
   </div>
 </div>
@@ -42,7 +42,7 @@
       <li>直觉理解"注意力"在做什么（不涉及数学）</li>
       <li>讲清 <code>temperature</code> 如何缩放概率分布、<code>top_p</code> 如何裁剪候选集</li>
       <li>区分 <code>frequency_penalty</code> 与 <code>presence_penalty</code>，并知道它们不是所有厂商都有</li>
-      <li>先查目标模型支持哪些字段，再为抽取 / 创作 / 代码任务选择控制方式</li>
+      <li>先查 API 版本与目标模型支持哪些字段，再为抽取 / 创作 / 代码任务选择控制方式</li>
       <li>说清一个反直觉事实：<strong>temperature=0 也不保证完全可复现</strong></li>
     </ul>
   </div>
@@ -98,7 +98,7 @@
     </ul>
     <p>直觉记法：<strong>温度高 = 脑洞大，温度低 = 循规蹈矩</strong>。数学上，temperature 通常是在 softmax 前对 logits 除以 T——T 越小，分布越集中；部分实现把 <code>T=0</code> 特判为贪心 / argmax（详见 <a href="https://huggingface.co/blog/mlabonne/decoding-strategies" target="_blank">Hugging Face: Decoding Strategies</a>）。</p>
     <div class="tip">
-      <strong>先分清“解码概念”和“API 字段”。</strong>Temperature / top-p 是理解采样的基础，但并非每个模型都开放这些字段。例如当前 Claude Fable 5 / Mythos 5、Claude Opus 4.8 / 4.7 与 Claude Sonnet 5 会拒绝 <code>temperature</code>、<code>top_p</code>、<code>top_k</code> 的<strong>非默认值</strong>；这不等于字段名在所有情况下都被类别性拒绝。可移植做法是：能力档案未声明支持时就不发送这些字段，改用清晰提示词约束输出，并在需要推理深度控制时使用 <code>output_config.effort</code>（L20 再展开）。所以表里的数值只适用于<strong>确实支持该采样参数</strong>的 API，接入前先查模型文档。</div>
+      <strong>先分清“解码概念”和“API 字段”。</strong>Temperature / top-p 是理解采样的基础，但并非每个接口都开放这些字段。Claude Messages API <a href="https://platform.claude.com/docs/en/api/migration-2026-10-21#sampling-parameters" target="_blank"><code>2026-10-21</code> 版</a>已移除 <code>temperature</code>、<code>top_p</code>、<code>top_k</code>：请求体只要带上任一字段，就会返回 HTTP 400，不论模型或传值（包括默认值）。Claude adapter 应省略这三个字段，用清晰提示词、结构化输出和校验约束结果；需要调节推理投入时，再查目标模型是否支持 <code>output_config.effort</code>（见 L20），它不是采样旋钮。下表数值只适用于<strong>确实支持该采样参数</strong>的 API。</div>
     <table>
       <thead><tr><th>任务</th><th>建议 temperature</th><th>为什么</th></tr></thead>
       <tbody>
@@ -125,7 +125,7 @@ request = build_request(
     controls=controls,
 )</code></pre><p>adapter 只投影能力档案允许的字段；fixture 可机械证明不支持字段没有越过边界。</p></div>
     </div>
-    <p class="bp-rationale"><strong>为什么更优：</strong>先维护能力档案，再由 adapter 投影请求，动作上把“任务意图”与“厂商字段”分开；机制上让字段支持范围成为可测试数据；结果是兼容性、可移植性、可审计性和错误可诊断性提高。真实成本是要维护档案、升级 fixture，并在模型发布后重验；档案陈旧也会错误删字段。若只接一个后端，可直接使用其强类型请求对象；当第二个 provider 出现或模型支持范围分叉时，切换到显式能力档案。当前官方文档的边界是：Fable 5 / Mythos 5、Opus 4.8 / 4.7 与 Sonnet 5 拒绝 sampling 控制的<strong>非默认值</strong>，不应夸大成字段在所有情况下都类别性拒绝（<a href="https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking" target="_blank">Anthropic · Adaptive thinking</a>）。</p>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先维护能力档案，再由 adapter 投影请求，动作上把“任务意图”与“厂商字段”分开；机制上让字段支持范围成为可测试数据；结果是兼容性、可移植性、可审计性和错误可诊断性提高。真实成本是要维护档案、升级 fixture，并在模型或 API 升级后重验；档案陈旧也会错误删字段。若只接一个后端，可直接使用其强类型请求对象；当第二个 provider 出现或支持范围分叉时，切换到显式能力档案。例如 Claude Messages API <code>2026-10-21</code> 版已移除三个采样字段，档案应禁止发送它们，而不是替它们填默认值。</p>
     <details class="bp-check"><summary><strong>动手自检（纯标准库、离线、静默通过）：</strong></summary><pre><code>PROFILES = {
     "fictional_a": {
         "temperature": True,
@@ -186,11 +186,11 @@ assert TASK == "classify"</code></pre></details>
     <div class="quiz-question"><span class="quiz-q">Q</span> 要让 Agent 抽取字段稳定，第一步应该？</div>
     <div class="quiz-options">
       <button data-answer="wrong">先把温度降到零</button>
-      <button data-answer="correct">先查目标模型能力</button>
+      <button data-answer="correct">先查 API 版本与目标模型能力</button>
       <button data-answer="wrong">固定发送全部参数</button>
       <button data-answer="wrong">随机组合多个旋钮</button>
     </div>
-    <div class="quiz-explanation">第一步是确认目标模型接受哪些控制。支持 sampling 参数时，可从低 temperature 开始评测，并配结构化输出与运行时校验；模型拒绝这些字段的非默认值时，就不要发送，改用该模型支持的提示约束、结构化输出、校验或 effort。低温提高一致性，也不保证事实正确或逐字节复现。</div>
+    <div class="quiz-explanation">第一步是确认目标 API 版本和模型支持哪些控制。支持 sampling 参数时，可从低 temperature 开始评测，并配结构化输出与运行时校验；Claude Messages API <code>2026-10-21</code> 版要求省略三个采样字段，抽取靠提示约束、结构化输出与校验。低温可以提高一致性，但不保证事实正确或逐字节复现。</div>
   </div>
 </div>
 
@@ -202,7 +202,7 @@ assert TASK == "classify"</code></pre></details>
 按概率排序累加，取到累计 90% 为止的那批 Token，
 剩下 10% 概率的"长尾低概率词"直接排除。</code></pre>
     <p>它的好处是<strong>自适应</strong>：模型很确定时（一个 Token 就占 95%），候选集自动变小；模型不确定时（概率分散），候选集自动变大。这比固定取前 K 个（top-k）更聪明——出处见 <a href="https://huggingface.co/blog/how-to-generate" target="_blank">Hugging Face: How to generate text</a>。</p>
-    <p style="margin-top:.5rem;"><strong>temperature vs top_p 怎么配？</strong>如果目标 API 同时支持两者，通常只重点调一个、另一个留默认，便于归因；同时把两个都往极端调，行为会很难预测。常见做法是固定 <code>top_p=1</code> 只调 temperature，或反之。若能力档案没有声明支持，就不要硬塞参数；对会拒绝非默认 sampling 值的新 Claude 模型，portable adapter 应直接省略这些字段，改用该厂商支持的控制方式。</p>
+    <p style="margin-top:.5rem;"><strong>temperature vs top_p 怎么配？</strong>如果目标 API 支持同时传入两者，通常只重点调一个、另一个留默认，便于归因；同时把两个都往极端调，行为会很难预测。若能力档案没有声明支持，就不要硬塞参数。Claude Messages API <code>2026-10-21</code> 版应直接省略这些字段，不能用 <code>top_p=1</code> 或其他默认值代替省略。</p>
   </div>
   <div class="tip">
     ⚠️ 陷阱题：<strong>"temperature 和 top_p 有什么区别？"</strong> — temperature 是<strong>缩放</strong>整个分布的形状（改变每个 Token 被选中的相对概率）；top_p 是<strong>裁剪</strong>候选集（先砍掉长尾，再采样）。一个改"概率"，一个改"能选谁"。
@@ -240,7 +240,7 @@ assert TASK == "classify"</code></pre></details>
       <li><strong>浮点数不满足结合律</strong>：<code>(a+b)+c ≠ a+(b+c)</code>。GPU 上并行归约的加法顺序会变，导致 logits 有极小抖动，偶尔翻转"谁是第一名"。</li>
       <li><strong>批处理 / 硬件差异</strong>：同一请求在不同 batch 大小、不同 GPU、不同推理引擎版本下，数值路径不同。</li>
     </ul>
-    <p>这不是玄学，是被 <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference" target="_blank">Thinking Machines Lab</a> 和 <a href="https://github.com/vllm-project/vllm/discussions/17166" target="_blank">vLLM 维护者</a>系统分析过的工程现实。<strong>面试加分点</strong>：在支持采样控制的 API 上，低温 / 贪心解码配合固定 seed（若厂商提供）只能<strong>提高</strong>一致性，不能保证逐字节相同。Seed 也是厂商能力：部分 OpenAI 接口提供，Anthropic Messages API 当前没有对应请求字段；当前 Claude 模型若不接受 temperature，也不能照搬“temperature=0”方案。</p>
+    <p>这不是玄学，是被 <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference" target="_blank">Thinking Machines Lab</a> 和 <a href="https://github.com/vllm-project/vllm/discussions/17166" target="_blank">vLLM 维护者</a>系统分析过的工程现实。<strong>面试加分点</strong>：在支持采样控制的 API 上，低温 / 贪心解码配合固定 seed（若厂商提供）只能<strong>提高</strong>一致性，不能保证逐字节相同。Seed 也是厂商能力：部分 OpenAI 接口提供，Anthropic Messages API 当前没有对应请求字段；Claude Messages API <code>2026-10-21</code> 版也不能照搬“temperature=0”方案。</p>
   </div>
   <div class="tip">
     这条对 Agent 工程很实际：<strong>不要把关键逻辑建立在"LLM 输出逐字节稳定"的假设上</strong>。要稳，就用结构化输出 + 校验（后面 <a href="0018-L14-pydantic.html">Pydantic</a> 那套），而不是指望采样完全确定。
@@ -322,10 +322,10 @@ assert all(evaluator(output, FIXTURE) for output in outputs)</code></pre></detai
   <details>
     <summary><strong>🧪 Agent 场景练习：</strong>为抽取、创作和代码任务选择控制方式（先自己判断）</summary>
     <div class="card" style="margin-top:.8rem;">
-      <p><strong>题目：</strong>Provider A 支持 <code>temperature</code> / <code>top_p</code>；当前 Claude Opus 4.8 会拒绝这些采样字段的非默认值，因此 portable adapter 不发送它们，而使用清晰提示词与 <code>output_config.effort</code>。分别为“发票字段抽取”“广告创意”“复杂代码审查”选择控制方式。</p>
+      <p><strong>题目：</strong>Provider A 支持 <code>temperature</code> / <code>top_p</code>；另一边用 Claude Opus 5.5，走 <code>2026-10-21</code> 版 Messages API，不发送 <code>temperature</code>、<code>top_p</code>、<code>top_k</code>。分别为“发票字段抽取”“广告创意”“复杂代码审查”选择控制方式。</p>
       <p><strong>参考答案：</strong></p>
       <ul>
-        <li><strong>发票抽取：</strong>Provider A 可用低 temperature 并配结构化输出；Claude Opus 4.8 不传采样参数，改用严格输出格式、明确字段规则和运行时校验。稳定性主要靠结构化约束，不靠“温度必然可复现”。</li>
+        <li><strong>发票抽取：</strong>Provider A 可用低 temperature 并配结构化输出；Claude 侧改用严格输出格式、明确字段规则和运行时校验。稳定性主要靠结构化约束，不靠“温度必然可复现”。</li>
         <li><strong>广告创意：</strong>Provider A 可提高 temperature 或调 top-p（只重点调一个）；Claude 则在提示词里明确“给出多种差异明显的方向”，而不是发送不支持的字段。</li>
         <li><strong>复杂代码审查：</strong>重点不是提高随机性。两类 provider 都应先明确审查标准；Claude 可在 L20 学到用较高 <code>effort</code> 增加分析深度，再通过测试验证结论。</li>
       </ul>
@@ -353,8 +353,8 @@ assert all(evaluator(output, FIXTURE) for output in outputs)</code></pre></detai
 
 【先看接口再调参】概念通用 ≠ 字段通用
   ├── 支持 sampling 参数的 API：按任务调 temperature / top_p
-  └── 当前新 Claude：不传未获能力档案支持的采样字段
-      用提示词、结构化输出、校验；推理深度见 L20 effort
+  └── Claude Messages API 2026-10-21：省略 temperature / top_p / top_k
+      传任一字段（即便为默认值）就返回 HTTP 400；推理深度见 L20 effort
 
 【反直觉】即使支持 temperature=0，也不保证 100% 可复现
   └── 浮点非结合 + 硬件/批次差异；seed 也由厂商决定
@@ -591,8 +591,8 @@ print("L17 ACCEPTED")</code></pre></details>
       <li><strong>注意力</strong>让模型按相关性给上文各 Token 加权，捕捉长距离依赖</li>
       <li><strong>temperature</strong> 缩放分布形状，<strong>top_p</strong> 裁剪候选集；它们是通用解码概念，但不是每个 API 都开放的字段</li>
       <li><strong>frequency_penalty</strong> 按次数罚、<strong>presence_penalty</strong> 按有无罚；同样要先确认目标厂商支持</li>
-      <li>控制输出的顺序是：明确任务行为 → 查模型能力 → 选采样参数、提示约束或结构化校验</li>
-      <li>即便 API 支持 <strong>temperature=0 / seed</strong>，也不能保证逐字节复现；部分新 Claude 模型会拒绝 sampling 字段的非默认值</li>
+      <li>控制输出的顺序是：明确任务行为 → 查 API 版本与模型能力 → 选支持的采样参数、提示约束或结构化校验</li>
+      <li>Claude Messages API <code>2026-10-21</code> 版必须省略 <code>temperature</code>、<code>top_p</code>、<code>top_k</code>；在支持采样的接口上，<strong>temperature=0 / seed</strong> 也不保证逐字节复现</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">

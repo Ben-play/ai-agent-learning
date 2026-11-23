@@ -55,7 +55,15 @@
   var PHASE_NUMBERS = {
     '第一阶段': 1,
     '第二阶段': 2,
-    '第三阶段': 3
+    '第三阶段': 3,
+    '第四阶段': 4,
+    '第五阶段': 5,
+    '第六阶段': 6,
+    '第七阶段': 7,
+    '第八阶段': 8,
+    '第九阶段': 9,
+    '第十阶段': 10,
+    '第十一阶段': 11
   };
   var OUTLINES = {};
   var LESSONS = [];
@@ -99,7 +107,7 @@
     if (item.outlineFor) OUTLINES[item.outlineFor] = item;
     if (item.phase) {
       item.lessonIndex = LESSONS.length;
-      item.lessonId = 'L' + item.file.match(/-L(\d{2})-/)[1];
+      item.lessonId = 'L' + item.file.match(/-L(\d{2,3})-/)[1];
       item.phaseNumber = PHASE_NUMBERS[item.phase];
       LESSONS.push(item);
     }

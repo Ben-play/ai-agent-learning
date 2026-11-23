@@ -130,17 +130,17 @@ assert set(costs) == set(usage) == set(rates)</code></pre></details>
 <div class="section">
   <h2>3. Prompt Caching：静态前缀占比高时的强杠杆</h2>
   <div class="card">
-    <p><strong>原理：</strong>把<strong>静态的、重复的前缀</strong>（长 system prompt、固定的少样本示例、反复出现的文档）缓存起来。后续请求只要前缀<strong>逐字节命中</strong>缓存，这部分就<strong>大幅降价</strong>——你不再为"每次都一样的内容"付全价。</p>
-    <p>下表是按本课引用的官方文档整理的边界快照；价格与支持范围会变化，实施时必须重新核对目标模型与平台：</p>
+    <p><strong>原理：</strong>把<strong>静态的、重复的前缀</strong>（长 system prompt、固定的少样本示例、反复出现的文档）缓存起来。后续请求若<strong>逐字节命中</strong>缓存，命中部分就按缓存读取价计费，而不再按基础输入价付费。</p>
+    <p>下表把练习假设和厂商计费分开；倍数都是相对于基础输入价，实际费率须按目标模型、平台和 TTL 核对：</p>
     <table>
-      <thead><tr><th>厂商</th><th>缓存读（命中）</th><th>缓存写（首次）</th><th>TTL</th></tr></thead>
+      <thead><tr><th>计费口径</th><th>缓存读（命中）</th><th>缓存写（首次）</th><th>TTL</th></tr></thead>
       <tbody>
-        <tr><td><strong>练习给定的缓存模型</strong><br>非当前统一报价</td><td>假设 <strong>0.1×</strong> 输入价<br>（省约 90%）</td><td>约 <strong>1.25×</strong><br>（首次略贵）</td><td>默认约 5 分钟；另有 1 小时选项（写约 2×）</td></tr>
-        <tr><td><strong>OpenAI</strong></td><td colspan="3">缓存折扣、写入计费与保留时间按模型/产品变化；本课不固定数值，实施时查下方 OpenAI 当前官方文档</td></tr>
+        <tr><td><strong>本课练习假设</strong></td><td><strong>0.1×</strong></td><td>5 分钟 <strong>1.25×</strong><br>1 小时 <strong>2×</strong></td><td>5 分钟或 1 小时</td></tr>
+        <tr><td><strong>Claude API（第一方）</strong></td><td>多数模型是 0.1×<br>例如 Opus 5.5 / Sonnet 5.5 为 0.05×</td><td>5 分钟 1.25×<br>1 小时 2×</td><td>默认 5 分钟；可选 1 小时</td></tr>
+        <tr><td><strong>OpenAI</strong></td><td colspan="3">缓存折扣、写入计费与保留时间按模型 / 产品核对，见下方官方文档</td></tr>
       </tbody>
     </table>
-    <p><strong>版本边界（2026-11-06复核）：</strong>表中 Anthropic 倍数只作为下方盈亏平衡练习的假设，并非所有当前模型的统一报价。新代际模型读取倍率可能不同，OpenAI也存在不同缓存写价/TTL行为；上线前必须按模型与API重新核对，不直接搬用练习参数。</p>
-    <p>数据出处：<a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a>、<a href="https://developers.openai.com/api/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。以下仅按练习给定的相对输入价粗算：5 分钟缓存一次写入 1.25×，之后一次读取 0.1×，两次使用合计 1.35×，低于两次全价 2×；1 小时缓存写 2×，通常要到第三次使用（2×+0.1×+0.1×）才低于三次全价。实际收益还取决于命中时机、并发和静态前缀占比。</p>
+    <p>数据出处：<a href="https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching-pricing" target="_blank">Anthropic: Prompt Caching 定价</a>、<a href="https://developers.openai.com/api/docs/guides/prompt-caching" target="_blank">OpenAI: Prompt Caching</a>。<strong>0.1× 不是跨模型、跨厂商的通用读价。</strong>以下只按练习假设估算：5 分钟缓存一次写入 1.25×，之后一次读取 0.1×，两次使用合计 1.35×，低于两次全价 2×；1 小时缓存写 2×，要到第三次使用（2×+0.1×+0.1×）才低于三次全价。实际收益还取决于命中时机、并发和静态前缀占比。</p>
     <p><strong>还有一个常被漏掉的门槛：</strong>可缓存前缀必须达到目标模型的最小 Token 数，且该阈值随模型/平台变化；太短时不会报错，只是不会建立缓存。因此不要背一个固定阈值，接入时查当前模型文档并看 usage 验证。</p>
 
     <p><strong>关键设计原则</strong>：把 prompt 拆成「<strong>静态前缀（可缓存）+ 动态后缀（每次变）</strong>」，<strong>静态部分放最前面</strong>。因为缓存是<strong>前缀匹配</strong>——前缀里任何一个字节变了，后面全部失效。所以千万别把时间戳、用户 ID、随机数塞进 system prompt 开头：</p>
@@ -148,7 +148,7 @@ assert set(costs) == set(usage) == set(rates)</code></pre></details>
 
 ┌─ 静态前缀（放前面，打缓存标记）──────────────┐
 │  · 角色设定 / 行为准则          ← 一字不改      │  ← 命中缓存
-│  · 工具定义（按名字排序，别乱序）              │     约 0.1×
+│  · 工具定义（按名字排序，别乱序）              │     按模型读价计费
 │  · 固定的少样本示例 / 长文档                    │
 └──────────────────────────────────────────────┘
 ┌─ 动态后缀（放后面，不缓存）────────────────────┐
@@ -173,8 +173,8 @@ assert set(costs) == set(usage) == set(rates)</code></pre></details>
       <div class="bp-right"><span class="bp-compare-label">✅ 固定序列化 + 动态后缀</span><pre><code>prefix = stable_prefix(tools, system)
 suffix = {"request_id": request_id, "question": question}</code></pre><p>工具按名排序、JSON 固定序列化；请求 ID 和问题位于边界之后。</p></div>
     </div>
-    <p class="bp-rationale"><strong>为什么更优：</strong>先规范化工具顺序与序列化，再对稳定部分设置边界，缓存机制才能对 100% 相同的前缀复用，结果是更高命中率、更低重复输入成本与可诊断摘要。代价是冻结顺序、维护版本与接受首次写入溢价；5 分钟写入按基础输入价 1.25×、1 小时写入 2×、读取 0.1×，所以复用不足时切回不缓存或较短 TTL；工具定义确实变化时必须让摘要变化并重新写入，不能为命中伪造旧工具集。</p>
-    <p class="bp-term"><strong>官方边界：</strong>支持默认 <span class="bp-term-name">5 分钟</span>与显式 <span class="bp-term-name">1 小时</span> TTL；命中要求缓存断点前的 prompt 前缀完全一致；最小可缓存长度依模型且有平台差异，过短会静默不缓存。用 <code>usage.input_tokens</code>、<code>cache_creation_input_tokens</code>、<code>cache_read_input_tokens</code> 分别核对未缓存、写入和读取 Token，三者之和才是总输入。</p>
+    <p class="bp-rationale"><strong>为什么更优：</strong>先规范化工具顺序与序列化，再对稳定部分设置边界，缓存机制才能对 100% 相同的前缀复用，结果是更高命中率、更低重复输入成本与可诊断摘要。代价是冻结顺序、维护版本与接受可能的首次写入溢价；按目标模型和平台的实际读写费率核算，复用不足时考虑不缓存或换较短 TTL。工具定义确实变化时必须让摘要变化并重新写入，不能为命中伪造旧工具集。</p>
+    <p class="bp-term"><strong>Claude API 边界：</strong>支持默认 <span class="bp-term-name">5 分钟</span>与显式 <span class="bp-term-name">1 小时</span> TTL；命中要求缓存断点前的 prompt 前缀完全一致；最小可缓存长度依模型且有平台差异，过短会静默不缓存。用 <code>usage.input_tokens</code>、<code>cache_creation_input_tokens</code>、<code>cache_read_input_tokens</code> 分别核对未缓存、写入和读取 Token，三者之和才是总输入。</p>
     <details class="bp-check"><summary><strong>动手自检（纯标准库；离线摘要模拟、确定性、通过时静默）</strong></summary><pre><code>import hashlib
 import json
 
@@ -262,7 +262,7 @@ assert len(first_digest) == 64</code></pre></details>
     <p>为什么可能有效：不同模型单价差异大，若流量中确有一批简单请求，且路由器能在不显著损害质量的前提下识别它们，就能降低平均成本。TrueFoundry 的文章汇总了 <strong>40%~85%</strong> 的案例区间（<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">案例原文</a>）；这不是保证，误路由、二次升级和路由器自身调用也会产生质量与成本。</p>
     <p><strong>工程落地：</strong>用 provider-neutral adapter / gateway 隔离厂商请求与响应（例如可评估 <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a>，见课程 RESOURCES），业务层只依赖统一任务结果；具体网关仍要按你锁定的版本、支持矩阵和评测验证，不能假设换配置就自动获得公平或无损路由。这直接连回两条已学的原则：</p>
     <ul>
-      <li>👉 <a href="0024-L20-reasoning-models.html">L20</a>：推理模型（思考更多）<strong>更贵更慢</strong>——别对"翻译一句话""判断正负面"这种简单活开推理，纯属烧钱。</li>
+      <li>👉 <a href="0024-L20-reasoning-models.html">L20</a>：推理投入越高，可能需要更多 Token 和时间。对简单、规则明确的任务，可先测轻量模型或较低 effort，不假设思考总能关闭。</li>
       <li>👉 <a href="0026-L22-benchmarks-and-selection.html">L22</a>：选型不是"永远选最强"，而是<strong>按任务难度匹配</strong>。路由就是把"选型"从一次性决策变成<strong>每请求的动态决策</strong>。</li>
     </ul>
   </div>
@@ -390,7 +390,8 @@ else:
   · 每次用户问题：约 200 token
   · 每次回答：约 300 token
   · 每天请求数：10 万次
-  · 单价：输入 $3/M，输出 $12/M
+  · 单价：输入 $3/M，输出 $12/M（教学假设）
+  · 缓存假设：静态前缀达到最小长度，稳态近似全部命中；读取按 0.1× 算
 
 问：
   ① 不加缓存，日成本是多少？
@@ -418,7 +419,7 @@ else:
 ────────────────────────────────────────────────
 $1020 → 约 $480，稳态账单下降约 53%
 其中静态前缀的缓存读取从全价降到约 0.1×</code></pre>
-      <p><strong>这是稳态近似：</strong>严格计算还应把每个缓存周期的首次写入按 1.25×（或 1 小时写入 2×）计入；在 10 万次请求中一次写入影响很小，但低频场景不能忽略。缓存只作用于命中的静态前缀，动态问题与输出仍按常规定价。是否再加路由，要看质量评测和升级率。</p>
+      <p><strong>这是稳态近似，不是真实报价：</strong>本题按读取 0.1× 计算，暂忽略写入和未命中。精算时要计入每次实际写入（按本题假设，5 分钟为 1.25×、1 小时为 2×）和未缓存输入；低频或多次重写时尤其不能忽略。缓存只优惠命中的静态前缀，动态问题与输出仍按常规定价。是否再加路由，要看质量评测和升级率。</p>
     </details>
   </div>
 
@@ -437,9 +438,9 @@ $1020 → 约 $480，稳态账单下降约 53%
   ③ 工具循环多次往返  ④ 检索长文档反复出现
 
 【Prompt Caching】适合重复、足够长、字节稳定的前缀
-  Anthropic：5m写约1.25× / 1h写约2× / 读约0.1×
-  粗略回本：5m约第2次使用；1h约第3次使用
-  最小前缀随模型变；查 cache_creation_input_tokens / cache_read_input_tokens
+  本课假设：5 分钟写 1.25× / 1 小时写 2× / 读 0.1×
+  按本课假设：5 分钟第 2 次使用回本；1 小时第 3 次回本
+  读写价、最小前缀查目标模型和平台；命中看 cache_read_input_tokens
 
 【Model Routing】按业务评测分流，监控误路由、升级率和失败成本
   第三方 40~85% 仅案例，不是保证；路由器本身也有成本
@@ -736,8 +737,8 @@ print("P2 CHECKPOINT COST-AWARE-ROUTING PASSED")</code></pre></details>
 <div class="section">
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
-    <p><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank"><strong>Anthropic: Prompt Caching</strong></a></p>
-    <p>官方文档用于核对缓存读写倍数、TTL、模型/平台相关最小前缀、完全一致的前缀匹配和 usage 字段。异步非即时工作负载的 50% 定价边界见 <a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing" target="_blank">Anthropic: Batch processing</a>。<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry</a> 与 <a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery</a> 只作为案例阅读：学习它们如何测量，不把其节省百分比当成你的预测值。</p>
+    <p><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching" target="_blank"><strong>Anthropic: Prompt Caching</strong></a> · <a href="https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching-pricing" target="_blank"><strong>Anthropic: Prompt Caching 定价</strong></a></p>
+    <p>用定价页核对各模型的读写费率，用缓存指南核对 TTL、最小前缀、匹配规则和 usage 字段。异步非即时工作负载的 50% 定价边界见 <a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing" target="_blank">Anthropic: Batch processing</a>。<a href="https://www.truefoundry.com/blog/llm-routing-cost-quality-aware-model-selection" target="_blank">TrueFoundry</a> 与 <a href="https://projectdiscovery.io/blog/how-we-cut-llm-cost-with-prompt-caching" target="_blank">ProjectDiscovery</a> 只作为案例阅读：学习它们如何测量，不把其节省百分比当成你的预测值。</p>
   </div>
 </div>
 
@@ -755,7 +756,7 @@ print("P2 CHECKPOINT COST-AWARE-ROUTING PASSED")</code></pre></details>
       <li>· <a href="0026-L22-benchmarks-and-selection.html">上一课 · 选型</a> — 路由的基础：按任务难度匹配模型</li>
       <li>· <a href="0028-L24-phase2-capstone.html">下一课 · Phase 2 综合实战</a> — 把选型 + 降本用到真实项目</li>
       <li>· <a href="0022-L18-tokenization.html">L18 · Token 计数与成本公式</a> — 本课的地基：怎么数、怎么算</li>
-      <li>· <a href="0024-L20-reasoning-models.html">L20 · 推理模型的成本权衡</a> — 为什么"别对简单任务用推理"</li>
+      <li>· <a href="0024-L20-reasoning-models.html">L20 · 推理投入的成本权衡</a> — 如何用评测选择模型与 effort</li>
     </ul>
   </div>
   </div>
@@ -768,7 +769,7 @@ print("P2 CHECKPOINT COST-AWARE-ROUTING PASSED")</code></pre></details>
     <ul>
       <li>成本 = 输入输出<strong>分开</strong>算，输入/输出价差以目标厂商与模型当前价格为准；Agent 因多轮/长 prompt/工具循环，token 消耗<strong>远超</strong>单次 chat</li>
       <li>费钱的几乎都是<strong>重复的静态输入</strong>——这正是两根杠杆的靶心</li>
-      <li><strong>Prompt Caching</strong>：适合足够长、重复且字节稳定的前缀；Anthropic 5m 写约 1.25×、1h 写约 2×、读约 0.1×，必须看 usage 验证命中</li>
+      <li><strong>Prompt Caching</strong>：适合足够长、重复且字节稳定的前缀；读写费率按目标模型、平台和 TTL 查，练习的 0.1× 不是通用读价，命中要看 usage</li>
       <li><strong>Model Routing</strong>：按业务评测分流并监控误路由/升级率；第三方节省区间只作案例</li>
       <li>先制定包含重试、缓存写入和路由调用的预算，再按成本构成选择缓存、路由、压缩、输出控制或 Batch，并同时验证质量与延迟</li>
     </ul>

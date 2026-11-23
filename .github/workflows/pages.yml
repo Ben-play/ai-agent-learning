@@ -10,6 +10,7 @@ on:
       - best-practices/**
       - code/phase1-python/phase1-practices-capstone/README.md
       - code/phase2-model-selection/phase2-practices-capstone/README.md
+      - code/phase4-prompt-context/README.md
       - lessons/**
       - qa/**
       - reference/**

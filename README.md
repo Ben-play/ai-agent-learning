@@ -2,9 +2,10 @@
 
 从 Python 基础到可验收的单 Agent 系统，再按需求扩展到生产与协作。
 
-当前已编写 **38 节正式课（Phase 1–3，L01–L38）**；Phase 4–11 为规划，不代表正文或生产能力已经实现。参考页不计入正式课数。保留基础课号，以 Responses / 厂商原生 adapter、工具闭环和小型评估为主线，优先函数/workflow 与单 Agent，只选一个框架深学。
+当前已编写 **38 节正式课（Phase 1–3，L01–L38）**；Phase 4–11 有 60 个逐课草案，Phase 4 另有离线起始项目。草案、项目与参考页不计入正式课数，也不代表后续课文或生产能力已经实现。保留基础课号，以 Responses / 厂商原生 adapter、工具闭环和小型评估为主线，优先函数/workflow 与单 Agent，只选一个框架深学。
 
 - [11 阶段学习路径总纲](lessons/0001-ai-agent-learning-path-overview.html)
+- [Phase 4 的 6 节草案与离线起始项目](lessons/0045-phase4-prompt-context-outline.html) · [Phase 5–11 逐课草案与阶段验收](lessons/0046-phase5-to-11-planned-outlines.html)
 - [Agent Skills 参考小单元（非正式课）](reference/0004-agent-skills.html)
 - [2026-11-06 课程可靠性审查与官方来源](docs/research/2026-11-06-curriculum-audit.md)
 
@@ -76,7 +77,9 @@
 
 ## 第三阶段离线验收
 
-在已有依赖环境中执行 `python -I scripts/check-course-examples.py`，脚本只抽取明确白名单内的 L25/L26/L28/L30/L36/L37/L38 自检，不执行联网示例。L36 需要 Pydantic v2；可使用课程项目现有虚拟环境的 Python。禁止用 `-O` 禁用断言。
+在已有依赖环境中执行 `python -I scripts/check-course-examples.py`，脚本只抽取明确白名单内的 L25–L31、L33、L35–L38 自检，不执行联网示例。L36 需要 Pydantic v2；可使用课程项目现有虚拟环境的 Python。禁止用 `-O` 禁用断言。
+
+用 `node scripts/check-course-catalog.cjs` 验证课程目录保留 38 节正式课，并能识别未来的三位课号。
 
 通过只证明指定控制路径，不代表真实模型质量、缓存命中或生产准入。在线实验应另行确认调用预算，并记录模型/API/SDK版本、配置和未测项。
 

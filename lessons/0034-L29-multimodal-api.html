@@ -17,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>多模态 API</h1>
     <p class="subtitle">让模型不止会读文本，还能"看图"、"听音"——以及背后那笔容易被忽略的账</p>
@@ -28,8 +28,8 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>到目前为止，你发给模型的都是<strong>纯文本</strong>。但真实 Agent 面对的世界不是纯文本——用户会甩来一张<strong>报错截图</strong>、一份<strong>扫描的发票</strong>、一段<strong>语音输入</strong>。想让 Agent 处理这些，就得学会「多模态」：把图片、音频也塞进请求里。</p>
-    <p>好消息是：<strong>调用形状你已经会了</strong>。多模态不是一套全新 API，而是在 <a href="0030-L25-llm-api-basics.html">L25</a> 那个 <code>messages</code> 结构上，把 <code>content</code> 从"一段文本"扩成"一个数组"，数组里既能放文本、也能放图片。真正的新知识只有两点：<strong>①怎么把图片/音频放进去（结构）；②它们凭什么比文本贵（成本）</strong>。第二点是实战最常踩的坑，我们会重点讲。</p>
+    <p>真实 Agent 面对的输入不只是纯文本——用户可能发来一张<strong>报错截图</strong>、一份<strong>扫描的发票</strong>、一段<strong>语音</strong>。本课用获准使用、不含敏感信息的样例，演示怎么让 Agent 看图、读 PDF、听录音。</p>
+    <p>好消息是：你已经在 <a href="0030-L25-llm-api-basics.html">L25</a> 见过 Responses 的 <code>input</code>。这次把一条消息的 <code>content</code> 写成数组，把文字和图片或文件并排放进去；录好的音频则先走转录接口。重点看两件事：<strong>请求怎么写，以及用量怎么算</strong>。</p>
   </div>
 </div>
 
@@ -39,10 +39,10 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>说清什么是<strong>多模态</strong>，以及它在 Agent 里的典型用途（看截图、读文档、语音输入）</li>
-      <li>用 <code>content</code> 数组把<strong>图片</strong>放进 <code>messages</code>（公网 URL 与 base64 内联两种方式）</li>
-      <li>用 <code>audio.transcriptions</code> 把<strong>语音转成文字</strong></li>
-      <li>理解<strong>图片会按分辨率折算成大量 Token</strong>——多模态输入也是要算钱的（呼应 <a href="0022-L18-tokenization.html">L18</a>/<a href="0027-L23-token-economics.html">L23</a>）</li>
-      <li>掌握三条工程注意：<strong>压缩省 Token、查能力矩阵、分清输入与输出模态</strong></li>
+      <li>用 Responses 的 <code>input_image</code> 传图（URL、base64 data URL 或文件 ID），认出 Chat Completions 的兼容写法</li>
+      <li>用 <code>input_file</code> 读一份 PDF，分清<strong>单文档输入</strong>与<strong>按权限检索多文档</strong></li>
+      <li>用 <code>audio.transcriptions</code> 把<strong>录好的音频转成文字</strong>，区分批量转录和实时语音</li>
+      <li>按<strong>模型、图像细节档位和实际用量</strong>评估成本（呼应 <a href="0022-L18-tokenization.html">L18</a>/<a href="0027-L23-token-economics.html">L23</a>）</li>
     </ul>
   </div>
 </div>
@@ -50,7 +50,7 @@
 <div class="section">
   <h2>1. 什么是多模态</h2>
   <div class="card">
-    <p>「模态（modality）」就是信息的<strong>种类</strong>：文本、图片、音频、视频……<strong>多模态模型</strong>指一个模型能同时理解不止一种。以前的 LLM 只"读文本"，现在的主流模型很多能<strong>直接"看"图片、"听"音频</strong>——你把一张图连同问题一起发过去，它就能描述、分析、回答。</p>
+    <p>「模态（modality）」就是信息的<strong>种类</strong>：文本、图片、音频、视频……<strong>多模态模型</strong>能处理不止一种模态，但不代表什么都能接。支持视觉的模型可以把一张图和问题一起读；语音则可以先交给转录模型，再把文字交给 Agent。</p>
     <p>对 Agent 来说，这直接打开了几类以前做不了的活：</p>
     <ul>
       <li><strong>截图理解</strong>：用户丢来一张报错/界面截图，Agent 看懂了才能帮忙排障。</li>
@@ -69,117 +69,122 @@
       <button data-answer="wrong">给回复加上流式输出</button>
       <button data-answer="wrong">把 API Key 存进环境变量</button>
     </div>
-    <div class="quiz-explanation">多模态的核心是让模型处理<strong>文本以外的模态</strong>——图片、音频等。"看懂报错截图"正是典型的 Vision（视觉）场景。拼文本、流式输出、存 Key 都仍是纯文本/工程问题，跟模态无关。</div>
+    <div class="quiz-explanation">看懂报错截图需要处理<strong>图片</strong>，这是典型的 Vision（视觉）场景。拼文本、开启流式输出或存 Key，本身都不会让模型获得新的输入能力。</div>
   </div>
 </div>
 
 <div class="section">
-  <h2>2. Vision：把图片放进 messages</h2>
+  <h2>2. Vision：用 Responses 看图、读 PDF</h2>
   <div class="card">
-    <p>关键变化只有一个：<code>content</code> 不再是一个字符串，而是一个<strong>数组</strong>，里面每一项是一个"块"——可以是文本块，也可以是图片块。以 OpenAI Chat Completions 为例，图片块的 <code>type</code> 是 <code>"image_url"</code>：</p>
-    <pre><code>from openai import OpenAI
-client = OpenAI()
+    <p>在 Responses 的 <code>input</code> 里，用户消息的 <code>content</code> 是一个<strong>数组</strong>：问题用 <code>input_text</code>，图片用 <code>input_image</code>，两块并排放。下面的联网示例是可选的，会计费；照 <a href="0030-L25-llm-api-basics.html">L25</a> 配置 SDK、凭证和 <code>OPENAI_MODEL</code>，先查模型是否支持视觉输入。<code>L29_IMAGE_URL</code> 填服务端可访问的、获准使用的非敏感样图链接。</p>
+    <pre><code class="language-python">import os
+from openai import OpenAI
 
-resp = client.chat.completions.create(
-    model="...",                         # 需支持视觉的型号，以官网能力矩阵为准
-    messages=[{"role": "user", "content": [
-        {"type": "text", "text": "这张图里有什么?"},
-        {"type": "image_url",
-         "image_url": {"url": "https://.../img.png"}},   # 或 data:image/png;base64,...
+client = OpenAI()
+resp = client.responses.create(
+    model=os.environ["OPENAI_MODEL"],
+    input=[{"role": "user", "content": [
+        {"type": "input_text", "text": "这张图里有什么？"},
+        {"type": "input_image", "image_url": os.environ["L29_IMAGE_URL"],
+         "detail": "auto"},
     ]}],
 )
-print(resp.choices[0].message.content)</code></pre>
-    <p>注意 <code>content</code> 是个<strong>列表</strong>，文本和图片是列表里<strong>并列的两项</strong>。模型会把两者一起理解——它"看着这张图"来回答"这张图里有什么"。</p>
-    <p><strong>两种传图方式</strong>，按场景选：</p>
+print(resp.output_text)</code></pre>
+    <p><strong>传图有三种写法</strong>，选一种就行：</p>
     <ul>
-      <li><strong>公网 URL</strong>：<code>image_url.url</code> 直接放一个可访问的链接。适合图片已经在网上/对象存储、模型服务端能拉到的情况——请求体小。</li>
-      <li><strong>base64 内联</strong>：把<strong>本地图片</strong>读出来编码成 base64，拼成 <code>data:image/png;base64,....</code> 这种 <strong>data URL</strong>，同样放进 <code>image_url.url</code>。适合图片在本地、不方便暴露公网链接的情况——但请求体会变大。</li>
+      <li><strong>URL</strong>：<code>image_url</code> 直接是链接字符串，不再套一层 <code>url</code>；模型服务端要能访问这张图。</li>
+      <li><strong>base64 内联</strong>：同一个 <code>image_url</code> 字段也收 <code>data:image/png;base64,...</code>。不用把图放到公网，但图片仍会发给服务端，请求体也会变大。</li>
+      <li><strong>文件 ID</strong>：若已用 Files API（<code>purpose="vision"</code>）上传样图，用 <code>{"type":"input_image","file_id": image_file.id,"detail":"auto"}</code>，其中 <code>image_file</code> 是上传结果，不再填 <code>image_url</code>。</li>
     </ul>
-    <p>另外 OpenAI 的图片块支持一个 <code>detail</code> 参数（如 <code>low</code> / <code>high</code> / <code>auto</code>）：<code>low</code> 会把图降到低分辨率处理、更省 Token，<code>high</code> 更精细但更贵——这正好引出第 4 节的成本话题。（<a href="https://developers.openai.com/api/docs/guides/images-vision" target="_blank">OpenAI Images &amp; Vision 指南</a>）</p>
-    <div class="tip">⚠️ <strong>图片块的结构是厂商特定的</strong>（不像文本，L25 里只有 <code>system</code>/<code>max_tokens</code> 那点差异）。上面是 OpenAI 形状；Anthropic 用 <code>{"type":"image","source":{"type":"base64","media_type":...,"data":...}}</code>（或 <code>type:"url"</code>），也没有 <code>detail</code> 参数。<strong>概念一致（图片放进 content 数组），但字段名要照目标厂商文档写。</strong></div>
+    <div class="tip"><strong>兼容写法 · Chat Completions</strong>：用 <code>messages</code>，其中 <code>content</code> 的文字块是 <code>{"type":"text","text": question}</code>，图片块是 <code>{"type":"image_url","image_url":{"url": url}}</code>（<code>url</code> 也可为 data URL）。不要把这个嵌套结构搬进 Responses。</div>
   </div>
 
   <details style="margin:1rem 0;">
-    <summary style="cursor:pointer;font-weight:600;">✍️ 小练习：传一张<strong>本地</strong>图片（base64）问它内容 —— 先自己写 <code>messages</code> 结构，再展开对照</summary>
+    <summary style="cursor:pointer;font-weight:600;">✍️ 小练习：把本地 PNG 编成 data URL —— 先自己构造 <code>input_image</code>，再展开对照</summary>
     <div class="card" style="margin-top:.8rem;">
-      <p>提示：本地文件要先读成字节、<code>base64</code> 编码、再拼成 <code>data:</code> URL 放进 <code>image_url.url</code>。</p>
-      <pre><code>import base64
-from openai import OpenAI
-client = OpenAI()
+      <p>用获准使用的非敏感 PNG 样例（例如自制的虚构收据）；这段只在本地构造图片块，不发送请求。</p>
+      <pre><code class="language-python">import base64
 
-# 1) 读本地文件 → base64 → 拼成 data URL
-with open("receipt.png", "rb") as f:
-    b64 = base64.b64encode(f.read()).decode()
+with open("fixture-receipt.png", "rb") as f:
+    b64 = base64.b64encode(f.read()).decode("ascii")
 data_url = f"data:image/png;base64,{b64}"
-
-# 2) 图片作为 content 数组里的一项传进去
-resp = client.chat.completions.create(
-    model="...",                          # 支持视觉的型号，以官网为准
-    messages=[{"role": "user", "content": [
-        {"type": "text",  "text": "这张图里写了什么?"},
-        {"type": "image_url", "image_url": {"url": data_url}},
-    ]}],
-)
-print(resp.choices[0].message.content)</code></pre>
-      <p>核心要点：<strong>本地图 = 读字节 → base64 → <code>data:image/...;base64,...</code> → 塞进 <code>image_url.url</code></strong>；文本和图片是 <code>content</code> 列表里并列的两项。</p>
+image_part = {"type": "input_image", "image_url": data_url, "detail": "auto"}</code></pre>
+      <p>要做可选的联网测试，就用 <code>image_part</code> 替换上例的图片块；<code>input_text</code> 不用改。不要用真实收据或用户截图。</p>
     </div>
   </details>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 在 OpenAI Chat Completions 里，图片是怎么放进请求的？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 在 Responses 里，内联的 base64 data URL 应该放在哪里？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">单独调一个 image 上传接口传上去</button>
-      <button data-answer="correct">作为 content 数组里的一项</button>
-      <button data-answer="wrong">直接拼进 system 提示的文本</button>
-      <button data-answer="wrong">先存成文件再传路径</button>
+      <button data-answer="wrong">嵌套在 image_url.url 里，和 Chat Completions 一样</button>
+      <button data-answer="correct">作为 input_image 块的 image_url 字符串</button>
+      <button data-answer="wrong">直接拼进 input_text 的问题里</button>
+      <button data-answer="wrong">作为 input_image 块的 file_id</button>
     </div>
-    <div class="quiz-explanation">图片是把 <code>content</code> 从字符串扩成<strong>数组</strong>后，作为其中一项（<code>type:"image_url"</code>）和文本块并列传入的——URL 或 base64 data URL 都放在 <code>image_url.url</code> 里。它不是单独上传、也不能塞进 system 文本里当字符串。</div>
+    <div class="quiz-explanation"><code>input_text</code> 和 <code>input_image</code> 在 <code>content</code> 里并列。Responses 的 <code>image_url</code> 直接收 URL 或 data URL；引用已上传的图片才改用 <code>file_id</code>。</div>
+  </div>
+
+  <div class="card">
+    <h3>一份 PDF：用 <code>input_file</code></h3>
+    <p>给支持 PDF 输入的视觉模型传 PDF 时，服务会把<strong>提取出的文本和每页的图像</strong>一起放进模型上下文。扫描件、图表和版式都有机会被看见；页图也会增加输入用量。沿用上例的导入和 <code>client</code> 初始化（不用先发看图请求），上传获准使用的非敏感测试 PDF，再把文件 ID 传给 Responses：</p>
+    <pre><code class="language-python">with open("fixture-manual.pdf", "rb") as f:
+    pdf_file = client.files.create(file=f, purpose="user_data")
+
+resp = client.responses.create(
+    model=os.environ["OPENAI_MODEL"],
+    input=[{"role": "user", "content": [
+        {"type": "input_text", "text": "按页列出操作步骤；找不到就说明。"},
+        {"type": "input_file", "file_id": pdf_file.id},
+    ]}],
+)
+print(resp.output_text)</code></pre>
+    <p><strong>读一份已选定的文档，不等于在知识库里找答案。</strong>如果要从多份文档组成的知识库找答案，用 RAG（检索增强生成）：检索时按当前用户权限过滤，只把有权查看、与问题相关的片段交给模型，并保留出处。直接上传文件不会替你做跨文档检索或权限检查；上传前也要确认文件保留和清理要求。</p>
   </div>
 </div>
 
 <div class="section">
-  <h2>3. 音频转录：语音 → 文字</h2>
+  <h2>3. 批量音频转录：语音 → 文字</h2>
   <div class="card">
-    <p>处理"语音输入"最常见的做法是<strong>转录（transcription）</strong>：把音频转成文字，再喂给你已有的文本 Agent 流程。OpenAI 用 <code>client.audio.transcriptions.create</code>，把打开的音频<strong>文件</strong>作为 <code>file</code> 传进去（Whisper 类模型）：</p>
-    <pre><code>from openai import OpenAI
-client = OpenAI()
+    <p>手上已有一段录音时，用<strong>批量转录</strong>把音频文件变成文字。下面是可选的联网示例：准备一段获准使用、不含敏感信息的测试音频，<code>OPENAI_TRANSCRIPTION_MODEL</code> 设为 <a href="https://developers.openai.com/api/docs/guides/speech-to-text" target="_blank">Speech-to-Text 指南</a>中当前可用且支持 JSON 返回格式的转录模型，不沿用视觉模型的配置。</p>
+    <pre><code class="language-python">import os
+from openai import OpenAI
 
-with open("audio.mp3", "rb") as audio_file:      # 二进制读
+client = OpenAI()
+with open("fixture-audio.mp3", "rb") as audio_file:
     result = client.audio.transcriptions.create(
-        model="...",                             # 转录模型，以官网为准
+        model=os.environ["OPENAI_TRANSCRIPTION_MODEL"],
         file=audio_file,
+        response_format="json",
     )
 
-print(result.text)                               # ← 转出来的文字</code></pre>
-    <p>拿到 <code>result.text</code> 后，它就是普通文本——接下来完全走你熟悉的 <code>chat.completions</code> 那套。<strong>"语音 Agent"常见形态就是：转录 → 文本推理 →（可选）再转回语音。</strong>（<a href="https://developers.openai.com/api/docs/guides/speech-to-text" target="_blank">OpenAI Speech-to-Text 指南</a>）</p>
+print(result.text)</code></pre>
+    <p><code>result.text</code> 就是普通文本，可以作为 Responses 的文本输入。一种常见的语音 Agent 流程是<strong>转录 → 文本推理 → 可选的语音合成（TTS）</strong>。如果要边说边出字幕，选读<a href="https://developers.openai.com/api/docs/guides/realtime-transcription" target="_blank">实时转录指南</a>；如果要低延迟的语音进、语音出对话，选读<a href="https://developers.openai.com/api/docs/guides/voice-agents" target="_blank">语音 Agent 指南</a>里的 speech-to-speech 路线。这两种实时场景不在本课练习范围内。</p>
   </div>
 </div>
 
 <div class="section">
-  <h2>4. 成本注意（本课重点）：图片是"吞 Token 的大户"</h2>
+  <h2>4. 成本注意（本课重点）：图片不是免费附件</h2>
   <div class="card">
-    <p>这是多模态实战<strong>最容易踩的坑</strong>，务必记牢：<strong>图片不是"免费附件"，它会被折算成大量 Token 计费。</strong>官方明确说明——图片输入<strong>按 Token 计量、和文本一样计费</strong>（"metered and charged in token units similar to text inputs"）。</p>
-    <p>它<strong>怎么折算</strong>？各家/各型号规则不同，但共同点是：<strong>按图片的分辨率/尺寸切成若干块（tile / patch），块越多、Token 越多</strong>。所以——</p>
+    <p>OpenAI 会把图片输入折算成 Token；<strong>怎么折算、每单位多少钱，要看模型</strong>。有的模型按缩放后的尺寸切块（tile / patch），所选的 <code>detail</code> 也可能影响用量。相同的一张图，换模型或换档位，不能照搬原来的估算。</p>
     <ul>
-      <li><strong>高分辨率图尤其贵</strong>：一张大图折算出的 Token，可能顶得上好几百字甚至更多文本。你以为"只发了一张图"，账单上却是一大笔输入 Token。</li>
-      <li><strong>用 <code>detail:"low"</code> 能显著省</strong>：模型改用低分辨率版本处理，Token 大幅下降——不需要看清细节时优先用。</li>
+      <li><strong>细节按任务选</strong>：只想知道图上大概有什么，可以试试模型支持的 <code>detail:"low"</code>；要读小字或核对图表细节，就先验证识别效果。常见的 <code>low</code> / <code>high</code> / <code>auto</code> 含义和支持情况以模型文档为准。</li>
+      <li><strong>请求体大小不等于 Token 量</strong>：用 URL 或文件 ID 引用同一张图，或只压缩文件字节，不代表模型少处理了图像内容，也不保证更便宜。</li>
     </ul>
-    <p>这正是 <a href="0022-L18-tokenization.html">L18</a>「一切输入都要 tokenize」和 <a href="0027-L23-token-economics.html">L23</a>「Token 就是钱」的自然延伸：<strong>多模态输入也是 Token，也进成本公式</strong>。发一张高清图前，请先估算它折算成多少 Token——别把成本估算只用在文本上。</p>
-    <p>⚠️ 具体每张图折算多少 Token、tile 怎么算，<strong>随型号变化，务必以官方文档/定价页为准</strong>，不要背死数字。你要记住的是<strong>规律（分辨率越高越贵）和习惯（发图前先估）</strong>。</p>
+    <p>延续 <a href="0022-L18-tokenization.html">L18</a> 和 <a href="0027-L23-token-economics.html">L23</a> 的习惯：<strong>请求前按文档估算，请求后看实际用量</strong>。Responses 的 <code>usage.input_tokens</code> 是整次请求的输入用量（也包括问题文字），不是单独的图片账单。结合输出用量和模型定价算账；音频转录另查所选模型的计费规则。</p>
   </div>
   <div class="tip">
-    <strong>面试 / 实战 · 多模态的隐藏成本</strong>：很多人把图片当"附件"，觉得不占 Token——<strong>大错。</strong>图片会<strong>按分辨率折算成大量 Token</strong>，高分辨率更贵，一张大图可能比一整段文字还烧钱。工程上：<strong>①发请求前先估算图片的 Token 量（呼应 <a href="0027-L23-token-economics.html">L23</a> 的成本意识）；②不需要细节就降分辨率 / 用 <code>detail:"low"</code>；③批量看图的场景，成本会线性叠加，务必先算账。</strong>能主动说出"多模态输入也是 Token、要算成本"，是区分新手和熟手的一道题。
+    <strong>实战 · 先做小样对比</strong>：固定模型和问题，用同一张非敏感样图比较两种受支持的细节档位，或比较原图和缩小版。一起记录 <code>usage</code> 和识别效果，再决定是否批量使用；别把一次观察当作保证，也别忘了 PDF 的页图。
   </div>
 
   <div class="quiz" data-quiz="q3">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 关于图片输入的成本，下面哪句是对的？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 想估算图片输入的成本，哪种做法靠谱？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">图片是免费附件，完全不占 Token</button>
-      <button data-answer="correct">按分辨率折算成 Token</button>
-      <button data-answer="wrong">不管多大都是固定一个价</button>
-      <button data-answer="wrong">分辨率越高反而越便宜</button>
+      <button data-answer="wrong">图片是免费附件，不用算</button>
+      <button data-answer="correct">按模型和细节档位估算，再用实际 usage 核对</button>
+      <button data-answer="wrong">只看上传文件有多少字节</button>
+      <button data-answer="wrong">调成 low 就能保证固定比例的折扣</button>
     </div>
-    <div class="quiz-explanation">图片输入会<strong>按分辨率/尺寸折算成 Token</strong>、和文本一样计费，<strong>分辨率越高、折算的 Token 越多、越贵</strong>。它不是免费附件、也不是固定一口价。所以发高清图前要估算 Token；不需细节时降分辨率或用 <code>detail:"low"</code> 省钱。</div>
+    <div class="quiz-explanation">尺寸和细节档位如何影响用量，取决于模型的处理规则。先查规则和单价，再对照实际用量和识别效果，不用文件大小或固定折扣来猜。</div>
   </div>
 </div>
 
@@ -188,11 +193,47 @@ print(result.text)                               # ← 转出来的文字</code>
   <div class="card">
     <p>把上面串成落地时的检查清单：</p>
     <ul>
-      <li><strong>① 大图先压缩 / 降分辨率</strong>：上传前把图缩到"够用就好"的尺寸，能直接砍掉一大截 Token（也更快）。这是省钱最立竿见影的一招，接上一节的成本逻辑。</li>
-      <li><strong>② 不是所有模型都支持所有模态</strong>：有的模型能看图不能听音、有的纯文本；同一家不同型号能力也不同。<strong>用之前查官网的"能力矩阵 / 模型页"确认</strong>，别假设"这模型应该也能看图"。</li>
-      <li><strong>③ 分清"多模态输入"和"多模态输出"</strong>：本课讲的是把图/音<strong>输入</strong>给模型让它理解。而<strong>生成</strong>图片、<strong>合成</strong>语音（TTS）是<strong>另一类 API</strong>（如图像生成、语音合成接口），调用方式不一样，别和"看图/转录"混为一谈。</li>
+      <li><strong>① 尺寸够用就好</strong>：大图可以试着缩小，再对照用量和识别效果。别只看压缩后省了多少字节，也别为了省用量把小字缩糊了。</li>
+      <li><strong>② 查模型和接口能力</strong>：能读文本不代表能看图，能看图也不代表能接实时音频。用之前查模型页和接口文档，确认支持的模态、格式和限制。</li>
+      <li><strong>③ 分清输入和输出</strong>：看图、读 PDF、转录音频在本课都输出文字。生成图片、合成语音是不同的任务，要另查对应接口和模型能力。</li>
     </ul>
   </div>
+  <details style="margin:1rem 0;">
+    <summary style="cursor:pointer;font-weight:600;">离线小验收：检查 Responses 请求形状</summary>
+    <div class="card" style="margin-top:.8rem;">
+      <p>先自己拼出一条文字加附件的消息，再用下面的纯 Python 断言对照。链接、文件 ID 和 data URL 都是虚构占位，只验字段，不验文件内容、SDK 或模型能力；不用装 SDK、读文件或联网。</p>
+      <pre><code class="language-python" id="l29-multimodal-check">def user_input(question, kind, value):
+    if kind == "pdf_id":
+        attachment = {"type": "input_file", "file_id": value}
+    elif kind == "image_id":
+        attachment = {"type": "input_image", "file_id": value, "detail": "auto"}
+    elif kind in ("url", "data_url"):
+        attachment = {"type": "input_image", "image_url": value, "detail": "auto"}
+    else:
+        raise ValueError("未知附件来源")
+    return [{"role": "user", "content": [
+        {"type": "input_text", "text": question}, attachment,
+    ]}]
+
+
+url = "https://example.invalid/fixture.png"
+data_url = "data:image/png;base64,AA=="  # 仅测形状，不是有效图片
+image_id = "file-image-fixture"
+pdf_id = "file-pdf-fixture"
+cases = [
+    ("url", url, {"type": "input_image", "image_url": url, "detail": "auto"}),
+    ("data_url", data_url, {"type": "input_image", "image_url": data_url, "detail": "auto"}),
+    ("image_id", image_id, {"type": "input_image", "file_id": image_id, "detail": "auto"}),
+    ("pdf_id", pdf_id, {"type": "input_file", "file_id": pdf_id}),
+]
+for kind, value, expected in cases:
+    assert user_input("说明附件内容。", kind, value) == [{"role": "user", "content": [
+        {"type": "input_text", "text": "说明附件内容。"}, expected,
+    ]}]
+print("L29 ACCEPTED")</code></pre>
+      <p>四种写法都对上时，标准输出只有一行 <code>L29 ACCEPTED</code>。断言失败就先检查内容块类型、<code>image_url</code> 是否误套了一层，以及文件 ID 放在哪个块上。</p>
+    </div>
+  </details>
 </div>
 
 <div class="section">
@@ -201,7 +242,7 @@ print(result.text)                               # ← 转出来的文字</code>
     <p>多模态不是花活，它撑起了两类越来越重要的 Agent：</p>
     <ul>
       <li><strong>能"看屏幕"的 Agent（Computer-Use / 视觉 Agent）</strong>：让 Agent 自己操作电脑——点按钮、填表单——的前提，是它得先<strong>"看懂"当前屏幕截图</strong>上有什么、按钮在哪。Vision 就是这类 Agent 的眼睛。</li>
-      <li><strong>文档处理 Agent</strong>：处理扫描件、发票、合同这类<strong>图片形式的文档</strong>，靠 Vision 把图里的内容读出来，再（配合 <a href="0033-L28-structured-outputs.html">L28</a> 的结构化输出）抽成字段。没有 Vision，这些"纸质/扫描"输入 Agent 根本碰不了。</li>
+      <li><strong>文档处理 Agent</strong>：用 Vision 读扫描件或 PDF 页图，再配合 <a href="0033-L28-structured-outputs.html">L28</a> 的结构化输出抽取字段。如果用户问的是整个知识库，先按权限检索证据，再把相关内容交给模型。</li>
     </ul>
     <p>一句话：<strong>文本让 Agent 会"想"，多模态让 Agent 会"看"和"听"</strong>——面对真实世界的输入，这一步不可少。</p>
   </div>
@@ -210,40 +251,33 @@ print(result.text)                               # ← 转出来的文字</code>
 <div class="section">
   <h2>🎯 速查卡：多模态 API</h2>
   <div class="card">
-    <pre><code>【核心变化】content 从"一段字符串" → 变成"数组"，可并列放文本块 + 图片块
+    <pre><code>【Responses · 看图】input 里的用户消息：content = [文字块, 图片块]
+  {"type":"input_text", "text": question}
+  {"type":"input_image", "image_url": url, "detail":"auto"}
+  url 可为链接或 data:image/png;base64,...；已上传图片用 file_id 替换 image_url。
+  兼容写法（Chat Completions）：messages → text / image_url → image_url.url。
 
-【Vision · 传图（OpenAI Chat Completions）】
-  messages=[{"role":"user","content":[
-    {"type":"text","text":"这张图里有什么?"},
-    {"type":"image_url","image_url":{"url": ⟨URL 或 data URL⟩}},
-  ]}]
-  两种传图：公网 URL（体积小） / base64 内联 data:image/...;base64,...（本地图）
-  detail: low(省 Token) / high(精细贵) / auto
+【Responses · 读 PDF】文字块 + {"type":"input_file", "file_id": pdf_id}
+  PDF 的提取文本和页图一起进上下文；跨知识库提问用按权限检索的 RAG。
 
-【本地图 → base64】open(f,"rb") → base64 编码 → "data:image/png;base64,"+b64
+【批量音频转录】audio.transcriptions.create(model=..., file=audio_file,
+  response_format="json") → result.text → 文本流程；实时语音另选路线。
 
-【音频转录（语音→文字）】
-  client.audio.transcriptions.create(model=..., file=open("a.mp3","rb"))
-  → result.text，之后照走文本流程
+【成本 ★重点】按模型、尺寸与 detail 估算，再核对实际 usage 和定价。
+  压缩字节不等于减少 Token；对比用量，也要对比效果。
 
-【成本 ★重点】图片按分辨率折算成大量 Token、和文本一样计费
-  分辨率越高越贵；发图前先估算（呼应 L18 / L23）
-  具体折算数随型号变，以官方为准——别背死数字
-
-【工程注意】
-  ① 大图先压缩/降分辨率省 Token
-  ② 不是所有模型都支持所有模态 → 查官网能力矩阵
-  ③ 多模态"输入"(看图/转录) ≠ 多模态"输出"(生成图/合成语音)，是另一类 API
-
-【Agent 关联】能"看屏幕"→ Computer-Use / 视觉 Agent 的基础；文档 Agent 靠 Vision 读扫描件</code></pre>
+【工程注意】用获准的非敏感样例；查模型与接口能力；分清输入与输出。</code></pre>
   </div>
 </div>
 
 <div class="section">
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
-    <p><a href="https://developers.openai.com/api/docs/guides/images-vision" target="_blank"><strong>OpenAI · Images and Vision 指南</strong></a> + <a href="https://developers.openai.com/api/docs/guides/speech-to-text" target="_blank"><strong>OpenAI · Speech to Text 指南</strong></a></p>
-    <p>前者把"图片怎么放进 <code>content</code>、URL vs base64、<code>detail</code> 参数、以及图片如何按 Token 计量"讲得最清楚（成本部分尤其值得看）；后者是音频转录的官方上手。读官方能力/定价页确认你要用的型号支不支持、怎么折算——<strong>永远别背死具体数字</strong>。</p>
+    <ul>
+      <li><a href="https://developers.openai.com/api/docs/guides/images-vision" target="_blank"><strong>OpenAI · Images and Vision</strong></a> — 看 Responses 的三种传图方式、<code>detail</code> 和各模型的图片用量规则。</li>
+      <li><a href="https://developers.openai.com/api/docs/guides/file-inputs" target="_blank"><strong>OpenAI · File inputs</strong></a> — 看 PDF 的文件 ID 写法、上下文用量和文件限制。</li>
+      <li><a href="https://developers.openai.com/api/docs/guides/speech-to-text" target="_blank"><strong>OpenAI · Speech to Text</strong></a> — 查批量转录的模型、文件格式和返回格式；第 3 节的实时指南可选读。</li>
+    </ul>
   </div>
 </div>
 
@@ -259,7 +293,7 @@ print(result.text)                               # ← 转出来的文字</code>
     <div class="qa-related-label">🔗 关联课程</div>
     <ul>
       <li>· <a href="0033-L28-structured-outputs.html">上一课 L28 · Structured Outputs</a> — 看懂文档后，把内容抽成结构化字段</li>
-      <li>· <a href="0035-L30-context-window-management.html">下一课 L30 · Context 管理</a> — 图片折算的一大堆 Token 也占上下文，怎么管</li>
+      <li>· <a href="0035-L30-context-window-management.html">下一课 L30 · Context 管理</a> — 图片和 PDF 页图也占上下文，怎么管</li>
       <li>· <a href="0022-L18-tokenization.html">L18 · Tokenization</a> — 为什么图片也要折算成 Token</li>
       <li>· <a href="0027-L23-token-economics.html">L23 · 多模态成本</a> — 折算出来的 Token 怎么变成账单</li>
     </ul>
@@ -272,16 +306,14 @@ print(result.text)                               # ← 转出来的文字</code>
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>多模态 = 模型不止读文本，还能<strong>"看"图、"听"音</strong>；Agent 用它做截图理解、文档 OCR、看图答题、语音输入</li>
-      <li><strong>传图</strong> = 把 <code>content</code> 扩成<strong>数组</strong>，图片作为一项（<code>type:"image_url"</code>）；两种方式：<strong>公网 URL / base64 内联 data URL</strong></li>
-      <li><strong>音频</strong> = <code>audio.transcriptions.create(file=...)</code> 转成文字，再走文本流程</li>
-      <li><strong>成本（重点）</strong>：图片<strong>按分辨率折算成大量 Token</strong>、高分辨率更贵——发请求前先估算（呼应 L18/L23）</li>
-      <li><strong>工程</strong>：大图先压缩、查模型能力矩阵、分清输入模态与"生成图/音"这类输出 API</li>
-      <li><strong>Agent 意义</strong>：Vision 是<strong>视觉 / Computer-Use / 文档处理 Agent</strong> 的地基</li>
+      <li><strong>看图</strong>：用 Responses 的 <code>input_text</code> 加 <code>input_image</code>。<code>image_url</code> 直接放链接或 data URL；也可改用 <code>file_id</code>。Chat Completions 的嵌套写法只作兼容对照。</li>
+      <li><strong>读文档</strong>：一份 PDF 用 <code>input_file</code>，视觉模型读文本和页图；从多文档库查答案，先走按权限检索的 RAG。</li>
+      <li><strong>听录音</strong>：用 <code>audio.transcriptions.create</code> 转成文字，再走文本流程；实时字幕和语音到语音另选路线。</li>
+      <li><strong>算成本</strong>：查模型、图片尺寸和 <code>detail</code> 的计量规则，再用实际 <code>usage</code> 验证；别拿压缩后的字节数当账单。</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    有支持视觉的模型的话，把第 2 节那段跑一次：先发一张<strong>小图</strong>、再发一张<strong>高清大图</strong>，对比 <code>usage</code> 里的输入 Token——你会对"图片有多吃 Token"有直接的痛感，这比任何文字都记得牢。下一课 <a href="0035-L30-context-window-management.html">L30</a>：这些 Token（文本 + 图片）都要挤进有限的 Context Window，我们讲怎么管它。有疑问随时问我。
+    先做<a href="#l29-multimodal-check">离线小验收</a>。如果具备模型访问权、预算和获准使用的非敏感样图，再选做第 4 节的用量对比。下一课 <a href="0035-L30-context-window-management.html">L30</a>：文字、图片和 PDF 页图都要放进有限的 Context Window，我们讲怎么管它。
   </div>
 </div>
 

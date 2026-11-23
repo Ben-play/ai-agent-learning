@@ -2,6 +2,12 @@
 
 ## Knowledge（知识来源）
 
+### 2026-11-23 技术更新一手依据
+- [Claude Messages API 迁移](https://platform.claude.com/docs/en/api/migration-2026-10-21#sampling-parameters) · [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) · [缓存定价](https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching-pricing)：按模型和 API 版本记录实际支持的参数与费率。
+- [OpenAI API 更新日志](https://developers.openai.com/api/docs/changelog) · [图像输入](https://developers.openai.com/api/docs/guides/images-vision) · [PDF / 文件输入](https://developers.openai.com/api/docs/guides/file-inputs) · [弃用清单](https://developers.openai.com/api/docs/deprecations)：区分产品停用、模型能力和接口迁移，Prompt 与评测资产留在仓库。
+- [OpenTelemetry GenAI v0.1.0](https://github.com/open-telemetry/semantic-conventions-genai/releases/tag/v0.1.0) · [该版本的语义约定](https://github.com/open-telemetry/semantic-conventions-genai/tree/v0.1.0/docs/gen-ai)：独立发布不等于稳定，核对字段、信号类型、单位与后端映射。
+- [MCP Python SDK v2.0.0](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.0.0)：与规范版本分别记录，实作时以锁定的客户端和服务端互操作测试为准。
+
 ### 2026-11-06 课程优化一手依据
 - [OpenAI Responses 迁移指南](https://developers.openai.com/api/docs/guides/migrate-to-responses) · [Function Calling](https://developers.openai.com/api/docs/guides/function-calling) · [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
   Use for: L25/L26/L28/L35 的接口对照、Items回填和拒答/截断边界；Chat Completions仍受支持，不把兼容接口等同原生能力。
@@ -300,8 +306,8 @@
   通用助理能力基准。Use for: 通用 Agent 能力评估。
 
 #### 可观测性标准化
-- [OpenTelemetry: Semantic Conventions for GenAI](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
-  `gen_ai.*` span 语义约定（模型、token、工具调用）。Use for: 厂商无关的标准化追踪方向。
+- [OpenTelemetry: GenAI 语义约定 v0.1.0](https://github.com/open-telemetry/semantic-conventions-genai/tree/v0.1.0/docs/gen-ai)
+  `gen_ai.*` 覆盖 span、事件和指标；该版本为 Development。Use for: 统一遥测命名，同时固定埋点版本并验证后端映射。
 - [OpenLLMetry (Traceloop)](https://github.com/traceloop/openllmetry)
   基于 OTEL，自动接入 LangChain/CrewAI/LlamaIndex/OpenAI Agents。Use for: 一行接入标准化追踪。
 - [Helicone](https://www.helicone.ai/)

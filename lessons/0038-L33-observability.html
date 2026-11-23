@@ -17,10 +17,10 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>LLM 可观测性</h1>
-    <p class="subtitle">用 OpenTelemetry GenAI 标准，看清 Agent 每一步花了多少、慢在哪、错在哪</p>
+    <p class="subtitle">用 OpenTelemetry GenAI 语义约定，看清 Agent 慢在哪、错在哪、哪些费用算得出来</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:64%"></div></div>
   </div>
 </div>
@@ -29,7 +29,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>一个 Agent 上线后，本质是个<strong>黑盒</strong>：它调了哪些模型、走了哪些工具、烧了多少 Token 和钱、哪一步慢、哪一步失败——如果你"看不见"，就<strong>既没法调优、也没法排障</strong>。用户说"它变慢了、变贵了、答错了"，你连从哪查起都不知道。</p>
-    <p>这一课教你给 Agent 装上"仪表盘"。关键不是随便挑个工具，而是用 <strong>OpenTelemetry 的 GenAI 语义约定</strong>这套<strong>厂商无关的标准字段</strong>来记录——这样换监控工具、换模型厂商，你的可观测代码都不用重写。这是 2026 年生产级 Agent 的事实标准。</p>
+    <p>这一课教你给 Agent 装上“仪表盘”：用 <strong>OpenTelemetry GenAI 语义约定</strong>给数据统一命名，用 trace 查单次请求，用 metrics 看趋势，用有用量和价格依据的账本算成本。课内固定采用独立发布的 <strong><code>v0.1.0</code></strong>（2026-11-21 发布，截至 2026-11-23 仍为 <strong>Development</strong>）。统一命名能减少迁移工作，不等于后端会自动映射；默认不采集原始输入输出或工具参数、结果。</p>
   </div>
 </div>
 
@@ -39,10 +39,10 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>说清可观测性三大支柱：<strong>Traces / Metrics / Logs</strong>，以及为什么 Agent 最看重 trace</li>
-      <li>列出 LLM 调用<strong>该追踪什么</strong>：模型、Token、延迟（TTFT）、成本、工具调用、错误</li>
-      <li>说出 <strong>OpenTelemetry GenAI 语义约定</strong>的标准字段（<code>gen_ai.*</code>）并解释它为什么是厂商无关的答案</li>
-      <li>知道 <strong>Langfuse / OpenLLMetry</strong> 等工具怎么"一行接入自动追踪"</li>
-      <li>基于 metrics 设<strong>成本告警</strong>，把可观测性接回 L23 的成本工程</li>
+      <li>选出默认记录的最小信号：模型、Token 数、耗时、工具名和错误类型；区分首输出块与首 Token</li>
+      <li>按 <strong>OTel GenAI <code>v0.1.0</code></strong> 区分 span 属性与 metric，核对升级时的名称和单位</li>
+      <li>说明自动埋点和 OTLP 后端各管什么，列出接入前要验收的映射和隐私设置</li>
+      <li>用有价格依据的用量做<strong>成本告警</strong>，并显式保留未知费用，接回 L23 的成本工程</li>
     </ul>
   </div>
 </div>
@@ -66,15 +66,15 @@
     <p>可观测性（Observability）是一套通用工程概念，由三根支柱组成：</p>
     <ul>
       <li><strong>Traces（链路追踪）</strong>：一次请求<strong>完整的调用链</strong>。链里的每个操作是一个 <strong>span</strong>（跨度），span 之间有父子关系，串成一棵<strong>树</strong>。</li>
-      <li><strong>Metrics（指标）</strong>：可聚合的<strong>数字</strong>——Token 用量、延迟、错误率、成本，用来画趋势图、设告警。</li>
-      <li><strong>Logs（日志）</strong>：离散的<strong>文本事件</strong>，记录"某刻发生了什么"，用于事后翻查细节。</li>
+      <li><strong>Metrics（指标）</strong>：可聚合的<strong>数字</strong>，例如 Token 用量、延迟和错误率；业务侧也可以发布由账本算出的成本指标。</li>
+      <li><strong>Logs（日志）</strong>：离散的<strong>事件记录</strong>，用来翻查“某刻发生了什么”。可用 Trace ID 关联，但也不默认写正文。</li>
     </ul>
-    <p>对 LLM / Agent 来说，<strong>最关键的是 trace</strong>。因为一次 Agent 任务里，<strong>每一次 LLM 调用、每一次工具调用都是一个 span</strong>，它们串成的树，正好还原了 Agent"想了什么、做了什么、顺序如何"。看懂这棵树，等于看懂了 Agent 的这次思考。</p>
-    <pre><code>Trace: "帮我订下周去上海的机票"        （root span，整个任务）
-├─ span  LLM 调用①  规划要做几步        model=..., 输入/输出 Token, 延迟
-├─ span  工具调用   search_flights(...)  参数, 返回, 耗时
-├─ span  LLM 调用②  从结果里选航班       Token, 延迟, 成本
-└─ span  工具调用   book(...)            参数, 返回 / 报错</code></pre>
+    <p>对 LLM / Agent 来说，<strong>trace 特别适合定位某一步</strong>：给观测到的 LLM 和工具调用分别建 span，串起实际执行顺序。它记录的是执行轨迹，不是模型的内部思考。</p>
+    <pre><code>Trace: flight_assistant                （root span，任务类型，不是用户原话）
+├─ span  LLM 调用①                     模型、已知 Token 数、耗时
+├─ span  工具调用 search_flights        工具名、状态、耗时
+├─ span  LLM 调用②                     模型、已知 Token 数、耗时
+└─ span  工具调用 book                  工具名、状态、耗时、失败类型（若有）</code></pre>
   </div>
 
   <div class="quiz" data-quiz="q1">
@@ -85,176 +85,215 @@
       <button data-answer="wrong">metrics 对 LLM 没有意义</button>
       <button data-answer="wrong">日志在生产里不能用</button>
     </div>
-    <div class="quiz-explanation">Agent 是<strong>多步、自主</strong>的，问题藏在"哪一步"。<strong>trace 把一次任务里每次 LLM 调用、每次工具调用都记成一个 span，串成父子树</strong>，正好还原了 Agent 的执行顺序与每步耗时/成本——这才是排障的关键视图。Metrics（Token/延迟/成本/错误率）和 Logs 同样有用、缺一不可，只是 trace 最贴合 Agent 这种链式结构。</div>
+    <div class="quiz-explanation">Agent 是<strong>多步、自主</strong>的，问题藏在“哪一步”。<strong>trace 用父子 span 串起观测到的 LLM / 工具调用</strong>，不用看原始输入或工具参数也能定位先后顺序、耗时和失败。Metrics 用于聚合看趋势，Logs 可关联事件；两者都不能替代这条单次调用链。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>3. 该追踪什么（LLM 特有的信号）</h2>
   <div class="card">
-    <p>通用 trace 只会记"调了个函数、耗时多少"。但 LLM 调用有一堆<strong>专属信号</strong>，不记下来就等于没记。一次 LLM span 至少要有：</p>
+    <p>要查清“慢 / 贵 / 错”，优先记录以下元数据，不需要把请求正文塞进遥测：</p>
     <ul>
-      <li><strong>模型名</strong>：这次到底用了哪个型号（路由后可能每次不同，见 <a href="0037-L32-routing-fallback-gateway.html">L32</a>）。</li>
-      <li><strong>输入 / 输出 Token 数</strong>：直接决定成本，对应 <a href="0027-L23-token-economics.html">L23</a> 的账单公式。</li>
-      <li><strong>延迟</strong>：尤其是 <strong>TTFT</strong>（首 Token 时间，见 <a href="0031-L26-streaming.html">L26</a>）——流式体验的核心指标。</li>
-      <li><strong>成本</strong>：由 Token × 单价算出，是告警与预算的基础。</li>
-      <li><strong>prompt / completion 内容</strong>：默认不采集完整正文；确需诊断时，在授权、脱敏、采样、访问控制与保留期限制下启用，避免把敏感输入发送到遥测后端。</li>
-      <li><strong>工具调用</strong>：默认记录名称、状态、耗时和关联ID；参数/结果正文同样采用显式采集与脱敏策略。</li>
-      <li><strong>错误</strong>：超时、限流、解析失败……（<a href="0036-L31-error-handling-retry.html">L31</a> 说过：错误也要可观测）。</li>
+      <li><strong>模型和 Token 数</strong>：区分请求模型和响应报告的模型；有用量才记输入 / 输出 Token 数。路由后实际模型可能不同（<a href="0037-L32-routing-fallback-gateway.html">L32</a>）。</li>
+      <li><strong>延迟</strong>：总耗时衡量整次调用；流式调用还可记<strong>首输出块时间</strong>。只含元数据的事件不算首块；首块可能是工具调用信息，也可能有多个 Token，<strong>不能直接当作 TTFT</strong>（首 Token 时间，见 <a href="0031-L26-streaming.html">L26</a>）。</li>
+      <li><strong>工具与错误</strong>：记工具名、耗时、状态和可用的关联 ID；失败时记可聚合的错误类型，例如超时、限流（<a href="0036-L31-error-handling-retry.html">L31</a>），不要把原始错误正文当类型。</li>
+      <li><strong>成本</strong>：按计费用量和对应价格在业务账本估算（<a href="0027-L23-token-economics.html">L23</a>），缺数据就保留未知。</li>
     </ul>
-    <p>记录能解释“慢 / 贵 / 错”的最小必要信号；不能因此默认收集所有正文和工具参数。下一节统一字段名，同时固定约定版本并验证后端映射。</p>
+    <p><strong>默认不采集</strong>提示词、原始输入输出（含系统指令）或工具参数、结果，日志也一样。确需诊断时才授权启用，先脱敏并限制采样、访问和保留期；采样本身不能去除敏感信息。</p>
   </div>
 </div>
 
 <div class="section">
   <h2>4. OpenTelemetry GenAI 语义约定（本课重点）</h2>
   <div class="card">
-    <p>上一节列了该记的信号。但如果每个团队、每个工具都<strong>各造一套字段名</strong>——A 家叫 <code>model</code>、B 家叫 <code>model_name</code>、C 家叫 <code>llm.model</code>——那你换一次工具，仪表盘、告警、查询全得重写。这正是标准要解决的问题。</p>
-    <p>答案是 <strong>OpenTelemetry 的 GenAI 语义约定（Semantic Conventions for GenAI）</strong>。OpenTelemetry（OTel）本身是 CNCF 的可观测性开放标准；它的 <strong>GenAI semantic conventions</strong> 专门为 LLM/Agent 定义了一套<strong>厂商无关的标准 span 属性名</strong>：</p>
-    <pre><code>gen_ai.operation.name          # 操作类型，如 chat / embeddings
-gen_ai.provider.name           # 厂商，如 openai / anthropic
-gen_ai.request.model           # 请求的模型名
-gen_ai.usage.input_tokens      # 输入 Token 数  ← 成本
-gen_ai.usage.output_tokens     # 输出 Token 数  ← 成本
-gen_ai.response.time_to_first_chunk   # 首 Token 时间（TTFT）
-gen_ai.tool.name               # 工具调用：工具名（在"执行工具"这类 span 上）
-# 注：工具调用的参数/结果不是顶层 span 属性，而是放在 gen_ai.input/output.messages 的消息部件里
-error.type                     # 出错类型（复用通用约定）</code></pre>
-    <p>GenAI语义约定仍在演进，不应只凭属性以 <code>gen_ai.</code> 开头就认定它是稳定标准。2026-11-06复核时，原文档已指向<a href="https://github.com/open-telemetry/semantic-conventions-genai" target="_blank">GenAI独立官方仓库</a>；固定采用的版本，逐项核实属性/事件/指标及单位，不把历史示例字段当永久契约。</p>
-    <p><strong>为什么这是"厂商无关的答案"？</strong>因为字段名由中立标准定义，不属于任何一家监控厂商。你按 <code>gen_ai.*</code> 记录，<strong>能降低更换后端与模型厂商时的映射成本，但不能保证零改动</strong>——这就是不被单一厂商绑定（vendor lock-in）的关键。</p>
+    <p>统一命名能少写一层 <code>model</code> / <code>model_name</code> / <code>llm.model</code> 转换，但先分清信号。下面是 <strong>GenAI <code>v0.1.0</code>（Development）</strong>中本课用到的部分约定，不是完整字段表。</p>
+    <h3>Span 属性：描述单次调用</h3>
+    <pre><code>gen_ai.operation.name                # 如 chat（推理）、execute_tool（工具）
+gen_ai.provider.name                 # 埋点所识别的提供方，可能不同于实际上游
+gen_ai.request.model                 # 请求发出的模型名
+gen_ai.response.model                # 响应报告的模型名，可能不同
+gen_ai.usage.input_tokens            # 已知输入 Token 数（整数）
+gen_ai.usage.output_tokens           # 已知输出 Token 数（整数）
+gen_ai.response.time_to_first_chunk  # 流式首输出块时间（秒，无首块就不记）
+gen_ai.tool.name                     # 工具执行 span 的工具名
+error.type                           # 失败时记录错误类型</code></pre>
+    <p><strong>结构化不等于可以默认上传。</strong>这个版本要求带 JSON Schema 的属性（如 <code>gen_ai.input.messages</code>、<code>gen_ai.output.messages</code>、<code>gen_ai.system_instructions</code>、<code>gen_ai.tool.definitions</code>）在 span / event 上用符合 schema 的结构化值，不再用 JSON 字符串兜底。输入输出消息很可能含个人信息；系统指令和工具定义也可能含敏感信息。推理消息的部件可以带工具调用数据；<strong>工具执行 span</strong>另有需要显式启用的 <code>gen_ai.tool.call.arguments</code> / <code>gen_ai.tool.call.result</code>，同样按各自 schema 记录，也可能含敏感信息。本课默认不采集这些内容。</p>
+    <h3>Metrics：记录可聚合的样本，不是把 span 属性改名</h3>
+    <ul>
+      <li><strong>推理耗时</strong>：旧的 <code>gen_ai.client.operation.duration</code> 对推理改用 <code>gen_ai.client.inference.duration</code>（Histogram，<code>s</code>）；不要把其他操作的旧序列也改成推理。</li>
+      <li><strong>每次推理用量</strong>：旧的 <code>gen_ai.client.token.usage</code> 对推理拆为 <code>gen_ai.client.inference.operation.input_tokens</code> 与 <code>gen_ai.client.inference.operation.output_tokens</code>（Histogram，<code>{token}</code>），不再用 <code>gen_ai.token.type</code> 区分方向。这两条用于看每次调用的分布，不用于算账。</li>
+      <li><strong>流式首输出块</strong>：旧的 <code>gen_ai.client.operation.time_to_first_chunk</code> 改为 <code>gen_ai.client.inference.time_to_first_chunk</code>（Histogram，<code>s</code>）。在认证和首次尝试前开始计时，包含失败尝试和重试等待；到客户端完整收到第一个含非空新输出的已解码提供方事件为止。没收到就不记该样本。</li>
+    </ul>
+    <p>按标签版本核对名称、类型和单位。共享语义能降低迁移成本，但 OTLP 能传输数据，不代表后端会自动将它们映射到查询、看板或告警。</p>
   </div>
   <div class="tip">
-    <strong>面试高频：「LLM 应用怎么做可观测性？」</strong> 标准答法：用 <strong>Trace</strong>（把每次 LLM/工具调用记成 span，串成调用树）+ <strong>Metrics</strong>（Token / 延迟 / 成本 / 错误率）+ <strong>Logs</strong>；字段用 <strong>OpenTelemetry GenAI 语义约定（<code>gen_ai.*</code>）</strong>这套厂商无关标准，配 <strong>Langfuse</strong> 等工具落地；再基于成本 metrics <strong>设告警</strong>。一句话点出 OTel GenAI 是厂商无关的标准，基本就答到点子上了。
+    <strong>面试高频：「LLM 应用怎么做可观测性？」</strong> 可以这样答：用 <strong>Trace</strong> 串起模型和工具调用，用 <strong>Metrics</strong> 看聚合趋势，用 <strong>Logs</strong> 补充事件。固定 OTel GenAI 版本，分清 span 属性和指标，接入时验收后端映射与单位；默认不传正文或工具参数。成本按有效用量和价格估算，告警同时关注已知成本和缺数，不能把未知当零。
   </div>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 为什么用 OpenTelemetry GenAI 的 <code>gen_ai.*</code> 标准字段，而不是自定义字段名？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 用 GenAI <code>v0.1.0</code> 做推理延迟看板，哪种做法正确？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">可以直接提高模型推理速度</button>
-      <button data-answer="correct">减少迁移后端时的映射工作</button>
-      <button data-answer="wrong">自定义字段在所有后端禁用</button>
-      <button data-answer="wrong">自动减少模型生成内容费用</button>
+      <button data-answer="wrong">直接用请求模型的 span 属性聚合延迟</button>
+      <button data-answer="correct">使用推理耗时 metric，核对后端映射和单位</button>
+      <button data-answer="wrong">只要能接收 OTLP，旧看板就会自动适配</button>
+      <button data-answer="wrong">把首输出块时间当作整次调用的延迟</button>
     </div>
-    <div class="quiz-explanation"><strong>OTel GenAI 语义约定</strong>由中立的 CNCF 标准定义了厂商无关的字段名（<code>gen_ai.request.model</code>、<code>gen_ai.usage.input_tokens</code> 等）。按它记录，<strong>减少跨工具迁移时的字段映射工作；仍须固定语义约定和埋点库版本，验收后端对字段/单位的支持</strong>，避免被单一厂商绑定。它不会让模型更快、也不省 Token——它省的是你的<strong>迁移与维护成本</strong>。自定义字段并非"不被支持"，只是各家不互通、迁移即返工。</div>
+    <div class="quiz-explanation"><code>gen_ai.request.model</code> 是描述单次调用的 span 属性；<code>gen_ai.client.inference.duration</code> 才是推理耗时直方图（秒）。统一命名能减少映射工作，但仍要固定约定和埋点库版本，验收后端是否按预期入库和聚合，迁移时更新旧查询。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>5. 工具生态：怎么落地</h2>
   <div class="card">
-    <p>标准解决"记成什么"，工具解决"怎么记、在哪看"。主流选择：</p>
-    <ul>
-      <li><strong>Langfuse</strong>：开源的 LLM 可观测平台，<strong>原生支持 OpenTelemetry</strong>——可作为 OTLP 后端接收 <code>gen_ai.*</code> span，直接给你调用树、Token、成本、延迟看板。</li>
-      <li><strong>OpenLLMetry（Traceloop）</strong>：一组基于 OTel 的自动埋点库，一行 <code>init</code> 就能自动追踪 <strong>LangChain / OpenAI</strong> 等框架，把调用变成标准 span。</li>
-      <li><strong>各类 APM</strong>（Datadog / Grafana 等）：只要它们吃 OTLP，你的 <code>gen_ai.*</code> 数据就能直接进去。</li>
-    </ul>
-    <p>典型体验是<strong>"一行接入、自动追踪"</strong>——你几乎不改业务代码，埋点库就把每次 LLM/工具调用自动记成标准 span：</p>
-    <pre><code># 概念示意：自动埋点 + 送到支持 OTel 的后端（如 Langfuse）
-from traceloop.sdk import Traceloop
-Traceloop.init()                     # 一行初始化，之后自动追踪
-
-# 你原来的 LangChain / OpenAI 代码照常写，
-# 每次调用会被自动记成 gen_ai.* span，送到 OTLP 后端
-</code></pre>
-    <p>因为大家都遵循 OTel，<strong>埋点库和后端可以自由组合</strong>：用 OpenLLMetry 埋点、送进 Langfuse 看，或换成任何吃 OTLP 的 APM——这正是标准带来的自由。（具体价格/额度以官网为准，不同方案差异大。）</p>
+    <p>约定解决“叫什么”，埋点库解决“能采到什么”，后端解决“能查到什么”。例如，<strong>OpenLLMetry（Traceloop）</strong>是自动埋点选项，<strong>Langfuse</strong>提供 OTLP trace 接入；不能据此推断它们支持本课版本的所有属性、结构化值或指标。</p>
+    <ol>
+      <li><strong>采集前</strong>：固定埋点库和采用的约定版本；确认覆盖的模型和工具调用，关闭正文采集，先检查本地生成的 span 和指标。</li>
+      <li><strong>接入时</strong>：在自己的测试环境按信号验收。对照 trace 父子关系、指标名称 / 类型 / 单位和后端映射；用已知样本验算查询与告警，不只看 OTLP 是否返回成功。</li>
+      <li><strong>升级时</strong>：逐项迁移旧查询、看板和告警；不要把旧指标与新指标直接混算。</li>
+    </ol>
+    <p>第 7 节只做离线映射验收，不启动埋点库、exporter 或后端，不能据此宣布集成已通过。</p>
   </div>
 </div>
 
 <div class="section">
   <h2>6. 成本告警：把可观测性变成行动</h2>
   <div class="card">
-    <p>光看板还不够——你不会一直盯着屏幕。可观测性真正闭环的一步是<strong>告警</strong>：基于 metrics 设<strong>阈值</strong>，越线就自动通知你。</p>
+    <p>光看看板还不够。要让告警真有用，先把“观测到多少用量”和“能算出多少费用”分清楚：</p>
     <ul>
-      <li><strong>成本</strong>：日成本超过 X 元报警——防止一个失控循环把预算烧穿（呼应 <a href="0027-L23-token-economics.html">L23</a> 的成本工程）。</li>
-      <li><strong>错误率</strong>：5xx / 解析失败比例突增就报警（呼应 <a href="0036-L31-error-handling-retry.html">L31</a>）。</li>
-      <li><strong>延迟</strong>：P95 延迟或 TTFT 恶化就报警，用户抱怨之前先发现。</li>
+      <li><strong>看用量</strong>：每次调用的 Token 直方图用于看分布。启用该埋点时，按约定记录失败调用（带 <code>error.type</code>）；没有响应或响应没有用量时，直方图记录 <code>0</code>。这个值不是实际零用量。若本来就无法高效取得计数、也未显式启用离线计数，则不发用量指标。</li>
+      <li><strong>看总量</strong>：用 <code>gen_ai.client.inference.usage.input_tokens</code> / <code>gen_ai.client.inference.usage.output_tokens</code>（Counter，<code>{token}</code>）累计已知用量，不拿单次用量直方图当账单。缓存输入和模型推理（reasoning）输出的细分值已含在相应总量里，不能再相加。</li>
+      <li><strong>算成本</strong>：按可计费用量和对应模型、计费类别、币种及有效价格计算估算费用（见 <a href="0027-L23-token-economics.html">L23</a>）。缺用量、缺必要的明细或缺价就记<strong>未知</strong>，不要把指标的 <code>0</code> 填进账本。GenAI 约定不提供价格，也不会自动生成成本指标。</li>
+      <li><strong>设告警</strong>：分别监控“已知日成本超过预算”和“未知费用的笔数或比例升高”。延迟可看推理耗时或首块耗时的 P95；错误率要有明确的分母（如失败次数 / 总调用数），参见 <a href="0036-L31-error-handling-retry.html">L31</a>。</li>
     </ul>
-    <p>因为 Token、成本、延迟这些都已按 <code>gen_ai.*</code> 标准记成了 metrics，<strong>设告警只是在后端加个规则</strong>，不用再改埋点。标准记录 → 聚合成指标 → 阈值告警，这条链一旦通了，Agent 的"贵 / 慢 / 错"就能在<strong>出事前或第一时间</strong>被你抓住。</p>
   </div>
 
   <div class="quiz" data-quiz="q3">
-    <div class="quiz-question"><span class="quiz-q">Q</span> "日成本超过阈值就自动报警"主要靠哪根支柱？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 调用失败且未返回用量，直方图按约定记了 0，这次应怎么记账？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">逐条人工翻阅文本日志记录</button>
-      <button data-answer="correct">聚合成本指标设置阈值告警</button>
-      <button data-answer="wrong">逐个手工查看完整调用链条</button>
-      <button data-answer="wrong">让模型自行猜测当前总费用</button>
+      <button data-answer="wrong">直接把账本费用记为 0</button>
+      <button data-answer="correct">费用保持未知，并纳入缺数监控</button>
+      <button data-answer="wrong">用首输出块耗时换算费用</button>
+      <button data-answer="wrong">把调用从账本和失败统计中删除</button>
     </div>
-    <div class="quiz-explanation"><strong>成本、Token、延迟这类可聚合数字属于 Metrics</strong>，天然适合设阈值告警（超 X 就通知）。因为已按 <code>gen_ai.usage.*</code> 等标准记录，加告警只是在后端配规则、不用改埋点。Trace 用于<strong>事后定位是哪一步</strong>贵/慢，Logs 用于翻查细节，都不是"自动越线报警"的主力；模型本身也不会主动上报你的账单。</div>
+    <div class="quiz-explanation">直方图里的 <code>0</code> 是用量缺失时的记法，不是账单证据。<strong>已知用量和对应价格才能算出已知费用</strong>。按已知成本设预算告警，同时单独监控未知费用；用 trace 和日志定位缺数或失败。</div>
   </div>
 </div>
 
 <div class="section">
-  <h2>7. 动手练习：为一次 Agent 任务设计 span 属性</h2>
+  <h2>7. 动手练习：设计 trace，离线验收映射</h2>
   <div class="card">
-    <p>假设你的 Agent 要完成"<strong>查一下明天北京的天气，然后写一句出行建议</strong>"。它会：调用一次 LLM 规划 → 调用 <code>get_weather</code> 工具 → 再调用一次 LLM 生成建议。</p>
-    <p><strong>请你写出</strong>：这次任务的 trace 里应该有哪些 span？每个 span 该记录哪些属性？并说明——<strong>为什么用 OTel 的标准字段（<code>gen_ai.*</code>）而不是自己起名（如 <code>my_model</code>、<code>tokens_in</code>）？</strong> 想清楚再展开看参考。</p>
+    <p>假设 Agent 要查天气并写一句出行建议：先调用 LLM 规划，再调 <code>get_weather</code>，最后调用 LLM 生成建议。画出这次调用的 trace，列出默认采集的属性，再回答：哪些数据要另发为指标？用量没拿到时，账本怎么记？</p>
     <details>
       <summary>点开看参考答案</summary>
-      <p><strong>span 结构（一棵树）：</strong></p>
-      <pre><code>root span: "明天北京天气 + 出行建议"     整个任务
-
+      <pre><code>root span: weather_advice（任务类型，不用用户原话命名）
 ├─ LLM 调用①（规划）
-│    gen_ai.operation.name      = "chat"
-│    gen_ai.provider.name       = "openai"
-│    gen_ai.request.model       = "gpt-...(具体型号)"
-│    gen_ai.usage.input_tokens  = 输入 Token 数
-│    gen_ai.usage.output_tokens = 输出 Token 数
-│    gen_ai.response.time_to_first_chunk = TTFT
-│
+│    gen_ai.operation.name = "chat"；gen_ai.provider.name = 埋点所识别的提供方
+│    gen_ai.request.model = 请求模型；gen_ai.response.model = 响应报告的模型（若有）
+│    gen_ai.usage.input_tokens / gen_ai.usage.output_tokens（有数据才记）
 ├─ 工具调用 get_weather
-│    gen_ai.tool.name = "get_weather"   # 参数/结果在消息部件里，非顶层属性
-│    （工具返回、耗时、error.type 若失败）
-│
-└─ LLM 调用②（生成建议）
-     gen_ai.request.model / usage.* / TTFT ...（同上）</code></pre>
-      <p><strong>为什么用标准字段而不是自定义？</strong></p>
-      <ul>
-        <li><strong>不被绑定</strong>：字段名由中立的 OTel 标准定义，不属于任何监控厂商。换 Langfuse / Datadog / 自建后端，或换模型厂商，<strong>看板、告警、查询都不用重写</strong>。</li>
-        <li><strong>工具即插即用</strong>：OpenLLMetry 等埋点库<strong>本来就发 <code>gen_ai.*</code></strong>，Langfuse 等后端本来就认它——自定义名字反而要写胶水去映射。</li>
-        <li><strong>可跨系统聚合</strong>：多个服务、多个团队都用同一套名，指标才能拼在一起统一看；各起各的名，数据永远对不齐。</li>
-        <li><strong>一句话</strong>：自定义字段"现在能用、以后返工"；标准字段"一次记好、随处能读"。</li>
-      </ul>
+│    gen_ai.operation.name = "execute_tool"；gen_ai.tool.name = "get_weather"
+│    gen_ai.tool.call.id（模型或提供方给出时）、状态、耗时；不记参数和结果
+└─ LLM 调用②（流式生成建议）
+     同上面的 LLM span；收到首输出块时另记 gen_ai.response.time_to_first_chunk（秒）
+     各子 span 失败时记 error.type</code></pre>
+      <p>推理耗时和每次调用的输入 / 输出 Token 直方图是独立的 metric 样本，首块指标只在拿到首块时记录。没有用量时，直方图可以有约定的占位值，账本仍是未知。统一命名便于对照，不代表后端会自动映射。</p>
     </details>
+    <h3>离线验收：只输出一行通过标记</h3>
+    <p>把下面整段复制到 Python 文件，用 <code>python -I 文件名.py</code> 运行。不需密钥、网络或第三方包；样本、价格都是虚构的，假设只有按输入 / 输出 Token 计费。验收仅验证本地字段映射、毫秒转秒、正文不出现在结果里，以及占位零、未知费用与真实零的区别。不验证 OTel SDK、exporter 或后端。全部断言通过后输出 <code>L33 ACCEPTED</code>。</p>
+    <pre data-lang="python" data-label="Python · 标准库离线验收"><code id="l33-telemetry-check" class="language-python">import json
+
+
+def normalize(call, rates):
+    dimensions = {
+        "gen_ai.operation.name": "chat",
+        "gen_ai.provider.name": call["provider"],
+        "gen_ai.request.model": call["requested_model"],
+        "gen_ai.response.model": call["response_model"],
+    }
+    span = dimensions.copy()
+    if error := call.get("error_type"):
+        span["error.type"] = error
+    metric_attrs = span.copy()
+    metrics = {"gen_ai.client.inference.duration": ("s", call["duration_ms"] / 1000, metric_attrs)}
+    if (first := call.get("first_chunk_ms")) is not None:
+        span["gen_ai.response.time_to_first_chunk"] = first / 1000
+        metrics["gen_ai.client.inference.time_to_first_chunk"] = ("s", first / 1000, dimensions)
+
+    usage = call.get("usage")  # 样本只模拟完整用量或完全没有用量
+    for direction, count in zip(("input", "output"), usage if usage is not None else (0, 0)):
+        if usage is not None:
+            span[f"gen_ai.usage.{direction}_tokens"] = count
+        metrics[f"gen_ai.client.inference.operation.{direction}_tokens"] = ("{token}", count, metric_attrs)
+
+    rate = rates.get((call["provider"], call["response_model"]))
+    cost = None if usage is None or rate is None else sum(n * p for n, p in zip(usage, rate))
+    return {"span": span, "metrics": metrics, "ledger": {"usage": usage, "cost": cost}}
+
+
+sample = dict(provider="openai", requested_model="demo-alias", response_model="demo-v2",
+              duration_ms=250, first_chunk_ms=125, usage=(100, 20),
+              input_messages="PRIVATE-IN", output_messages="PRIVATE-OUT",
+              tool_arguments={"location": "PRIVATE-ARG"}, tool_result="PRIVATE-RESULT")
+rates = {("openai", "demo-v2"): (2, 5)}  # 虚构费用单位 / Token，输入、输出分别计价
+known = normalize(sample, rates)
+missing = normalize(dict(sample, usage=None, first_chunk_ms=None, error_type="timeout"), rates)
+no_price = normalize(sample, {})
+zero = normalize(dict(sample, usage=(0, 0)), rates)
+
+in_metric = "gen_ai.client.inference.operation.input_tokens"
+out_metric = "gen_ai.client.inference.operation.output_tokens"
+first_metric = "gen_ai.client.inference.time_to_first_chunk"
+assert known["span"]["gen_ai.request.model"] == "demo-alias"
+assert known["span"]["gen_ai.response.model"] == "demo-v2"
+assert known["span"]["gen_ai.usage.input_tokens"] == 100
+assert known["span"]["gen_ai.response.time_to_first_chunk"] == 0.125
+assert known["metrics"]["gen_ai.client.inference.duration"][:2] == ("s", 0.25)
+assert known["metrics"][first_metric][:2] == ("s", 0.125)
+assert known["metrics"][in_metric][:2] == ("{token}", 100)
+assert known["metrics"][out_metric][:2] == ("{token}", 20)
+assert first_metric not in missing["metrics"]
+assert "gen_ai.response.time_to_first_chunk" not in missing["span"]
+assert not any(key.startswith("gen_ai.usage.") for key in missing["span"])
+assert "gen_ai.usage.input_tokens" not in known["metrics"][in_metric][2]
+for name in (in_metric, out_metric):
+    unit, value, attrs = missing["metrics"][name]
+    assert (unit, value, attrs["error.type"]) == ("{token}", 0, "timeout")
+assert known["ledger"] == {"usage": (100, 20), "cost": 300}
+assert missing["ledger"] == {"usage": None, "cost": None}
+assert no_price["ledger"] == {"usage": (100, 20), "cost": None}
+assert zero["ledger"] == {"usage": (0, 0), "cost": 0}
+assert "PRIVATE-" not in json.dumps([known, missing, no_price, zero])
+print("L33 ACCEPTED")</code></pre>
   </div>
 </div>
 
 <div class="section">
   <h2>🎯 速查卡</h2>
   <div class="card">
-    <pre><code>【三大支柱】
-  Traces  一次请求的调用链；每步是一个 span，串成树  ← Agent 最关键
-  Metrics Token / 延迟 / 成本 / 错误率（可聚合，用于趋势 + 告警）
-  Logs    离散文本事件，事后翻查细节
+    <pre><code>【三大支柱】Trace 查单次执行顺序；Metrics 看聚合趋势；Logs 查事件。
 
-【LLM 该追踪什么】
-  模型名 · 输入/输出 Token · 延迟(尤其 TTFT) · 成本
-  · prompt/completion 内容 · 工具调用 · 错误
+【GenAI v0.1.0 · Development】
+  Span 属性：gen_ai.request.model / gen_ai.usage.input_tokens 等
+  推理耗时：gen_ai.client.inference.duration（Histogram，s）
+  单次用量：gen_ai.client.inference.operation.input_tokens
+            gen_ai.client.inference.operation.output_tokens（Histogram，{token}）
+  首输出块：gen_ai.client.inference.time_to_first_chunk（Histogram，s，不等于 TTFT）
 
-【OTel GenAI 语义约定 = 厂商无关标准】（本课重点）
-  gen_ai.request.model            请求模型
-  gen_ai.usage.input_tokens       输入 Token（→成本）
-  gen_ai.usage.output_tokens      输出 Token（→成本）
-  gen_ai.operation.name           操作类型
-  gen_ai.provider.name            厂商
-  gen_ai.tool.name                     工具调用（参数在消息部件里）
-  ★ 语义约定仍在演进；向标准靠，换工具/换厂商不用重写
-
-【工具】Langfuse(开源, 原生 OTel) · OpenLLMetry(一行自动埋点)
-        · 任何吃 OTLP 的 APM   → 埋点库与后端可自由组合
-
-【闭环】标准记录 → 聚合为 metrics → 阈值告警(日成本超X / 错误率突增)
-
-【面试】Trace + Metrics + Logs；字段用 OTel GenAI(gen_ai.*)
-        厂商无关标准 + Langfuse 落地 + 成本 metrics 告警</code></pre>
+【隐私】默认不采集原始输入输出、工具参数和结果。
+【接入】固定版本；能收 OTLP ≠ 已支持映射、聚合和告警。
+【成本】计费用量 × 对应单价；未知不是零，已知成本和缺数分别监控。</code></pre>
   </div>
 </div>
 
 <div class="section">
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
-    <p><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/" target="_blank"><strong>OpenTelemetry · Semantic Conventions for Generative AI</strong></a> + <a href="https://langfuse.com/docs/opentelemetry/get-started" target="_blank"><strong>Langfuse · OpenTelemetry 集成</strong></a></p>
-    <p>前者是<strong>厂商无关标准的源头</strong>——把 <code>gen_ai.*</code> 每个属性的含义、哪些必填讲清楚（内容由 OTel GenAI 语义约定仓库维护，仍在演进，以官方最新版为准）。后者展示一个开源工具怎么<strong>作为 OTLP 后端</strong>接收这些 span、落成可用看板。一读标准、一读落地，可观测这条链就通了。</p>
+    <p>2026-11-23 核对。OpenTelemetry 网站的<a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/" target="_blank" rel="noopener noreferrer">原 GenAI 文档入口</a>现在是迁移指引，指向独立仓库；本课以 <strong><code>v0.1.0</code> 标签</strong>为准。</p>
+    <ul>
+      <li><a href="https://github.com/open-telemetry/semantic-conventions-genai/releases/tag/v0.1.0" target="_blank" rel="noopener noreferrer">发布说明</a> · <a href="https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/v0.1.0/CHANGELOG.md" target="_blank" rel="noopener noreferrer">变更日志</a>：核对发布日期、破坏性改名和结构化值要求。</li>
+      <li><a href="https://github.com/open-telemetry/semantic-conventions-genai/tree/v0.1.0/docs/gen-ai" target="_blank" rel="noopener noreferrer">GenAI 约定目录</a>：按需阅读<a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/v0.1.0/docs/gen-ai/client-inference.md" target="_blank" rel="noopener noreferrer">客户端推理</a>、<a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/v0.1.0/docs/gen-ai/gen-ai-token-metrics.md" target="_blank" rel="noopener noreferrer">Token 指标</a>、<a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/v0.1.0/docs/gen-ai/execute-tool.md" target="_blank" rel="noopener noreferrer">工具执行</a>，核对单位、采集条件和敏感性说明。</li>
+      <li><a href="https://langfuse.com/docs/opentelemetry/get-started" target="_blank" rel="noopener noreferrer">Langfuse · OpenTelemetry 接入</a>：后端接入示例，不是本课验证过的映射清单。</li>
+    </ul>
   </div>
 </div>
 
@@ -270,9 +309,9 @@ Traceloop.init()                     # 一行初始化，之后自动追踪
     <div class="qa-related-label">🔗 关联课程</div>
     <ul>
       <li>· <a href="0037-L32-routing-fallback-gateway.html">上一课 L32 · 路由与 Fallback</a> — 路由后每次模型可能不同，更要靠 trace 记清用了谁</li>
-      <li>· <a href="0039-L34-tool-schema-design.html">下一课 L34 · Tool Schema 设计</a> — 工具调用是 span 里的一等公民，schema 设计影响可观测</li>
-      <li>· <a href="0027-L23-token-economics.html">L23 · 成本追踪与告警</a> — <code>gen_ai.usage.*</code> 正是成本 metrics 的来源</li>
-      <li>· <a href="0036-L31-error-handling-retry.html">L31 · 错误也要可观测</a> — 错误进 span（<code>error.type</code>），才能设错误率告警</li>
+      <li>· <a href="0039-L34-tool-schema-design.html">下一课 L34 · Tool Schema 设计</a> — 设计好参数契约，不等于要把参数写进 trace</li>
+      <li>· <a href="0027-L23-token-economics.html">L23 · 成本追踪与告警</a> — 用量要匹配正确价格，缺数不能当免费</li>
+      <li>· <a href="0036-L31-error-handling-retry.html">L31 · 错误也要可观测</a> — 用 span 查失败的环节，用指标看错误率</li>
     </ul>
   </div>
   </div>
@@ -283,12 +322,10 @@ Traceloop.init()                     # 一行初始化，之后自动追踪
   <h2>总结</h2>
   <div class="card">
     <ul>
-      <li>Agent 是黑盒——<strong>不可观测就没法调优和排障</strong>，可观测是生产准入门槛</li>
-      <li>三大支柱 <strong>Traces / Metrics / Logs</strong>；Agent 最看重 <strong>trace</strong>：每次 LLM/工具调用是一个 <strong>span</strong>，串成树</li>
-      <li>LLM 要追踪：<strong>模型 · Token · 延迟(TTFT) · 成本 · 内容 · 工具调用 · 错误</strong></li>
-      <li>字段用 <strong>OpenTelemetry GenAI 语义约定</strong>（<code>gen_ai.request.model</code> / <code>gen_ai.usage.input_tokens</code> …）——<strong>厂商无关</strong>，换工具换厂商不用重写（约定仍在演进，以官方最新版为准）</li>
-      <li>落地用 <strong>Langfuse（开源, 原生 OTel）/ OpenLLMetry</strong>，一行接入自动追踪</li>
-      <li>基于 metrics 设<strong>成本告警</strong>，让可观测性形成闭环</li>
+      <li><strong>Traces / Metrics / Logs</strong>各有分工：把观测到的 LLM / 工具 span 串成树定位单次问题，用指标看趋势，用日志补事件。</li>
+      <li>固定 <strong>OTel GenAI <code>v0.1.0</code>（Development）</strong>：span 属性描述调用，metric 独立记录可聚合样本；接入和升级都要验收字段、单位及后端映射。</li>
+      <li>默认记模型、已知用量、耗时、工具名和错误类型；<strong>首输出块不一定是首 Token</strong>，原始输入输出及工具参数、结果默认不采集。</li>
+      <li>账本按计费用量和对应单价算估算费用；<strong>缺量或缺价仍是未知</strong>。已知成本和数据缺口分别告警。</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">

@@ -46,6 +46,7 @@ ASSET_FILES = (
 README_FILES = (
     "code/phase1-python/phase1-practices-capstone/README.md",
     "code/phase2-model-selection/phase2-practices-capstone/README.md",
+    "code/phase4-prompt-context/README.md",
 )
 GENERATED_README_FILES = tuple(name.removesuffix(".md") + ".html" for name in README_FILES)
 BUILD_VERSION_PLACEHOLDER = "__BUILD_VERSION__"
@@ -307,8 +308,8 @@ def inline_markdown(text: str) -> str:
     return escaped
 
 
-def render_markdown_document(source: Path) -> str:
-    """Render the README subset used by the published capstone guides."""
+def render_markdown_document(source: Path, asset_prefix: str) -> str:
+    """Render a published README with assets relative to its site depth."""
     lines = source.read_text(encoding="utf-8").splitlines()
     output: list[str] = []
     paragraph: list[str] = []
@@ -399,7 +400,7 @@ def render_markdown_document(source: Path) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#F8F6F1">
   <title>{html.escape(title)}</title>
-  <link rel="stylesheet" href="../../../assets/style.css">
+  <link rel="stylesheet" href="{asset_prefix}assets/style.css">
   <style>
     :root {{ color-scheme: light dark; font-family: system-ui, sans-serif; }}
     * {{ box-sizing: border-box; }}
@@ -416,9 +417,9 @@ def render_markdown_document(source: Path) -> str:
   <main>
     {body}
   </main>
-  <script src="../../../assets/course-catalog.js"></script>
-  <script src="../../../assets/theme-toggle.js"></script>
-  <script src="../../../assets/pwa.js"></script>
+  <script src="{asset_prefix}assets/course-catalog.js"></script>
+  <script src="{asset_prefix}assets/theme-toggle.js"></script>
+  <script src="{asset_prefix}assets/pwa.js"></script>
 </body>
 </html>
 '''
@@ -493,7 +494,8 @@ def finalize_generated_files(stage: Path, site_root: str) -> None:
     for source_name, generated_name in zip(README_FILES, GENERATED_README_FILES, strict=True):
         source = stage.joinpath(*PurePosixPath(source_name).parts)
         target = stage.joinpath(*PurePosixPath(generated_name).parts)
-        target.write_text(render_markdown_document(source), encoding="utf-8", newline="")
+        asset_prefix = "../" * len(target.relative_to(stage).parent.parts)
+        target.write_text(render_markdown_document(source, asset_prefix), encoding="utf-8", newline="")
         source.unlink()
     rewrite_readme_links(stage)
     (stage / BUILD_MARKER).write_text(

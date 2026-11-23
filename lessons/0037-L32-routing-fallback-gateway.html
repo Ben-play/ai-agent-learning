@@ -101,6 +101,7 @@ def chat_with_fallback(messages):
         except FatalError:               # 400/401：你的请求就是错的
             raise                        # 切模型也没用 → 立即抛出，别浪费
     raise AllModelsFailed(last_err)      # 整条链都失败 → 明确报错</code></pre>
+    <p><strong>切换的是模型推理，不是已发出的写操作。</strong>如果创建工单等外部操作的结果未知，不要切换供应商重做整项任务；先按 <a href="0036-L31-error-handling-retry.html">L31</a> 核对原操作状态，保留审批和操作键。</p>
     <p>三个必须记住的要点：</p>
     <ul>
       <li><strong>只对可重试错误切换</strong>：紧扣 <a href="0036-L31-error-handling-retry.html">L31 的错误分类</a>——429/5xx/超时才值得换模型；而 <strong>400/401 是你自己的 payload/key 错了</strong>，换 100 个模型还是错，必须立即 fail fast，别拿去 fallback 空转。</li>

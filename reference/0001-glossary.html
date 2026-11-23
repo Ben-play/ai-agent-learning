@@ -41,12 +41,12 @@
 
 <dl class="term">
   <dt>RAG（检索增强生成）</dt>
-  <dd>Retrieval-Augmented Generation。先从外部知识库检索相关信息，再让 LLM 基于检索结果生成回答。解决 LLM 知识过时和幻觉问题。</dd>
+  <dd>Retrieval-Augmented Generation。先从外部知识库检索获准访问的材料，再让模型基于证据作答。可补充模型没有的信息，但不保证消除幻觉；检索覆盖、权限和引用要分别验证。</dd>
 </dl>
 
 <dl class="term">
   <dt>Agentic RAG（智能体检索增强生成）</dt>
-  <dd>2026 年 RAG 的标准形态。Agent 控制整个检索过程，自主决定何时检索、检索什么、如何整合结果。结合 GraphRAG 实现知识图谱增强。传统 RAG 管道已过时。</dd>
+  <dd>让 Agent 按任务决定是否检索、检索哪些来源或是否补查。灵活性更高，但调用次数和延迟更难预估；先建立简单检索基线，再按失败案例决定是否引入。Agentic RAG 不要求 GraphRAG。见 <a href="https://docs.langchain.com/oss/python/langchain/retrieval">LangChain 检索架构说明</a>。</dd>
 </dl>
 
 <dl class="term">
