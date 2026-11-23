@@ -14,6 +14,10 @@
 
 # 更新日志
 
+- 2026-11-23: **落实早期课程优化** — 从 L38 过渡到离线「证据问答＋工单草稿」项目，补 Phase 4–11 共 60 个逐课草案与验收，明确选修不阻塞部署。L31 改用 SQLite 同库事务验证提交前回滚、提交后丢响应重放和同键不同请求拒绝；目录兼容 L100，不改变 38 节正式课及学习进度。后续阶段仍未发布完整课文或完成在线验收。
+
+- 2026-11-23: **按官方 API 与协议定点更新** — L17/L20/L23/L24 更新 Claude 采样、effort 与缓存费率边界；L27/L35 以 Responses 做单步与有界循环，L29 增加图片和 PDF，L33 固定 OpenTelemetry GenAI v0.1.0（Development）并区分用量指标和成本账本。Phase 4 的 Prompt 模板和 Phase 8 的评测资产放在仓库，MCP 规范基线不变。保留正式课号和学习进度；未执行付费 API、SDK 联调或遥测后端验收。
+
 - 2026-11-06: **按课程可靠性审查实施优化（未提交）** — 保留11阶段/38正式课，明确Phase4–11仅规划；增加Responses对照和厂商原生适配边界，前移小型Agent评估与持久恢复验收目标；更新MCP 2026-07-28规范参考并新增非编号Skills速查。L30按完整工具交互组重组、保留信任边界并复算预算；L36参数模型真正接入dispatch、分开展示与执行授权；L37改为负载驱动成本决策；L38重写为完全离线、可验收骨架，覆盖终态、工具、重试/fallback、预算与usage账本，不冒充真实SDK/缓存/生产准入。新增 `scripts/check-course-examples.py` 明确白名单，仅执行L25/L26/L28/L30/L36/L37/L38自检；以现有agent-hello虚拟环境Python 3.11.15、Pydantic 2.13.4运行7/7通过（全局Python环境的Pydantic缺typing_extensions，未安装修复）。真实模型调用、SDK在线联调和浏览器视觉检查未执行。Phase3时长重估为545min，Phase1/2仍625/430，总计1600min；L38分三段可暂停。课程建设不登记为用户已掌握的新知识。完整验证收口见 `docs/research/2026-11-06-curriculum-implementation.md`。
 
 - 2026-07-22: **Phase 2 渐进式最佳实践体系落地（未提交）** — 按 Phase 1 同一教学合同，为 L17–L24 增加 11 张“一卡一个决策”的知识点卡与 8 个离线近迁移验收；5 个跨课检查点在最后先修知识完成后立即出现（L18 Request Contract、L19 Reliability Gate、L21 Capability Policy、L22 Private Evaluation、L23 Cost-aware Routing），阶段复盘页只负责 11→5 主题压缩、来源/检查点索引与最终验收。新增 `code/phase2-model-selection/phase2-practices-capstone/`，以两个 fixture adapter 验证原生控制/计数、重复观测、证据可靠性、完整成本、先硬门槛后排名与升级路由，并含“一致即真值”“先排名后门槛”两个故意失败的反事实。同步复核 Adaptive Thinking、Effort、Token Counting、Prompt Caching、Message Batches 和相关论文/benchmark 边界；主验收全离线，不把固定 fixture 冒充真实模型能力或价格。Phase 2 深度时长按既有模型重算为 L17–L24=45/60/55/45/60/60/60/45，阶段 430min，课程总计 1515min；带检查点课程的增量不被核心课时 45min 上限吞并。最终技术、教学、运行与 `file://` 视觉审核结果以本批收口记录为准。

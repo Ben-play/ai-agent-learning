@@ -43,17 +43,14 @@
 <body>
 
 <h1>Agent Harness 架构参考</h1>
-<p>2026 年 Agent 开发的主流架构模式。Harness Engineering 正在取代 Prompt Engineering 成为核心技能。</p>
+<p>Prompt Engineering 定义模型收到什么指令；Harness Engineering 定义围绕模型的运行、验证与恢复。两者互补，不是新旧替代关系。</p>
 
 <h2>什么是 Agent Harness？</h2>
 <p>Agent Harness 是围绕 LLM 的<strong>脚手架系统</strong>，决定 Agent 如何运行、何时停止、如何处理错误。它不是单个 Prompt，而是整个运行环境的设计。</p>
 
-<blockquote>
-  "A harness decides which context is loaded, which tools are available, what 'done' actually means, what checks must pass before progress is accepted."<br>
-  — <a href="https://www.linkedin.com/pulse/agent-harness-architecture-dominate-2026-bassel-haidar-sczfe">Agent Harness: The Architecture that will Dominate 2026</a>
-</blockquote>
+<p>例如，<a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Anthropic 的长任务案例</a>同时使用面向不同阶段的提示、外置进度记录和端到端验证。该案例是一种设计参考，不是统一架构标准。</p>
 
-<h2>四层架构</h2>
+<h2>四层教学视图</h2>
 
 <div class="layer">
   <h3>Layer 1: Agent Reasoning（推理层）</h3>
@@ -70,7 +67,7 @@
   <h3>Layer 2: Context Engineering（上下文工程）</h3>
   <p>决定 Agent 能"看到"什么信息。包括：</p>
   <ul>
-    <li>上下文窗口管理（200K+ tokens）</li>
+    <li>按模型和任务管理上下文窗口，保留工具交互和输出预算</li>
     <li>动态上下文加载和卸载</li>
     <li>记忆系统（短期/长期）</li>
     <li>RAG 检索结果整合</li>
@@ -104,23 +101,19 @@
 
 <div class="comparison">
   <div>
-    <h4>Prompt Engineering（旧范式）</h4>
+    <h4>Prompt Engineering：模型如何理解任务</h4>
     <ul>
-      <li>关注单个 Prompt 的措辞</li>
-      <li>手动调优 few-shot 示例</li>
-      <li>静态的指令设计</li>
-      <li>适合单轮对话</li>
-      <li>2023-2025 主流</li>
+      <li>写清目标、约束和答案应该包含什么</li>
+      <li>用任务集比较提示版本、示例和反例</li>
+      <li>适用于单次调用，也适用于多轮循环中的每一步</li>
     </ul>
   </div>
   <div>
-    <h4>Harness Engineering（新范式）</h4>
+    <h4>Harness Engineering：应用如何执行和验证任务</h4>
     <ul>
-      <li>关注整体运行环境设计</li>
-      <li>动态上下文管理</li>
-      <li>工具编排和错误处理</li>
-      <li>适合多轮 Agent 循环</li>
-      <li>2026 主流</li>
+      <li>决定上下文来源、预算和终态</li>
+      <li>在应用侧做工具权限校验、审批和受控执行</li>
+      <li>记录结果并验证中断恢复，检查点不等于外部操作只生效一次</li>
     </ul>
   </div>
 </div>
@@ -140,7 +133,7 @@
 <ul>
   <li><a href="https://arxiv.org/html/2603.05344v1">arXiv:2603.05344 - Building AI Coding Agents: Scaffolding, Harness, Context Engineering</a>（2026-03）</li>
   <li><a href="https://www.taskade.com/blog/agent-harness-explained">Taskade: What Is an AI Agent Harness?</a></li>
-  <li><a href="https://www.aimagicx.com/blog/harness-engineering-replacing-prompt-engineering-2026">Harness Engineering: Why the Way You Wrap AI Matters More Than Your Prompts</a></li>
+  <li><a href="https://www.anthropic.com/research/building-effective-agents">Anthropic: Building Effective Agents</a>（先考虑简单工作流，再按任务增加自主性）</li>
   <li><a href="https://www.langchain.com/state-of-agent-engineering">LangChain: State of Agent Engineering</a></li>
 </ul>
 

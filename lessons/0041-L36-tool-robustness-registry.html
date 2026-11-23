@@ -163,7 +163,7 @@ def dispatch(name: str, args: dict | str, *, allowed: frozenset[str]) -&gt; dict
     if name not in allowed:
         return tool_error("forbidden_tool", "本轮无权执行该工具，不要重试此动作")
     entry = REGISTRY[name]
-    # 兼容 L35 已解析的 dict，也接受协议中的原始 JSON 字符串。
+    # 接受 L35 传入的原始 JSON 字符串，也可用于已解析的 dict。
     try:
         raw = json.loads(args) if isinstance(args, str) else args
     except json.JSONDecodeError:
@@ -194,11 +194,10 @@ def tool_message(call_id, result):
 # 这两个值由应用在发请求前决定，并在本轮处理期间保持不变。
 allowed_tools = frozenset({"web_search"})
 advertised_tools = tools_param(["web_search"])
-# L35 循环收到完整 call 后，使用同一份 allowed_tools：
-# result = dispatch(call.function.name, call.function.arguments,
-#                   allowed=allowed_tools)
-# messages.append(tool_message(call.id, result))</code></pre>
-    <p><code>dispatch(name, args, allowed=...)</code> 兼容 L35 已解析的参数字典，也接受完整 JSON 字符串；无论走哪个入口，都不绕过授权或参数模型校验。注册表同时保存 Schema 和运行时参数模型，校验不再是“这里可以接”的注释。回填保留 <code>tool_call_id</code>，让错误与原请求一一对应；同轮有多个工具调用时，仍需为每个调用返回结果。是否继续尝试由 L35 的有界循环决定，不能无限“自愈”。</p>
+# L35 的 Responses 循环把原始 JSON 串传给相同的分发逻辑：
+# result = dispatch(call.name, call.arguments, allowed=allowed_tools)
+# 回填由 L35 用 function_call_output + call.call_id 完成。</code></pre>
+    <p><code>dispatch(name, args, allowed=...)</code> 接受 L35 传入的原始 JSON 字符串，也支持字典；两种入口都不绕过授权或运行时校验。上面的 <code>tool_message()</code> 演示兼容接口的 <code>tool_call_id</code>；Responses 用 <code>call_id</code>，不能套用 Chat 回填形状。每次调用都要有对应结果；是否继续由 L35 的有界循环决定。</p>
   </div>
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question"><span class="quiz-q">Q</span> 只向模型展示 web_search，能否因此认定其他注册工具已被禁止？</div>

@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>发布范围与更新边界（2026-11-06）：</strong>现有正式课程为 Phase 1–3 的 L01–L38；Phase 4–11 仅为规划，以下新增主题是后续编写与验收目标，不代表正文或生产能力已经实现。阶段课数/周数是估算，不承诺固定完成时间；参考页不计为新课。HTML 中的报告入口指向仓库源文档，随本批更新合并后可访问；本地见 <code>docs/research/2026-11-06-curriculum-audit.md</code>。更新依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>发布范围：</strong>现有正式课程为 Phase 1–3 的 L01–L38；Phase 4–11 已有逐课草案与验收目标，Phase 4 另提供离线起始项目。它们不计入正式课数或学习进度，不代表已经发布课文或具备生产能力。阶段课数/周数是估算，草案不锁定正式课号。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -134,7 +134,7 @@
       <strong>Module 2.1 · LLM 本质与核心概念：</strong><br>
       · <strong>LLM 是什么</strong> — 语言模型本质（概率预测）、Transformer 直觉（不写代码）、注意力机制的作用<br>
       · <strong>Token 深度理解</strong> — Tokenization 原理、BPE 算法、中文 vs 英文 Token 差异、tiktoken 计数、Token 与成本关系<br>
-      · <strong>生成参数解密</strong> — Temperature / Top-P 的解码原理与厂商字段边界；部分新 Claude 模型会拒绝这些 sampling 控制的非默认值<br><br>
+      · <strong>生成参数解密</strong> — Temperature / Top-P 的解码原理与厂商字段边界；Claude Messages 自 2026-10-21 API 版本起不接受 temperature / top_p / top_k<br><br>
       <strong>Module 2.2 · 模型能力、局限与选型：</strong><br>
       · <strong>幻觉问题全解</strong> — 预训练统计错误、评估鼓励猜测与其他工程成因；Self-Consistency/RAG/引用核验的能力边界<br>
       · <strong>模型能力边界</strong> — 能做什么 vs 不能做什么、Base Model vs Instruction-Tuned Model<br>
@@ -170,17 +170,17 @@
     <div class="card">
       <strong>Module 3.1 · API 基础：</strong>OpenAI 以 <strong>Responses</strong> 为主线，保留 Chat Completions 兼容基础；Anthropic 使用原生 SDK 与显式 adapter；Google 原生接入保留为后续选做，当前不声称已实现。对照工具调用关联、流式事件、状态与 usage，不把更换 base_url 当作能力等价。在线集成与离线 fixture 证据分别记录。<br><br>
       <strong>Module 3.2 · 核心能力（Agent 必备）：</strong><br>
-      · <strong>Function Calling</strong> — 工具定义、模型调用工具流程、多工具选择<br>
+      · <strong>Function Calling</strong> — 以 Responses 为主练习自定义工具的授权、参数校验和按 <code>call_id</code> 回填，Chat Completions 保留为兼容对照<br>
       · <strong>Structured Output</strong> — Structured Outputs 的 Schema 约束不同于旧 JSON mode；按支持的模型/接口验证拒答、截断和解析失败，Schema 合规不等于事实、授权或业务正确<br>
-      · <strong>多模态 API</strong> — 图片理解（Vision）、音频转录（Whisper）<br><br>
+      · <strong>多模态 API</strong> — Responses 图片与 PDF 输入、音频文件转录；实时语音选读，直接读文件不等于 RAG<br><br>
       <strong>Module 3.3 · 工程实践与边界：</strong><br>
       · <strong>Context Window 管理</strong> — 按完整工具交互组重组上下文，计入工具定义、多模态与输出预留；压缩后重新计数，仍超限则降级或退出<br>
       · <strong>错误处理与重试策略</strong> — 速率限制（429）、指数退避 + <strong>抖动（full jitter，防重试风暴）</strong>、重试预算、<strong>幂等键与业务去重（需执行端支持并验证，不能靠加请求头获得保证）</strong><br>
       · <strong>模型路由与 Fallback</strong> — 主备模型策略、AI Gateway 模式（LiteLLM）<br>
-      · <strong>LLM 可观测性基础</strong> — 调用日志、Token 用量追踪、成本告警；<strong>OpenTelemetry GenAI 语义约定（<code>gen_ai.*</code> span，厂商无关标准）+ Langfuse</strong><br><br>
+      · <strong>LLM 可观测性基础</strong> — 区分调用日志、span、用量指标与应用成本账本；OpenTelemetry GenAI 独立版 v0.1.0 仍为 Development，记录埋点版本并单独核对后端映射<br><br>
       <strong>Module 3.4 · 工具工程与 Function Calling（v7 新增 · P0 实战必修）：</strong><br>
       · <strong>Tool Schema 设计</strong> — 用 Pydantic / JSON Schema 定义工具、strict mode、参数描述如何影响模型选择<br>
-      · <strong>完整 Function Calling 循环</strong> — 模型请求工具 → 执行 → 回填结果 → 再推理，多轮 / 并行调用<br>
+      · <strong>完整 Function Calling 循环</strong> — Responses 有界循环；先验终态和预算，再分发工具，按调用 ID 回填全部结果；区分一轮多调用、多轮依赖和并发执行<br>
       · <strong>健壮性</strong> — 参数校验失败如何反馈给模型重试、流式响应中增量解析工具调用、工具定义占多少 Token<br>
       · <strong>工具注册系统</strong> — 用装饰器做 Tool Registry（衔接 Phase 1）；展示子集不等于执行授权，dispatch 前单独检查允许集合并做运行时参数校验<br>
       · <strong>小型 Agent eval（前移至最小工具循环的验收目标）：</strong>区分 task / trial / trace / outcome；用小型任务集重复试验，优先检查环境最终状态，保留轨迹诊断，不把固定工具顺序当唯一正确答案<br><br>
@@ -210,10 +210,11 @@
   <div class="phase-body" id="phase-4-body">
     <div class="card">
       <span class="tag tag-agent">规划 · 验收目标</span><br>
-      <strong>Prompt Engineering：</strong>System Prompt、Few-shot、输出契约、模板复用、版本管理与 A/B 测试。理解 CoT 概念，但不要求所有模型“逐步思考”；推理模型优先明确目标/约束，提示策略以任务评测为准。<br><br>
+      <strong>Prompt Engineering：</strong>System Prompt、Few-shot、输出契约、模板复用、版本管理与 A/B 测试。模板和测试用例放在仓库并随代码版本化，不依赖计划于 2026-11-30 停用的 OpenAI 托管 Prompt 对象；这与 Prompt Caching 无关。理解 CoT 概念，但不要求所有模型“逐步思考”；推理模型优先明确目标/约束，提示策略以任务评测为准。<a href="https://developers.openai.com/api/docs/deprecations">官方弃用清单</a><br><br>
       <strong>Context Engineering 基础：</strong>管理推理时的全部输入，包括提示、历史、工具和检索证据；理解长上下文的注意力预算与召回退化风险，按任务选择信息，不把“越多越好”当原则。<br><br>
       <strong>Skills 小单元：</strong><a href="../reference/0004-agent-skills.html">SKILL.md、元数据匹配与渐进披露</a>；流程知识与工具/MCP 操作接口分离，匹配不等于授权，不增加正式课号。Phase 6 再接入实际工具。<br><br>
-      <strong>验收目标：</strong>为贯穿项目建立可版本化的提示/上下文管线和一个可复用业务 Skill，验证应触发与不应触发的输入，记录质量和上下文开销。
+      <strong>验收目标：</strong>从 L38 迁移到「证据问答＋工单草稿」。为同一项目建立可版本化的提示、证据选择和一个可复用业务 Skill，记录触发条件、质量和上下文开销。<br><br>
+      <a href="0045-phase4-prompt-context-outline.html">查看 Phase 4 的 6 节草案与离线起始项目 →</a>
     </div>
   </div>
 </div>
@@ -241,7 +242,8 @@
       <strong>工具设计：</strong>Schema、运行时校验、执行权限、错误反馈与测试；先用小工具集建立选择质量/延迟/上下文基线，工具搜索与程序化聚合留作有瓶颈时的进阶。<br><br>
       <strong>记忆生命周期：</strong>区分短期、工作与长期记忆；每次写入保留依据、来源和时间，支持用户纠正、过期、删除与租户隔离，评测检索质量，不把推测写成永久事实。<br><br>
       <strong>持久执行与审批（前移）：</strong>数据库检查点 → 暂停审批 → 退出进程 → 重启并恢复同一任务；说明节点可能重放，外部副作用须幂等，检查点不等于 exactly-once。<br><br>
-      <strong>验收目标：</strong>在贯穿项目中手写最小单 Agent Harness，比较函数/workflow 基线；用离线任务验证预算退出、记忆纠正隔离、审批重启及重复执行不重复产生业务副作用。
+      <strong>验收目标：</strong>手写最小单 Agent Harness，与函数/workflow 基线对照。验证预算退出、记忆纠正与隔离、待审批状态写入后退出进程并恢复；注入「外部操作已提交、响应丢失」，重复恢复不能创建第二张工单。<br><br>
+      <a href="0046-phase5-to-11-planned-outlines.html#phase-5">查看 Phase 5 逐课草案 →</a>
     </div>
   </div>
 </div>
@@ -264,9 +266,10 @@
     <div class="card">
       <span class="tag tag-agent">规划 · 验收目标</span><br>
       <strong>一个框架贯穿深学：</strong>为持久图编排目标，主线采用 LangGraph，先学最小状态与工具循环，Phase 10 再深化；Pydantic AI / OpenAI Agents SDK 仅对照类型、事件与授权接缝，不要求再做完整项目。框架选择按任务与证据，不做通用排名。<br><br>
-      <strong>MCP 基础：</strong>Host / Client / Server、Tool / Resource / Prompt 与 stdio / Streamable HTTP。固定规范基线 <strong>2026-07-28</strong>，另锁定实际验证过的 SDK 版本；新版没有 initialize 握手、协议 session 或 GET 通知流，仍支持 SSE 响应。详见<a href="../reference/0003-mcp-a2a-protocols.html">版本化协议与迁移检查表</a>。<br><br>
+      <strong>MCP 基础：</strong>Host / Client / Server、Tool / Resource / Prompt 与 stdio / Streamable HTTP。保留规范基线 <strong>2026-07-28</strong>；<a href="https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.0.0">官方 Python SDK v2.0.0</a> 已声明支持该规范，备课时再固定实测的客户端/服务端版本。新版没有 initialize 握手、协议 session 或 GET 通知流，仍支持 SSE 响应。详见<a href="../reference/0003-mcp-a2a-protocols.html">版本化协议与迁移检查表</a>。<br><br>
       <strong>授权与 Skills 接入：</strong>HTTP 授权是可选能力，采用时按该规范实现发现、PKCE、resource/audience、issuer 与最小 scope；stdio 从环境获取凭证。工具可发现不代表允许执行，Skill 匹配也不授权。<br><br>
-      <strong>验收目标：</strong>将 Phase 5 同一个项目迁入主线框架，复验数据库检查点、审批后进程重启、幂等；MCP 覆盖发现、调用、版本不兼容、JSON/SSE 响应和权限拒绝。Tasks 是官方可选扩展，不是核心必修或恢复机制的替代。
+      <strong>验收目标：</strong>将 Phase 5 同一个项目迁入主线框架，沿用同一套检查点、审批重启与幂等回归。MCP 先用 stdio 跑通，再验证 HTTP 的版本不兼容、JSON/SSE 响应和权限拒绝。Tasks 是官方可选扩展，不替代恢复。<br><br>
+      <a href="0046-phase5-to-11-planned-outlines.html#phase-6">查看 Phase 6 逐课草案 →</a>
     </div>
   </div>
 </div>
@@ -292,7 +295,8 @@
       <strong>企业 RAG 先做可靠性：</strong>文档/片段携带权限、来源定位与版本；检索阶段执行用户/租户访问控制，引用能回到具体证据；更新和删除须传播至索引、缓存与相关派生数据。检索内容是不可信输入，不得覆盖系统规则或直接授权工具。<br><br>
       <strong>分层评测：</strong>检索层测权限过滤、召回和证据覆盖；生成层测引用定位、忠实度、答案正确性与无证据时的拒答。确定性检查优先，RAGAS / Judge 仅作经校准的补充。<br><br>
       <strong>需求驱动选修：</strong>混合检索与 Reranking 建立基线后，再按失败案例选择 HyDE、Agentic RAG 或 GraphRAG，不把更复杂的检索视为默认升级。<br><br>
-      <strong>验收目标：</strong>给贯穿项目加入证据问答；两名权限不同的用户问同一问题时不得检索越权文档，能追溯证据，修订/删除后不再返回旧内容，分别报告检索与生成错误。
+      <strong>验收目标：</strong>先用简单检索建立权限与引用基线，再比较混合检索和重排。两名权限不同的用户问同一问题时，越权资料不得进入上下文；缓存已热后撤权、修订或删除也不能返回旧内容。分别报告检索与生成问题。<br><br>
+      <a href="0046-phase5-to-11-planned-outlines.html#phase-7">查看 Phase 7 逐课草案 →</a>
     </div>
   </div>
 </div>
@@ -314,8 +318,8 @@
   <div class="phase-body" id="phase-8-body">
     <div class="card">
       <span class="tag tag-deploy">规划 · 验收目标</span><br>
-      <strong>可观测性（Observability）：</strong>选一种追踪工具接入，保留结构化日志、脱敏与告警；按固定版本验证 OpenTelemetry GenAI 语义约定，不把遥测平台数量当学习目标。<br><br>
-      <strong>评估体系（深化 Phase 3 小型 eval）：</strong>区分任务、重复试验、轨迹和最终结果；优先确定性检查环境最终状态，再用与人工标注校准的 Judge 补充。隔离开发/验收集，比较成功率、成功任务成本、延迟与过度代理；工具选择一种实作，公开基准只作外部对照，不替代业务任务集。<br><br>
+      <strong>可观测性（Observability）：</strong>选一种追踪后端，默认仅采必要元数据；固定 OpenTelemetry GenAI 约定与埋点库版本，验证后端字段、单位、告警和脱敏，不把使用同一协议当作映射完全一致。<br><br>
+      <strong>评估体系（深化 Phase 3 小型 eval）：</strong>任务集、评分规则及运行入口保存在仓库，可离线运行，并在 CI 中复测；不依赖计划于 2026-11-30 停用的 <a href="https://developers.openai.com/api/docs/deprecations">OpenAI Evals 平台</a>。优先确定性检查环境最终状态，再用与人工标注校准的 Judge 补充。隔离开发/验收集，记录试验次数、成功率、成功任务成本、延迟与过度代理。<br><br>
       <strong>安全基础（Security · v7 加深）：</strong>Prompt Injection（尤其<strong>间接注入</strong>：被污染的检索数据导致误调用工具）、<strong>过度代理（Excessive Agency）</strong>、工具权限模型与 <strong>MCP 权限隔离</strong>、人在环审批、数据隐私、Guardrails 框架<br><br>
       <strong>成本工程（Cost Engineering）：</strong>原生 Prompt Caching、模型路由、Token 预算管理、成本监控<br><br>
       <strong>LLM / Agent 系统设计：</strong>围绕业务约束说明质量、成本、权限、状态与故障取舍，练习 5 类场景题：<br>
@@ -325,7 +329,8 @@
       · 设计<strong>长时运行 Agent</strong>（上下文跨越 / 记忆 / 中断恢复）<br>
       · 设计 <strong>Agent 评估框架</strong>（离线 + 在线指标）<br><br>
       <div class="interview-box">"如何评估 Agent 好坏 / Tool Correctness vs answer relevance" / "什么是间接 Prompt Injection、过度代理" / "MCP 工具权限怎么隔离" / "设计一个 RAG 系统 / LLM 网关 / 多 Agent 客服" / "如何验证降本没有损害质量或隔离" — 共 8+ 道高频题</div><br>
-      <strong>验收目标：</strong>为贯穿项目补齐追踪、安全、成本和分层评测，输出单 Agent / workflow 的设计取舍；只有质量、成本、延迟对照显示收益时，才规划多 Agent 扩展。
+      <strong>验收目标：</strong>为贯穿项目补齐追踪、安全、成本和分层评测；先让权限与结果回归通过 CI 门槛，再以同一任务集比较单 Agent / workflow 的质量、成本和延迟。<br><br>
+      <a href="0046-phase5-to-11-planned-outlines.html#phase-8">查看 Phase 8 逐课草案 →</a>
     </div>
   </div>
 </div>
@@ -351,7 +356,8 @@
       <strong>Computer Use & Browser Agent：</strong>Claude Computer Use、<strong>browser-use</strong>（开源、模型无关，社区活跃）、Playwright MCP、GUI 自动化<br><br>
       <strong>Agentic Coding（2026 爆发）：</strong>真实开源案例剖析 — <strong>OpenHands</strong>（开源编码 Agent）、Claude Code、SWE-agent；Harness + Scaffolding 架构<br><br>
       <strong>Long-running Agents：</strong>深化 Phase 5/6 的持久恢复基线，评测长任务中的取消、重放、预算和故障恢复，而非此时才首次引入检查点。<br><br>
-      <strong>可选验收目标：</strong>只为贯穿项目中已证明的瓶颈选择工具搜索、浏览器自动化或编码 Agent 源码对照之一，说明收益、授权边界与新增维护成本。
+      <strong>选修，不阻塞部署：</strong>只为明确的项目瓶颈选择一项增强，比较收益、授权边界与维护成本。长任务深化取消、恢复和预算，不重复 Phase 5 的检查点基础。<br><br>
+      <a href="0046-phase5-to-11-planned-outlines.html#phase-9">查看 Phase 9 选修草案 →</a>
     </div>
   </div>
 </div>
@@ -377,7 +383,8 @@
       <strong>MCP 深化：</strong>固定规范与 SDK 版本开发 Server，单独实现业务权限、参数白名单与审计；按采纳的 HTTP 授权规范测试缺令牌、错误 audience/issuer、scope 不足。Tasks 属官方可选扩展，先核实客户端/服务端支持再采用。<br><br>
       <strong>多 Agent 决策：</strong>默认保留单 Agent；需要边界清晰的委托时才尝试 Orchestrator-Worker 等模式，比较交接丢失、成功率、总成本与端到端延迟。A2A 仅在远程 Agent 互操作需求下学习，不因本地并行就强行引入协议。<br><br>
       <strong>源码对照（选一）：</strong>从 <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer">OpenClaw</a>、<a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener noreferrer">Hermes Agent</a> 或 <a href="https://github.com/All-Hands-AI/OpenHands" target="_blank" rel="noopener noreferrer">OpenHands</a> 中固定一个源码版本，分析其状态/权限/恢复边界，不以热度证明架构适用性。<br><br>
-      <strong>验收目标：</strong>为贯穿项目产出函数/workflow、单 Agent、多 Agent 的同任务对照；只有收益超过复杂度与交接成本才保留多 Agent，未采用也须能解释证据。
+      <strong>验收目标：</strong>用新版代码恢复旧版检查点，或显式走兼容处理，作为部署前必做项。多 Agent 和 A2A 为选修；若确有委托需求，再用同一任务与单 Agent / workflow 比较。保留单 Agent 是合格结论。<br><br>
+      <a href="0046-phase5-to-11-planned-outlines.html#phase-10">查看 Phase 10 逐课草案 →</a>
     </div>
   </div>
 </div>
@@ -405,7 +412,8 @@
       · 评估驱动开发 — 先定义"好"的标准，再优化 Agent<br>
       · 证据驱动迭代 — 故障转成回归用例；规则记录来源、适用范围与复核条件，经回归验证后可新增、纠正、合并或删除<br>
       · A/B 测试、数据飞轮、生产事故响应<br><br>
-      <strong>验收目标：</strong>将贯穿项目部署到受控测试环境，演练进程/依赖故障、审批恢复、重复执行、权限拒绝与回滚；满足环境门槛后再决定生产上线，记录一轮评估驱动改进。
+      <strong>验收目标：</strong>完成 Phase 8 与检查点兼容性必做练习后即可开始，不必学完选修。用带历史待审批工单的数据部署到测试环境，演练灰度失败、回滚与旧任务继续，确认没有重复业务副作用；满足环境门槛后再决定是否生产上线。<br><br>
+      <a href="0046-phase5-to-11-planned-outlines.html#phase-11">查看 Phase 11 逐课草案 →</a>
     </div>
   </div>
 </div>

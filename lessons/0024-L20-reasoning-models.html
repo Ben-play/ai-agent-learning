@@ -39,8 +39,8 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>区分<strong>推理能力、Adaptive Thinking 与 effort</strong>，不再把它们混成一个“推理模型开关”</li>
-      <li>用当前 Claude API 开启 <code>thinking={"type":"adaptive"}</code>，并在 <code>output_config</code> 中设置 effort</li>
-      <li>知道 <code>budget_tokens</code> 只属于旧模型兼容路径，新模型不能照搬</li>
+      <li>用 Opus 5.5 演示 Adaptive Thinking，在 <code>output_config</code> 中设置 effort，并核对目标模型的默认值和支持范围</li>
+      <li>识别旧版手动思考预算 <code>budget_tokens</code>，知道它不能照搬到 Opus 5.5</li>
       <li>按任务质量、延迟、成本与实测结果决定推理投入，并连回 Model Routing</li>
       <li>解释 thinking 的展示、计费与 <code>max_tokens</code> 边界，以及为什么更高 effort 不保证总是更好</li>
     </ul>
@@ -55,7 +55,7 @@
       <thead><tr><th>概念</th><th>它回答什么问题</th><th>工程含义</th></tr></thead>
       <tbody>
         <tr><td><strong>推理能力</strong></td><td>这个模型是否擅长多步分析、规划和自检？</td><td>是模型能力，需要用你的评测集验证</td></tr>
-        <tr><td><strong>Adaptive Thinking</strong></td><td>本次请求是否允许模型按任务决定要不要深入思考？</td><td>当前 Claude 的 thinking 模式</td></tr>
+        <tr><td><strong>Adaptive Thinking</strong></td><td>模型是否可以按任务决定要不要深入思考？</td><td>Claude 的一种 thinking 模式；默认值和可选模式随模型而定</td></tr>
         <tr><td><strong>effort</strong></td><td>希望模型在质量、延迟和 Token 之间偏向哪一侧？</td><td>请求级控制，放在 <code>output_config</code></td></tr>
       </tbody>
     </table>
@@ -76,19 +76,19 @@ thinking 是否发生：由模型和任务共同决定
       <button data-answer="correct">模型能力、思考模式、投入控制是三层</button>
       <button data-answer="wrong">开启 thinking 后所有请求都会长篇推理</button>
     </div>
-    <div class="quiz-explanation"><strong>推理能力</strong>属于模型能力，<strong>Adaptive Thinking</strong>决定请求是否允许模型按需思考，<strong>effort</strong>调节质量、延迟和 Token 取舍。三者相关但不等同；模型可跳过简单题的 thinking，更高 effort 也必须用实测验证收益。</div>
+    <div class="quiz-explanation"><strong>推理能力</strong>属于模型能力，<strong>Adaptive Thinking</strong>是按需思考的模式（是否始终开启取决于模型），<strong>effort</strong>调节质量、延迟和 Token 取舍。模式开启也不代表每道题都要深入思考；更高 effort 仍要实测收益。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>2. 当前 Claude API：Adaptive Thinking + effort</h2>
   <div class="card">
-    <p>当前 Claude 新代码使用官方 Anthropic SDK，把 <code>thinking</code> 设为 <code>adaptive</code>，再把 effort 放进 <code>output_config</code>。下面示例使用当前 Opus 模型；它会拒绝 L17 sampling 参数的非默认值，因此 portable 请求直接省略 temperature / top-p：</p>
+    <p>下面用官方 Anthropic SDK 调用当前的 <a href="https://platform.claude.com/docs/en/models/opus-5-5/overview" target="_blank">Claude Opus 5.5</a>。它始终使用 Adaptive Thinking；示例显式写出 <code>thinking</code> 是为了请求可读摘要，并用 <code>high</code> 覆盖模型默认的 <code>medium</code>。Claude Messages API <a href="https://platform.claude.com/docs/en/api/migration-2026-10-21#sampling-parameters" target="_blank"><code>2026-10-21</code> 版</a>的请求体必须省略 <code>temperature</code>、<code>top_p</code>、<code>top_k</code>，因为传入任一字段都会返回 HTTP 400，与模型和传值无关（包括默认值）。</p>
     <pre><code>import anthropic
 
 client = anthropic.Anthropic()
 response = client.messages.create(
-    model="claude-opus-4-8",
+    model="claude-opus-5-5",
     max_tokens=16_000,
     thinking={"type": "adaptive", "display": "summarized"},
     output_config={"effort": "high"},
@@ -104,13 +104,14 @@ for block in response.content:
         print("最终回答：", block.text)</code></pre>
     <p><strong>如何区分四个字段：</strong></p>
     <ul>
-      <li><code>thinking={"type":"adaptive"}</code>：允许模型按任务决定是否思考以及思考多少。</li>
-      <li><code>output_config.effort</code>：对整体 Token 投入的<strong>软性行为指导，不是严格预算</strong>。API 档位全集是 <code>low</code> / <code>medium</code> / <code>high</code> / <code>xhigh</code> / <code>max</code>，但支持范围随模型而定：例如 <code>xhigh</code> 只在 Fable 5 / Mythos 5、Opus 4.8 / 4.7 与 Sonnet 5 可用；<code>high</code> 是 API 默认。更高可能提高难题质量，也可能增加延迟、Token 或过度思考。</li>
-      <li><code>display="summarized"</code>：在默认 <code>omitted</code> 的新模型上，必须显式设置它才能收到可读思考摘要；<code>omitted</code> 会省略可读 thinking 文本，并可改善流式响应的首个正文 Token 延迟，但<strong>不会关闭思考，也不会减少已生成 thinking 的计费</strong>。</li>
+      <li><code>thinking={"type":"adaptive"}</code>：使用按需思考模式。是否需要显式设置、能不能关闭，都取决于模型。</li>
+      <li><code>output_config.effort</code>：对整体 Token 投入的<strong>软性行为指导，不是严格预算</strong>。可能的档位有 <code>low</code> / <code>medium</code> / <code>high</code> / <code>xhigh</code> / <code>max</code>。Opus 5.5、Sonnet 5.5 在 adaptive 模式下都支持五档，但省略时分别用 <code>medium</code>、<code>high</code>。<code>xhigh</code> 和 <code>max</code> 各有适用模型，例如 Sonnet 4.6 支持 <code>max</code> 却不支持 <code>xhigh</code>。更高 effort 可能提高难题质量，也可能增加延迟、Token 用量，或导致过度思考。</li>
+      <li><code>thinking.display</code>：Opus 5.5 默认 <code>omitted</code>，要接收可读思考摘要就显式设为 <code>summarized</code>。省略摘要<strong>不会关闭思考，也不会减少已生成 thinking 的计费</strong>。</li>
       <li><code>max_tokens</code>：本次响应的硬输出上限，thinking 和最终文本都要留出空间；撞上它会以 <code>max_tokens</code> 停止。</li>
     </ul>
-    <p><strong>默认值与旧写法边界：</strong>adaptive 的默认行为按模型不同：Fable 5 / Mythos 5 始终开启；Sonnet 5 默认开启；Opus 4.8 / 4.7 与 Opus / Sonnet 4.6 必须显式设置 <code>thinking={"type":"adaptive"}</code> 才会开启。<code>thinking={"type":"enabled","budget_tokens":...}</code> 是手动思考预算：Claude Opus 4.8 / 4.7、Claude Sonnet 5、Claude Fable 5 / Mythos 5 会拒绝它；Opus / Sonnet 4.6 仍接受但已弃用。已退役的 Mythos Preview 曾接受手动模式，但不能用于新请求；迁移时改用 Mythos 5，并以当前官方迁移文档为准。初学者的新代码不要再从固定预算起步，应使用 adaptive thinking + effort。</p>
-    <p>官方资料：<a href="https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking" target="_blank">Anthropic · Adaptive Thinking</a> 与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>。</p>
+    <p><strong>默认开启不等于不能关闭：</strong>Opus 5.5 和 Fable 5.2 始终使用 adaptive，拒绝 <code>disabled</code>；两者默认 effort 分别为 <code>medium</code> 和 <code>high</code>。Sonnet 5.5 默认 adaptive；要跳过回答前的思考，可在 <code>high</code> 或更低档位用 <code>between_tools</code>，而不是 <code>disabled</code>。<a href="https://platform.claude.com/docs/en/models/opus-4-8/overview" target="_blank">旧版（legacy）Opus 4.8</a> 则需要显式设置 <code>adaptive</code> 才会启用。</p>
+    <p><strong>旧写法：</strong><code>thinking={"type":"enabled","budget_tokens":...}</code> 是手动思考预算；Opus 5.5 与旧版 Opus 4.8 都会拒绝，Opus / Sonnet 4.6 仍接受但已弃用。新代码在支持 adaptive 的模型上用 effort 调节推理投入，不要沿用固定预算。</p>
+    <p>官方资料：<a href="https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting#supported-models" target="_blank">Anthropic · 各模型的 Thinking 配置</a>与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>。换模型时先核对默认模式和档位，再用评测决定配置。</p>
   </div>
   <div class="tip">
     一句话记住当前写法：<strong>adaptive 决定“按需想不想”，effort 调节“愿意投入多少”，display 只控制“给不给你看摘要”，max_tokens 才是硬上限。</strong>
@@ -128,7 +129,7 @@ result = run(task, effort=choice)</code></pre><p>同一任务、输入与 <code>
     max_latency_ms=900,
 )</code></pre><p>先过滤质量与延迟门，再按 effort 顺序选择最低档；没有档位过门就明确失败，不静默降质。</p></div>
     </div>
-    <p class="bp-rationale"><strong>为什么更优：</strong>在固定 workload 上记录每档质量、延迟与输出 Token，动作上把“感觉更聪明”换成可比较试验；机制上以质量门优先、再选最低可行 effort；结果提高成本效率、延迟可预测性、路由可审计性，并减少无收益 overthinking。真实成本是要维护代表性 eval、定期重跑，并承担离线 trial 与线上流量分布不一致的风险；effort 本身只是软指导，不是 token 硬上限。若所有档都不过门，应升级模型、改善工具 / prompt 或转人工；若任务价值极高且延迟不敏感，可把质量门提高并允许更高档。官方 API 值为 <code>low</code>/<code>medium</code>/<code>high</code>/<code>xhigh</code>/<code>max</code>，模型支持不同，默认 <code>high</code>；必须先查目标模型（<a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>）。</p>
+    <p class="bp-rationale"><strong>为什么更优：</strong>在固定 workload 上记录每档质量、延迟与输出 Token，动作上把“感觉更聪明”换成可比较试验；机制上以质量门优先、再选最低可行 effort；结果提高成本效率、延迟可预测性、路由可审计性，并减少无收益 overthinking。真实成本是要维护代表性 eval、定期重跑，并承担离线 trial 与线上流量分布不一致的风险；effort 本身只是软指导，不是 token 硬上限。若所有档都不过门，应升级模型、改善工具 / prompt 或转人工；若任务价值极高且延迟不敏感，可把质量门提高并允许更高档。档位的支持范围和默认值都随模型而定；只比较目标模型支持的档位（<a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Anthropic · Effort</a>）。</p>
     <details class="bp-check"><summary><strong>动手自检（纯标准库、离线、静默通过）：</strong></summary><pre><code>ORDER = ["low", "medium", "high", "xhigh", "max"]
 
 
@@ -226,7 +227,7 @@ else:
 <div class="section">
   <h2>4. 成本 / 延迟权衡</h2>
   <div class="card">
-    <p>额外 thinking 会消耗输出 Token 和生成时间。在 Fable 5 / Mythos 5、Sonnet 5、Opus 4.8 / 4.7 等新模型上，<code>display</code> 默认是 <code>omitted</code>；要收到可读摘要必须显式设为 <code>summarized</code>。省略 thinking 文本可改善流式响应的首个正文 Token 延迟，但不会减少已生成 thinking 的计费。你看到摘要、空 thinking 文本或只看到最终回答，都不代表后台没有产生可计费用量；应以响应的 usage 和账单为准。</p>
+    <p>额外 thinking 会消耗输出 Token 和生成时间。以本课的 Opus 5.5 为例，<code>display</code> 默认是 <code>omitted</code>；要收到可读摘要，可设为 <code>summarized</code>。是否返回摘要不影响已生成 thinking 的计费。你看到摘要、空 thinking 文本或只看到最终回答，都不代表后台没有产生可计费用量；应以响应的 usage 和账单为准。</p>
     <pre><code>较低推理投入：输入 ──▶ 回答             ← 通常更快、更省
 较高推理投入：输入 ──▶ thinking ──▶ 回答 ← 可能更准，也可能更慢/更贵
 
@@ -288,7 +289,7 @@ else:
 
   <div class="tip">
     <strong>面试高频：「推理能力与 Adaptive Thinking 怎么用？」</strong><br>
-    回答要分层：模型本身有不同的推理能力；当前 Claude 可用 <code>thinking={"type":"adaptive"}</code> 允许按需思考，用 <code>output_config.effort</code> 调节投入。thinking 会影响 Token 与延迟，display 只控制摘要可见性。简单任务从较低投入开始，困难任务测试强模型 / 较高 effort，最终以业务评测和外部验证决定路由。
+    回答要分层：模型有不同的推理能力；Adaptive Thinking 是一种按需思考的模式，<code>output_config.effort</code> 用来调节投入。默认模式和可用档位要按模型查。thinking 会影响 Token 与延迟，display 只控制摘要可见性。简单任务从较低投入开始，困难任务测试强模型 / 较高 effort，最终以业务评测和外部验证决定路由。
   </div>
 
   <div class="card">
@@ -321,18 +322,18 @@ else:
   <div class="card">
     <pre><code>【三层概念】
   推理能力      = 模型是否擅长多步分析（模型能力，需评测）
-  Adaptive Thinking = 本次请求允许模型按需思考
+  Adaptive Thinking = 让模型按需思考的模式
   effort        = 调节质量 / 延迟 / Token 的投入倾向
 
-【当前 Claude】
-  thinking={"type":"adaptive"}
-  output_config={"effort":"high"}   # 档位按目标模型文档
+【当前示例：Claude Opus 5.5】
+  始终使用 adaptive；显式传 thinking 可配置摘要显示
+  output_config={"effort":"high"}   # 覆盖此模型的默认 medium
+  换模型时，查 thinking 类型、effort 默认值和支持档位
   display="summarized" 只控制摘要可见性，不是计费开关
   max_tokens 是硬输出上限，要给 thinking + 最终文本留空间
 
 【旧写法】enabled + budget_tokens
-  Opus 4.8/4.7、Sonnet 5、Fable 5 会拒绝
-  Opus/Sonnet 4.6 仅弃用兼容；新代码不从这里起步
+  Opus 5.5 和旧版 Opus 4.8 都不支持；Opus / Sonnet 4.6 兼容但已弃用
 
 【路由】
   简单明确 → 从轻量模型 / 低 effort 开始
@@ -483,7 +484,7 @@ print("L20 ACCEPTED")</code></pre></details>
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://developers.openai.com/api/docs/guides/reasoning-best-practices" target="_blank"><strong>OpenAI · Reasoning best practices</strong></a></p>
-    <p>OpenAI 的资料适合建立“按任务复杂度选择推理投入”的直觉；Claude 的实际请求字段必须以 <a href="https://platform.claude.com/docs/en/build-with-claude/extended-thinking" target="_blank">Anthropic · Extended Thinking</a> 与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Effort</a> 为准。阅读时注意：跨厂商概念可以比较，参数名和支持范围不能照搬。</p>
+    <p>OpenAI 的资料适合建立“按任务复杂度选择推理投入”的直觉；Claude 的实际请求字段以 <a href="https://platform.claude.com/docs/en/build-with-claude/thinking" target="_blank">Anthropic · Thinking</a> 与 <a href="https://platform.claude.com/docs/en/build-with-claude/effort" target="_blank">Effort</a> 为准。跨厂商概念可以比较，参数名和支持范围不能照搬。</p>
   </div>
 </div>
 
@@ -512,7 +513,7 @@ print("L20 ACCEPTED")</code></pre></details>
   <div class="card">
     <ul>
       <li>要分清<strong>推理能力、Adaptive Thinking 与 effort</strong>：模型能力、思考模式和投入控制是三层</li>
-      <li>当前 Claude 新代码使用 <code>thinking={"type":"adaptive"}</code> + <code>output_config.effort</code>；固定 <code>budget_tokens</code> 只属旧模型兼容知识</li>
+      <li>Opus 5.5 始终使用 Adaptive Thinking，默认 effort 是 <code>medium</code>；换模型先查思考模式、默认值和支持档位，不照搬旧式 <code>budget_tokens</code></li>
       <li><code>display</code> 只控制思考摘要是否可见，不代表免计费；<code>max_tokens</code> 才是硬输出上限</li>
       <li>简单任务从轻量模型 / 低 effort 开始，困难任务测试强模型 / 较高 effort，并用外部工具核验</li>
       <li>提示词应明确目标、约束和验收证据；Agent 路由最终依据成功率、延迟、Token 与失败成本</li>

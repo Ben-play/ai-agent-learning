@@ -50,7 +50,7 @@
       <span class="lesson-num">L17</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0021-L17-llm-essence-and-parameters.html">LLM 本质与生成参数</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">语言模型本质、注意力与生成直觉；区分 Temperature / Top-P / 重复惩罚的<strong>解码概念</strong>与厂商 API 字段——部分新 Claude 模型会拒绝 sampling 控制的非默认值；理解低温/seed 也不能保证逐字节复现</div>
+        <div class="lesson-desc">语言模型本质、注意力与生成直觉；区分解码概念与厂商字段。Claude Messages 自 2026-10-21 API 版本起不接受 temperature / top_p / top_k；低温或 seed 也不保证逐字节复现</div>
         <div class="exercise">为抽取、创作、代码审查选择控制方式：支持 sampling 的 provider 如何调参，当前 Claude 如何用提示约束、结构化校验与 effort</div>
       </div>
     </div>
@@ -87,7 +87,7 @@
       <span class="lesson-num">L20</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0024-L20-reasoning-models.html">推理能力与 Adaptive Thinking</a> <span class="badge-llm">AI</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">区分模型推理能力、Adaptive Thinking 与 effort；当前 Claude 用 <code>thinking: adaptive</code> + <code>output_config.effort</code>，固定 <code>budget_tokens</code> 仅属旧模型兼容；理解 display、计费、max_tokens 与 overthinking 边界</div>
+        <div class="lesson-desc">区分模型推理能力、Adaptive Thinking 与 effort；用 Opus 5.5 练习，按模型核对 thinking 模式和 effort 默认档位，理解 display、计费、max_tokens 与 overthinking 的边界</div>
         <div class="exercise">给抽取、数学、合同分析和规划任务选择起始模型/effort，并写出质量、延迟、Token 与外部核验指标</div>
       </div>
     </div>

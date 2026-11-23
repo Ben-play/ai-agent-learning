@@ -11,8 +11,9 @@ code/
 │   │   ├── agent-hello/              # L01/L02 使用的锁定 uv 包项目
 │   │   └── my-first-agent/           # 入门练习草稿
 │   └── phase1-practices-capstone/     # Phase 1 非编号离线综合验收
-└── phase2-model-selection/
-    └── phase2-practices-capstone/     # Phase 2 离线模型评测与选型验收
+├── phase2-model-selection/
+│   └── phase2-practices-capstone/     # Phase 2 离线模型评测与选型验收
+└── phase4-prompt-context/             # 证据问答＋工单草稿起始项目
 ```
 
 ## Phase 1 综合项目
@@ -39,9 +40,13 @@ code/
 
 公共入口仅为 `build_offline_lab(...)` 和 `AssessmentLab.assess()`；调用者不需要了解 fixture 解析、计数、证据与排名实现。运行方式见 [`phase2-model-selection/phase2-practices-capstone/README.md`](phase2-model-selection/phase2-practices-capstone/README.md)，对应复盘页位于 [`../best-practices/phase2-model-selection-practices.html`](../best-practices/phase2-model-selection-practices.html)。
 
+## Phase 4 起始项目
+
+[证据问答＋工单草稿](phase4-prompt-context/README.md) 复用 L38 的离线调用边界，练习提示版本、证据来源、预算和拒绝无依据输出。只产出草稿，不执行工单动作；项目不代表 Phase 4 正式课已发布。
+
 ## 使用规范
 
-- 项目使用自己的 `pyproject.toml` 与 `uv.lock`，从项目根运行 `uv run --offline --locked ...`；
+- 使用第三方依赖的项目提供自己的 `pyproject.toml` 与 `uv.lock`，从项目根运行 `uv run --offline --locked ...`；纯标准库起始项目使用自身说明中的 Python 命令；
 - `.venv`、缓存、日志和运行生成文件不进入版本控制；
 - 验收只使用占位敏感值，不要求真实 API Key 或网络；
 - 新阶段开始时再按真实课程结构创建对应代码目录，不预先维护虚构课号。

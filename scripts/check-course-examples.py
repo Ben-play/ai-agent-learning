@@ -17,8 +17,13 @@ ROOT = Path(__file__).resolve().parent.parent
 CASES = (
     ("0030-L25-llm-api-basics.html", ("l25-adapter-check",), "L25 ACCEPTED"),
     ("0031-L26-streaming.html", ("l26-terminal-check",), "L26 ACCEPTED"),
+    ("0032-L27-function-calling.html", ("l27-tool-core", "l27-tool-check"), "L27 ACCEPTED"),
     ("0033-L28-structured-outputs.html", ("l28-contract-check",), "L28 ACCEPTED"),
+    ("0034-L29-multimodal-api.html", ("l29-multimodal-check",), "L29 ACCEPTED"),
     ("0035-L30-context-window-management.html", ("l30-context-core", "l30-context-check"), "L30 ACCEPTED"),
+    ("0036-L31-error-handling-retry.html", ("l31-idempotency-check",), "L31 ACCEPTED"),
+    ("0038-L33-observability.html", ("l33-telemetry-check",), "L33 ACCEPTED"),
+    ("0040-L35-function-calling-loop.html", ("l35-loop-core", "l35-loop-check"), "L35 ACCEPTED"),
     ("0041-L36-tool-robustness-registry.html", ("l36-args-core", "l36-registry-core", "l36-dispatch-core", "l36-registry-check"), "L36 ACCEPTED"),
     ("0042-L37-cost-engineering.html", ("l37-cost-check",), "L37 ACCEPTED"),
     ("0043-L38-phase3-capstone.html", ("l38-core", "l38-check"), "L38 ACCEPTED"),

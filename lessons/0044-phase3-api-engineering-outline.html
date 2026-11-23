@@ -73,11 +73,11 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L27</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L27</span><span class="lesson-num-time">25min</span>
       <div>
         <div class="lesson-title"><a href="0032-L27-function-calling.html">Function Calling 原理</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">关键澄清：<strong>模型自己不执行代码，只输出结构化的"调用意图"</strong>，执行+回填由你的代码做；完整流程（发工具定义 → 模型返回 tool_calls → 执行 → 回填 role:"tool" → 继续）、工具定义结构、<code>tool_calls</code> 里 arguments 是 JSON 字符串需 json.loads、多工具选择</div>
-        <div class="exercise">设计一个"查数据库"工具的定义，说明模型会如何返回调用、你的代码如何解析参数</div>
+        <div class="lesson-desc">以 Responses 自定义函数为主：模型提出调用，应用授权、校验并执行，按 <code>call_id</code> 回填；Chat Completions 只作兼容对照。</div>
+        <div class="exercise">离线验证正常参数得到对应 <code>function_call_output</code>，坏参数和越权得到受控错误。</div>
       </div>
     </div>
     <div class="lesson-item">
@@ -89,11 +89,11 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L29</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L29</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0034-L29-multimodal-api.html">多模态 API</a> <span class="badge-llm">API</span></div>
-        <div class="lesson-desc">Vision 图片理解（image_url / base64 传图，放进 content 数组）、音频转录（Whisper 类）、<strong>隐藏成本：图片按分辨率折算成大量 token</strong>（呼应 L18/L23）、工程注意（大图先压缩、能力矩阵以官网为准）</div>
-        <div class="exercise">写出"传一张本地图片（base64）问它内容"的 messages 结构，并估算图片的 token 开销</div>
+        <div class="lesson-desc">Responses 的 <code>input_image</code> / <code>input_file</code>；直接读 PDF 不等于 RAG。保留文件转录，实时语音为选读；按模型和 detail 核算图像费用。</div>
+        <div class="exercise">区分图片与 PDF 的请求结构，并说明怎样验证该模型的输入用量。</div>
       </div>
     </div>
   </div>
@@ -118,11 +118,11 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L31</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L31</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0036-L31-error-handling-retry.html">错误处理、退避与幂等</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">区分可重试（429/5xx/超时）vs 不可重试（400/401）、指数退避（呼应 L10 tenacity）、<strong>抖动（full jitter，防重试风暴/惊群）</strong>、重试预算、<strong>幂等键（idempotency key，让"扣款"这类有副作用的工具调用重试也只生效一次）</strong></div>
-        <div class="exercise">给"调扣费工具时超时、不知道扣没扣"的场景，说明幂等键如何让重试安全</div>
+        <div class="lesson-desc">区分瞬态错误和安全重试、指数退避、抖动和重试预算。稳定的操作键必须由执行端兑现：本地事务原子提交，外部结果未知时按契约查证。</div>
+        <div class="exercise">用 SQLite 验证提交前失败回滚、提交后响应丢失仍可安全重放、同键不同请求被拒绝。</div>
       </div>
     </div>
     <div class="lesson-item">
@@ -134,11 +134,11 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L33</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L33</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0038-L33-observability.html">LLM 可观测性</a> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">三大支柱（Traces 调用链 span 树 / Metrics token·延迟·成本·错误率 / Logs）、要追踪什么（模型/token/TTFT/成本/工具/错误）、<strong>OpenTelemetry GenAI 语义约定与版本固定</strong>、后端映射验收、默认只采元数据和授权脱敏正文、基于成本 metrics 设告警</div>
-        <div class="exercise">列出"一次 Agent 任务该记录哪些 span 属性"，说明为什么用 OTel 标准字段而非自定义</div>
+        <div class="lesson-desc">区分 trace、metric 和 log；以 OpenTelemetry GenAI 独立版 v0.1.0（Development）核对字段与单位，默认只采元数据。成本从 usage 和费率推导，不把未知记作零。</div>
+        <div class="exercise">给一次模型调用选择遥测字段，核对指标名称、单位和正文采集边界；真实后端另验。</div>
       </div>
     </div>
   </div>
@@ -163,11 +163,11 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L35</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L35</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0040-L35-function-calling-loop.html">完整 Function Calling 循环</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">把单步 FC（L27）跑成 <strong>while 循环——这就是 Agent Loop 的骨架</strong>：模型请求工具 → 执行 → 回填（带 tool_call_id） → 继续，直到无 tool_calls；并行工具调用全部执行各自回填（可 asyncio.gather 提速）、多轮 vs 并行之别、设最大轮数防死循环</div>
-        <div class="exercise">给"查天气再据此推荐穿搭"（需两步）的场景，说明循环会怎么跑几轮</div>
+        <div class="lesson-desc">用 Responses 实现有界循环：先检查终态和预算，逐个执行并按 <code>call_id</code> 回填全部结果。区分一轮多调用、多轮依赖和应用并发执行。</div>
+        <div class="exercise">用固定响应验证多调用配对、原始 Items 保留、拒答或预算耗尽时不再执行。</div>
       </div>
     </div>
     <div class="lesson-item">

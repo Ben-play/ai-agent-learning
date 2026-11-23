@@ -117,13 +117,13 @@ model-b 输入token= 10 单次≈$ 0.000455</code></pre>
 
 client = anthropic.Anthropic()
 count = client.messages.count_tokens(
-    model="claude-opus-4-8",
+    model="claude-opus-5-5",
     messages=[{"role": "user", "content": prompt}],
 )
 print(count.input_tokens)  # 请求前估算；实际调用后再看 response.usage</code></pre>
   </div>
   <div class="tip">
-    ⚠️ 三层边界：①匹配 OpenAI 编码时，<code>tiktoken</code> 可离线计数；②Claude <code>count_tokens</code> 按指定模型和完整请求结构估算，但官方仍允许与实际用量有小幅差异；③最终成本以真实响应的 usage、缓存字段和厂商账单为准。
+    ⚠️ 三层边界：①匹配 OpenAI 编码时，<code>tiktoken</code> 可离线计数；②Claude <code>count_tokens</code> 按指定模型和完整请求结构估算，可能与实际用量略有差异；③最终成本以真实响应的 usage 和账单为准。若启用缓存，按目标模型、平台与 TTL 分别核算写入和读取，不把 <a href="0027-L23-token-economics.html">L23</a> 练习的 0.1× 当成通用读价。
   </div>
 
   <div class="quiz" data-quiz="q1">
@@ -149,7 +149,7 @@ from anthropic import AsyncAnthropic
 
 async def call_claude(client: AsyncAnthropic, prompt: str) -&gt; dict:
     response = await client.messages.create(
-        model="claude-opus-4-8",
+        model="claude-opus-5-5",
         max_tokens=1_024,
         thinking={"type": "adaptive"},
         output_config={"effort": "medium"},
@@ -189,7 +189,7 @@ async def run_matrix(prompts, models, call) -&gt; list[dict]:
     <p>这里的 <code>call</code> 就是 adapter 接口。离线练习传 <code>mock_call</code>；真实 Claude 环境可包装 <code>call_claude</code>。并发器只依赖统一 dict，因此增加 provider 时不需要改评测流程。</p>
   </div>
   <div class="tip">
-    公平对比要固定 prompt、系统指令、工具、最大输出、effort/采样策略和重复次数。以本页锁定的 <code>claude-opus-4-8</code> 示例为准，它会拒绝 <code>temperature</code>、<code>top_p</code> 与 <code>top_k</code> 的非默认值；模型事实会变化，实际运行前应查 Anthropic 当前模型文档/Models API。若某候选不支持另一个候选的参数，记录差异并比较各自推荐配置，不能为了“字段一样”发送无效请求。
+    公平对比要固定 prompt、系统指令、工具、最大输出和重复次数，并记录各候选的 effort / 采样策略。Claude Messages API <a href="https://platform.claude.com/docs/en/api/migration-2026-10-21#sampling-parameters" target="_blank"><code>2026-10-21</code> 版</a>只要收到 <code>temperature</code>、<code>top_p</code>、<code>top_k</code> 中的任一字段，就会返回 HTTP 400，不论模型与传值（包括默认值）。因此 Claude adapter 应省略这三个字段。比较前核对各自的 API 版本与模型能力，不能为了“字段一样”发送无效请求。
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -200,7 +200,7 @@ async def run_matrix(prompts, models, call) -&gt; list[dict]:
       <button data-answer="wrong">把 choices 字段当作所有 API 标准</button>
       <button data-answer="wrong">把所有认证都改成同一种 Bearer key</button>
     </div>
-    <div class="quiz-explanation">Adapter 隔离认证、请求字段、响应内容块和 usage 差异，向评测流程返回统一的中立结构。统一厂商原始 JSON 会让代码在换 provider 时直接出错。</div>
+    <div class="quiz-explanation">Adapter 按各自 API 版本与模型处理认证、请求字段、响应内容块和 usage，在评测流程里统一的是业务结果，不是厂商原始 JSON。</div>
   </div>
 </div>
 
@@ -448,15 +448,16 @@ else:
 <div class="section">
   <h2>🎯 速查卡：Phase 2 一页复习</h2>
   <div class="card">
-    <pre><code>【L17】解码概念 ≠ 通用 API 字段；本页锁定的 Opus 4.8 拒绝 sampling 控制的非默认值
+    <pre><code>【L17】解码概念 ≠ 通用 API 字段；Claude Messages API 2026-10-21 版不传 temperature / top_p / top_k
 【L18】tiktoken 对匹配 OpenAI 编码计数；Claude 用 count_tokens + usage
 【L19】统计错误使幻觉产生，评估可能鼓励猜测；一致不证明正确
-【L20】推理能力 / Adaptive Thinking / effort 是三层；display ≠ 计费开关
+【L20】推理能力 / Adaptive Thinking / effort 是三层；档位按模型核对，display ≠ 计费开关
 【L21】Base/Instruct 是行为与训练倾向；SFT、RLHF、DPO 路线不同
        直接文档输入 ≠ RAG；API 无状态 ≠ 应用不能保存记忆
 【L22】榜单属于模型 + scaffold + 工具 + 预算
        开发集调参、隔离测试集验收；开放权重 ≠ 必须自托管
-【L23】先测成本构成；缓存、路由、压缩、输出控制、Batch 各有边界
+【L23】先测成本构成，再选缓存、路由、压缩、输出控制或 Batch
+       缓存读写用目标模型、平台和 TTL 的费率，不能照搬练习倍数
 
 【本课】
   Step1 各厂商计数方式 + usage 对账
@@ -705,8 +706,8 @@ print("L24 ACCEPTED")</code></pre></details>
   <div class="card">
     <ul>
       <li>选型评的是<strong>模型 + adapter + scaffold + 工具 + 预算</strong>在你的场景中的表现，不是脱离配置找“最强模型”</li>
-      <li><strong>Step 1</strong>：各 provider 用自己的计数方式；Claude 用 <code>messages.count_tokens</code>，调用后以 usage 对账</li>
-      <li><strong>Step 2</strong>：Provider Adapter 隔离厂商认证、请求和响应，async 并发器只依赖统一业务结构</li>
+      <li><strong>Step 1</strong>：各 provider 用自己的计数方式；Claude 用 <code>messages.count_tokens</code>，调用后以 usage 对账，缓存用目标模型和平台的读写费率</li>
+      <li><strong>Step 2</strong>：Provider Adapter 按目标 API 版本和模型构建请求，async 并发器只依赖统一业务结构</li>
       <li><strong>Step 3</strong>：Self-Consistency 只筛稳定性风险；事实错误率必须通过 ground truth、证据或人工 rubric 判断</li>
       <li><strong>Step 4</strong>：记录样本数和重复运行；不同量纲先归一化，硬门槛通过后再加权</li>
       <li>总拥有成本还包括重试、误路由、人工复核和错误影响；toy 表格不能直接用于生产拍板</li>
