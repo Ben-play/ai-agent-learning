@@ -27,6 +27,12 @@ CASES = (
     ("0041-L36-tool-robustness-registry.html", ("l36-args-core", "l36-registry-core", "l36-dispatch-core", "l36-registry-check"), "L36 ACCEPTED"),
     ("0042-L37-cost-engineering.html", ("l37-cost-check",), "L37 ACCEPTED"),
     ("0043-L38-phase3-capstone.html", ("l38-core", "l38-check"), "L38 ACCEPTED"),
+    ("0047-L39-testable-task-contract.html", ("l39-contract-check",), "L39 ACCEPTED"),
+    ("0048-L40-few-shot-counterexamples.html", ("l40-few-shot-check",), "L40 ACCEPTED"),
+    ("0049-L41-prompt-versions-regression.html", ("l41-regression-check",), "L41 ACCEPTED"),
+    ("0050-L42-context-evidence-budget.html", ("l42-context-check",), "L42 ACCEPTED"),
+    ("0051-L43-progressive-skill-disclosure.html", ("l43-skill-check",), "L43 ACCEPTED"),
+    ("0052-L44-project-acceptance-handoff.html", ("l44-handoff-check",), "L44 ACCEPTED"),
 )
 
 

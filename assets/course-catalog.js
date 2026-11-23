@@ -1,6 +1,6 @@
 /**
  * 统一课程目录
- * - 保留总览、大纲与 L01–L38 的线性顺序
+ * - 保留总览、大纲与正式课的线性顺序
  * - 集中计算相邻页、阶段大纲与正式课坐标
  * - 对外只暴露 context(pathname) 和 lessons()
  */
@@ -49,7 +49,14 @@
     { file: '0040-L35-function-calling-loop.html', title: '完整 Function Calling 循环', phase: '第三阶段' },
     { file: '0041-L36-tool-robustness-registry.html', title: '工具健壮性与注册系统', phase: '第三阶段' },
     { file: '0042-L37-cost-engineering.html', title: '成本工程：负载驱动的成本决策', phase: '第三阶段' },
-    { file: '0043-L38-phase3-capstone.html', title: 'Phase 3 综合实战：可验收的 Agent 客户端', phase: '第三阶段' }
+    { file: '0043-L38-phase3-capstone.html', title: 'Phase 3 综合实战：可验收的 Agent 客户端', phase: '第三阶段' },
+    { file: '0045-phase4-prompt-context-outline.html', title: '第四阶段大纲', phase: '', outlineFor: '第四阶段' },
+    { file: '0047-L39-testable-task-contract.html', title: '把请求写成可判定任务', phase: '第四阶段' },
+    { file: '0048-L40-few-shot-counterexamples.html', title: 'Zero-shot、Few-shot 与反例', phase: '第四阶段' },
+    { file: '0049-L41-prompt-versions-regression.html', title: 'Prompt 版本与回归', phase: '第四阶段' },
+    { file: '0050-L42-context-evidence-budget.html', title: '证据选择、来源与上下文预算', phase: '第四阶段' },
+    { file: '0051-L43-progressive-skill-disclosure.html', title: 'Skills 按需加载与权限边界', phase: '第四阶段' },
+    { file: '0052-L44-project-acceptance-handoff.html', title: '项目验收与交接', phase: '第四阶段' }
   ];
 
   var PHASE_NUMBERS = {

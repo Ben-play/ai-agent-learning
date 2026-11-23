@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L44 · 项目验收与交接</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>项目验收与交接</h1><p class="subtitle">交付一份别人可以复跑的证据问答和草稿报告</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>下一阶段要把同一个项目扩展成有边界、可恢复的 Agent。若只交一段 Prompt 和成功截图，任何重构都无法确认行为没变。本课的目标是交付<strong>同一批输入、判定方法、实测结果和未证明项</strong>。</p><h3>学习目标</h3><p>能跑通并解释阶段回归，记录版本、引用、预算和禁止副作用，指出哪些断言应继续复用到 Phase 5。</p></div>
+<div class="section"><h2>1. 定义交接包和失败门槛</h2>
+  <ol><li><strong>复现信息：</strong>仓库版本、提示版本、案例集编号、运行命令。注明使用的是固定响应器。</li><li><strong>必过规则：</strong>正确引用；没有证据不生成答案；没要求不出草稿；草稿不提交；预算不足不调用。发现任一退化先修，不用总分抵消。</li><li><strong>观测：</strong>按案例记录状态、来源 ID、是否有草稿、适配器调用次数和输入字节。记录未测的真实模型、在线用量、权限与持久化。</li></ol>
+  <p>先在仓库根目录运行起始项目原有回归：</p>
+  <pre><code class="language-bash">cd code/phase4-prompt-context
+python -m unittest discover -s tests -v
+python main.py</code></pre>
+  <p>第一条 Python 命令验证项目单元测试；第二条演示两版提示、草稿及缺证据的结果。两版测到的字节数只能用于比较本地请求大小，固定响应器不会反映提示对真实模型质量的影响。</p>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 哪个结果可作为这次离线交接的结论？</div><div class="quiz-options"><button data-answer="wrong">模型质量已经达标</button><button data-answer="correct">固定案例契约通过</button><button data-answer="wrong">线上成本已经下降</button><button data-answer="wrong">持久恢复已经实现</button></div><div class="quiz-explanation">离线检查证明覆盖的控制路径；真实质量、费用和持久恢复需要各自的验证证据。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>2. 动手：运行可交接的验收表</h2>
+  <p>先写五个案例的预期：答复、缺证据、起草、预算不足和拒绝提交，再对照答案。回到仓库根目录，将下段保存为 Python 文件并用 <code>python -I 文件名.py</code> 运行（标准库，无密钥）。练习输出一行通过标记；写交接报告时，可先用 <code>print(evidence)</code> 查看这些记录，再补实际的仓库版本和未测项。</p>
+  <details><summary>展开回归脚本与交接记录</summary><pre><code class="language-python" id="l44-handoff-check">import runpy
+from pathlib import Path
+
+ask = runpy.run_path(str(Path("code/phase4-prompt-context/main.py")))["run"]
+question = "导出文件保留多久？"
+cases = [
+    ("answer", question, {}, "answered", ["KB-01", "KB-02"], False, 1),
+    ("missing", "导出文件能否恢复？", {}, "needs_evidence", [], False, 0),
+    ("draft", question, {"intent": "draft"}, "drafted", ["KB-01", "KB-02"], True, 1),
+    ("budget", question, {"input_limit": 1}, "budget_exceeded", [], False, 0),
+    ("forbidden-send", question, {"intent": "send"}, "invalid_request", [], False, 0),
+]
+evidence = {"case_set": "phase4-handoff-1", "prompt_version": "v2", "cases": []}
+for label, text, options, status, ids, has_draft, calls in cases:
+    result = ask(text, version=evidence["prompt_version"], **options)
+    assert result["status"] == status, label
+    assert [row["source_id"] for row in result["citations"]] == ids, label
+    assert (result["draft"] is not None) == has_draft, label
+    assert result["usage"]["adapter_calls"] == calls, label
+    if has_draft:
+        assert result["draft"]["title"].startswith("需人工确认："), label
+        assert result["draft"]["body"] and result["draft"]["source_ids"] == ids, label
+    if not ids:
+        assert result["answer"] is None, label
+        assert result["usage"]["input_bytes"] == 0, label
+    evidence["cases"].append({"id": label, "status": result["status"],
+                              "citations": [row["source_id"] for row in result["citations"]],
+                              "has_draft": result["draft"] is not None,
+                              "adapter_calls": result["usage"]["adapter_calls"],
+                              "input_bytes": result["usage"]["input_bytes"]})
+assert len(evidence["cases"]) == 5
+print("L44 ACCEPTED")</code></pre></details>
+  <p>验证输出应为 <code>L44 ACCEPTED</code>。这里的第五条是禁止提交的反例；项目单元测试另外观察文件、网络和数据库边界。本脚本不能观察所有外部状态，也不能替未来的审批、检查点和恢复测试。</p>
+  <div class="best-practice-point"><h3>交接后保留什么</h3><p>把任务目标、案例集、授权拒绝和草稿契约带到 Phase 5；换架构仍跑同一组案例，再加「暂停审批→进程退出→恢复」与重复执行测试，不把“待确认”的标题当成真正的审批状态。</p></div>
+</div>
+<div class="section"><h2>面试自查</h2><details><summary>怎样证明没有执行错误动作？</summary><p>检查拒绝路径，也应观察动作调用或实际状态；只看最终语言不够。</p></details><details><summary>字节变化等于账单变化吗？</summary><p>不等于；真正账单取决于目标服务的计量和价格，本地报告只有字节。</p></details><details><summary>迁移架构应该重写验收用例吗？</summary><p>复用业务契约用例，另加架构引入的新风险；不要为了通过测试改掉原成功标准。</p></details><details><summary>为什么报告要写未覆盖项？</summary><p>它说明证据只支持哪些决策，防止把固定样例当作上线证明。</p></details></div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase4-qa.html#L44">L44 疑难解答 →</a><div class="qa-related">延伸：<a href="0045-phase4-prompt-context-outline.html#starter">起始项目入口</a> · <a href="0046-phase5-to-11-planned-outlines.html#phase-5">Phase 5 草案</a>。遇到自检失败时，提供用例 ID 和出错断言，不贴密钥或真实用户数据。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>保留版本 → 执行用例 → 记录通过与禁止路径 → 写清未测项。隔日闭卷重建「缺证据：无答案、无草稿、零调用」断言。</p><p><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Anthropic · Demystifying evals for AI agents</a>（推荐看固定评分、环境最终状态与逐步扩展用例）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

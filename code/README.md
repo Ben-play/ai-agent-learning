@@ -42,7 +42,7 @@ code/
 
 ## Phase 4 起始项目
 
-[证据问答＋工单草稿](phase4-prompt-context/README.md) 复用 L38 的离线调用边界，练习提示版本、证据来源、预算和拒绝无依据输出。只产出草稿，不执行工单动作；项目不代表 Phase 4 正式课已发布。
+[证据问答＋工单草稿](phase4-prompt-context/README.md) 复用 L38 的离线调用边界，练习提示版本、证据来源、预算和拒绝无依据输出。只产出草稿，不执行工单动作。项目配合 [Phase 4 的 L39–L44](../lessons/0045-phase4-prompt-context-outline.html#lesson-plan) 学习，不另计课号。
 
 ## 使用规范
 

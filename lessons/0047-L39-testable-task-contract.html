@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L39 · 把请求写成可判定任务</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>把请求写成可判定任务</h1>
+  <p class="subtitle">先定答复、缺证据与草稿的通过条件，再写 Prompt</p>
+</div></div>
+<div class="section">
+  <h2>为什么这课重要？</h2>
+  <p>「做一个客服 Agent」不是可验收的任务。收到「导出文件保留多久？」时，助手即使说得很流畅，也可能答错，或在用户没要求时起草一张工单。<a href="0043-L38-phase3-capstone.html">L38</a> 验的是调用链，本课验的是<strong>对用户交付了什么</strong>。</p>
+  <h3>学习目标</h3>
+  <p>能写出一份含输入、预期结果和禁止副作用的任务契约；能用三个固定案例判断是否通过。</p>
+</div>
+<div class="section">
+  <h2>1. 用合同替代「结果差不多」</h2>
+  <p><strong>任务</strong>说明给定输入、预期结果和通过条件；<strong>一次试验</strong>是执行它一次。<strong>输出</strong>是对话可见的答复或草稿，<strong>副作用</strong>是创建、更新或发送真实工单等外部状态变化。输出里写「已提交」不等于真的提交，本项目两者都不允许。</p>
+  <table><thead><tr><th scope="col">输入与示例证据</th><th scope="col">通过条件</th></tr></thead><tbody>
+    <tr><td>问保留期，给出 KB-01「导出文件生成后保留 7 天。」</td><td><code>answered</code>；引用支持 7 天；无草稿。</td></tr>
+    <tr><td>问过期后能否恢复；只有保留期证据，没有恢复证据</td><td><code>needs_evidence</code>；不猜能否恢复，不返回答案或草稿。</td></tr>
+    <tr><td>明确要求起草保留期确认工单，给出 KB-01</td><td><code>drafted</code>；有待人工确认的正文和引用；没有真实工单状态变化。</td></tr>
+  </tbody></table>
+  <p>先决定哪些能精确检查（状态、引用来源、是否有草稿），再决定哪些需要人看（文案是否清楚）。「有证据」指证据支持<strong>当前问题</strong>，不是收到任意文档；「缺证据」是可接受的业务结果，不是 API 失败。</p>
+  <div class="best-practice-point"><h3>最佳实践：先写一条应拒绝的用例</h3><p>把「没证据也给个大概」替换成可检查条件：状态为 <code>needs_evidence</code>，答案与草稿为空。这样参数或模板改动造成过度承诺时会被发现，而不是靠文案判断。</p></div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 证据只讲保留多久，用户问过期后能否恢复。该返回什么？</div><div class="quiz-options"><button data-answer="wrong">直接判断无法恢复</button><button data-answer="wrong">推测可以自动恢复</button><button data-answer="correct">说明缺少恢复证据</button><button data-answer="wrong">生成恢复工单草稿</button></div><div class="quiz-explanation">到期与能否恢复是两个问题。没有支持恢复结论的材料就请求补充，不能把不相关事实当作答复依据。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>2. 动手：验收三种返回形状</h2>
+  <p>先不看答案，给上一节表中的三种结果各写一条断言：正常答复有引用但无草稿；缺证据时两者皆无；起草时明确待确认。代码只验<strong>本地返回形状</strong>，不观察真实工单系统；第 6 课会用项目测试查起草的实际边界。</p>
+  <details><summary>展开参考实现与离线自检</summary><pre><code class="language-python" id="l39-contract-check">def matches_contract(result, expected):
+    if result["status"] != expected:
+        return False
+    if expected == "needs_evidence":
+        return result["answer"] is None and not result["citations"] and result["draft"] is None
+    if expected == "answered":
+        return bool(result["answer"] and result["citations"]) and result["draft"] is None
+    if expected == "drafted":
+        draft = result["draft"]
+        return bool(draft and draft["title"].startswith("需人工确认：")
+                    and draft["body"] and result["citations"])
+    return False
+
+
+refs = [{"source_id": "KB-01", "quote": "导出文件生成后保留 7 天。"}]
+answer = dict(status="answered", answer="保留 7 天。", citations=refs, draft=None)
+missing = dict(status="needs_evidence", answer=None, citations=[], draft=None)
+draft = dict(status="drafted", answer="保留 7 天。", citations=refs,
+             draft=dict(title="需人工确认：导出保留期", body="请确认保留期。"))
+assert matches_contract(answer, "answered")
+assert matches_contract(missing, "needs_evidence")
+assert matches_contract(draft, "drafted")
+assert not matches_contract(dict(missing, answer="大概能恢复。"), "needs_evidence")
+assert not matches_contract(dict(draft, draft=dict(title="已提交", body="已登记")), "drafted")
+print("L39 ACCEPTED")</code></pre></details>
+  <p>保存为 Python 文件后运行 <code>python -I 文件名.py</code>。唯一通过标记是 <code>L39 ACCEPTED</code>。反例通过即表示规则写得太宽；状态正确仍须另验事实与副作用。这里的字段是练习示意，不是起始项目的完整接口。</p>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 如果正式系统要求确认工单确实没有提交，哪项证据合适？</div><div class="quiz-options"><button data-answer="wrong">只读草稿标题内容</button><button data-answer="wrong">要求模型重述承诺</button><button data-answer="wrong">只看接口返回成功</button><button data-answer="correct">检查实际工单状态</button></div><div class="quiz-explanation">真实副作用应以可相信的外部状态或执行记录为证，不以模型话术或 HTTP 成功代替。</div></div>
+</div>
+<div class="section">
+  <h2>面试自查</h2>
+  <details><summary>任务契约和 JSON Schema 是一回事吗？</summary><p>不是。Schema 可验结构；契约还包含引用是否支持结论、该不该起草和能否产生副作用。</p></details>
+  <details><summary>缺证据算失败吗？</summary><p>对应该拒答的用例，正确请求补充就是通过。对本应有证据的用例，它可能暴露检索或装配故障。</p></details>
+  <details><summary>为什么要有禁止路径？</summary><p>只测试正常起草会漏掉误起草、误宣称提交等问题。</p></details>
+  <details><summary>必须逐字比对回答吗？</summary><p>不一定。精确检查可判定的字段；允许同义表述时按事实条件或人工规则验收。</p></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card">
+  <a class="lesson-qa-link" href="../qa/phase4-qa.html#L39">L39 疑难解答 →</a>
+  <div class="qa-related">延伸：<a href="0045-phase4-prompt-context-outline.html">阶段大纲</a> · <a href="0048-L40-few-shot-counterexamples.html">L40 Few-shot 与反例</a>。有疑问时，贴出一个脱敏用例和你写的通过条件。</div>
+</div></div>
+<div class="section"><h2>小结与一手参考</h2><p>输入和证据 → 预期状态 → 输出检查 → 外部状态检查。隔日闭卷写一个「有材料但不能支持结论」的案例。</p><p><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Anthropic · Demystifying evals for AI agents</a>（推荐精读任务、试验和结果状态的区别）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>
