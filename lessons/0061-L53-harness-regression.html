@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L53 · 用回归用例改进 Harness</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构与持久执行</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>用回归用例改进 Harness</h1><p class="subtitle">先重现失败，再修一个规则；验结果，不锁死合法路径</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>工单方案没保存，系统却把一次中间结果当成成功。只改提示词让话术更谨慎，无法保证下次依赖失败会走正确终态。把失败变成可重复的任务，才知道修复是否有效。</p><h3>学习目标</h3><p>能把一条故障写成输入、预期业务状态和禁止动作，并用同一组案例对比修复前后。</p></div>
+<div class="section">
+  <h2>1. 把一条故障写成任务、试验、轨迹和结果</h2>
+  <p>故障报告写着「已经批准，页面说保存成功，重新打开却找不到草稿」。先把它缩到一个输入：空草稿区里保存 <code>draft-01</code>，审批已通过，保存依赖在落库前失败。如果规则把「尝试过」当成「成功」，就会返回 <code>saved</code>，但草稿区仍是空的。这个差异比「页面不对」更容易复现。</p>
+  <ul>
+    <li><strong>任务（task）：</strong>给定上述初始状态和故障，要求报告依赖失败且不留下草稿。预期由业务规则决定，不从实现的当前输出抄来。</li>
+    <li><strong>试验（trial）：</strong>从空记录运行一次固定输入。旧版跑一次、新版再从空记录跑一次，是同一任务的两次试验，不共用上次的草稿或事件。</li>
+    <li><strong>轨迹（trace）：</strong>过程中发生了什么：审批通过后进入保存入口，记下 <code>save_attempt</code>，替身随后报告失败。入口有记录，不代表写入已提交。</li>
+    <li><strong>结果（outcome）：</strong>去草稿区查这次留下什么。旧版和修复版在这个故障下都留下零条，区别在返回状态；因此仅查存储也抓不到旧版误报成功的问题。</li>
+  </ul>
+</div>
+<div class="section">
+  <h2>2. 同一份预期先让旧版失败，再让新版通过</h2>
+  <p>故障替身只控制「保存依赖是否成功」，不替执行器决定要回什么状态。让旧版和新版用同一份独立预期：旧版应因误报保存而判红，新版应因正确报告失败且未落库而判绿。若旧版也绿，先确认确实尝试了保存并触发了故障，再检查断言是否漏比较状态，或把预期写成了和实现一样的分支。</p>
+  <table><thead><tr><th scope="col">固定试验条件</th><th scope="col">应从系统观察到什么</th></tr></thead><tbody>
+    <tr><td>已批准，保存依赖失败</td><td>返回 <code>dependency_failed</code>，草稿区为空；旧规则的 <code>saved</code> 不得通过。</td></tr>
+    <tr><td>已批准，依赖可用</td><td>返回 <code>saved</code>，恰有一条 <code>draft-01</code>；这条能抓住「全部拒绝」或「从来不写」的假修复。</td></tr>
+    <tr><td>未批准，依赖可用</td><td>返回 <code>denied</code>，草稿区为空，且未进保存入口；沿用可用的依赖，只改批准条件，就能单独检查审批闸门。</td></tr>
+  </tbody></table>
+</div>
+<div class="section">
+  <h2>3. 状态对了仍可能失败：到正确的观察点找原因</h2>
+  <p>如果返回 <code>dependency_failed</code> 却留下一条草稿，说明改对了状态映射，但要查是否在确认依赖成功前写入，或失败时没回滚。若返回 <code>saved</code> 且有一条记录，还要核对记录是原来的 <code>draft-01</code>，不能拿任意一条凑数。反过来，<code>denied</code> 加空草稿区也不能证明闸门有效：保存入口可能已经被调用，只是没提交。直接观察入口是否被触达，才能区别「拦住尝试」与「尝试未生效」。</p>
+  <p>只固定业务要求的轨迹，比如没有批准就不得进入保存入口，预算耗尽后不能再分派；不要断言整条日志列表。将来先读任务还是先查本地策略，只要仍在许可与预算内，就可以不同。否则测试会因合法重排而报红，却未必能抓到真正的越界。</p>
+  <div class="best-practice-point" id="bp-l53">
+    <h3>最佳实践：先证明回归能抓到原故障</h3>
+    <p class="bp-scenario"><strong>适用：</strong>程序在异常路径留下了错误结果，且能用固定输入和本地替身重现。<strong>不适用：</strong>若故障只在真实并发、网络或模型波动中发生，本地替身只能验证已知机制，还要另做集成或重复试验。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 只检查成功复跑</span><p>依赖抛错但仍返回 <code>saved</code>；若测试只查正常用例，旧回归也全绿。</p></div><div class="bp-right"><span class="bp-compare-label">✅ 让同一故障打中旧规则</span><p>依赖仍抛同一个错误。旧规则必须失败；新规则应返回 <code>dependency_failed</code>、不留下草稿，同时保留正常保存与拒绝行为。</p></div></div>
+    <p class="bp-rationale"><strong>为什么：</strong>先排除错误的验收条件或未触发的故障，再判断修改是否有效。维护三条用例比只测成功更费工；若底层依赖已有稳定错误契约，可复用其替身，不必为每次修复复制整套系统。</p>
+    <ol class="bp-steps"><li>从实际报告提取最小输入、预期终态和必要轨迹。</li><li>执行<a href="#l53-regression-check">旧规则与修复版对照</a>，只改出错规则。</li><li>复跑正常与禁止路径；准备拿掉无效规则时用同一批用例复核。</li></ol>
+    <p class="bp-result"><strong>怎么看：</strong>旧版也过，先确认故障确实触发、断言比较了返回状态：旧版和修复版的业务状态都是零条草稿。修复版误拦正常用例，通常是规则条件过宽。若终态对但越过禁止边界，查实际保存入口，不改预期掩盖问题。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 固定样例用于验证「未获审批不得尝试保存」。哪个证据最直接？</div><div class="quiz-options"><button data-answer="wrong">核对模型最终措辞</button><button data-answer="correct">观察保存调用次数</button><button data-answer="wrong">比较平均响应延迟</button><button data-answer="wrong">记录全部提示长度</button></div><div class="quiz-explanation">副作用可能尝试了却没成功。因此仅见数据库没变化还不够，另查保存入口是否被调用。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>4. 动手：保留一个故意错误的旧实现</h2>
+  <div class="card">
+    <p><strong>跟做：找出能抓住误报的断言</strong></p>
+    <p><strong>起点：</strong>两次都从 <code>drafts = []</code>、<code>events = []</code> 开始。要保存 <code>draft-01</code>，已批准（<code>approved=True</code>），但保存依赖失败（<code>dependency_ok=False</code>）。</p>
+    <p><strong>只做一步：</strong>保持这些输入不变，先写一条断言，让旧版（<code>fixed=False</code>）失败、修复版（<code>fixed=True</code>）通过，再展开对照。</p>
+    <p><strong>自检：</strong>两次都只有一次 <code>save_attempt</code> 和零条草稿；你的断言必须能抓住「没写入却报告成功」。</p>
+  </div>
+  <p>预测下面哪条用例会抓到旧规则的问题。每次试验都创建新的内存记录；<code>approved</code> 是<strong>此练习已给定的判定结果</strong>，不是生产授权接口。依赖失败为确定性的本地模拟。</p>
+  <details><summary>展开对照用例与离线自检</summary><pre><code class="language-python" id="l53-regression-check">def trial(approved, dependency_ok, *, fixed):
+    drafts, events = [], []
+    if not approved:
+        return "denied", drafts, events
+    events.append("save_attempt")
+    if not dependency_ok:
+        # 旧规则把“尝试保存”误当成“已保存”。
+        return ("dependency_failed" if fixed else "saved"), drafts, events
+    drafts.append("draft-01")
+    return "saved", drafts, events
+
+
+cases = [
+    (True, False, "dependency_failed", [], False),
+    (True, True, "saved", ["draft-01"], False),
+    (False, True, "denied", [], True),
+]
+
+
+def failures(fixed):
+    failed = []
+    for approved, dep_ok, expected, drafts, forbid_save in cases:
+        status, stored, events = trial(approved, dep_ok, fixed=fixed)
+        if status != expected or stored != drafts:
+            failed.append(expected)
+        elif forbid_save and "save_attempt" in events:
+            failed.append(expected)
+    return failed
+
+
+assert failures(False) == ["dependency_failed"]
+assert failures(True) == []
+print("L53 ACCEPTED")</code></pre></details>
+  <p>将代码保存为 Python 文件，用 <code>python -I 文件名.py</code> 运行。只应输出 <code>L53 ACCEPTED</code>。它证明旧规则被反例击中且修复未破坏两个对照；不证明真实依赖恢复或任何线上表现。</p>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：修复重试预算回归</h2>
+  <p><strong>任务：</strong>把练习从草稿保存换成只读目录。第一次读取返回暂时不可用；额度为一时，应停止且实际只读一次。额度为二允许再尝试一次并成功；首次即可读取时不要多调。先独立写出这三个结果和调用次数，再展开参考。</p>
+  <details class="bp-check"><summary>展开变式参考与自检（标准库、离线）</summary><pre><code class="language-python" id="l53-transfer-check">def exercise(limit, responses, *, obey_budget):
+    calls = []
+
+    def read():
+        response = responses[len(calls)]
+        calls.append(response)
+        return response
+
+    while len(calls) &lt; (limit if obey_budget else 2):
+        if read() == "found":
+            return "complete", len(calls)
+    return "exhausted", len(calls)
+
+
+cases = [
+    (1, ("unavailable", "found"), ("exhausted", 1)),
+    (2, ("unavailable", "found"), ("complete", 2)),
+    (1, ("found", "found"), ("complete", 1)),
+]
+assert [i for i, (limit, replies, expected) in enumerate(cases)
+        if exercise(limit, replies, obey_budget=False) != expected] == [0]
+for limit, replies, expected in cases:
+    assert exercise(limit, replies, obey_budget=True) == expected
+print("L53 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>通过标准：</strong>只打印 <code>L53 TRANSFER PASSED</code>。额度一却读了两次，要检查分派前的预算；额度二也失败，要检查规则是否把所有暂时故障都直接终止。这个故障替身不是重试、超时和取消的完整实现。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>已批草稿遇到落库前故障，旧版返回「已保存」但库是空的，怎么写回归判定？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>从空库用替身固定触发依赖失败，要求返回 <code>dependency_failed</code> 且草稿区为空。<code>save_attempt</code> 是过程轨迹，不是已提交结果；旧版和修复版都可能有一次尝试、零草稿，必须核对返回状态才能抓住误报。</p>
+      <p><strong>追问：</strong>修复版返回失败，却多了原草稿，算通过吗？</p>
+      <p><strong>答题要点：</strong>不算。状态正确不能抵消业务效果错误；应检查是否过早写入或未回滚。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>未获审批时返回 <code>denied</code> 且库为空，能证明拦住了保存尝试吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不能，调用可能已经发生，只是没提交。除返回状态和存储结果，还要在保存入口观测调用次数并断言为零；不必比较完整轨迹，也不必锁定合法的只读步骤顺序。</p>
+      <p><strong>追问：</strong>重构后删了旧日志文本，怎样保留同样的断言？</p>
+      <p><strong>答题要点：</strong>在实际保存入口挂计数器或用替身记录调用，不用日志措辞代替边界证据。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>已批且依赖失败的用例通过了，要留哪两条对照防止假修复？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>每次从空记录起跑。已批且依赖可用应返回 <code>saved</code> 并留下原 <code>draft-01</code>，防止把所有写入关掉；未批但依赖同样可用应返回 <code>denied</code>，保存入口零次、草稿零条，单独验证审批闸门。</p>
+      <p><strong>追问：</strong>为什么不让未批对照的依赖也失败？</p>
+      <p><strong>答题要点：</strong>相对成功对照同时改了两个条件，零草稿可能只是依赖失败。保持依赖可用，只改变审批；再用入口计数验证是闸门拦下的。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>旧规则已被「误报成功」用例打红，怎么确认回归也能抓住「越过审批后未落库」？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>保留独立预期和可用的依赖替身，只在本地练习的修复版里改一处：让未批分支也触达保存入口，但仍返回 <code>denied</code> 且不提交。修复版应全绿，变异版应仅在未批用例的入口次数断言上判红，才说明该断言能抓住这类越界。</p>
+      <p><strong>追问：</strong>如果变异版在初始化就抛错，算证明断言有效吗？</p>
+      <p><strong>答题要点：</strong>不算。先确认试验实际触发目标行为、响应与业务结果仍满足预期，并在预定的入口断言上失败。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L53">L53 疑难解答 →</a><div class="qa-related">延伸：<a href="0060-L52-idempotent-draft-replay.html">L52 幂等重放</a> · <a href="0062-L54-harness-acceptance.html">L54 阶段验收</a>。可带故障用例的预期和实际终态来问。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>复现错误 → 定义最小可观测断言 → 修改一个规则 → 复跑错误和正常路径。隔天为一个审批拒绝路径写出结果和轨迹断言。</p><p><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Anthropic · Demystifying evals for AI agents</a>（精读 task、trial、trace、outcome 与回归的区别）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

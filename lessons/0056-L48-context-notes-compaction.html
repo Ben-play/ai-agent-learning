@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L48 · 上下文压缩与按需披露</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>上下文压缩与按需披露</h1><p class="subtitle">移走完整旧交互，保留下一轮还能核对的事实</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>客服助手刚用 KB-01 和 KB-02 回答导出问题，接着又读到了新结果。下一轮追问保留期时，丢掉整段历史可能找不回来源，塞回全部历史又可能超限。本课补上 <a href="0035-L30-context-window-management.html">L30</a> 之后的 Harness 接缝：历史移出当前窗口后，仍能按需读回原有依据。</p><h3>学习目标</h3><p>能识别可移走的完整工具组，把旧证据保存在独立工作笔记中，验证重组后的实际字节数及超限关闭路径。</p></div>
+<div class="section" id="l48-group-and-notes">
+  <h2>1. 怎样创建一个闭合工具组和可回查的笔记</h2>
+  <p><strong>工具组</strong>保存一次工具交互的结构。宿主先记录调用 ID 和工具名，收到结果后，按结果的 <code>call_id</code> 把它挂回原调用。一个结果可以带多条证据，每条另记 <code>source_id</code> 和原文摘录：调用 ID 说明「这是谁的结果」，来源 ID 说明「这条事实出自哪里」，不能混用。本课的 <code>group()</code> 一次构造配对好的夹具；实际调度时应等结果齐备再标记闭合，不从尚在等待的组抽取资料。</p>
+  <p><strong>工作笔记</strong>不是工具结果的替身，而是本轮请求之外、下轮还能查到的任务资料。本例从核对过的摘录建立 <code>archive</code>：用 KB-01 等来源 ID 作键，以摘录作值。固定夹具用宿主的 <code>KB</code> 核对原文；资料会变化时，还应记录来源版本和复核状态，并按当前任务的读权限和来源目录校验，不能让笔记自己证明可信。规则仍在 <code>instructions</code>，补回的摘录进 <code>notes_data</code>；有来源只代表可追查，不等于获得指令权。</p>
+</div>
+<div class="section" id="l48-context-trace">
+  <h2>2. 跟两组导出资料走一遍：2213 → 298 → 375 字节</h2>
+  <ol>
+    <li>先问「过期后怎么办？」。旧组 <code>c1</code> 含 KB-01、KB-02 与一段重复的合成明细；最新组 <code>c2</code> 只有 KB-02、不带长明细。两组与规则、问题、空笔记一起序列化为 <strong>2213 字节</strong>，超出 600。</li>
+    <li>只在当前请求里整组移走 <code>c1</code>，保留 <code>c2</code>、规则和本轮问题，得到 <strong>298 字节</strong>。这次 <code>notes_data</code> 仍为空。复算通过后，才把旧组中的两条摘录写进 <code>archive</code>；传入的两组历史没有被删改。</li>
+    <li>换问「原来的保留期是多久？」。以留下的 <code>c2</code> 组装新请求，宿主点名 KB-01，核对归档后只回填这条摘录，得到 <strong>375 字节</strong>。这个数字包含新问题和序列化结构，不是把 298 加上一句摘录的长度。这里计的是整个示例 JSON 的 UTF-8 字节，不是模型 Token；脚本仅组包，不回答问题。</li>
+  </ol>
+</div>
+<div class="section" id="l48-context-diagnosis">
+  <h2>3. 先查配对和证据，再处理放不下的问题</h2>
+  <p>一次规划若同时提出多条调用，结果未必按提出的顺序回来。例如一批有 <code>r1</code>、<code>r2</code> 两条调用，先收到 <code>r2</code> 的结果只填 <code>r2</code>，不填列表里的第一个位置；等 <code>r1</code> 的结果也归位后才算闭合。缺结果就等待或按执行失败处理，重复或陌生 ID 不能拿来补空位。本课用的是「一次调用的一份结果可带多条证据」的组，没有实现多调用批次的汇集，也不是任一厂商的消息协议。</p>
+  <p>看到 <code>invalid_history</code> 先查调用与结果是否配对；<code>invalid_evidence</code> 表示组里的摘录与知识库不符；追问指定的 KB-03 找不到则是 <code>needs_evidence</code>。把追问上限改成 374，证据齐也只能返回 <code>budget_exceeded</code>：规则、最新组和必需摘录不能为了凑字节随意删，失败也不应改变笔记。若只需现行政策且获准重新读取，可回来源取证；若要解释历史答复，就要找到当时的版本而不是用新版顶替。迁移练习要求回填整个归档组，和本例只回填独立摘录是两种不同的保留要求。</p>
+  <div class="best-practice-point" id="bp-l48">
+    <h3>最佳实践：按完整工具组压缩，按可核对的来源回填</h3>
+    <p class="bp-scenario"><strong>适用：</strong>两组导出读取都已闭合，旧组含保留期、最新组含过期做法，整段历史超限但后续可能追问。<strong>边界：</strong>未闭合的组不能这样裁剪；规则、最新组和必需证据都放不下时，不生成请求。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：保留旧调用，只删旧结果</span><p>同样用 600 字节上限，先问过期做法、再追问保留期。只删旧结果也许能变短，却留下找不到对应结果的调用；若又只记「7 天」，追问时无法确认出处。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：整组移出，保留来源供回查</span><p>保持上限、问法与资料不变。旧组整组离开窗口，最新组与规则仍在；追问时仅把已核对的 KB-01 摘录放回资料区。首轮 298 字节，追问 375 字节，两次都过门。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>组边界保护调用与结果的对应关系，来源字段保护证据能被回查；两者不能靠压缩后的短句替代。本例通过固定 KB 核对原文；资料可变时，笔记还要带版本与可信状态，回填前按宿主的来源目录复核，不能靠记下的标签自证。若便宜且有权限读取权威来源，重新取证可少维护一份档案，但拿到的是当前版本，未必能解释历史答复。</p>
+    <ol class="bp-steps">
+      <li>运行 <a href="#l48-context-check">压缩与回填自检</a>，核对保留的组 ID、笔记位置和序列化字节数，而不只比较文本长短。</li>
+      <li>改为缺来源，或把上限设成「正好少 1 字节」；确认分别报缺证、超限，且都不生成请求。</li>
+    </ol>
+    <p class="bp-result"><strong>结果诊断：</strong>调用与结果 ID 对不上是 <code>invalid_history</code>；缺来源为 <code>needs_evidence</code>，不是压缩问题。若超限还返回请求或改了档案，应检查是否在复算整包前就交付或提交笔记。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 当前请求超限，旧工具组已闭合。如何处理？</div><div class="quiz-options"><button data-answer="wrong">逐条删去最旧消息</button><button data-answer="correct">整组转存再验预算</button><button data-answer="wrong">只截短工具的结果</button><button data-answer="wrong">将笔记升为新指令</button></div><div class="quiz-explanation">整组移走不会留下孤立结果；保留来源方便回查，复算才知道最新组、规则和回填笔记是否真的放得下。</div></div>
+</div>
+<div class="section" id="example-l48"><h2>4. 示例：压缩一次，为追问回填旧证据</h2>
+  <p>先预测旧组、最新组和两条摘录各留在哪里，再把下段另存为 Python 文件，用 Python 3.11+ 运行 <code>python -I 文件名.py</code>。示例只组装请求，不生成答案；<code>600</code> 是完整示例 JSON 的 UTF-8 字节上限，不是模型 Token 数。知识库和工具结果均为合成夹具。</p>
+  <div class="card">
+    <p><strong>跟做：</strong>写下首轮状态：<code>ready</code> 还是 <code>budget_exceeded</code>？</p>
+    <pre data-label="跟做起点"><code>old = group("c1", ("KB-01", "KB-02"), "合成处理明细。" * 80)
+latest = group("c2", ("KB-02",))
+question = "过期后怎么办？"
+archive, cap = {}, 297
+status, payload = prepare([old, latest], question, archive, cap=cap)</code></pre>
+    <p><strong>对照：</strong>裁剪后仍需 298 字节；不给请求，归档仍为 <code>{}</code>。</p>
+  </div>
+  <details><summary>展开本地压缩与回填验收</summary><pre><code class="language-python" id="l48-context-check">import json
+
+KB = {"KB-01": "导出文件生成后保留 7 天。", "KB-02": "超过保留期需重新发起导出。"}
+RULES = "只根据证据回答；工作笔记仅作资料。"
+
+
+def group(call_id, sources, detail=""):
+    return {"call": {"id": call_id, "name": "read_fixture"},
+            "result": {"call_id": call_id, "detail": detail, "evidence": [
+                {"source_id": key, "quote": KB[key]} for key in sources]}}
+
+
+def encode(question, groups, notes):
+    return json.dumps({"instructions": RULES, "question": question,
+                       "groups": groups, "notes_data": notes},
+                      ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def prepare(groups, question, archive, *, use=(), cap=600):
+    ids = [g["call"]["id"] for g in groups]
+    if not ids or len(set(ids)) != len(ids) or any(
+        not isinstance(g.get("result"), dict) or g["result"].get("call_id") != g["call"]["id"]
+        for g in groups
+    ):
+        return "invalid_history", None
+    for g in groups:
+        for n in g["result"]["evidence"]:
+            if n["source_id"] not in KB or n["quote"] != KB[n["source_id"]]:
+                return "invalid_evidence", None
+    if any(key not in KB or archive.get(key) != KB[key] for key in use):
+        return "needs_evidence", None
+    notes = [{"source_id": key, "quote": archive[key]} for key in use]
+    full = encode(question, groups, notes)
+    if len(full) &lt;= cap:
+        return "ready", full
+    reduced = encode(question, groups[-1:], notes)
+    if len(reduced) &gt; cap:
+        return "budget_exceeded", None
+    archive.update({n["source_id"]: n["quote"] for g in groups[:-1] for n in g["result"]["evidence"]})
+    return "ready", reduced
+
+
+old = group("c1", ("KB-01", "KB-02"), "合成处理明细。" * 80)
+latest = group("c2", ("KB-02",))
+history, archive = [old, latest], {}
+question = "过期后怎么办？"
+assert prepare(history, question, archive, cap=1) == ("budget_exceeded", None)
+assert archive == {}
+assert prepare([{"call": old["call"]}, latest], question, archive) == ("invalid_history", None)
+assert prepare([{"call": old["call"], "result": None}, latest], question, archive) == ("invalid_history", None)
+status, reduced = prepare(history, question, archive)
+assert status == "ready" and len(reduced) == 298
+assert len(reduced) &lt;= 600 &lt; len(encode(question, history, [])) == 2213
+assert json.loads(reduced) == {"instructions": RULES, "question": question,
+                              "groups": [latest], "notes_data": []}
+assert archive == KB and len(history) == 2
+
+follow_up = "原来的保留期是多久？"
+kept = json.loads(reduced)["groups"]
+status, ready = prepare(kept, follow_up, archive, use=("KB-01",))
+assert status == "ready" and len(ready) == 375 &lt;= 600
+assert json.loads(ready)["notes_data"] == [{"source_id": "KB-01", "quote": KB["KB-01"]}]
+assert prepare(kept, follow_up, archive, use=("KB-01",), cap=len(ready) - 1) == ("budget_exceeded", None)
+assert prepare(kept, follow_up, archive, use=("KB-03",)) == ("needs_evidence", None)
+bad = group("c3", ("KB-01",))
+bad["result"]["evidence"][0]["quote"] = "未核实的说法。"
+assert prepare([bad], question, archive) == ("invalid_evidence", None)
+print("L48 ACCEPTED")</code></pre></details>
+  <p>唯一通过标记为 <code>L48 ACCEPTED</code>。实测首轮从 2213 字节缩到 298 字节，追问带回一条证据后是 375 字节。<code>groups[-1:]</code> 取只含最新组的列表；装不下必留内容时不给出请求，也不改变笔记。超限、证据缺失、证据不符和历史未闭合是不同的失败。</p>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：追问收据政策时安全回填</h2>
+  <p>旧归档的一次读取返回两条收据政策，追问只点名其中一条。按「来源 ID + 版本」定位旧组，核对组内每条资料仍与宿主当前已复核的记录一致，再整组放入资料区；可信指令与最新组不动。这个练习回答的是现行政策，不把历史版本当现行，也不把未复核标签或笔记内容当权限。若换成历史追溯，必须由宿主明确选定可用的历史版本。</p>
+  <details class="bp-check"><summary>独立完成后展开参考程序（离线，Python 3.11+）</summary><pre><code class="language-python" id="l48-transfer-check">from dataclasses import asdict, dataclass, replace
+import json
+
+
+@dataclass(frozen=True)
+class Quote:
+    source: str
+    version: int
+    trust: str
+    text: str
+
+
+@dataclass(frozen=True)
+class Group:
+    call_id: str
+    result_id: str | None
+    quotes: tuple[Quote, ...]
+
+
+RULES = "只根据已复核的资料回答。"
+retention = Quote("RC-01", 2, "verified", "收据保留 30 天。")
+copy = Quote("RC-02", 1, "verified", "可在详情中打印副本。")
+latest = Group("c2", "c2", (Quote("RC-03", 1, "verified", "支持 PDF。"),))
+pending = Quote("RC-04", 1, "pending", "新版说明待复核。")
+current = {q.source: q for q in (retention, copy, latest.quotes[0], pending)}
+old = Group("c1", "c1", (retention, copy))  # 已按闭合组归档
+
+
+def prepare(latest, archive, wanted, cap):
+    matches = [g for g in archive if any((q.source, q.version) == wanted for q in g.quotes)]
+    if len(matches) != 1:
+        return "needs_evidence", None
+    recalled = matches[0]
+    groups = (latest, recalled)
+    if latest.call_id == recalled.call_id or any(g.call_id != g.result_id for g in groups):
+        return "invalid_history", None
+    if any(q.trust != "verified" or q != current.get(q.source) for g in groups for q in g.quotes):
+        return "needs_evidence", None
+    packet = {"instructions": RULES, "groups": [asdict(latest)], "notes_data": [asdict(recalled)]}
+    payload = json.dumps(packet, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return ("ready", payload) if len(payload) &lt;= cap else ("budget_exceeded", None)
+
+
+wanted = ("RC-01", 2)
+status, payload = prepare(latest, (old,), wanted, 2_000)
+assert status == "ready"
+packet = json.loads(payload)
+assert packet["instructions"] == RULES and len(packet["groups"]) == 1
+assert len(packet["notes_data"]) == 1
+for retained, original in ((packet["groups"][0], latest), (packet["notes_data"][0], old)):
+    assert retained["call_id"] == retained["result_id"] == original.call_id
+    assert retained["quotes"] == [asdict(q) for q in original.quotes]
+assert prepare(latest, (old,), wanted, len(payload)) == ("ready", payload)
+assert prepare(latest, (old,), wanted, len(payload) - 1) == ("budget_exceeded", None)
+assert prepare(latest, (), wanted, 2_000) == ("needs_evidence", None)
+assert prepare(latest, (replace(old, result_id=None),), wanted, 2_000) == ("invalid_history", None)
+stale = replace(old, quotes=(replace(retention, version=1), copy))
+assert prepare(latest, (stale,), ("RC-01", 1), 2_000) == ("needs_evidence", None)
+for failed_quote in (pending, replace(pending, trust="verified"), replace(copy, text="未经核对。")):
+    unsafe_group = replace(old, quotes=(retention, failed_quote))
+    assert prepare(latest, (unsafe_group,), wanted, 2_000) == ("needs_evidence", None)
+print("L48 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>唯一输出应为 <code>L48 TRANSFER PASSED</code>。成功包要保留旧组的配对 ID、两条资料及其版本和可信状态；只回填点名的一条，说明拆了组。若旧版本、未复核的同组资料或自称已复核的记录通过，检查是否只匹配了 ID，或只相信笔记标签。差 1 字节时应不给请求，不靠拆组过关。</p>
+</div>
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-harness-boundaries" data-phase-practice="harness-boundaries">
+  <h2>阶段检查点：有权限、有额度、有依据才交付</h2>
+  <p>做一个离线场地改期问答：先读政策索引，再读索引指向的规则。宿主只开放公开读取，规划和实际读取各花 1 点，答复只能由核对过的实际读取结果生成，并附来源版本。用同一任务分别测试额度不足、第二步提议读取内部资料、第二条资料过期或读错来源；已有第一条证据也不能交付。</p>
+  <details class="bp-check"><summary>独立完成后展开阶段验收（离线，Python 3.11+）</summary><pre><code class="language-python" id="l48-stage-check">READ, REVIEW = "read_public_note", "read_review_note"
+INDEX, RULE, OTHER = "VENUE-INDEX", "VENUE-CHANGE", "VENUE-PDF"
+CURRENT = {INDEX: (1, "verified", RULE), RULE: (2, "verified", "提前 2 天申请改期。"),
+           OTHER: (1, "verified", "确认单支持 PDF。")}
+
+
+def answer(budget, store, second_proposal=None):
+    facts, trace = {}, []
+
+    def read(tool, source):
+        trace.append((tool, source))
+        return store.get(source)
+
+    registry = {READ: read, REVIEW: read}
+    allowed = frozenset({READ})  # 宿主策略，不来自规划提议
+
+    def plan():
+        trace.append("plan")
+        if INDEX not in facts:
+            return READ, INDEX
+        if len(facts) == 1:
+            return second_proposal or (READ, facts[INDEX][2])
+        return None
+
+    while budget &gt; 0:
+        budget -= 1
+        proposal = plan()
+        if proposal is None:
+            source = facts[INDEX][2]
+            if source not in facts:
+                return "needs_evidence", None, trace
+            version, _, text = facts[source]
+            return "answered", (text, source, version), trace
+        tool, source = proposal
+        if tool not in registry or tool not in allowed:
+            return "forbidden", None, trace
+        if source not in CURRENT:
+            return "invalid_source", None, trace
+        if budget == 0:
+            break
+        budget -= 1
+        note = registry[tool](tool, source)
+        if note is None or note[1] != "verified" or note != CURRENT[source]:
+            return "needs_evidence", None, trace
+        facts[source] = note
+    return "exhausted", None, trace
+
+
+actions = ["plan", (READ, INDEX), "plan", (READ, RULE), "plan"]
+assert answer(5, CURRENT) == ("answered", ("提前 2 天申请改期。", RULE, 2), actions)
+assert answer(3, CURRENT) == ("exhausted", None, actions[:3])
+assert answer(4, CURRENT) == ("exhausted", None, actions[:4])
+assert answer(5, CURRENT, (REVIEW, RULE)) == ("forbidden", None, actions[:3])
+stale = {**CURRENT, RULE: (1, "verified", CURRENT[RULE][2])}
+assert answer(5, stale) == ("needs_evidence", None, actions[:4])
+assert answer(5, CURRENT, (READ, OTHER)) == (
+    "needs_evidence", None, actions[:3] + [(READ, OTHER), "plan"])
+print("P5 HARNESS BOUNDARIES PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>唯一输出应为 <code>P5 HARNESS BOUNDARIES PASSED</code>。成功返回现行规则与版本 2；额度 3 时不得读规则，额度 4 时虽读了也未确认完成。猜中的内部工具若出现在轨迹中，是执行许可检查晚了。读到旧版或不相关的已核实资料却仍交付，是把「有读取结果」误当成「结论有依据」。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>同一批有调用 r1、r2，r2 的结果先回来。现在请求太长，可以先移走 r2 的结果吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不单删结果。按 <code>call_id</code> 把结果挂回 r2，等 r1 也匹配上，才把这个批次当成闭合组处理。组未闭合时不走这条压缩路径；测试时让结果倒序到达，验证只收到 r2 时不能归档，两条归位后才整组移出。</p>
+      <p><strong>追问：</strong>又收到一条同样标为 r2 的结果，但两条都引用 KB-01，能否算作 r1 也返回了？</p>
+      <p><strong>答题要点：</strong>不能。<code>source_id</code> 标识证据出处，不能替代调用 ID；重复 r2 不填 r1 的空位，批次仍未闭合。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>首轮完整包 2213 字节，上限 600，整组移走 c1 后为 298 字节。第二轮问原来的保留期，该回填什么？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>按主例只把已核对的 KB-01 来源和摘录回填到 <code>notes_data</code>；KB-02 已在最新组 c2，不必再抄一遍。保持 <code>instructions</code> 与 c2 不变，核对解码后的字段；连同新问题重新序列化，整包实际是 375 字节。这是 UTF-8 字节数，不是模型 Token 数。</p>
+      <p><strong>追问：</strong>第二轮上限若是 374 字节，改成只填「7 天」能过吗？</p>
+      <p><strong>答题要点：</strong>不能靠丢来源或必需摘录凑数。应返回 <code>budget_exceeded</code>、不生成请求，并比较归档前后确认失败没有改动笔记。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>收据练习要求整组回填。归档组的 RC-01 版本 2 仍有效，但同组的 RC-02 已从版本 1 更新为版本 2。回答现行政策时还能回填旧组吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不能。整组回填要求每条都与宿主当前复核的资料一致，不能只验点名的 RC-01，也不能拆组过关。固定当前目录，分别用含 RC-02 版本 1、含已复核版本 2 的组做对照：前者返回 <code>needs_evidence</code>、没有请求，后者在权限和预算通过时才可回填。解释历史答复则应另按获准的历史版本核对。</p>
+      <p><strong>追问：</strong>如果两条摘录都仍是现行版本，但用户已失去 RC-02 的读取许可呢？</p>
+      <p><strong>答题要点：</strong>也不能回填。实际系统要在回填前按当前身份和任务核对全组的读权限；版本匹配和笔记标注的 <code>verified</code> 都不等于授权。测试撤权后，请求中不得出现这份归档组。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>测试只断言压缩后的包更小。要证明失败时不发请求、不改归档，应加哪些对照？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>从配对正确、证据齐备的样例出发，每次只改一项：结果 ID 错配为 <code>invalid_history</code>，组内摘录不符为 <code>invalid_evidence</code>，点名 KB-03 为 <code>needs_evidence</code>，上限少 1 字节为 <code>budget_exceeded</code>。每次都断言没有请求包，调用方没有发送，归档与传入历史不变。</p>
+      <p><strong>追问：</strong>成功用例除字节数外，还应比较哪些字段？</p>
+      <p><strong>答题要点：</strong>解包核对规则、问题和最新组的调用结果配对；按需补回的资料只出现在 <code>notes_data</code>，不替换 <code>instructions</code>，也不伪装成一次新读取。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L48">L48 疑难解答 →</a><div class="qa-related"><a href="0055-L47-typed-tool-contract.html">上一课：L47 工具契约</a> · <a href="0057-L49-memory-lifecycle.html">下一课：L49 记忆生命周期</a>。补读 <a href="0050-L42-context-evidence-budget.html">L42 单次证据预算</a>与 <a href="0051-L43-progressive-skill-disclosure.html">L43 按需加载</a>。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>文本地图：确认工具组闭合 → 外置旧组的原文和来源 → 保留规则与最新组 → 按需回填 → 复算，不合格则停止。</p><p><a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Anthropic · Effective harnesses for long-running agents</a>（读跨上下文窗口保存进展的设计；本课的字节预算和数据结构不是该服务的接口）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>阶段 5 · Agent 核心架构与持久执行</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>阶段 5 · Agent 核心架构与持久执行</h1>
+<p>同一个「证据问答＋工单草稿」，先看普通函数或确定性流程够不够，再手写最小单 Agent Harness。先保证权限、有界失败与恢复，再去 Phase 6 比较框架。</p>
+<div class="total-bar"><span>10 节正式课 · L45–L54 · 475 分钟</span><span>使用合成数据与本地 SQLite，不调用外部模型或真实工单</span></div>
+<aside class="toc" id="toc" aria-label="本阶段目录"></aside>
+<nav aria-label="阶段导航"><a href="0052-L44-project-acceptance-handoff.html">L44 交接</a> · <a href="../qa/phase5-qa.html">阶段答疑</a> · <a href="0001-ai-agent-learning-path-overview.html#phase-5-body">课程总纲</a></nav>
+<div class="section"><h2 id="contracts">从 Phase 4 保留哪些契约</h2><p>输出应有可核对的引用；缺证据就说明缺口；只有明确请求才产生草稿。Phase 5 加上应用侧审批、持久化保存和重放，但<strong>只写入本地课程库</strong>，不能发送或提交工单。业务断言可复用，不把写法或完整调用顺序当合同。</p></div>
+<div class="section"><h2 id="lesson-plan">逐课学习与离线验收</h2><div class="card">
+<table><thead><tr><th scope="col">课程</th><th scope="col">主题</th><th scope="col">验收</th></tr></thead><tbody>
+<tr><td>L45 <span class="lesson-num-time">45min</span></td><td><a href="0053-L45-function-workflow-agent.html">先选函数、workflow 还是单 Agent</a></td><td>用同一任务对照三种执行方式，不因实现更复杂就认为更好。</td></tr>
+<tr><td>L46 <span class="lesson-num-time">45min</span></td><td><a href="0054-L46-bounded-agent-loop.html">有界 Agent Loop</a></td><td>区分完成、失败、耗尽；耗尽后不再调用工具。</td></tr>
+<tr><td>L47 <span class="lesson-num-time">45min</span></td><td><a href="0055-L47-typed-tool-contract.html">小工具集、类型契约与执行校验</a></td><td>区分类型兼容与授权、参数校验；拒绝路径零执行。</td></tr>
+<tr><td>L48 <span class="lesson-num-time">55min</span></td><td><a href="0056-L48-context-notes-compaction.html">上下文压缩与按需披露</a></td><td>保留完整交互组；笔记带来源；压缩后复算预算。</td></tr>
+<tr><td>L49 <span class="lesson-num-time">45min</span></td><td><a href="0057-L49-memory-lifecycle.html">记忆的写入、纠正与删除</a></td><td>记忆可纠正、过期、删除，且按租户和用户隔离。</td></tr>
+<tr><td>L50 <span class="lesson-num-time">45min</span></td><td><a href="0058-L50-approval-boundaries.html">人工审批与明确禁止的动作</a></td><td>审批绑定身份、动作与草稿版本；拒绝、撤回、改稿或越权不保存。</td></tr>
+<tr><td>L51 <span class="lesson-num-time">45min</span></td><td><a href="0059-L51-approval-checkpoint-resume.html">审批暂停、进程退出与恢复</a></td><td>退出后启动新进程，恢复原任务；审批前无草稿写入。</td></tr>
+<tr><td>L52 <span class="lesson-num-time">60min</span></td><td><a href="0060-L52-idempotent-draft-replay.html">副作用已提交但响应丢失</a></td><td>沿用稳定操作身份重放，不重复保存；外部结果未知先核对。</td></tr>
+<tr><td>L53 <span class="lesson-num-time">45min</span></td><td><a href="0061-L53-harness-regression.html">用回归用例改进 Harness</a></td><td>旧实现被反例击中，修复后错误和正常路径都过门。</td></tr>
+<tr><td>L54 <span class="lesson-num-time">45min</span></td><td><a href="0062-L54-harness-acceptance.html">阶段验收：固化框架无关契约</a></td><td>留下业务结果、禁止动作、持久状态与未验证项。</td></tr>
+</tbody></table></div></div>
+<div class="section"><h2 id="practice">工程实践路线</h2><div class="card"><p>每课先用给定输入或状态跟做一步、核对预期，再展开参考；课末独立完成变式。学到 L48 做<a href="0056-L48-context-notes-compaction.html#stage-practice-harness-boundaries">工具、预算与证据检查点</a>；学到 L52 做<a href="0060-L52-idempotent-draft-replay.html#stage-practice-durable-approval">审批、恢复与重放检查点</a>。完成 L54 后用<a href="../best-practices/phase5-agent-harness-practices.html">阶段工程实践复盘</a>整理可复跑的验收与未测项。</p></div></div>
+<div class="section"><h2 id="lab">项目与下一阶段</h2><p>从<a href="../code/phase5-agent-harness/harness-lab/README.md">离线 Harness 项目</a>开始，复盘时用<a href="../reference/0005-harness-acceptance-checklist.html">验收速查</a>。课件中各自的离线用例与项目测试分别保留；本地通过不证明在线模型效果、真实授权系统或外部服务一致性。带上失败用例和期望结果到<a href="../qa/phase5-qa.html">阶段答疑</a>。完成后看<a href="0046-phase5-to-11-planned-outlines.html#phase-6">Phase 6 框架与 MCP 规划</a>。</p></div>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

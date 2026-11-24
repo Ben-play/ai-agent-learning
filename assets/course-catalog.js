@@ -56,7 +56,18 @@
     { file: '0049-L41-prompt-versions-regression.html', title: 'Prompt 版本与回归', phase: '第四阶段' },
     { file: '0050-L42-context-evidence-budget.html', title: '证据选择、来源与上下文预算', phase: '第四阶段' },
     { file: '0051-L43-progressive-skill-disclosure.html', title: 'Skills 按需加载与权限边界', phase: '第四阶段' },
-    { file: '0052-L44-project-acceptance-handoff.html', title: '项目验收与交接', phase: '第四阶段' }
+    { file: '0052-L44-project-acceptance-handoff.html', title: '项目验收与交接', phase: '第四阶段' },
+    { file: '0063-phase5-agent-harness-outline.html', title: '第五阶段大纲', phase: '', outlineFor: '第五阶段' },
+    { file: '0053-L45-function-workflow-agent.html', title: '先选函数、workflow 还是单 Agent', phase: '第五阶段' },
+    { file: '0054-L46-bounded-agent-loop.html', title: '有界 Agent Loop', phase: '第五阶段' },
+    { file: '0055-L47-typed-tool-contract.html', title: '小工具集、类型契约与执行校验', phase: '第五阶段' },
+    { file: '0056-L48-context-notes-compaction.html', title: '上下文压缩与按需披露', phase: '第五阶段' },
+    { file: '0057-L49-memory-lifecycle.html', title: '记忆的写入、纠正与删除', phase: '第五阶段' },
+    { file: '0058-L50-approval-boundaries.html', title: '人工审批与明确禁止的动作', phase: '第五阶段' },
+    { file: '0059-L51-approval-checkpoint-resume.html', title: '审批暂停、进程退出与恢复', phase: '第五阶段' },
+    { file: '0060-L52-idempotent-draft-replay.html', title: '副作用已提交但响应丢失', phase: '第五阶段' },
+    { file: '0061-L53-harness-regression.html', title: '用回归用例改进 Harness', phase: '第五阶段' },
+    { file: '0062-L54-harness-acceptance.html', title: '阶段验收：固化框架无关契约', phase: '第五阶段' }
   ];
 
   var PHASE_NUMBERS = {

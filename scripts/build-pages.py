@@ -47,6 +47,7 @@ README_FILES = (
     "code/phase1-python/phase1-practices-capstone/README.md",
     "code/phase2-model-selection/phase2-practices-capstone/README.md",
     "code/phase4-prompt-context/README.md",
+    "code/phase5-agent-harness/harness-lab/README.md",
 )
 GENERATED_README_FILES = tuple(name.removesuffix(".md") + ".html" for name in README_FILES)
 BUILD_VERSION_PLACEHOLDER = "__BUILD_VERSION__"

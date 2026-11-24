@@ -11,12 +11,12 @@
 <body>
 <main>
 <div class="section"><div class="lesson-header">
-  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span></div>
   <h1>Skills 按需加载与权限边界</h1><p class="subtitle">只在需要时打开做事说明，不把说明书当成执行许可</p>
 </div></div>
 <div class="section"><h2>为什么这课重要？</h2><p>客服助手大多数时候只回答政策。如果每次都塞进起草和审阅流程，会增加无关上下文，也更难排查为什么误触发。这里把「怎么起草」单独保存，明确要求起草时才取用。</p><h3>学习目标</h3><p>写出可触发也可排除的 Skill 描述；区分元数据、正文和可选资料的加载时机，以及加载与授权。</p></div>
 <div class="section"><h2>1. Skill 文件如何创建，何时读取</h2>
-  <p>以 <a href="../reference/0004-agent-skills.html">Agent Skills 参考</a>为底稿：在目录 <code>ticket-draft/</code> 创建文件 <code>SKILL.md</code>。两个 <code>---</code> 之间是 YAML 元数据，后面是 Markdown 正文。最小文件需要 <code>name</code> 和 <code>description</code>；<code>name</code> 与目录名一致。</p>
+  <p>Skill 是一份可复用的办事说明。依据 <a href="https://agentskills.io/specification">Agent Skills 规范</a>和本课的<a href="../reference/0004-agent-skills.html">格式速查</a>，先建目录 <code>ticket-draft/</code>，在里面写 <code>SKILL.md</code>。两个 <code>---</code> 之间是 YAML 元数据，必填的 <code>name</code> 与目录同名，<code>description</code> 写明做什么和何时用。先写清输出是草稿，再列出容易混淆的「问政策」和「提交」；这比只写「处理工单」更能帮助宿主匹配任务。</p>
   <pre><code class="language-markdown">---
 name: ticket-draft
 description: 仅在用户明确要求起草支持工单时加载。不用于政策问答或提交工单。
@@ -27,12 +27,32 @@ description: 仅在用户明确要求起草支持工单时加载。不用于政�
     <tr><td>匹配后</td><td><code>SKILL.md</code> 正文</td><td>读取起草步骤与边界。</td></tr>
     <tr><td>确有需要</td><td>可选模板、参考资料</td><td>只读需要的内容，不整目录塞进上下文。</td></tr>
   </tbody></table>
-  <p>这是规范的加载模式，真实宿主实现及授权要分别验证。<strong>Skill</strong> 是做事知识；<strong>工具</strong> 是操作接口；应用授权才能决定是否允许实际调用。实验字段 <code>allowed-tools</code> 不能当作跨宿主的授权保证。起始项目的 <code>skill</code> 字段只标记选择了起草流程，不会发现或加载真实的 <code>SKILL.md</code>。</p>
-  <div class="best-practice-point"><h3>最佳实践：正触发和反触发成对验收</h3><p>一条检查“明确要求时读取”，另一条检查“相似问句时不读取”。只看最终文字很难证明第二条，记录实际加载次数。</p></div>
+  <p>正文写成匹配后能照着做的步骤：使用本次校验过的引文，生成标题和正文，明确只交稿。只要这些步骤能完成任务，就不用附文件。假如某种工单另有格式，可把模板放在 <code>assets/</code>，把详细规则放在 <code>references/</code>，在正文用相对路径说明各文件何时需要。普通起草不因此读完整目录，附加资料也不能把未获准的材料变成证据。</p>
+</div>
+<div class="section"><h2>2. 同一业务的三种意图，何时才读正文</h2>
+  <p>「导出文件保留多久？」只走证据问答：本轮目标是回报天数，没有起草理由，Skill 至多参与元数据匹配。「请根据保留期政策起草支持工单」明确要求草稿，才读正文，用已校验的引文生成一份待确认文本；若普通格式已经够用，不读附加模板。「请直接提交工单」不属于起草，Phase 4 应拒绝，不读正文，也不把拒绝悄悄改成一次起草。只说「帮我处理工单」而目的不清，先问是查政策还是要草稿。</p>
+  <p>渐进披露的收益来自<strong>并非每轮都要做同一套步骤</strong>：问答不带起草说明，普通草稿不带特殊表单；也可独立修改表单而不改问答提示。代价是多了一道匹配决策，描述写宽会误加载，写窄会漏掉合理的起草请求。如果规则短而且每轮都要用，留在主流程反而更简单。这里观察的是正文读取次数，不是实测 Token、延迟或成本。</p>
+</div>
+<div class="section"><h2>3. 用加载记录定位问题，不用它推导授权</h2>
+  <p>下面的本地选择器接收应用已确认的标签，不理解上面的自然语言。按顺序给它 <code>answer</code>、<code>draft</code>、<code>send</code>，预期累计正文读取数是 0、1、1；最后一个 1 是前例留下的读取，不是提交请求又读了一次。若问答让计数增加，先查是否判定前就调用了加载器；若明确起草却没有记录，先查输入标签和选择分支。项目本身的 <code>skill="ticket-draft"</code> 也只标记选择了内存草稿模板，不代表从磁盘读过 <code>SKILL.md</code>。</p>
+  <p>在真实宿主中，发现 Skill 是知道有哪些办事说明，发现工具是知道有哪些可提议的操作；两者都不表示这个用户能对这条记录执行操作。执行点应由应用按身份、资源范围、参数和审批独立判定；就算能看到某个提交工具，也不能把起草匹配当许可。规范里的 <code>allowed-tools</code> 是实验字段，支持随实现而异。核对宿主时，要分别留发现、正文读取和执行许可的记录，不能用本地计数替代。</p>
+  <div class="best-practice-point" id="bp-l43">
+    <h3>最佳实践：按明确意图加载，另验操作权限</h3>
+    <p class="bp-scenario"><strong>适用与限制：</strong>问答和起草共用词汇、起草说明却不是每轮都需要时，用正反例检查正文加载点。本地替身只观测加载选择，不模拟宿主授权。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">错误做法：命中词就预读</span><p>收到「工单草稿是什么？」时，因为出现「工单」就读正文。即使最终只解释概念，看似正确的回答也掩盖了那次多余的读取。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">推荐做法：只为明确任务读取</span><p>同一问句由应用判定为解释，只用元数据做匹配，正文零读取。换成明确起草才读取；正文不能把「起草」升级成「提交」。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>把加载放在意图判断之后，可以减少上下文和非必要读取，但需要维护触发描述和反例。若规则极短且每次都需要，可留在主流程；意图不清时先澄清。真实宿主要分别验加载记录、工具权限与审批，不能从加载成功推出授权。</p>
+    <ol class="bp-steps"><li>用一个明确起草请求和一个只询问的近邻例界定触发，再加入禁止提交的意图。</li><li>运行<a href="#l43-skill-check">原加载器自检</a>，逐案检查记录，而不只看最后的文字。</li></ol>
+    <p class="bp-result"><strong>结果诊断：</strong><code>L43 ACCEPTED</code> 表示只有明确起草令替身读取一次。若询问或提交增加计数，先修加载门槛；此结果与真实宿主是否能执行某个工具无关。</p>
+  </div>
   <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 只问「工单草稿是什么」，第一次发现 Skill 时应该怎么做？</div><div class="quiz-options"><button data-answer="wrong">打开正文开始起草</button><button data-answer="correct">只看描述不读正文</button><button data-answer="wrong">先加载所有的资料</button><button data-answer="wrong">自动授予提交权限</button></div><div class="quiz-explanation">描述用于判定是否匹配，了解含义不是起草请求。即使匹配，也不会因此得到操作权限。</div></div>
 </div>
-<div class="section best-practice-lesson"><h2>2. 动手：用本地计数测「有没有加载」</h2>
+<div class="section best-practice-lesson"><h2>4. 动手：用本地计数测「有没有加载」</h2>
   <p>先自己写一份上面的 <code>ticket-draft/SKILL.md</code>，检查名称、正反触发条件和禁止动作，不安装到真实宿主。再预测只询问、明确起草、要求提交三条路径各加载几次。代码用可信应用已判定的 <code>intent</code> 演示，不做自然语言分类；<code>load=load_body</code> 是把本地加载函数交给选择器，不是马上调用它。</p>
+  <div class="card" id="guided-l43"><h3>跟做：填上加载条件</h3><pre><code class="language-python">intents = ["answer", "draft", "send"]
+# TODO：给每条意图填「加载」或「跳过」，再写成一个条件。</code></pre><p><strong>通过标准：</strong>从空记录开始跑一轮，加载器只被调用一次，并且读取的是 <code>ticket-draft</code>。提交请求不是第二次起草。</p></div>
   <details><summary>展开加载器替身与离线自检</summary><pre><code class="language-python" id="l43-skill-check">metadata = {"name": "ticket-draft", "description": "仅明确要求起草时使用"}
 loaded = []
 
@@ -57,7 +77,134 @@ assert loaded == ["ticket-draft"]
 print("L43 ACCEPTED")</code></pre></details>
   <p>用 <code>python -I 文件名.py</code> 运行，唯一通过标记为 <code>L43 ACCEPTED</code>。这是<strong>加载决策</strong>的检查，不是实际的权限测试；没有任何可提交的工具存在。</p>
 </div>
-<div class="section"><h2>面试自查</h2><details><summary>Skill 与工具最大的区别是什么？</summary><p>Skill 提供流程知识；工具提供具体操作。二者也不能自行替代授权。</p></details><details><summary>为什么描述要写“不用于什么”？</summary><p>能区分术语相似的任务，减少错误匹配。</p></details><details><summary>目录里所有资料要立即读吗？</summary><p>不需要。先判定是否加载正文，完成任务确实需要时再加载附加材料。</p></details><details><summary>为什么不直接测最后回答？</summary><p>回答可能碰巧正确，无法证明正文没有提前加载；要观察加载本身。</p></details></div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：想看改期通知的格式，不等于要起草</h2>
+  <p>为活动助手写一个 <code>notice-draft</code> 的简短描述，注明明确要求起草才加载正文。比较「通知草稿长什么样？」与「请起草一份活动改期通知」，记录实际读正文的次数。</p>
+  <details class="bp-check"><summary>展开独立参考：观察替身加载器，不安装 Skill</summary><pre><code class="language-python" id="l43-transfer-check">metadata = {"name": "notice-draft", "description": "仅用于明确要求起草活动通知"}
+reads = []
+
+
+def load_body(name):
+    reads.append(name)
+    return "填写活动和新日期；草稿待人工核对。"
+
+
+def select(intent, load):
+    return load(metadata["name"]) if intent == "draft_notice" else None
+
+
+# intent 是应用已确认的任务类别，不是模型标签或关键词匹配。
+assert select("describe_format", load_body) is None and reads == [], "询问格式触发了正文加载"
+assert select("draft_notice", load_body) == "填写活动和新日期；草稿待人工核对。"
+assert reads == ["notice-draft"], "明确起草应且只应读取一次"
+print("L43 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">整块复制后用 <code>python -I 文件名.py</code> 运行，应只打印 <code>L43 TRANSFER PASSED</code>。若只问格式也有读取，检查自己是否按术语而非意图触发。记录只覆盖本地替身；真实宿主的正文加载和工具授权要分别验证。</p>
+</div>
+<div class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-context-and-skill" data-phase-practice="context-and-skill">
+  <h2>阶段检查点：用证据答续借问题，只在请求时起草提醒</h2>
+  <p>串起 <a href="0050-L42-context-evidence-budget.html#bp-l42">L42 的证据边界</a>和 <a href="#bp-l43">L43 的加载门槛</a>。先把预算设为只够装主规则，记录实际发送内容、引用及加载次数。预测预算少一个字节、缺相关证据、只引补充条款时，流程在哪里停止；再给够两条的预算，看看补充条款能否回答续借次数。</p>
+  <p>本例先用固定响应器回传引文，再由应用在<strong>显式起草且引文有效</strong>时调用本地加载器生成草稿。字节上限只针对这一轮证据请求，不计后续本地模板；真实宿主须按目标接口核算发送的所有内容，另外验证 Skill 加载行为和实际工具权限。本例不分类自然语言、不装载真实 Skill，也不提交任何东西。</p>
+  <details class="bp-check"><summary>展开独立参考：串起证据预算、引用和加载探针</summary><pre><code class="language-python" id="l43-stage-check">import json
+
+question = "图书可以续借几次？"
+primary = {"source_id": "LIB-01", "quote": "未到期的借阅可续借一次。"}
+extra = {"source_id": "LIB-02", "quote": "续借可在服务台办理。"}
+requests, reads = [], []
+
+
+def encode(text, rows):
+    return json.dumps(dict(question=text, evidence=rows), ensure_ascii=False,
+                      separators=(",", ":")).encode("utf-8")
+
+
+def fixture(payload, *, citation=None):
+    requests.append(payload)
+    return json.loads(payload)["evidence"][0] if citation is None else citation
+
+
+def load_body(name):
+    reads.append(name)
+    return "待确认的续借提醒："
+
+
+def run(text, intent, limit, *, respond=fixture):
+    if intent not in {"answer", "draft_reminder"}:
+        return "invalid_request", None, None
+    if text != question:
+        return "needs_evidence", None, None
+    payload = encode(text, [primary])
+    if len(payload) > limit:
+        return "budget_exceeded", None, None
+    full = encode(text, [primary, extra])
+    if len(full) &lt;= limit:
+        payload = full
+    citation = respond(payload)
+    if citation not in json.loads(payload)["evidence"]:
+        return "invalid_response", None, None
+    if citation != primary:  # 只有主条款能支持「续借几次」的结论。
+        return "invalid_response", None, None
+    if intent == "draft_reminder":
+        draft = load_body("renewal-reminder") + citation["quote"]
+        return "drafted", citation, draft
+    return "answered", citation, None
+
+
+limit = len(encode(question, [primary]))
+assert run(question, "answer", limit) == ("answered", primary, None), "有效引文未通过"
+assert len(requests[0]) == limit and json.loads(requests[0])["evidence"] == [primary], "装配与预算不符"
+assert reads == [], "问答不应读起草正文"
+assert run(question, "draft_reminder", limit - 1) == ("budget_exceeded", None, None)
+assert run("丢失的书能用新书抵还吗？", "draft_reminder", limit) == ("needs_evidence", None, None)
+assert run(question, "send_reminder", limit) == ("invalid_request", None, None)
+assert len(requests) == 1 and reads == [], "预算、证据或意图未通过时不应调用或读取"
+assert run(question, "draft_reminder", limit, respond=lambda p: fixture(p, citation=extra)) == (
+    "invalid_response", None, None)
+assert len(requests) == 2 and reads == [], "已知但未发送的引文不能触发起草"
+full_limit = len(encode(question, [primary, extra]))
+assert run(question, "draft_reminder", full_limit, respond=lambda p: fixture(p, citation=extra)) == (
+    "invalid_response", None, None), "即使已发送，补充条款也无法说明续借次数"
+assert len(requests) == 3 and json.loads(requests[-1])["evidence"] == [primary, extra] and reads == []
+assert run(question, "draft_reminder", limit) == ("drafted", primary, "待确认的续借提醒：" + primary["quote"])
+assert len(requests) == 4 and reads == ["renewal-reminder"], "明确起草且有有效证据才读一次"
+print("P4 CONTEXT AND SKILL PASSED")</code></pre></details>
+  <p class="bp-result">整块复制后用 <code>python -I 文件名.py</code> 运行，只应打印 <code>P4 CONTEXT AND SKILL PASSED</code>。缺证据或预算不足却有请求，先查输入守卫；发出后引用被拒却读了正文，检查引文校验和加载的先后；只问问题也读正文，查显式意图门槛。这些记录不证明真实权限。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>「保留期工单草稿要写哪些信息？」和「请按保留期政策写一份工单草稿」都提到草稿。在证据检查通过的前提下，哪条才该读 Skill 正文？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>只给第二条读正文。第一条在询问该填什么，用名称和描述判断不匹配即可；第二条才把拟稿交给助手。对这对近邻输入，要核对实际读取记录，而不只是看回答像不像草稿。</p>
+      <p><strong>追问：</strong>「帮我处理这张工单」既没说查什么，也没说拟稿，怎么办？</p>
+      <p><strong>答题要点：</strong>先澄清意图，不预读正文；不能把不明确的请求自动当成拟稿。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>「每轮只用本轮获准的证据」和「特殊格式草稿要附三栏表」都放在起草 Skill 里，好吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不好。问答也要遵守证据使用规则，应留在主流程，由应用把关；三栏表只服务特殊拟稿，可由正文按需指向模板。验证普通问答不读正文也遵守证据限制，普通草稿不读特殊模板。</p>
+      <p><strong>追问：</strong>如果三栏格式只有一句话，而且每份草稿都要用呢？</p>
+      <p><strong>答题要点：</strong>把它直接写进拟稿正文，省掉一次额外读取；仍不必让问答加载拟稿正文。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>100 个请求均有足够证据：90 个问政策，8 个要普通草稿，2 个要专用格式草稿。不考虑缓存，改成按需加载有什么取舍？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>建议按需读。按每轮分别记录，正确匹配时只读正文 10 次、专用模板 2 次，问答不混入拟稿说明。代价是多了意图和模板选择，可能漏载；抽查各类读取记录，不能把读取次数当成延迟或费用。</p>
+      <p><strong>追问：</strong>专用格式请求读了正文，却没读模板，先排哪一步？</p>
+      <p><strong>答题要点：</strong>先核对正文里的模板条件与应用的格式判断；已有正文读取，不必先改 Skill 的匹配描述。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>本地替身从空记录依次收到 <code>answer → draft → answer → send</code>，正文累计读取数是 0、1、2、2。问答文字都对，哪里出错？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>第三轮问答误读了正文，预期累计数是 0、1、1、1。逐轮比对意图和新增读取记录，查加载器是不是在判断意图前就被调用，或是否误入起草分支。最后一个计数没增加，不能说提交请求又读了一次。</p>
+      <p><strong>追问：</strong>修到计数符合预期，能证明真实宿主的提交权限正确吗？</p>
+      <p><strong>答题要点：</strong>不能。替身只测已确认标签下的读取，不测真实授权；在宿主的执行点另验身份、资源范围、参数和审批。</p>
+    </div>
+  </details>
+</div>
 <div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase4-qa.html#L43">L43 疑难解答 →</a><div class="qa-related">延伸：<a href="0050-L42-context-evidence-budget.html">L42 上下文选择</a> · <a href="0052-L44-project-acceptance-handoff.html">L44 项目验收</a>。如果选择边界不清楚，带一条应触发和一条不应触发的例子来问。</div></div></div>
 <div class="section"><h2>小结与一手参考</h2><p>先读元数据 → 匹配才读正文 → 需要才读资料。授权由应用另判。隔天写出一个描述相近但不该加载的反例。</p><p><a href="https://agentskills.io/specification">Agent Skills 规范</a>（推荐读目录结构和 Progressive disclosure）。</p></div>
 </main>

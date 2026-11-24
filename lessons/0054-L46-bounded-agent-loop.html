@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L46 · 有界 Agent Loop</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>有界 Agent Loop</h1><p class="subtitle">让宿主决定何时允许下一次调用、为何停止</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>Agent 已经读到几条证据，不代表任务完成。<a href="0040-L35-function-calling-loop.html">L35</a> 处理 Responses 的消息与调用结果怎么回填；本课不模拟任何消息协议，而是实现一个 Harness（运行控制层），由它限制本地规划和读取次数、区分退出原因。</p><h3>学习目标</h3><p>能写出「规划 → 执行 → 反馈」的有界循环，单独验证任务完成、依赖失败和预算耗尽，并证明没有额度就不会开始下一次调用。</p></div>
+<div class="section" id="l46-loop-design">
+  <h2>1. 先定状态和终态，再接上循环</h2>
+  <p>一个有界循环不是「一直规划到它说结束」。宿主保管本次的剩余额度、已取到的事实和实际尝试轨迹。课堂任务只读两条合成政策：KB-01 是导出保留 7 天，KB-02 是过期重新导出。手写规划器查看 <code>facts</code>，提议读取第一条尚未取得的政策；两条都在时才返回 <code>done</code>。一次读取成功后才更新 <code>facts</code>，下一次规划才能用到这个反馈。</p>
+  <p>每次进入规划器或读取工具前，宿主分别检查并扣 1 点。规划提出的读取不等于已经执行，也不能沿用刚才的额度。<code>done</code> 是规划返回值，不另扣点；在本例中它只可能出现在两条证据都齐了以后。接入不受这条规则约束的规划器时，应用还应独立校验交付条件，而不能把一个完成信号当成证据。</p>
+  <ul>
+    <li><code>completed</code>：已满足完成条件，才交付两条政策组成的答复。</li>
+    <li><code>exhausted</code>：没有额度启动下一次必要的调用；已读的内容不冒充最终答复。</li>
+    <li><code>dependency_failed</code>：读取确实开始但依赖报错，这次尝试仍计数。它不等于查阅成功却找不到支持结论的证据。</li>
+  </ul>
+</div>
+<div class="section" id="l46-loop-trace">
+  <h2>2. 沿着同一任务走到预算边缘</h2>
+  <p>把「规划、读 KB-01、规划、读 KB-02、确认完成的规划」按先后写下。下列轨迹只记录已经进入的函数，不记录还没派发的提议：</p>
+  <ul>
+    <li><strong>0 点：</strong>第一次规划也不能开始。轨迹为空，返回 <code>exhausted</code>。</li>
+    <li><strong>1 点：</strong>仅执行一次 <code>plan</code>，提议读 KB-01。派发前已无额度，0 次读取，返回 <code>exhausted</code>。</li>
+    <li><strong>4 点：</strong>前两次规划和两次读取都执行了。证据已齐，但没额度进行约定的完成确认，仍返回 <code>exhausted</code>，不交付文本。</li>
+    <li><strong>5 点：</strong>第 3 次规划用掉最后 1 点并返回 <code>done</code>，因此是 <code>completed</code>。若 KB-02 的读取报错，则第 4 次尝试后直接返回 <code>dependency_failed</code>：还有 1 点也不进入第三次规划。</li>
+  </ul>
+  <p>后两种未完成路径（4 点、5 点但读 KB-02 失败）有相同的动作轨迹，原因却不同：前者的第二次读成功，后者没有。定位时连同返回状态与依赖结果一起看；只数日志行无法判断。</p>
+</div>
+<div class="section" id="l46-loop-diagnosis">
+  <h2>3. 分开诊断次数、截止时刻和取消</h2>
+  <p>若 1 点时读了 KB-01，漏的是派发前检查；若 4 点就交付，绕过的是完成条件。这个题的来源和顺序已知，也可用固定工作流依次读取，再由代码检查两条证据是否齐全；那样不需要用三次规划模拟决策，但读取仍须受限。</p>
+  <p>次数不约束单次调用会等多久。截止时刻用单调时钟判定，到点不再发新调用，也不交付迟到结果；调用前检查挡不住已发出的慢调用，还要按剩余时长限制客户端等待。取消则是要求中止正在运行的工作，是否真停要看依赖是否确认；本地超时或收到取消请求不证明外部已停止。即使是只读查询，超时未回也不能当作读到了空结果。确认操作可安全重试、考虑依赖状态且仍有时间和额度，才考虑有限重试；本课主例不做外部调用。</p>
+  <div class="best-practice-point" id="bp-l46">
+    <h3>最佳实践：在每次调用前检查并扣减额度</h3>
+    <p class="bp-scenario"><strong>适用：</strong>一次循环可以规划、读取，也可能再规划确认完成，宿主必须能限制每种实际尝试。<strong>边界：</strong>次数额度不限制单次调用耗时；如果另有响应时限，还要用单调时钟和依赖超时。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：每轮只在规划前验一次</span><p>同答「保留多久，过期怎么办」，同用两条 KB，同从 1 点开始。规划已经花完额度，却直接派发读 KB-01；就算最终报耗尽，实际调用已经超过 1 次。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：工具派发前再验一次</span><p>相同预算和规划结果下，返回 <code>exhausted</code>、不给答案；实际轨迹只有 <code>plan</code>，读取为 0。若最后一次获准的规划本身就报告完成，则不再申请一次额度。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>规划提议不是执行许可；额度应在宿主调用适配器前扣除，即使读失败也不能抹掉这次尝试。代价是最后若只差一次完成确认，也不能把部分结果冒充完整答复。如果步骤和最大次数事先已知，可以用固定 Workflow 按节点限额，省去规划；如果有多种限制，应分别记录拒绝原因。</p>
+    <ol class="bp-steps">
+      <li>运行 <a href="#l46-loop-check">有界循环的轨迹自检</a>，比较额度 1（只规划）与 4（两条证据已读、还没确认完成）。</li>
+      <li>把额度提到 5，对比成功与 KB-02 依赖故障；两者的最后一个实际动作不同。</li>
+    </ol>
+    <p class="bp-result"><strong>结果诊断：</strong>额度 1 时出现 KB-01 就是缺少派发前检查；额度 4 时却返回完成，就是绕过了完成条件。KB-02 已尝试却返回耗尽，应检查是否把依赖错误误报为预算错误。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 最后一个额度已用来规划，规划结果要求读 KB-02。此时应怎么做？</div><div class="quiz-options"><button data-answer="wrong">返回完成不读证据</button><button data-answer="correct">返回耗尽不读证据</button><button data-answer="wrong">返回故障不读证据</button><button data-answer="wrong">返回重试不读证据</button></div><div class="quiz-explanation">规划的额度不覆盖它提出的工具调用。工具还没运行，既不是依赖故障，也不能根据中间结果判定完成。</div></div>
+</div>
+<div class="section" id="example-l46"><h2>4. 示例：用实际调用轨迹验预算</h2>
+  <p>先推演预算 0、1、4、5 时规划器和工具各被调用几次。再推演预算 5 但第二次读取失败的路径。将展开的脚本保存后用 <code>python -I 文件名.py</code> 运行，应只输出 <code>L46 ACCEPTED</code>。</p>
+  <div class="card">
+    <p><strong>跟做：</strong>补最后一个实际动作，不记尚未执行的提议。</p>
+    <pre data-label="跟做起点"><code>budget = 3
+unavailable = None
+trace = ["plan", "KB-01", ...]</code></pre>
+    <p><strong>对照：</strong>恰用 3 点，只读了 KB-01；返回 <code>exhausted</code>，不交付答案。</p>
+  </div>
+  <details><summary>展开参考实现与离线自检</summary><pre><code class="language-python" id="l46-loop-check">KB = {"KB-01": "导出文件生成后保留 7 天。", "KB-02": "超过保留期需重新发起导出。"}
+
+
+def run(budget, unavailable=None):
+    facts, trace = {}, []
+
+    def plan():
+        trace.append("plan")
+        for source_id in ("KB-01", "KB-02"):
+            if source_id not in facts:
+                return "read", source_id
+        return "done", None
+
+    def read_evidence(source_id):
+        trace.append(source_id)
+        if source_id == unavailable:
+            raise OSError("证据依赖不可用")
+        return KB[source_id]
+
+    while budget &gt; 0:
+        budget -= 1
+        action, source_id = plan()
+        if action == "done":
+            return "completed", "".join(facts.values()), trace
+        if budget == 0:
+            break
+        budget -= 1
+        try:
+            facts[source_id] = read_evidence(source_id)
+        except OSError:
+            return "dependency_failed", None, trace
+    return "exhausted", None, trace
+
+
+through_reads = ["plan", "KB-01", "plan", "KB-02"]
+assert run(0) == ("exhausted", None, [])
+assert run(1) == ("exhausted", None, ["plan"])
+assert run(4) == ("exhausted", None, through_reads)
+assert run(5, unavailable="KB-02") == ("dependency_failed", None, through_reads)
+assert run(5) == ("completed", KB["KB-01"] + KB["KB-02"], through_reads + ["plan"])
+print("L46 ACCEPTED")</code></pre></details>
+  <p>轨迹在函数入口记录实际尝试：成功为 3 次规划和 2 次读取；预算 4 时两条证据都读到了，却没有第 3 次规划来确认完成；依赖失败时第 2 次读取也已经发生。调用额度不等于墙钟超时、费用或可用性保证。</p>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：给收据查询加截止时刻</h2>
+  <p>用假单调时钟查询一条收据。每次规划花 1 点、耗时 2 刻，读取花 2 点、耗时 3 刻；截止时刻本身不能再开始调用，也不交付迟到结果。用调用轨迹区分「规划用光时间」与「剩余资源付不起读取」，不要用真实等待。真实调用还需把剩余时长传给依赖做超时或取消；循环的前置检查只能保证不启动已过期的调用。</p>
+  <details class="bp-check"><summary>独立完成后展开参考程序（离线，Python 3.11+）</summary><pre><code class="language-python" id="l46-transfer-check">class FakeClock:
+    def __init__(self, start=0):
+        self.tick = start
+
+    def now(self):
+        return self.tick
+
+    def advance(self, ticks):
+        self.tick += ticks
+
+
+def lookup(budget, window, clock):
+    deadline = clock.now() + window
+    trace, receipt = [], None
+
+    def reserve(cost):
+        nonlocal budget
+        if clock.now() &gt;= deadline:
+            return "deadline"
+        if budget &lt; cost:
+            return "resource_exhausted"
+        budget -= cost
+        return None
+
+    def plan():
+        trace.append("plan")
+        clock.advance(2)
+        return "done" if receipt else "read"
+
+    def read():
+        trace.append("read_receipt")
+        clock.advance(3)
+        return "R-04：已入账。"
+
+    while True:
+        if stop := reserve(1):
+            return stop, None, trace
+        if plan() == "done":
+            if clock.now() &gt;= deadline:
+                return "deadline", None, trace
+            return "completed", receipt, trace
+        if stop := reserve(2):
+            return stop, None, trace
+        receipt = read()
+
+
+steps = ["plan", "read_receipt", "plan"]
+assert lookup(4, 8, FakeClock(start=100)) == ("completed", "R-04：已入账。", steps)
+assert lookup(4, 0, FakeClock()) == ("deadline", None, [])
+assert lookup(4, 2, FakeClock()) == ("deadline", None, ["plan"])
+assert lookup(2, 8, FakeClock()) == ("resource_exhausted", None, ["plan"])
+assert lookup(4, 3, FakeClock()) == ("deadline", None, steps[:2])
+assert lookup(4, 7, FakeClock()) == ("deadline", None, steps)
+print("L46 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>唯一输出应为 <code>L46 TRANSFER PASSED</code>。时限为 2 刻和资源只有 2 点时，轨迹都只有 <code>plan</code>，但终态分别是 <code>deadline</code> 与 <code>resource_exhausted</code>。时限 3 刻时读取在第 2 刻已获准，回来已过期；若又规划或返回证据，说明没有把剩余时间检查到下一次动作和最终交付。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>只剩 1 点，宿主用它调用规划器，规划器提议读取 KB-01。为什么不能读完再扣额度？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不派发读取，返回 <code>exhausted</code>，不交付答复。规划许可不覆盖它提出的动作，事后扣点也不能收回已经发生的调用。验证时用工具入口的计数断言读取为 0、实际轨迹只有 <code>plan</code>，而不是只看最终状态。</p>
+      <p><strong>追问：</strong>如果最后一次获准的规划返回 <code>done</code>，预算也归零了呢？</p>
+      <p><strong>答题要点：</strong>已满足宿主的完成条件就可以交付，<code>done</code> 不另扣点；若证据未齐，不能仅凭规划器说完成就交付。两种情况下都不再发新调用。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>两次轨迹都是「plan → KB-01 → plan → KB-02」。甲从 4 点开始，两读成功；乙从 5 点开始，读 KB-02 报错。终态相同吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不同。甲返回 <code>exhausted</code>，虽然证据齐了，却付不起本例要求的最后一次规划；乙返回 <code>dependency_failed</code>，失败的读取也计一次，剩 1 点不会改变失败原因。测试同时断言轨迹、不同终态和两次都不交付文本，别用读取次数推断读到了什么。</p>
+      <p><strong>追问：</strong>乙的读取成功了，但查完没有支持结论的材料，还算依赖故障吗？</p>
+      <p><strong>答题要点：</strong>不算。成功返回但不支持结论，应走缺证路径；依赖报错意味着没能查完。用「正常返回空结果」和「抛出读取错误」两种夹具分别验证。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>收据练习从第 100 刻开始，窗口 3 刻、额度 4 点。规划花 1 点和 2 刻，读取花 2 点和 3 刻。会读吗？会交付吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>第 102 刻资源和时间还允许启动读取；它在第 105 刻返回，已过第 103 刻的截止时刻。不给收据，也不发下一次规划，结果为 <code>deadline</code>。用假单调时钟断言轨迹只有 <code>plan</code>、<code>read_receipt</code>，不用真实等待。</p>
+      <p><strong>追问：</strong>把窗口改成 8 刻、额度改成 2 点，会在哪一关停？</p>
+      <p><strong>答题要点：</strong>第 102 刻还没超时，但只剩 1 点，付不起读取的 2 点；返回 <code>resource_exhausted</code>，轨迹只有 <code>plan</code>。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>接上真实读取服务后，只在发请求前查截止时间够吗？如何验一个已经发出、到期仍未返回的请求？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不够，还要按剩余时长限制本地等待，并在交付前再查时限。用可控制返回时刻的替身，检查传给依赖的是剩余时长；模拟超时后迟到的结果，断言不交付它、不再派发新调用。即使本地发出了取消请求，也要把本地退出和依赖是否确认停止分开记录。</p>
+      <p><strong>追问：</strong>本地超时、依赖没确认停止，能把它当作空结果或马上无条件重试吗？</p>
+      <p><strong>答题要点：</strong>都不能。超时只说明没等到结果；先核对重试是否安全、依赖状态以及剩余时长和次数，条件满足才有限重试，本轮已到截止时刻就不再发。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L46">L46 疑难解答 →</a><div class="qa-related">上一课：<a href="0053-L45-function-workflow-agent.html">L45 架构取舍</a> · 下一课：<a href="0055-L47-typed-tool-contract.html">L47 类型契约与执行校验</a>。追问时贴出初始额度、调用轨迹和终态。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p><strong>知识地图：</strong>额度检查 → 规划 → 验完成或再次检查额度 → 只读执行 → 把结果交回规划；退出区分完成、依赖失败和耗尽。</p><p><a href="https://www.anthropic.com/research/building-effective-agents">Anthropic · Building effective agents</a>：精读「Agents」小节，关注工具反馈和最大迭代次数等停止条件。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

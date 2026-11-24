@@ -110,6 +110,52 @@ class EvidenceLabTests(unittest.TestCase):
                 self.assertIsNone(result["answer"])
                 self.assertIsNone(result["draft"])
 
+    def test_supplemental_only_citation_is_rejected_even_when_both_sources_are_sent(self):
+        requests = []
+        supplemental = {"source_id": "KB-02", "quote": "超过保留期需重新发起导出。"}
+        raw = json.dumps({"status": "completed", "citations": [supplemental]}, ensure_ascii=False)
+
+        def supplemental_only(payload):
+            requests.append(json.loads(payload)["evidence"])
+            return raw
+
+        for intent in ("answer", "draft"):
+            with self.subTest(intent=intent):
+                result = run(QUESTION, intent=intent, adapter=supplemental_only)
+                sent = requests[-1]
+                self.assertEqual([row["source_id"] for row in sent], ["KB-01", "KB-02"])
+                self.assertIn(supplemental, sent)  # 引用逐字吻合，问题在于漏引主来源。
+                self.assertEqual(result["selected_ids"], ["KB-01", "KB-02"])
+                self.assertEqual(result["usage"], {
+                    "input_bytes": 387, "output_bytes": len(raw.encode("utf-8")), "adapter_calls": 1,
+                })
+                self.assertEqual(result["status"], "invalid_response")
+                self.assertEqual(result["citations"], [])
+                self.assertIsNone(result["answer"])
+                self.assertIsNone(result["draft"])
+                self.assertIsNone(result["skill"])
+
+    def test_primary_only_citation_is_accepted_even_when_both_sources_are_sent(self):
+        requests = []
+        primary = {"source_id": "KB-01", "quote": "导出文件生成后保留 7 天。"}
+
+        def primary_only(payload):
+            requests.append(json.loads(payload)["evidence"])
+            return json.dumps({"status": "completed", "citations": [primary]}, ensure_ascii=False)
+
+        for intent, status in (("answer", "answered"), ("draft", "drafted")):
+            with self.subTest(intent=intent):
+                result = run(QUESTION, intent=intent, adapter=primary_only)
+                self.assertEqual([row["source_id"] for row in requests[-1]], ["KB-01", "KB-02"])
+                self.assertEqual(result["status"], status)
+                self.assertEqual(result["answer"], primary["quote"])
+                self.assertEqual(result["citations"], [primary])
+                if intent == "draft":
+                    self.assertEqual(result["draft"]["body"], primary["quote"])
+                    self.assertEqual(result["draft"]["source_ids"], ["KB-01"])
+                else:
+                    self.assertIsNone(result["draft"])
+
     def test_noncompleted_or_malformed_response_cannot_leak_a_partial_draft(self):
         citation = {"source_id": "KB-01", "quote": "导出文件生成后保留 7 天。"}
         cases = (

@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>课程范围：</strong>已有 Phase 1–4 的 44 节正式课（L01–L44）。Phase 5–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>已有 Phase 1–5 的 54 节正式课（L01–L54）。Phase 6–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -215,6 +215,7 @@
       <strong>Skills 小单元：</strong><a href="../reference/0004-agent-skills.html">SKILL.md、元数据匹配与渐进披露</a>；流程知识与工具/MCP 操作接口分离，匹配不等于授权，不增加正式课号。Phase 6 再接入实际工具。<br><br>
       <strong>验收目标：</strong>从 L38 迁移到「证据问答＋工单草稿」。为同一项目建立可版本化的提示、证据选择和一个可复用业务 Skill，记录触发条件、质量和上下文开销。<br><br>
       <a href="0045-phase4-prompt-context-outline.html">查看 Phase 4 的 6 节课与离线项目 →</a><br>
+      <a href="../best-practices/phase4-prompt-context-practices.html">Phase 4 工程实践复盘 →</a><br>
       <a href="../qa/phase4-qa.html">Phase 4 疑难解答 →</a>
     </div>
   </div>
@@ -225,7 +226,7 @@
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-5-body">
     <h3>Agent 核心架构：Loop、Harness 与工具设计</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">10-12 课</span>
+      <span class="phase-meta-item">10 课 · L45–L54</span>
       <span class="phase-meta-item">3-4 周</span>
     </div>
     <div class="phase-toggle">▼</div>
@@ -236,15 +237,17 @@
   </div>
   <div class="phase-body" id="phase-5-body">
     <div class="card">
-      <span class="tag tag-agent">规划 · 验收目标</span><br>
+      <span class="tag tag-agent">已编写 · 离线练习</span><br>
       <strong>先选执行方式：</strong>普通函数 → 确定性 workflow → 单 Agent，只有动态决策的收益超过成本才增加自主性。Agent Loop 设置最大轮次、预算和退出条件。<br><br>
       <strong>Agent Harness：</strong>从期望行为反推工具调度、完成标准、上下文预算、执行授权和错误恢复；故障先补回归用例，再决定是否加规则，允许经验证后删改规则。<br><br>
       <strong>Context Engineering 进阶：</strong>按完整交互组压缩并复算预算；外置有来源的结构化笔记，按需检索和渐进披露。子代理隔离上下文仅作对照，不作为默认架构。<br><br>
       <strong>工具设计：</strong>Schema、运行时校验、执行权限、错误反馈与测试；先用小工具集建立选择质量/延迟/上下文基线，工具搜索与程序化聚合留作有瓶颈时的进阶。<br><br>
       <strong>记忆生命周期：</strong>区分短期、工作与长期记忆；每次写入保留依据、来源和时间，支持用户纠正、过期、删除与租户隔离，评测检索质量，不把推测写成永久事实。<br><br>
       <strong>持久执行与审批（前移）：</strong>数据库检查点 → 暂停审批 → 退出进程 → 重启并恢复同一任务；说明节点可能重放，外部副作用须幂等，检查点不等于 exactly-once。<br><br>
-      <strong>验收目标：</strong>手写最小单 Agent Harness，与函数/workflow 基线对照。验证预算退出、记忆纠正与隔离、待审批状态写入后退出进程并恢复；注入「外部操作已提交、响应丢失」，重复恢复不能创建第二张工单。<br><br>
-      <a href="0046-phase5-to-11-planned-outlines.html#phase-5">查看 Phase 5 逐课草案 →</a>
+      <strong>离线验收：</strong>手写最小单 Agent Harness，与函数/workflow 基线对照。分别验证预算退出、记忆纠正与隔离、待审批任务跨进程恢复，以及本地草稿提交后响应丢失的幂等重放。不联网、不创建真实工单。<br><br>
+      <a href="0063-phase5-agent-harness-outline.html">查看 Phase 5 的 10 节课与离线项目 →</a><br>
+      <a href="../best-practices/phase5-agent-harness-practices.html">Phase 5 工程实践复盘 →</a><br>
+      <a href="../qa/phase5-qa.html">Phase 5 疑难解答 →</a>
     </div>
   </div>
 </div>
@@ -422,7 +425,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 5–11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 6–11 对应项仍为规划。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>

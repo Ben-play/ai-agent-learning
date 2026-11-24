@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L47 · 小工具集、类型契约与执行校验</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>小工具集、类型契约与执行校验</h1><p class="subtitle">让类型检查接线，让应用校验每一次执行</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p><a href="0054-L46-bounded-agent-loop.html">L46</a> 的读证据工具写在循环里。把它换成可替换的适配器时，要分别回答「代码能不能接上」和「这次到底能不能读」。</p><h3>学习目标</h3><p>能用 Python 3.11 的 <code>Protocol</code> 和 <code>Generic[T]</code> 写工具契约，并用实际调用记录证明未知工具、无权限和非法输入均零执行。</p></div>
+<div class="section" id="l47-protocol">
+  <h2>1. Protocol：让不同实现接在同一个接口上</h2>
+  <p>L46 的读取函数直接访问本地资料。现在要求同一个调度器在单元测试读固定数据，在另一个环境从缓存读，调用代码不随实现改变。若调度器参数写成 <code>LocalEvidence</code>，就把它和本地实现绑在一起；写成 <code>EvidenceTool</code>，它只依赖「能按 ID 读取证据」这项能力。</p>
+  <p><code>class EvidenceTool(Protocol)</code> 声明调用方需要哪些方法。<code>def read(self, source_id: str) -&gt; str: ...</code> 是方法签名，<code>...</code> 在这里作占位，不是读取逻辑。使用时创建的是 <code>LocalEvidence()</code> 或 <code>CachedEvidence()</code>；它们<strong>不必继承</strong>协议。只要方法能接收协议承诺的调用，并返回兼容的类型，静态检查器就允许接线。这叫结构化类型检查。普通基类强调继承，这里强调能不能替换。</p>
+  <p>例如缓存实现只接受 <code>int</code>，而调度器按契约传 <code>"KB-01"</code>：问题发生在代码接线处，应先修实现或改所有调用者的契约。即使用 <code>@runtime_checkable</code>，运行时的 <code>isinstance</code> 也只检查协议成员是否存在，不验证完整方法签名，更不能检查一次业务调用是否获准。</p>
+  <pre><code class="language-python" id="l47-protocol-walkthrough">from typing import Protocol
+
+
+class EvidenceTool(Protocol):
+    def read(self, source_id: str) -&gt; str: ...
+
+
+class LocalEvidence:
+    def read(self, source_id: str) -&gt; str:
+        return {"KB-01": "导出文件生成后保留 7 天。"}[source_id]
+
+
+class CachedEvidence:
+    def __init__(self, cache: dict[str, str]) -&gt; None:
+        self.cache = cache
+
+    def read(self, source_id: str) -&gt; str:
+        return self.cache[str(source_id)]
+
+
+def retention(tool: EvidenceTool) -&gt; str:
+    return tool.read("KB-01")
+
+
+cached = CachedEvidence({"KB-01": "导出文件生成后保留 7 天。"})
+assert retention(LocalEvidence()) == retention(cached) == "导出文件生成后保留 7 天。"
+print("L47 PROTOCOL PASSED")</code></pre>
+  <p>保存为 <code>l47_protocol.py</code>，运行 <code>python -I l47_protocol.py</code>，应只看到 <code>L47 PROTOCOL PASSED</code>。若已有 mypy，再运行 <code>python -m mypy l47_protocol.py</code>。在副本中只把 <code>CachedEvidence.read</code> 的参数注解改成 <code>int</code>：mypy 会在 <code>retention(cached)</code> 报接口不兼容，普通 Python 仍打印通过，因为它不按注解拒绝请求。运行结果正确不代表代码接线满足契约。</p>
+</div>
+<div class="section" id="l47-generic">
+  <h2>2. Generic[T]：用同一种结果容器保留值的类型</h2>
+  <p>读取返回文本，而统计返回整数；二者都要表达「状态 + 值」。<code>T = TypeVar("T")</code> 引入类型占位符；<code>Generic[T]</code> 声明这个类可由调用者选定 <code>T</code>。在 <code>Result[str]</code> 中，<code>value</code> 是 <code>str | None</code>；在 <code>Result[int]</code> 中则是 <code>int | None</code>。<code>@dataclass</code> 负责生成构造方法，不负责校验外来数据。<code>| None</code> 允许没有值，<code>= None</code> 才让调用者可以省略这个参数。</p>
+  <pre><code class="language-python" id="l47-generic-walkthrough">from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+@dataclass
+class Result(Generic[T]):
+    status: str
+    value: T | None = None
+
+
+text = Result[str]("ok", "保留 7 天。")
+count = Result[int]("ok", 1)
+missing = Result[str]("not_found")
+assert text.value == "保留 7 天。"
+assert count.value == 1
+assert missing.value is None
+print("L47 GENERIC PASSED")</code></pre>
+  <p>这段可单独运行，输出 <code>L47 GENERIC PASSED</code>。读取 <code>result.value</code> 后要确认它不是 <code>None</code>，才能用字符串方法。还要注意：泛型没有强制规定 <code>status="ok"</code> 时必有值；若业务要求这个不变量，应用须另做校验，或把成功和失败建成不同类型。下面的完整示例把协议的返回改成 <code>Result[str]</code>，让适配器自己报告结果状态。</p>
+</div>
+<div class="section" id="l47-dispatch">
+  <h2>3. 跟一次调用：知道类型，还要检查这次请求</h2>
+  <p>规划器提出 <code>read_evidence</code> 和 <code>{"source_id": "KB-01"}</code>。工具注册表用名字定位实现；<strong>注册表示应用装了它，不表示这次可以执行</strong>。宿主根据当前身份、任务和策略给出许可集合，不接受提议里自报的权限。执行器再检查参数：<code>required</code> 要求字段存在，<code>properties</code> 约束字段的值，<code>additionalProperties: false</code> 在这个简单 Schema 中拒绝多余字段。本课写的几个 <code>if</code> 只实现这份规则，不是通用 Schema 校验器。</p>
+  <table><thead><tr><th scope="col">给定情况</th><th scope="col">第一道拒绝或执行</th><th scope="col">读取轨迹</th></tr></thead><tbody>
+    <tr><td>注册表没有请求的名字</td><td><code>unknown_tool</code>，找不到实现</td><td>不增加</td></tr>
+    <tr><td>已注册、参数正确，但宿主允许集为空</td><td><code>forbidden</code>，功能没有获准</td><td>不增加</td></tr>
+    <tr><td>已授权，但 <code>source_id</code> 是数字</td><td><code>invalid_args</code>，值应是规定的字符串</td><td>不增加</td></tr>
+    <tr><td>已授权，并且传入 <code>"KB-01"</code></td><td>读取并返回证据</td><td>增加一条</td></tr>
+  </tbody></table>
+  <p>在真实应用中，还可能需要判断「能用读取工具，但不能读另一个租户的文档」；这是记录级授权，不能靠字段类型解决。本课只有两条合成公共政策，也没有文件恢复规则：找不到支持的证据时应缺证据退出，不临时发明一个工具。工具也并非越多越好：多个同义工具会让选择和维护更难；先用小工具集，以同一组输入比较漏选、误选和描述开销，再决定是否拆分。课内的字节数不是线上 Token。</p>
+  <div class="best-practice-point" id="bp-l47">
+    <h3>最佳实践：让宿主在执行点分别判定工具许可和参数</h3>
+    <p class="bp-scenario"><strong>适用：</strong>规划者的提议是外部数据，而注册表可能包含本轮未披露的工具。<strong>边界：</strong>类型、参数和工具级许可通过不代表某条记录可读；若权限细化到租户或单条记录，还要校验资源范围。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：已接线且参数合法就执行</span><p>同一只读工具、同一参数 <code>{"source_id": "KB-01"}</code>，本轮允许名单为空。适配器满足 <code>EvidenceTool</code>，参数也符合 Schema；只查这两项，就会实际读取一次原本无权访问的证据。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：以调用时的宿主名单为准</span><p>保持工具、参数和空名单不变。注册表命中后，运行时许可检查返回 <code>forbidden</code>；读取轨迹不变、不给证据。若改为已授权但参数形状错误，才应返回 <code>invalid_args</code>。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>静态类型帮助维护者发现适配器接错，Schema 检查这一份数据长什么样，许可决定这一轮能不能执行。减少披露面有助于选择，但看不见不等于调不到；用宿主决定的名单拦住猜中的名字，并让披露与执行读取同一份许可策略，免得两处配置漂移。只有一个已知且始终允许的操作时，可用直接调用省去注册表，不能就此省掉外部输入与资源权限检查。</p>
+    <ol class="bp-steps">
+      <li>运行 <a href="#l47-tool-check">接口与执行边界的自检</a>，分别更换工具名、名单和参数；每次只改一项。</li>
+      <li>对照 <code>unknown_tool</code>、<code>forbidden</code> 和 <code>invalid_args</code>，并核对失败后读取轨迹是否新增记录。</li>
+    </ol>
+    <p class="bp-result"><strong>结果诊断：</strong>合法参数在空名单下仍能读，说明把 Schema 当成了授权；已获准但用数字 ID 却触发读取，说明漏掉了运行时验参。返回拒绝而轨迹仍增加，检查是否先调了适配器才拒绝。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 工具已注册且已授权，调用参数却是数字 ID。执行前应依据什么拒绝？</div><div class="quiz-options"><button data-answer="wrong">依据静态接口拒绝</button><button data-answer="wrong">依据泛型结果拒绝</button><button data-answer="wrong">依据预算规则拒绝</button><button data-answer="correct">依据参数规则拒绝</button></div><div class="quiz-explanation">应用按 Schema 限定参数必须是列出的字符串 ID；授权成功不代表参数有效，类型注解也不会主动检查收到的数据。</div></div>
+</div>
+<div class="section" id="example-l47"><h2>4. 示例：验证合法读取与零执行的反例</h2>
+  <p>先给「读取保留期」「读取过期做法」「询问恢复」写期望提议，再预测未注册、无权和错误参数各在哪一关被拒。将脚本用 Python 3.11 的 <code>python -I 文件名.py</code> 运行，唯一输出应为 <code>L47 ACCEPTED</code>；正确提议为 3/3，工具描述为 175 字节。</p>
+  <div class="card">
+    <p><strong>跟做：</strong>只改 <code>args</code> 的一处，让已授权的 KB-02 读取通过。</p>
+    <pre data-label="跟做起点"><code>name = "read_evidence"
+allowed = frozenset({name})
+args = {"source_id": "KB-02", "extra": True}
+reads = []
+result = dispatch(name, args, allowed)</code></pre>
+    <p><strong>对照：</strong>状态为 <code>ok</code>，读取轨迹恰为 <code>["KB-02"]</code>。</p>
+  </div>
+  <details><summary>展开参考实现与离线自检</summary><pre><code class="language-python" id="l47-tool-check">from dataclasses import dataclass
+import json
+from typing import Generic, Protocol, TypeVar
+
+KB = {"KB-01": "导出文件生成后保留 7 天。", "KB-02": "超过保留期需重新发起导出。"}
+TOOL = "read_evidence"
+SCHEMA = {"type": "object", "required": ["source_id"], "additionalProperties": False,
+          "properties": {"source_id": {"type": "string", "enum": list(KB)}}}
+T = TypeVar("T")
+
+@dataclass
+class Result(Generic[T]):
+    status: str
+    value: T | None = None
+
+class EvidenceTool(Protocol):
+    def read(self, source_id: str) -&gt; Result[str]: ...
+
+reads: list[str] = []
+
+class LocalEvidence:
+    def read(self, source_id: str) -&gt; Result[str]:
+        reads.append(source_id)
+        return Result("ok", KB[source_id])
+
+registry: dict[str, EvidenceTool] = {TOOL: LocalEvidence()}
+
+
+def dispatch(name: str, args: object, allowed: frozenset[str]) -&gt; Result[str]:
+    tool = registry.get(name)
+    if tool is None:
+        return Result("unknown_tool")
+    if name not in allowed:
+        return Result("forbidden")
+    if not isinstance(args, dict) or set(args) != {"source_id"}:
+        return Result("invalid_args")
+    source_id = args["source_id"]
+    if not isinstance(source_id, str) or source_id not in KB:
+        return Result("invalid_args")
+    return tool.read(source_id)
+
+
+proposed = {"retention": (TOOL, "KB-01"), "expired": (TOOL, "KB-02")}
+expected = {"retention": ("read_evidence", "KB-01"), "expired": ("read_evidence", "KB-02"), "restore": None}
+assert sum(proposed.get(task) == want for task, want in expected.items()) == len(expected) == 3
+card = json.dumps({"name": TOOL, "schema": SCHEMA}, separators=(",", ":"))
+assert len(card.encode("utf-8")) == 175
+allowed = frozenset({TOOL})
+for name, key in proposed.values():
+    assert dispatch(name, {"source_id": key}, allowed) == Result("ok", KB[key])
+assert reads == ["KB-01", "KB-02"]
+good = {"source_id": "KB-01"}
+assert dispatch("other_tool", good, allowed).status == "unknown_tool"
+assert dispatch(TOOL, good, frozenset()).status == "forbidden"
+for bad in ({}, {"source_id": 7}, {"source_id": "KB-03"}, dict(good, extra=True)):
+    assert dispatch(TOOL, bad, allowed).status == "invalid_args"
+assert reads == ["KB-01", "KB-02"]
+print("L47 ACCEPTED")</code></pre></details>
+  <p>拒绝后读取记录保持不变，不是「先查再丢掉结果」。如果要替换证据实现，只换注册表里的适配器，不绕过执行前检查。</p>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：拦住猜中的收据工具</h2>
+  <p>收据摘要工具对普通会话开放，对账工具只对复核会话开放；两个本地适配器实现同一个 <code>Protocol</code>。先预测三个结果：把适配器返回类型改成 <code>int</code> 时静态检查器应在哪里报错？给已允许的工具传数字编号，谁来拒绝？普通会话猜中已注册的对账名且参数正确，谁来拒绝？参考程序用调用轨迹验后两项；若已有静态检查器，可在副本中修改 <code>LocalReader.read</code> 的返回注解为 <code>int</code> 并返回整数，验证给 <code>registry</code> 接线时类型不兼容。运行 Python 本身不会做这项静态检查。</p>
+  <details class="bp-check"><summary>独立完成后展开参考程序（离线，Python 3.11+）</summary><pre><code class="language-python" id="l47-transfer-check">from typing import Protocol
+
+
+class Reader(Protocol):
+    def read(self, receipt_id: str) -&gt; str: ...
+
+
+calls = []
+
+
+class LocalReader:
+    def __init__(self, name: str, text: str):
+        self.name = name
+        self.text = text
+
+    def read(self, receipt_id: str) -&gt; str:
+        calls.append((self.name, receipt_id))
+        return self.text
+
+
+SUMMARY, REVIEW = "receipt_summary", "receipt_reconciliation"
+registry: dict[str, Reader] = {
+    SUMMARY: LocalReader(SUMMARY, "已入账"),
+    REVIEW: LocalReader(REVIEW, "需复核"),
+}
+
+
+def dispatch(name: str, raw: object, allowed: frozenset[str]) -&gt; tuple[str, str | None]:
+    tool = registry.get(name)
+    if tool is None:
+        return "unknown_tool", None
+    if name not in allowed:
+        return "forbidden", None
+    if not isinstance(raw, dict) or set(raw) != {"receipt_id"}:
+        return "invalid_args", None
+    receipt_id = raw["receipt_id"]
+    if not isinstance(receipt_id, str) or receipt_id not in {"R-04", "R-05"}:
+        return "invalid_args", None
+    return "ok", tool.read(receipt_id)
+
+
+ordinary, reviewer = frozenset({SUMMARY}), frozenset({SUMMARY, REVIEW})
+good = {"receipt_id": "R-04"}
+assert dispatch(SUMMARY, good, ordinary) == ("ok", "已入账")
+assert dispatch("receipt_export", good, ordinary) == ("unknown_tool", None)
+assert dispatch(REVIEW, good, ordinary) == ("forbidden", None)
+for bad in ({"receipt_id": 4}, dict(good, allowed=[REVIEW]), {"receipt_id": "R-99"}):
+    assert dispatch(SUMMARY, bad, ordinary) == ("invalid_args", None)
+assert calls == [(SUMMARY, "R-04")]
+assert dispatch(REVIEW, good, reviewer) == ("ok", "需复核")
+assert calls == [(SUMMARY, "R-04"), (REVIEW, "R-04")]
+print("L47 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>唯一输出应为 <code>L47 TRANSFER PASSED</code>。同一对账提议只换宿主授权就能从 <code>forbidden</code> 变成 <code>ok</code>；报告 <code>unknown_tool</code> 则没有测到「已注册但未授权」。数字 ID 或自带 <code>allowed</code> 字段若留下调用记录，检查验参是否真的发生在执行前。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>注册表要求 <code>EvidenceTool</code> 的 <code>read</code> 返回 <code>Result[str]</code>。新缓存适配器返回 <code>Result[int]</code>，但程序能启动。能直接替换吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不能按现有契约替换。调用方要的是证据文本，新适配器却提供整数；不必继承 <code>Protocol</code>，但签名必须兼容。在接入有类型标注的注册表时跑静态检查，并用已知 KB-01 读取确认兼容实现返回预期文本。</p>
+      <p><strong>追问：</strong>返回 <code>Result[str]("ok")</code> 就能证明有文本吗？</p>
+      <p><strong>答题要点：</strong>不能，<code>value</code> 仍可为 <code>None</code>。若业务规定成功必有文本，要在收结果时核对，或分开建模成功和失败；测试应覆盖「报成功但无值」。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>普通会话只获准用 <code>receipt_summary</code>。它先用未注册的 <code>receipt_export</code>、再用已注册的 <code>receipt_reconciliation</code> 请求读取 R-04，最后给摘要工具传了数字 4。三次各怎么处理？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>依次返回 <code>unknown_tool</code>、<code>forbidden</code>、<code>invalid_args</code>。按本课顺序，先查注册表，再查宿主许可，最后由 <code>dispatch</code> 实际执行参数检查。Schema 只是描述规则，不会代替这段检查，也不授予权限。断言三次拒绝都没有新增适配器调用。</p>
+      <p><strong>追问：</strong>怎样只改一个条件，证明对账工具之前确实是未授权，而不是接线坏了？</p>
+      <p><strong>答题要点：</strong>保持工具、R-04 和注册表不变，只换成复核会话的允许集；应返回 <code>ok</code>，并恰好增加一次对账读取。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>扩展到多租户后，甲租户获准用 <code>receipt_summary</code>，R-04 也是合法字符串，但这张收据只属于乙租户。该在哪里拦？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>验参后、读取内容前，再按宿主确认的租户校验记录范围。工具许可允许使用功能，不等于允许读任意记录。用同一个 R-04 分别从甲和获授权的乙发起：甲不触发内容读取、不拿到摘要，乙能读到自己的记录。</p>
+      <p><strong>追问：</strong>如果下发给模型的 Schema 已把可选 ID 列成枚举，还要校验记录权限吗？</p>
+      <p><strong>答题要点：</strong>要。枚举只约束输入，而且生成后权限可能变化。执行时以宿主的当前权限为准；可用「生成枚举后撤销访问」的测试验证不会读到内容。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>本课单个 <code>read_evidence</code> 的描述是 175 字节，手写提议在 3 个用例上全对。有人想拆成两个只读工具；怎么验证值得拆？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>暂保留一个工具。固定证据和验收规则，拿同一批常见问法、容易混淆的问法和无证据问法对照两种工具集。分别数漏选、选错及不该调用却调用的情况，核对最终来源和实际调用，再比较完整工具描述大小。3 个固定提议只验证本地样例，不代表模型在线上也选得准。</p>
+      <p><strong>追问：</strong>拆分后「过期怎么办」选对工具，却引用了 KB-01，算改进吗？</p>
+      <p><strong>答题要点：</strong>这条用例没通过：需要的是 KB-02。先核对工具实际返回的来源；若已经读错，查执行参数，若读到了 KB-02，再查答复怎样选引用。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L47">L47 疑难解答 →</a><div class="qa-related">上一课：<a href="0054-L46-bounded-agent-loop.html">L46 有界 Agent Loop</a> · 下一课：<a href="0056-L48-context-notes-compaction.html">L48 上下文压缩与按需披露</a>。追问时贴出示例参数、拒绝原因与执行计数。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p><strong>知识地图：</strong>Protocol 约束适配器接口 → Generic 约束结果提示 → 注册、权限、参数逐关检查 → 通过才执行。</p><p>Python 3.11 官方文档：<a href="https://docs.python.org/3.11/library/typing.html#typing.Protocol">Protocol 与结构化类型</a> · <a href="https://docs.python.org/3.11/library/typing.html#user-defined-generic-types">自定义泛型</a>。参数部分可查 <a href="https://json-schema.org/understanding-json-schema/reference/object">JSON Schema 对象规则</a>。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>
