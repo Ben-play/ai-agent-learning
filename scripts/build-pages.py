@@ -48,6 +48,9 @@ README_FILES = (
     "code/phase2-model-selection/phase2-practices-capstone/README.md",
     "code/phase4-prompt-context/README.md",
     "code/phase5-agent-harness/harness-lab/README.md",
+    "code/phase6-langgraph-mcp/graph-lab/README.md",
+    "code/phase6-langgraph-mcp/stdio-lab/README.md",
+    "code/phase6-langgraph-mcp/http-lab/README.md",
 )
 GENERATED_README_FILES = tuple(name.removesuffix(".md") + ".html" for name in README_FILES)
 BUILD_VERSION_PLACEHOLDER = "__BUILD_VERSION__"
@@ -293,12 +296,17 @@ def inline_markdown(text: str) -> str:
         lambda match: hold(f"<code>{html.escape(match.group(1))}</code>"),
         text,
     )
+    def link(match: re.Match[str]) -> str:
+        url = match.group(2)
+        rel = ' rel="noopener noreferrer"' if url.startswith(("http://", "https://")) else ""
+        return hold(f'<a href="{html.escape(url, quote=True)}"{rel}>'
+                    f"{html.escape(match.group(1))}</a>")
+
+    # The local subset is limited to relative lesson back-links; the staged
+    # artifact validator still checks that each target is a published file.
     protected = re.sub(
-        r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
-        lambda match: hold(
-            f'<a href="{html.escape(match.group(2), quote=True)}" rel="noopener noreferrer">'
-            f"{html.escape(match.group(1))}</a>"
-        ),
+        r"\[([^\]]+)\]\((https?://[^\s)]+|(?:\.\./)+lessons/[\w.-]+\.html(?:#[\w.-]+)?)\)",
+        link,
         protected,
     )
     escaped = html.escape(protected, quote=True)

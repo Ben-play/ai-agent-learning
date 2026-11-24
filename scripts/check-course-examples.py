@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Run explicitly allowlisted, offline course acceptance blocks in subprocesses.
 
-Uses only the standard library. Never executes arbitrary lesson code, SDK examples,
-network examples, or external script contents. Use a Python environment containing
-Pydantic v2 for L36; no dependencies are installed by this script.
+Uses only the standard library to run explicit allowlists. The default suite needs
+Pydantic v2 for L36 and uses loopback HTTP for L58/L59; it never calls external
+services. The separate LangGraph suite needs the graph-lab dependencies.
+No dependencies are installed by this script.
 """
 
 from __future__ import annotations
 
+import argparse
 from html.parser import HTMLParser
 from pathlib import Path
 import subprocess
@@ -59,12 +61,27 @@ CHECKPOINT_CASES = (
     ("0051-L43-progressive-skill-disclosure.html", ("l43-stage-check",), "P4 CONTEXT AND SKILL PASSED"),
     ("0056-L48-context-notes-compaction.html", ("l48-stage-check",), "P5 HARNESS BOUNDARIES PASSED"),
     ("0060-L52-idempotent-draft-replay.html", ("l52-stage-check",), "P5 DURABLE APPROVAL PASSED"),
+    ("0068-L59-mcp-skill-authority.html", ("l59-stage-check",), "P6 SKILL AND AUTHORITY PASSED"),
 )
 WALKTHROUGH_CASES = (
     ("0055-L47-typed-tool-contract.html", ("l47-protocol-walkthrough",), "L47 PROTOCOL PASSED"),
     ("0055-L47-typed-tool-contract.html", ("l47-generic-walkthrough",), "L47 GENERIC PASSED"),
 )
-ALL_CASES = CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
+PHASE6_LOCAL_CASES = (
+    ("0065-L56-langgraph-durable-resume.html", ("l56-transfer-check",), "L56 TRANSFER PASSED"),
+    ("0066-L57-mcp-stdio.html", ("l57-stdio-check",), "L57 ACCEPTED"),
+    ("0066-L57-mcp-stdio.html", ("l57-transfer-check",), "L57 TRANSFER PASSED"),
+    ("0067-L58-mcp-streamable-http.html", ("l58-http-check",), "L58 ACCEPTED"),
+    ("0067-L58-mcp-streamable-http.html", ("l58-transfer-check",), "L58 TRANSFER PASSED"),
+    ("0068-L59-mcp-skill-authority.html", ("l59-auth-check",), "L59 ACCEPTED"),
+    ("0068-L59-mcp-skill-authority.html", ("l59-transfer-check",), "L59 TRANSFER PASSED"),
+)
+LANGGRAPH_CASES = (
+    ("0064-L55-langgraph-state-graph.html", ("l55-graph-check",), "L55 ACCEPTED"),
+    ("0064-L55-langgraph-state-graph.html", ("l55-transfer-check",), "L55 TRANSFER PASSED"),
+    ("0065-L56-langgraph-durable-resume.html", ("l56-resume-check",), "L56 ACCEPTED"),
+)
+ALL_CASES = CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES + PHASE6_LOCAL_CASES
 
 
 class CodeBlocks(HTMLParser):
@@ -91,8 +108,12 @@ class CodeBlocks(HTMLParser):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--suite", choices=("local", "langgraph"), default="local")
+    suite = parser.parse_args().suite
+    cases = ALL_CASES if suite == "local" else LANGGRAPH_CASES
     failures = 0
-    for filename, ids, expected in ALL_CASES:
+    for filename, ids, expected in cases:
         try:
             parser = CodeBlocks()
             parser.feed((ROOT / "lessons" / filename).read_text(encoding="utf-8"))
@@ -100,7 +121,8 @@ def main() -> int:
             compile(source, filename, "exec")
             result = subprocess.run(
                 [sys.executable, "-I", "-X", "utf8", "-c", source],
-                cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=30,
+                cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                timeout=120 if expected == "L56 ACCEPTED" else 30,
                 check=False,
             )
             if result.returncode or result.stdout.strip() != expected or result.stderr.strip():
@@ -113,7 +135,7 @@ def main() -> int:
         except (KeyError, OSError, ValueError, SyntaxError, subprocess.TimeoutExpired) as exc:
             failures += 1
             print(f"FAIL {filename}: {exc}")
-    print(f"Offline examples: {len(ALL_CASES) - failures}/{len(ALL_CASES)} passed")
+    print(f"{suite} examples: {len(cases) - failures}/{len(cases)} passed")
     return 1 if failures else 0
 
 

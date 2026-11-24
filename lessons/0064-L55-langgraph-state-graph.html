@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <title>L55 · 把手写 Harness 迁入最小状态图</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第六阶段 · LangGraph 与 MCP</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>把手写 Harness 迁入最小状态图</h1><p class="subtitle">只换编排，不重写什么算对</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>从 <a href="0062-L54-harness-acceptance.html">L54</a> 接手时，项目已经能查证据、在额度内改写一次，并在缺证据时停止。图的价值是把「接下来去哪」显式化，不是替应用决定什么可以执行。先迁移只读路径；审批写入留到 L56，不把两种问题一起引进来。</p><h3>学习目标</h3><p>把输入、节点更新、条件分支和业务结果连起来；用同一组输入比较手写版和 LangGraph 版；能解释为什么一个返回值正确的实现仍可能不合格。</p></div>
+<div class="section"><p><strong>验证状态：</strong>下面的状态与调用次数取自 Phase 5 的已验证契约，也是迁移的判定标准；LangGraph 候选版尚待安装依赖后实跑。</p></div>
+<div class="section"><h2>1. 先为边标名字，再为节点写代码</h2>
+  <p>在一个执行周期中，<strong>状态</strong>是下一步会用到的数据，不是完整聊天记录。用 <code>TypedDict</code> 写出字段：正在查的 <code>question</code>、是否允许已知改写、总预算、已经分派的次数、当前状态和可发布的答复与来源。<code>TypedDict</code> 不会在运行时替应用验证输入；入口仍要检查任务类型、非空问题和额度。只读流程不需要把数据库连接或凭证塞进可序列化状态。若未来要放并行节点，才有必要设计多个更新怎样合并；这个串行练习先按字段替换即可。</p>
+  <p><strong>节点</strong>完成有限的一步并返回本步更新，不直接修改传入字典。<code>gate</code> 只决定能否再分派，<code>read</code> 才调用 Phase 4 且推进计数；一个节点可以只返回 <code>{"status": "exhausted"}</code> 等更新，不必复制整份状态。<strong>边</strong>消化更新后的状态：<code>START</code> 固定进 <code>gate</code>；只有仍为 <code>pending</code> 才到 <code>read</code>，读取后同样只有待处理才回 <code>gate</code>。其他分支都到 <code>END</code>。<code>compile()</code> 让图可以执行，不会替这套业务条件发现少了一道守卫。</p>
+  <pre><code class="language-text">START → gate ── pending ──→ read
+           │                 │
+           │ terminal        ├── pending ──→ gate
+           ↓                 ↓ terminal
+          END               END</code></pre>
+  <p>例如，登记好两个节点之后，下面这段把「还能执行」映射成读节点，否则终止。路由函数不做读取；读取只在节点体发生。</p>
+  <pre><code class="language-python">builder.add_edge(START, "gate")
+builder.add_conditional_edges(
+    "gate", lambda state: state["status"] == "pending",
+    {True: "read", False: END},
+)</code></pre>
+</div>
+<div class="section"><h2>2. 带着一个输入走完条件边</h2>
+  <p>输入「导出文件有效期？」。Phase 4 的合成问题表不收录这句，第一次分派拿到 <code>needs_evidence</code> 而不是答案。只有当前问句恰是已知别名且启用改写时，才把下一次查询改成「导出文件保留多久？」。这不是模型判断，也不是通用同义改写。表中分派只数进入 Phase 4 问答边界；第一次缺证据甚至可能没调用内部适配器，不能把这个数当作模型调用数。</p>
+  <table><thead><tr><th scope="col">只改变的条件</th><th scope="col">路径</th><th scope="col">合同结果</th></tr></thead><tbody>
+    <tr><td>禁用改写，额度 2</td><td>放行 → 读别名 → 停止</td><td><code>failed</code>，1 次分派，无答复</td></tr>
+    <tr><td>启用改写，额度 2</td><td>放行 → 读别名 → 再检查 → 读已知问句</td><td><code>complete</code>，2 次，KB-01、KB-02</td></tr>
+    <tr><td>启用改写，额度降为 1</td><td>放行 → 读别名 → 闸门拒绝</td><td><code>exhausted</code>，1 次，无答复</td></tr>
+  </tbody></table>
+  <p>「最后一步把额度用完」不总等于耗尽：若第一步就查询到有据答案，可在 <code>read</code> 返回 <code>complete</code>，直接结束，不再回闸门。与「还缺一个不允许发出的调用」区分开。把读取入口计数作为第二份证据：若终态是 <code>exhausted</code> 却已经读了两次，先查边是否绕过了闸门，而不是改报表。</p>
+</div>
+<div class="section"><h2>3. 迁移先比较业务，再比较框架成本</h2>
+  <p>迁移暂时保留同一个问句和同一个证据函数，只把手写 <code>while</code> 换成两节点的图。每个实现用独立初始状态，核对业务状态、答复、来源和分派边界。比较的轨迹只包括有业务约束的动作；内部若增设一个纯整形节点，不占分派额度，就不用因图不同而改门槛。相反，框架的递归上限防止图继续转，不是每个业务资源的总预算，不能用它替代调用前额度检查。</p>
+  <div class="best-practice-point" id="bp-l55">
+    <h3>最佳实践：保护外部调用的边界，不锁定内部节点顺序</h3>
+    <p class="bp-scenario"><strong>适用：</strong>有稳定基线、多个可复用步骤或下一课的跨进程待办。<strong>不适用：</strong>若一个确定函数足够，直接函数少一层依赖与调试成本。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：返回耗尽就算通过</span><p>额度 1，图先读两次，再把返回改成耗尽；账面状态对，行为已经越界。</p></div><div class="bp-right"><span class="bp-compare-label">对照：先拦分派，再验结果</span><p>同一输入与额度，待办回到闸门后直接结束，读取入口只收到一次请求。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>一条守卫边让失败可解释、可观测，但图并不自动省钱或提高证据质量。确需验并发、延迟或真实模型时另做试验。</p>
+    <ol class="bp-steps"><li>复跑 L54 的只读对照，再跑<a href="#l55-graph-check">迁移自检</a>。</li><li>把候选的返回值与真实分派计数并列；两边一致才算保住这条合同。</li></ol>
+    <p class="bp-result">终态正确但次数不对，修执行边界而非计数文案；来源错先对比实际送进读取的问句与返回结果。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 额度 1，首次读取已得到带来源的正确答案，应如何结束？</div><div class="quiz-options"><button data-answer="wrong">额外调用后标完成</button><button data-answer="correct">直接结束并交付答案</button><button data-answer="wrong">返回耗尽并隐藏答案</button><button data-answer="wrong">重置额度再查一遍</button></div><div class="quiz-explanation">额度限制的是再分派，不是否定已按合同完成的结果。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>4. 跟做：一张状态表，先预测再运行</h2>
+  <p>第一次按别名查询未命中，图已提出改写。先填这时的下一步、最终结果和分派数；再只把 <code>budget</code> 从 1 改成 2，填第二组结果，不改变问句与证据。运行环境和当前验证状态见<a href="../code/phase6-langgraph-mcp/graph-lab/README.md">项目说明</a>。</p>
+  <div class="card" id="guided-l55"><h3>只填一行</h3><pre><code class="language-text">status=pending  calls=1  budget=1  question=导出文件保留多久？
+下个节点 ___  最终状态 ___  真实分派总数 ___</code></pre><p><strong>通过标准：</strong>不执行已改写的第二次读取；只有把额度变为 2 才会再放行。先填完再展开。</p></div>
+  <details><summary>展开参考：比较阶段 5 与状态图</summary>
+    <pre><code class="language-python" id="l55-graph-check">import runpy
+from pathlib import Path
+
+lab = runpy.run_path(str(Path("code/phase6-langgraph-mcp/graph-lab/read_graph.py")))
+assert lab["read_acceptance"]() == {
+    "baseline": ("failed", 1, ()),
+    "dynamic": ("complete", 2, ("KB-01", "KB-02")),
+    "budget": ("exhausted", 1, ()),
+}
+print("L55 ACCEPTED")</code></pre>
+    <p>在已安装依赖的解释器里回到仓库根运行。合同函数既比较 Phase 5 的业务结果，也独立断言期待值和读取入口实际发生的动作。</p>
+  </details>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：设备校准目录</h2>
+  <p>把「读证据」换成仪表校准记录：先查台账，再查校准条目。给校准图加一条额度检查，限制每次执行最多读一次或两次。对照一个故意错的版本：它在发现超出预算之后返回正确终态，却已经执行了第二次读取。</p>
+  <div class="card"><h3>独立起点：一条分支条件</h3><pre><code class="language-python"># 台账已查一次，路由函数现在得到剩余可执行任务。
+state = {"budget": 1, "source": "CAL-03"}
+# TODO：填条件。只有预算还能负担详情查询才返回 detail。
+route = "detail" if ... else "stop"</code></pre><p><strong>通过标准：</strong>预算 1 时有台账记录、无详情调用；预算 2 时正好两次，并为返回值相同但偷偷多读的反例写一条断言。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检</summary><pre><code class="language-python" id="l55-transfer-check">from typing import TypedDict
+from langgraph.graph import END, START, StateGraph
+from langsmith import tracing_context
+
+
+class State(TypedDict, total=False):
+    budget: int
+    status: str
+    source: str
+
+
+def trial(budget, check_first):
+    reads = []
+
+    def index(state):
+        reads.append("index")
+        return {"source": "CAL-03"}
+
+    def route(state):
+        return "detail" if not check_first or state["budget"] &gt; 1 else "stop"
+
+    def detail(state):
+        reads.append(state["source"])
+        return {"status": "complete" if state["budget"] &gt; 1 else "exhausted"}
+
+    graph = StateGraph(State)
+    graph.add_node("index", index)
+    graph.add_node("detail", detail)
+    graph.add_node("stop", lambda _: {"status": "exhausted"})
+    graph.add_edge(START, "index")
+    graph.add_conditional_edges("index", route, {"detail": "detail", "stop": "stop"})
+    graph.add_edge("detail", END)
+    graph.add_edge("stop", END)
+    with tracing_context(enabled=False):
+        result = graph.compile().invoke({"budget": budget})
+    return result["status"], reads
+
+
+expected = ("exhausted", ["index"])
+assert trial(1, True) == expected
+assert trial(2, True) == ("complete", ["index", "CAL-03"])
+bad = trial(1, False)
+assert bad[0] == expected[0] and bad[1] == ["index", "CAL-03"]
+assert bad != expected  # 状态相同，观察到的动作不同。
+print("L55 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>独立验收：</strong>应只打印 <code>L55 TRANSFER PASSED</code>。反例若也通过，检查是否只断言状态；正例两种预算都不读详情，则是闸门一刀切。练习只涵盖串行合成场景。</p>
+</div>
+<div class="section" id="interview"><h2>面试自查</h2><p>先按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>把政策正文、SQLite 连接和预算都塞进状态，因为节点都会用。你保留哪些？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>预算和必要的证据数据随任务推进；连接是运行期依赖，不是任务事实。传入前验证状态类型和缺失字段，不认为 <code>TypedDict</code> 会拒绝坏输入。用一次无效任务确认读入口没触发。</p><p><strong>追问：</strong>什么时候存来源 ID 而不存全文？</p><p><strong>答题要点：</strong>能按权限和版本可靠回查时可存 ID 和版本；要复核当时看到的证据，不能只凭指向现行正文的 ID。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>最终答对、来源也对，但预算 1 时调用了两次再返回。可以先上线再优化吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不行。调用次数是该路径的业务上限，不是只影响速度的建议。分别对额度 1 或 2 记录实际分派次数；只允许第二个场景尝试第二次读取。</p><p><strong>追问：</strong>递归上限设成 1 能替代吗？</p><p><strong>答题要点：</strong>不能。它约束图执行，不等于资源分派负载；一个节点也可能发多次请求。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>旧版手写流程和状态图返回一致，后者多了一个纯整形节点。该不该报回归？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不因拓扑不同就报。核对答案、来源、额度、禁止动作。整形步骤若不改变任何合同字段且不消耗受限资源，仍可通过；是否值得换框架另看维护成本。</p><p><strong>追问：</strong>整形时把 KB-01 引文起算点从生成换成下载呢？</p><p><strong>答题要点：</strong>这是内容回归，即使节点数量、终态、来源 ID 都不变也不能放行。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>只测一次成功就宣布迁移完毕，最少还要补哪两条不同的停止证据？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>第一次无支持且不可改写应 <code>failed</code>；第一次无支持、可以改写但预算为 1 应 <code>exhausted</code>。两条都没有答案且只分派一次，但原因不同，防止把失败一律当耗尽或偷偷重试。</p><p><strong>追问：</strong>实际入口记录为 1 次，但适配器计数是 0，哪个错了？</p><p><strong>答题要点：</strong>不必有错。前者数宿主分派，后者数内部适配；项目可以在适配器之前就发现证据不足。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase6-qa.html#L55">L55 疑难解答 →</a><div class="qa-related"><a href="0062-L54-harness-acceptance.html">L54 原合同</a> · <a href="0065-L56-langgraph-durable-resume.html">L56 持久中断与恢复</a>。有疑问时带上同一输入下的两份状态和分派轨迹。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>状态存数据，节点只做一步，边决定去哪。隔日不看图，画出「读够一次就成功」和「第二次没获准」两条不同的停止路径。</p><p><a href="https://docs.langchain.com/oss/python/langgraph/graph-api">LangGraph 官方 Graph API</a>（精读状态、节点更新与条件边）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

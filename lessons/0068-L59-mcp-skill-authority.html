@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L59 · MCP、Skill 与业务授权边界</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第六阶段 · LangGraph 与 MCP</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>MCP、Skill 与业务授权边界</h1><p class="subtitle">能读证据、能看见工具，不等于能保存眼前这份草稿</p>
+</div></div>
+<div class="section">
+  <h2>为什么这课重要？</h2>
+  <p>用户只问「导出文件保留多久」，助手已用 L58 的只读工具拿到 <code>KB-01</code>。这时工作手册（Skill）可以提醒助手引用原文、按模板整理草稿，并在保存前请求确认；它不能把「请答疑」扩展为「允许保存」。同样，工具目录展示了接口名和参数，也只是说明怎样调用它。真正该问的是：这份凭据能访问哪个服务？宿主代表谁？草稿属于谁？用户批准的是不是现在这份、这个版本、这个动作？四个问题不能用一个「看起来允许」代答。</p>
+  <h3>学习目标</h3>
+  <ul><li>把传输凭据的 audience／scope 与宿主的身份、资源所有权、快照审批分别验证。</li><li>区分 HTTP 401／403 与工具级业务拒绝；用入口计数及业务记录证明未执行，再用同路径正控排除「保存函数根本没接上」。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 先过传输门，再核对宿主手里的业务上下文</h2>
+  <p>Agent Skill 可以把说明放进 <code>SKILL.md</code>，再按需附模板或参考资料；它解决的是「怎么做、什么时候加载」。即便宿主支持实验性的 <code>allowed-tools</code> 字段，它也描述 Skill 可用的工具，不能替资源服务器授予 scope，或替用户同意保存某张工单。工具配置和业务授权应分别检查。</p>
+  <p>继续使用 <strong>2026-07-28</strong> 的 <code>POST /mcp</code>。验收时，测试夹具传入不可变的 <code>HostContext</code>，包含当前租户及操作者、暂存草稿和可选的人工批准。这个对象在创建回环服务时从宿主代码传入，不从 HTTP 头、正文、模型输出或 Skill 文本构造。实验同时用 <code>Authorization: Bearer &lt;合成标签&gt;</code> 在服务端查询一张静态表：标签不含可解析声明，表项只有目标受众和 scope，不映射操作者。真实系统则必须可信地绑定当前请求与业务主体，不能照搬「每个实验实例只注入一个人」的办法。</p>
+  <table><thead><tr><th scope="col">可信输入或参考资料</th><th scope="col">判断的问题</th><th scope="col">不能代替什么</th></tr></thead><tbody>
+    <tr><td>可信凭据验证器（本地合成查表）</td><td>标签是否有效、目标受众是否是本资源、此次是否含 <code>evidence:read</code> 或 <code>draft:save</code>？</td><td>有写 scope 不等于拥有任何一张单，也不代表用户确认了本次内容。</td></tr>
+    <tr><td>宿主的可信身份与暂存对象</td><td>当前租户和操作者是否与草稿所有者相同，编号是否就是那份草稿？</td><td>只传一个知道的编号、在 <code>clientInfo</code> 里写人名，均不是身份凭证。</td></tr>
+    <tr><td>宿主的意图快照与人工决定</td><td>本次提交的编号、版本、正文是否等于暂存快照？批准是否绑定这份完整快照、所有者与这个动作？</td><td>同编号的旧版、同正文的预览批准、请求自带的 <code>approved</code> 都不能放行。</td></tr>
+    <tr><td>Skill、工具目录、证据原文</td><td>如何选工具、填参数、组织答复？</td><td>这些内容描述步骤或提供事实，不能授予权限、证明身份或批准执行。</td></tr>
+  </tbody></table>
+  <p>走一遍合成工单 <code>case-72</code>：<code>team-a/u1</code> 暂存第 2 版 <code>Training draft</code>。只读凭据可以取出 <code>KB-01</code>，同一凭据请求保存会被挡在 scope 门外。换为读写凭据后，当前请求依然要匹配所有者和暂存快照。换租户、改正文、拿旧版批准都不会写入。只有该所有者发出符合第 2 版快照的保存请求，且宿主已有绑定 <code>save_training_draft</code> 的批准，才进入登记函数。登记只在内存增加一条训练草稿，不提交工单、不发消息，也不能调用其他动作。</p>
+</div>
+<div class="section">
+  <h2>2. 用真实的入口次数验证「没执行」</h2>
+  <p>先从通过路径往回拆：用同一位操作者、同一份草稿与同一份批准，只更换凭据，看 HTTP 层；再用受众和 scope 均正确的凭据，只变宿主上下文或请求草稿，看业务层。否则，一个缺 scope 的用例哪怕也改了草稿版本，最多只能证明 scope 门挡住调用，测不到版本校验。每条负例都要判读返回结果，并独立看 <code>save_entries</code>、<code>saved</code> 是否不变；这与 L54 把返回状态、边界次数、现存记录分开的思路一样。</p>
+  <table><thead><tr><th scope="col">从空账本开始：唯一变化</th><th scope="col">收到的证据（省略传输框架）</th><th scope="col">保存入口 / 实际记录</th></tr></thead><tbody>
+    <tr><td>无凭据／目标受众错误</td><td><code>401</code>；有值但不通过时，<code>WWW-Authenticate: Bearer error="invalid_token"</code></td><td>0 / 0</td></tr>
+    <tr><td>受众正确，但只含读取 scope</td><td><code>403</code>；<code>Bearer error="insufficient_scope", scope="draft:save"</code></td><td>0 / 0</td></tr>
+    <tr><td>凭据足够，但宿主用户不是所有者</td><td><code>200</code>；<code>result.isError: true</code>，<code>structuredContent.status: "not_available"</code></td><td>0 / 0</td></tr>
+    <tr><td>编号对、版本或正文变了；或没有对应批准</td><td><code>200</code>；<code>isError: true</code>，分别为 <code>intent_changed</code> 或 <code>approval_required</code>；无 scope 挑战</td><td>0 / 0</td></tr>
+    <tr><td>凭据、所有者、草稿、批准都匹配</td><td><code>200</code>；<code>isError: false</code>，<code>{"status":"saved","draft_id":"case-72","revision":2}</code></td><td>1 / 1，原草稿</td></tr>
+  </tbody></table>
+  <p>HTTP 200 只表明成功交付了工具响应。业务拒绝用 <code>isError: true</code> 是这个实验的接口设计，不是在说每个系统都必须这样编码。业务拒绝不应触发自动加 scope；应提示用户核对目标、变更或确认状态。只测响应，挡不住「先执行、后拒绝」；只测最终行数，又可能漏掉入口被触发但没有留下记录的情况。因此计数放在实际保存函数的第一步，不数 HTTP 到达、清单查询、预览与审批检查。在写成功之后再跑一条缺 scope 的负例，原有一条必须保留，入口不能涨到两次。</p>
+</div>
+<div class="section">
+  <h2>3. 区分本地夹具、生产授权与长任务状态</h2>
+  <p>本地故意不接真实 OAuth：练习需要可重复控制每一项输入，不需要访问身份服务、浏览器登录或取得实际访问令牌。课程用明文回环 HTTP 和不具备任何真实权限的固定标签；没有授权服务器，不验证真实令牌的签发、有效期或刷新，也没有 TLS 或真实身份认证的验收。实验的 <code>WWW-Authenticate</code> 只示范状态与区分原因，不提供真实的 <code>resource_metadata</code> 发现地址。回环和来源校验是传输限制，不是用户认证。</p>
+  <p>若实际采纳 MCP 的 OAuth 授权规范，MCP 服务端是资源服务器，不是凭空签发授权的角色。要实现受保护资源元数据及授权服务器发现，选择受信任的发行方与注册方式，验证适用流程中的 PKCE、回调与 <code>iss</code>，用 HTTPS 保护生产通信；localhost 回调的例外不等于能把真实 Bearer 放在普通 HTTP 上。按规范在授权与换取令牌时声明目标 <code>resource</code>，服务端验证令牌确为本资源发行且有效、限制 scope、安全存放并脱敏日志，不把入站令牌透传给上游。最后还得独立建立当前请求到宿主身份的可信绑定，并把业务所有权、参数与审批绑定验证放到效果入口之前；OAuth 同意不是这张训练草稿的保存批准。</p>
+  <p>长任务也有三个不同层次：L58 的 POST-SSE 是一条响应怎样交付；2026-07-28 把 Tasks 从核心移到官方可选扩展 <code>io.modelcontextprotocol/tasks</code>，由双方声明能力后使用，按任务句柄查询 <code>tasks/get</code>，需要时通过 <code>tasks/update</code> 提交输入；应用检查点则由宿主管理，要记录流程位置、原意图、当前审批绑定和业务回执。任务句柄不是权限；任务状态完成不自动证明本地草稿已保存，也不能替代续跑时检查当前权限、重新核对快照与效果。此实验没有实现 Tasks 或持久化；重启后恢复与安全重放仍由 L51、L52 的实验来证明。</p>
+  <div class="best-practice-point" id="bp-l59">
+    <h3>最佳实践：拒绝发生在效果入口之前，批准绑定准确的业务意图</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一个助手既能读证据又能保存内部草稿。<strong>边界：</strong>本练习只记本地合成草稿，固定的宿主夹具不能替代生产身份服务、持久审批或幂等记录。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">错误：有写 scope 就准许保存</span><p>仅因凭据支持写入，不核对当前人、所有者、版本与批准。即使接口最后回答拒绝，也可能已经动过业务对象。</p></div><div class="bp-right"><span class="bp-compare-label">正确：逐门核对，分别记录实测</span><p>凭据只回答能不能请求这类能力，宿主仍按所有者、意图和动作绑定的审批决策；每个负例入口不变，匹配后才新增一条。</p></div></div>
+    <p class="bp-rationale"><strong>原因与代价：</strong>把权限保存在可信的边界而非提示词中，Skill 改写不会意外升权；代价是维护身份、快照与审批状态，以及研发只观察、不泄漏凭据的测试入口。变化后要复核，不以重复确认掩盖无权访问。</p>
+    <ol class="bp-steps"><li>分别固定草稿换凭据、固定凭据换宿主或批准，不用一条多处错误的请求冒充多条验收。</li><li>正常保存一次后再测负例，观察入口增量及原记录有没有改变。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>出现 200 先看 <code>isError</code>；入口涨但记录没变，也不算安全拒绝；连正控也为零，先查保存路径是否真的接通。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 读写凭据有效，当前人拥有第 2 版草稿，但宿主只批准了第 1 版；应如何处理？</div><div class="quiz-options"><button data-answer="wrong">按当前写权限放行</button><button data-answer="wrong">沿用旧版批准保存</button><button data-answer="correct">等新版批准再保存</button><button data-answer="wrong">先保存再补办批准</button></div><div class="quiz-explanation">scope 不能替代业务审批；批准必须绑定当前快照和保存动作，且在实际入口前完成核对。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>4. 动手：同一个调用，分别拿掉一项条件</h2>
+  <div class="card" id="guided-l59"><h3>跟做：为每次请求写出预期</h3><p><strong>起点：</strong><code>team-a/u1</code> 已暂存 <code>case-72</code> 第 2 版，宿主持有该版的保存批准，内存账本为空。按「HTTP 状态 / 工具状态 / 入口次数 / 记录数」填表，每次只改变一个验证条件。</p><ol><li>先不带合成凭据，再带目标受众不匹配的夹具。</li><li>改用只读夹具；先验证它不能保存，再验证它能读出七天原文。</li><li>换为读写夹具，只改正文并试一次；随后恢复原正文保存。最后换回只读夹具再次尝试保存，确认原记录没被改动。</li></ol><p><strong>通过标准：</strong>前三个保存负例是 401、401、403；改正文得到 200 和工具拒绝，仍零写入。正控进入一次并留下原草稿，随后 403 的入口增量为零。</p></div>
+  <p>在<strong>可信课程仓库根</strong>用 <code>python -I -X utf8 文件名.py</code> 运行保存的块（Python 3.11+，不加 <code>-O</code>）。程序只加载固定的<a href="../code/phase6-langgraph-mcp/http-lab/README.md">课程 HTTP 实验</a>；固定标签仅对应合成表项，不接收环境中的真实凭据。</p>
+  <details><summary>展开参考：隔离传输门与保存入口</summary><pre><code class="language-python" id="l59-auth-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase6-langgraph-mcp/http-lab/main.py")
+actor = lab["Actor"]("team-a", "u1")
+draft = lab["StagedDraft"](actor, "case-72", 2, "Training draft")
+action = "save_training_draft"
+host = lab["HostContext"](actor, draft, lab["Approval"](action, draft))
+save = lab["rpc"](1, "tools/call", name=action, arguments=draft.arguments())
+
+with lab["local_lab"](host) as (client, state):
+    for bearer, status, challenge in (
+        (None, 401, "Bearer"),
+        ("fixture-03", 401, 'Bearer error="invalid_token"'),
+        ("fixture-01", 403, 'Bearer error="insufficient_scope", scope="draft:save"'),
+    ):
+        refused = client.post(save, bearer=bearer)
+        assert (refused.status, refused.messages) == (status, ())
+        assert refused.headers["WWW-Authenticate"] == challenge
+        assert (state.save_entries, state.saved, state.read_entries) == (0, [], [])
+    read = client.post(lab["rpc"](2, "tools/call", name="read_evidence",
+                                  arguments={"source_id": "KB-01"}), bearer="fixture-01")
+    assert read.status == 200 and not read.final["result"]["isError"]
+    assert read.final["result"]["structuredContent"] == {
+        "source_id": "KB-01", "quote": "导出文件生成后保留 7 天。",
+    }
+    assert state.read_entries == ["KB-01"] and state.save_entries == 0
+    changed = lab["rpc"](3, "tools/call", name=action,
+                         arguments=dict(draft.arguments(), text="Unapproved revision"))
+    denied = client.post(changed, bearer="fixture-02")
+    assert denied.status == 200 and "WWW-Authenticate" not in denied.headers
+    assert denied.final["result"]["isError"]
+    assert denied.final["result"]["structuredContent"] == {"status": "intent_changed"}
+    assert (state.save_entries, state.saved) == (0, [])
+    accepted = client.post(save, bearer="fixture-02")
+    assert accepted.status == 200 and not accepted.final["result"]["isError"]
+    assert accepted.final["result"]["structuredContent"] == {
+        "status": "saved", "draft_id": "case-72", "revision": 2,
+    }
+    assert (state.save_entries, state.saved) == (1, [draft])
+    assert client.post(save, bearer="fixture-01").status == 403
+    assert (state.save_entries, state.saved) == (1, [draft])
+print("L59 ACCEPTED")</code></pre></details>
+  <p>只输出 <code>L59 ACCEPTED</code>；这里只对一条训练草稿做一次正控，不测试重复的已批准调用、批准撤销、并发或崩溃恢复。</p>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：值班交接草稿变了，谁能批准保存？</h2>
+  <p><strong>独立任务：</strong>另一租户 <code>team-night</code> 的 <code>reviewer</code> 根据合成同步时间证据 <code>KB-03</code> 暂存 <code>shift-19</code> 第 4 版值班交接。保持同一读写标签，依次测试「同名但跨租户」「同租户但不同所有者」「拿另一张草稿编号」「保持版本不变但修改正文」「没有批准」「仍持第 3 版保存批准」「只有第 4 版的预览批准」。把这些负例归到身份／资源、意图、审批三组，每项单独留一行结果。最后用正确所有者与第 4 版保存批准做正控；不要复用上一题的工单输入。</p>
+  <div class="card"><h3>独立起点：保持版号，只换正文</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase6-langgraph-mcp/http-lab/main.py")
+actor = lab["Actor"]("team-night", "reviewer")
+draft = lab["StagedDraft"](actor, "shift-19", 4, "值班交接：同步任务每天 02:00 运行（KB-03）。")
+action = "save_training_draft"
+host = lab["HostContext"](actor, draft, lab["Approval"](action, draft))
+args = dict(draft.arguments(), text="改到 03:00，内容未获批准。")
+with lab["local_lab"](host) as (client, state):
+    request = lab["rpc"](1, "tools/call", name=action, arguments=args)
+    reply = client.post(request, bearer="fixture-02")
+    # TODO：核对工具拒绝原因、保存入口次数和账本。
+</code></pre><p><strong>通过标准：</strong>当前请求没改版号，但改了获批内容；它应被拒绝，且不进入保存入口。只把 <code>args</code> 换回原参数，应保存一份原稿。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检（标准库、仅回环）</summary><pre><code class="language-python" id="l59-transfer-check">import runpy
+from dataclasses import replace
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase6-langgraph-mcp/http-lab/main.py")
+Actor, Draft, Approval, Host = (lab[name] for name in ("Actor", "StagedDraft", "Approval", "HostContext"))
+actor = Actor("team-night", "reviewer")
+draft = Draft(actor, "shift-19", 4, "值班交接：同步任务每天 02:00 运行（KB-03）。")
+action = "save_training_draft"
+approved = Approval(action, draft)
+old = replace(draft, revision=3)
+
+
+def call(client, **changes):
+    params = dict(draft.arguments(), **changes)
+    request = lab["rpc"]("handoff", "tools/call", name=action, arguments=params)
+    return client.post(request, bearer="fixture-02")
+
+
+for principal, decision, changes, denial in (
+    (Actor("team-day", "reviewer"), approved, {}, "not_available"),
+    (Actor("team-night", "observer"), approved, {}, "not_available"),
+    (actor, approved, {"draft_id": "shift-20"}, "not_available"),
+    (actor, approved, {"text": "改到 03:00，内容未获批准。"}, "intent_changed"),
+    (actor, None, {}, "approval_required"),
+    (actor, Approval(action, old), {}, "approval_required"),
+    (actor, Approval("preview", draft), {}, "approval_required"),
+):
+    with lab["local_lab"](Host(principal, draft, decision)) as (client, state):
+        response = call(client, **changes)
+        assert response.status == 200 and "WWW-Authenticate" not in response.headers
+        assert response.final["result"]["isError"]
+        assert response.final["result"]["structuredContent"] == {"status": denial}
+        assert state.save_entries == 0 and state.saved == []
+
+with lab["local_lab"](Host(actor, draft, approved)) as (client, state):
+    response = call(client)
+    assert response.status == 200 and not response.final["result"]["isError"]
+    assert response.final["result"]["structuredContent"] == {
+        "status": "saved", "draft_id": "shift-19", "revision": 4,
+    }
+    assert state.save_entries == 1 and state.saved == [draft]
+print("L59 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>通过标准：</strong>从仓库根用同一个命令运行，只输出 <code>L59 TRANSFER PASSED</code>。七个负例均未进保存函数；正确宿主与批准放行第 4 版，且保存的正文是原合成输入。跨租户过关，查宿主主体的绑定；同版改稿过关，查是否只比版本；预览过关，查是否漏比动作。</p>
+</section>
+<section class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-skill-and-authority" data-phase-practice="skill-and-authority">
+  <h2>阶段检查点：同一任务的取证、Skill 加载与保存门槛</h2>
+  <p>从空账本走一遍「发现工具 → 取证 → 起草 → 申请保存」。只读凭据能在目录里看见保存工具，但不因此拥有写 scope。只有明确起草才读取本地 <code>SKILL.md</code>，把本轮 HTTP 结果里的 <code>source_id</code> 和 <code>quote</code> 替换进固定预览模板。这里用确定性替换，不调用模型、不执行 Skill 正文，也不拿正文当授权策略。实验分别创建取证、未批准、已批准三个回环实例，由宿主传递同一份预览，不靠 HTTP 连接记住草稿或审批。</p>
+  <div class="card"><h3>起点：无待存草稿、无批准</h3><pre><code class="language-text">问保留期：目录里有保存工具？___；来源 ___；Skill 读取 ___ 次
+明确起草：Skill 读取新增 ___ 次；把来源和原文填入预览。
+同一用户、同一份预览：只读凭据保存 → HTTP ___；新增保存 ___ 次
+换读写凭据，仍无批准：工具状态 ___；新增保存 ___ 次
+只补匹配批准：新增保存 ___ 次；账本 ___ 条</code></pre><p><strong>通过标准：</strong>改变引文或模板时，预览应随之改变；只读凭据和无批准的读写凭据都不触及保存入口。批准只覆盖当前预览，正控只留下这一份。</p></div>
+  <details class="bp-check"><summary>展开阶段验收：读取本地 SKILL.md，再对账实际保存入口</summary><pre><code class="language-python" id="l59-stage-check">from pathlib import Path
+import runpy
+
+# 仓库固定路径；不接受用户指定的文件或远端地址。
+lab = runpy.run_path(str(Path("code/phase6-langgraph-mcp/skill-bridge/checkpoint.py")))
+lab["check"]()
+print("P6 SKILL AND AUTHORITY PASSED")</code></pre><p>从仓库根执行 <code>python -I -X utf8 code/phase6-langgraph-mcp/skill-bridge/checkpoint.py</code>。预期唯一输出 <code>P6 SKILL AND AUTHORITY PASSED</code>；有写 scope 却仍零次进入保存函数，证明本地例子没有用加载替代批准。</p></details>
+  <p class="bp-result">问答也读正文，先查宿主意图分支；无批准却新增记录，查保存门的位置。如果引文或模板改了但预览不变，先检查预览是否写死。这个检查点串联工具发现、回环取证、固定模板和本地写入守卫，不等于接入第三方 Skill 宿主，也不替 L56 实测 LangGraph 持久恢复。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>用户看见工具，Skill 也建议保存，是不是已经获准？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不是。清单交代工具接口，Skill 交代流程，两者都不持有宿主身份、对象所有权或批准决定。即使用相同的工具描述和请求参数，只换宿主操作者或取消批准就应被拒绝，且保存入口为零。正确所有者和批准才有一条真实内存记录。</p><p><strong>追问：</strong>请求里的 <code>clientInfo</code> 写成宿主用户名，或参数携带 <code>approved: true</code>，有帮助吗？</p><p><strong>答题要点：</strong>没有。前者是客户端自报，后者不是可信决定，且本工具白名单不接受该字段。审批只能来自宿主可信通道并绑定原意图。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>受众不对、scope 不够、草稿属于别人，客户端应该怎样分别处理？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>错受众的 401：核对目标资源与凭据，不沿用错受众的凭据。缺 scope 的 403：只按明确的最小权限挑战决定是否重新授权。所有权错误的 200：读 <code>isError</code> 与业务状态，告知当前对象不可操作，不重试保存。逐个改变一个条件，并核对拒绝路径的入口次数与记录。</p><p><strong>追问：</strong>所有权拒绝后再扩大授权 scope，会补齐条件吗？</p><p><strong>答题要点：</strong>不会。scope 只限定凭据可请求的操作类别；扩大 scope 不改变归属或人工决定。不应自动升权重试。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>为什么不能把合成 Bearer 查表作为上线方案？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>实验只控制受众和 scope 的组合，未验证签发方、发现、当前令牌有效性、真实主体绑定、生产 TLS、凭据安全存放或刷新。真实接入先固定规范与受信任提供方，再独立测无效／过期、错受众、缺 scope 和主体隔离，不以回环成功作证。</p><p><strong>追问：</strong>如果证据以后从上游服务来，能把客户端的原 Bearer 转发过去吗？</p><p><strong>答题要点：</strong>不能透传。入站令牌只给目标 MCP 资源；如需上游访问，使用独立且面向上游的授权，最小权限并保持业务审计。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>Tasks 显示完成，可以删掉应用检查点与审批证据吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不可以。Tasks 只描述可选扩展中的远端任务交互，不能代表宿主流程进度或原操作的真实存储效果。若流程暂停后重启，仍要用应用记录找回操作与批准绑定，核对此时权限和业务回执，才能决定是登记旧结果、拒绝，还是请求人工复核。</p><p><strong>追问：</strong>原任务没结果，或换了任务句柄才重试，是否能确认原操作没有执行？</p><p><strong>答题要点：</strong>不能。没有结果不是没有效果。要向权威业务记录核对原操作；无法确定就保留未知，不因句柄变化补写。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase6-qa.html#L59">L59 疑难解答 →</a><div class="qa-related"><a href="0067-L58-mcp-streamable-http.html">上一课 L58 · Streamable HTTP</a> · <a href="0069-phase6-langgraph-mcp-outline.html">下一页 · 阶段 6 纲要</a> · <a href="0059-L51-approval-checkpoint-resume.html">复习 L51 · 审批与检查点</a>。带上每个负例的返回状态和实际入口次数，再解释它拦下了什么。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>Skill 说明怎么做，MCP 暴露能力，传输凭据限定受众和 scope，宿主才核对谁能对哪份内容做什么。用零次拒绝入口与一次正控入账证明边界真的接通。</p><p><a href="https://agentskills.io/specification#allowed-tools-field">Agent Skills · 格式规范</a>（可选且实验性的工具声明） · <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">MCP · Authorization（2026-07-28）</a>（资源、角色与挑战） · <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations">MCP · Authorization Security Considerations</a>（受众绑定与禁止透传） · <a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools#error-handling">MCP · Tools 错误分层</a> · <a href="https://modelcontextprotocol.io/specification/2026-07-28/changelog#major-changes">MCP · 2026-07-28 Changelog</a>（Tasks 移到官方扩展） · <a href="https://www.rfc-editor.org/rfc/rfc8707.html">IETF RFC 8707 · Resource Indicators</a>。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

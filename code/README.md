@@ -48,9 +48,13 @@ code/
 
 [离线 Harness 项目](phase5-agent-harness/harness-lab/README.md) 复用 Phase 4 的证据与草稿，练习有界运行、应用审批、SQLite 检查点和幂等保存。只使用本地合成数据；配合 [L45–L54](../lessons/0063-phase5-agent-harness-outline.html#lesson-plan) 学习，不另计课号。
 
+## Phase 6 LangGraph 与 MCP 实验
+
+[L55–L59](../lessons/0069-phase6-langgraph-mcp-outline.html#lesson-plan) 分开验收 [LangGraph 迁移](phase6-langgraph-mcp/graph-lab/README.md)、[MCP stdio](phase6-langgraph-mcp/stdio-lab/README.md) 和 [loopback HTTP 与授权](phase6-langgraph-mcp/http-lab/README.md)。MCP 仅覆盖课堂子集；LangGraph 的依赖锁定和运行状态见项目说明。
+
 ## 使用规范
 
-- 使用第三方依赖的项目提供自己的 `pyproject.toml` 与 `uv.lock`，从项目根运行 `uv run --offline --locked ...`；纯标准库起始项目使用自身说明中的 Python 命令；
+- 使用第三方依赖的项目用 `pyproject.toml` 描述依赖；完成实测后提供 `uv.lock`，从项目根运行 `uv run --offline --locked ...`。纯标准库项目使用自身说明中的 Python 命令；
 - `.venv`、缓存、日志和运行生成文件不进入版本控制；
 - 验收只使用占位敏感值，不要求真实 API Key 或网络；
 - 新阶段开始时再按真实课程结构创建对应代码目录，不预先维护虚构课号。
