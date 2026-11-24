@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L54 · 阶段验收：固化框架无关契约</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构与持久执行</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>阶段验收：固化框架无关契约</h1><p class="subtitle">换成框架之前，先留下可以独立复跑的业务合同</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>同一个「证据问答＋工单草稿」在 Phase 4 只产出草稿文本。现在要证明：问答仍有来源，循环不会无预算地继续，本地草稿写入须经有效审批，且一次操作不会因重放写出两条。下一阶段换成状态图时，重复同一批检查，而不是只看节点顺序相似。</p><h3>学习目标</h3><p>复跑离线验收，说明每项断言观察的是返回内容、调用边界还是持久状态，并写明目前未证明的能力。</p></div>
+<div class="section">
+  <h2>1. 一份验收报告要分开记返回值、动作尝试和已提交效果</h2>
+  <p>验收「证据问答＋本地草稿」时，不要只写「运行成功」。每条报告注明版本、合成输入、初始状态与故障点，把预期和实测分开记。看见 <code>replayed</code> 只是知道程序怎么回答；有没有再发起保存、库里是否还是原草稿，要到不同的地方观察。</p>
+  <table><thead><tr><th scope="col">报告栏</th><th scope="col">从哪里取证，以及要回答什么</th></tr></thead><tbody>
+    <tr><td>返回状态与内容</td><td>读接口响应。问答完成时应有支持答案的来源 ID，缺证据时不编答案；重放时应返回原操作 ID 和原草稿，不称已提交真实工单。</td></tr>
+    <tr><td>动作尝试</td><td>在分派或保存入口记录调用次数。读额度用完后是否再分派？没有匹配批准是否进过保存入口？尝试不等于成功，回滚也不会抹掉曾经尝试的事实。</td></tr>
+    <tr><td>已提交效果</td><td>用独立存储查询核对作用域、记录数、操作 ID 和内容。检查点可以有草稿正文，业务表仍应为空；保存成功再重放，业务表应保留同一条草稿。</td></tr>
+  </tbody></table>
+</div>
+<div class="section">
+  <h2>2. 读懂本课的实测：同一任务如何通过，又在哪里停下</h2>
+  <p>给只读循环同一个合成问题「导出文件有效期？」。固定路径只分派一次，缺证据返回 <code>failed</code>；允许已知改写且额度为二时，第二次分派拿到 <code>KB-01</code> 和 <code>KB-02</code>，返回 <code>complete</code>。只把额度降到一，第二次便不应分派，返回 <code>exhausted</code>。这里的 <code>calls</code> 数的是分派到 Phase 4 的次数，不是模型请求数；若报告写「耗尽」却多分派一次，先查分派前的额度判断。</p>
+  <p>再沿 <code>export</code> 草稿走一遍：在新连接读到第 2 版仍待审。宿主在执行本地草稿插入前观察 <code>draft.write_attempts</code>，不数 <code>resume</code> 调用或检查点更新。缺审批、审批作用域不匹配、拒绝和旧版绑定各为零；有效批准后提交再丢响应，计一次尝试；重放新增零次尝试。</p>
+  <p><code>draft.saved_count</code> 则是重放后从 SQLite 读到的已提交草稿行数。验收另查匹配批准前相关草稿为零、丢响应后重开连接已有一条，并核对重放返回原操作 ID 和原内容。即使行数没变，也不能反推出没有写入尝试：一次失败或回滚可能不会留下新行。</p>
+</div>
+<div class="section">
+  <h2>3. Phase 6 换实现，保留同一份业务判定</h2>
+  <p>把原问题、有效与无效审批、预算边界以及「提交后丢响应」的故障点交给 Phase 6。用隔离的本地库，从相同初始状态分别运行手写 Harness 和状态图，比较返回结果、受限动作和业务记录。新实现多做一次不影响预算的本地只读查询不算退化；把审批放到保存之后或重放写出两条，即使节点名字和回复一样，也算失败。若产品规则本身变了，先说明预期为何变，再做对照。</p>
+  <p>以 <a href="../code/phase5-agent-harness/harness-lab/README.md">离线 Harness 项目</a>和课内检查为交付物，注明保证的边界：项目仅用新 SQLite 连接恢复；<a href="0059-L51-approval-checkpoint-resume.html">L51 的真跨进程恢复</a>和<a href="0057-L49-memory-lifecycle.html">L49 的记忆隔离</a>由独立练习验证。合成审批和定点丢响应不代表真实身份、审批系统、远端写入或生产故障已经通过验证；项目不集成长时记忆，不创建或外发真实工单。</p>
+  <div class="best-practice-point" id="bp-l54">
+    <h3>最佳实践：迁移时固定业务契约，不固定节点顺序</h3>
+    <p class="bp-scenario"><strong>适用：</strong>手写 Harness 迁入框架或改存储，用户预期结果与权限不变。<strong>不适用：</strong>若业务规则也要变，先单独更新契约并记录差异，否则无法区分有意改变与退化。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">❌ 复制旧节点顺序做断言</span><p>对同一审批重放用例，新框架虽然返回原草稿且只写一次，却因多了一个只读查询而失败；真正重复写入可能仍没有被测。</p></div><div class="bp-right"><span class="bp-compare-label">✅ 对照结果、边界和存储</span><p>仍跑同一用例，允许不同只读顺序；核对原操作结果、审批前是否尝试写入，以及重放后的记录数。</p></div></div>
+    <p class="bp-rationale"><strong>为什么：</strong>现实中的故障通常发生在「说成功」与「真正写入」之间，不能只看模型或节点日志。需要可观察的存储和边界记录，维护成本更高；若迁移只换界面而不改业务执行，可保留业务验收，另加少量界面接线检查。</p>
+    <ol class="bp-steps"><li>记录项目版本、合成输入和每条预期，不把运行耗时当业务断言。</li><li>运行<a href="#l54-harness-check">原项目验收</a>，再用同一契约检查候选实现。</li><li>只在涉及严格权限、预算或实际副作用时断言必要轨迹。</li></ol>
+    <p class="bp-result"><strong>怎么看：</strong>文字相同但记录数变大，说明测试不能只查输出；记录数没变但一次不该发生的写入尝试出现，说明授权检查的位置不对。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 模拟提交后响应丢失，重复执行一次；哪个条件能核对没有多提交一条草稿？</div><div class="quiz-options"><button data-answer="wrong">两次返回话术相同</button><button data-answer="wrong">两次运行耗时相当</button><button data-answer="correct">仅留一条草稿记录</button><button data-answer="wrong">两次经过相同节点</button></div><div class="quiz-explanation">用实际存储核对已提交记录；要确认没有再次尝试写入，还要看保存入口的观察记录。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>4. 动手：交付能在下一阶段复跑的报告</h2>
+  <p>先从仓库根运行项目。项目命令只运行本地替身和临时数据库：</p>
+  <pre><code class="language-bash">cd code/phase5-agent-harness/harness-lab
+python -m unittest discover -s tests -v
+python main.py</code></pre>
+  <div class="card" id="guided-l54"><h3>跟做：给重放写一行验收</h3><pre><code class="language-text">已有记录：第 2 版已提交，原操作 ID 和内容可核对；上次响应丢失。
+重放同一操作：返回 ___；新增写入尝试 ___ 次；已提交记录 ___ 行。</code></pre><p><strong>核对标准：</strong>这次应读回原结果，不进入保存入口；库里的原记录应保留。再选一个不应保存的审批用例，用同样三列写预期，最后展开参考对照实测。</p></div>
+  <details><summary>展开参考：课程验收入口</summary><pre><code class="language-python" id="l54-harness-check">import runpy
+from pathlib import Path
+
+# 固定到仓库里的课程源码；不要从用户输入接收待执行路径。
+lab = runpy.run_path(str(Path("code/phase5-agent-harness/harness-lab/main.py")))
+report = lab["run_acceptance"]()
+assert report["baseline"] == {"status": "failed", "calls": 1}
+assert report["dynamic"] == {
+    "status": "complete", "calls": 2, "source_ids": ["KB-01", "KB-02"],
+}
+assert report["budget"] == {"status": "exhausted", "calls": 1}
+assert report["draft"] == {
+    "pending": "pending", "missing_review": "rejected", "unauthorized": "rejected",
+    "denied": "denied", "changed": "rejected", "commit": "saved", "replay": "replayed",
+    "saved_count": 1,
+    "write_attempts": {"pending": 0, "missing_review": 0, "unauthorized": 0,
+                       "denied": 0, "changed": 0, "commit": 1, "replay": 0},
+}
+print("L54 ACCEPTED")</code></pre>
+  <p>回到仓库根，将 Python 块保存为文件，用 <code>python -I 文件名.py</code> 运行。项目验收函数收集实测，Python 块分别断言返回状态、写入尝试次数和已提交行数，全部通过才打印 <code>L54 ACCEPTED</code>。想查看实测值，可临时在断言前加 <code>print(report["draft"])</code>。交接报告附上仓库版本、用例输入、观察点和未覆盖项，不只抄成功标记。</p></details>
+  <p><strong>下一阶段怎么用：</strong>保留业务断言；把手写执行器换成状态图，在隔离的本地库复测。遇到不同但合法的只读路径，不要为了方便比较就断言固定调用顺序；权限和重复写入必须按原门槛判定。</p>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：核对迁移后的三份报告</h2>
+  <p><strong>任务：</strong>用同一个课程草稿标识，比较旧版和两种候选。候选一只重排读步骤；候选二多写了一份草稿，却返回相同标识。准备两个独立断言：核对已落盘记录和批准之前的写入次数。先预测两份报告谁能过门，再展开参考。</p>
+  <details class="bp-check"><summary>展开变式参考与自检（标准库、离线）</summary><pre><code class="language-python" id="l54-transfer-check">def review(report):
+    # 约束业务结果，不比较读取顺序。
+    return (report["saved_ids"] == ["ticket-17"]
+            and report["returned_id"] == "ticket-17"
+            and report["preapproval_writes"] == 0)
+
+
+original = {"saved_ids": ["ticket-17"], "returned_id": "ticket-17",
+            "preapproval_writes": 0, "reads": ["policy", "status"]}
+new_flow = dict(original, reads=["status", "policy", "status"])
+duplicated = dict(new_flow, saved_ids=["ticket-17", "ticket-18"])
+early_write = dict(new_flow, preapproval_writes=1)
+assert review(original) and review(new_flow)
+assert not review(duplicated) and not review(early_write)
+print("L54 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>通过标准：</strong>只打印 <code>L54 TRANSFER PASSED</code>。读顺序不同却失败，说明把运行细节硬编码进契约；重复落盘或提前写入尝试没拦住，要补业务状态和轨迹断言。本例只用合成报告验判定器；在候选实现中要分别观察实际保存入口和已提交记录。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>第 2 版已暂存，只有第 1 版的批准；项目报告该记录哪三项实测？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>返回 <code>rejected</code>、保存尝试零次、已提交草稿零行。旧版绑定不匹配，应在保存入口前被拦住。三项分别从响应、插入前的宿主计数与按任务作用域查询的 SQLite 结果取证，不能只抄拒绝状态。</p>
+      <p><strong>追问：</strong>检查点里已经有第 2 版正文，这算一次保存尝试吗？</p>
+      <p><strong>答题要点：</strong>不算。<code>draft.write_attempts</code> 只数业务草稿插入入口，不数暂存、恢复调用或检查点更新。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>匹配批准后提交、响应丢失、再重放，验收报告中的两类计数怎样变化？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>首次执行在业务草稿插入前计一次尝试。提交后虽丢了响应，新连接仍应读到 <code>saved</code> 检查点和一条草稿。重放应返回 <code>replayed</code>、原操作 ID 和原草稿，新增尝试为零，<code>draft.saved_count</code> 仍为一。回读原结果不是再次插入。</p>
+      <p><strong>追问：</strong>重放多出一次保存尝试，但末尾仍是一行，能通过吗？</p>
+      <p><strong>答题要点：</strong>不能。一次失败或回滚也可能不增加行数；入口计数说明「重放不尝试写入」已经失守。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>迁到状态图后，只读步骤多了一次查询，怎么判断是合法调整还是回归？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>在隔离的库、相同输入和故障点下按原契约对照，不比节点顺序。若只是一次不计入分派额度的本地查询，且来源、分派额度、审批前零保存尝试和重放原记录都符合预期，可通过。若额度为一却第二次分派到 Phase 4，即使返回 <code>exhausted</code> 也应失败。</p>
+      <p><strong>追问：</strong>额度为二时返回 <code>complete</code>，却没带课内预期的来源，能过吗？</p>
+      <p><strong>答题要点：</strong>不能。这份固定报告要求来源列表含 KB-01、KB-02。还要分清它们各支持什么：保留期由 KB-01 支持，KB-02 只说明过期后怎么办。验收脚本核对来源 ID，不会替你判断答复的每个结论。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>交接只有一行 <code>L54 ACCEPTED</code>，怎么补成 Phase 6 能复跑的迁移基线？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>交付版本、固定输入、初始状态、故障点与分别取证的预期和实测：响应、边界次数、持久结果。旧实现与候选各用干净的本地库跑同一契约。注明本项目只测新连接和模拟丢响应，跨进程另见 L51，不外推到真实审批或远端写入。</p>
+      <p><strong>追问：</strong>如果迁移同时调整了审批规则，能改旧预期让两份报告都通过吗？</p>
+      <p><strong>答题要点：</strong>不要覆盖旧预期。单列产品规则变更的理由与新用例，保留未变契约的前后对照，才能区分有意变化和迁移回归。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L54">L54 疑难解答 →</a><div class="qa-related">延伸：<a href="0061-L53-harness-regression.html">L53 回归用例</a> · <a href="0046-phase5-to-11-planned-outlines.html#phase-6">Phase 6 框架与 MCP 规划</a>。复盘可用<a href="../reference/0005-harness-acceptance-checklist.html">验收速查</a>；有疑问时，带上用例输入、期望结果与实测记录。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>输出契约＋禁止动作＋持久状态 → 可复跑的迁移基线。隔日不看代码，复述「丢响应后不能看话术判断是否写入」并写一个回归用例。</p><p><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Anthropic · Demystifying evals for AI agents</a>（推荐精读环境最终状态、隔离试验和回归用例）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

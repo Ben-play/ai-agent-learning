@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L50 · 人工审批与明确禁止的动作</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>人工审批与明确禁止的动作</h1><p class="subtitle">用户审批的是刚看过的这一版草稿，不是以后所有改动</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>客服助手把导出问答整理成工单草稿。用户看过并同意保存，草稿却在保存前被修改了。若应用只查「是否点过同意」，就会保存用户没看过的内容。</p><h3>学习目标</h3><p>区分草稿、授权与人工审批，并用业务状态证明拒绝、撤回和版本变化都不会产生写入。</p></div>
+<div class="section">
+  <h2>1. 预览说清楚要保存什么，审批记录谁同意了什么</h2>
+  <p><code>tenant-a</code> 的 <code>user-1</code> 打开 <code>draft-1</code>，预览正文「请核对导出保留期。」，页面说明按钮只会把这段话存入本地草稿区。此时显示了内容，却没有批准，更没有业务写入。模型说「请确认」或「已批准」都只是文本。应用收到用户的明确决定后，才从可信会话取身份，在受信任的存储中登记审批；传入审批编号只是请应用查这条决定，不是批准本身。</p>
+  <p>审批记录要把决定绑定到<strong>租户、用户、动作、草稿 ID 和确切版本</strong>。版本指向不可变的内容快照，不是指向「随时可能改的最新草稿」。下面的原例只保存正文，因此用正文 UTF-8 字节的 SHA-256 摘要标识版本。如果保存还包含标题和引用，预览与版本绑定都要覆盖它们，否则用户可能只看过正文，执行器却一并保存了未审的字段。</p>
+</div>
+<div class="section">
+  <h2>2. 写入前复核：有资格不等于同意了这一版</h2>
+  <p>执行器先看<strong>动作是否开放</strong>：这里仅允许 <code>save_draft</code>，即使审批记录里明确批准 <code>submit</code> 或 <code>email</code>，也要拒绝。再查<strong>调用人现在是否有资格</strong>：预览时还是编辑者，保存时资格已取消，就应返回 <code>not_authorized</code>。另一个编辑者也许有自己的保存资格，但不能拿原用户的审批来用；同名用户换了租户也不是同一个身份。</p>
+  <p>最后查<strong>批准是否仍有效并匹配当前快照</strong>。例如，原版获批后追加「请附上所需证据。」，租户、动作和编号都没变，正文摘要却变了。编辑只更新待审区 <code>drafts</code>，不更新业务保存区 <code>saved</code>。带旧批准执行时返回 <code>stale</code>，<code>saved</code> 仍为空；展示新版、取得新批准并再次复核后，才把新版存入 <code>saved</code>。若改稿后旧批准仍能写入，查是否漏比了正文版本；若返回拒绝却已经写入，查业务写入是否放在复核之前。</p>
+</div>
+<div class="section">
+  <h2>3. 撤回和到期阻止后续执行，不会撤销已经保存的内容</h2>
+  <p>从空保存区开始，先撤回再尝试，原例返回 <code>revoked</code>，不留草稿。有效期是另一种失效方式：时段预留练习把到期点设为 10，时间 9 的有效批准可以执行，首次在 10 尝试则返回 <code>expired</code>，零预留。反过来，如果时间 9 已提交，再撤回只阻止以后的执行，已存在的记录仍在；取消预留是另一个业务动作，不能把撤回决定当作撤销记录。</p>
+  <p>有并发时，不能先读出「有效」、放手等一会儿，再据此写入；核对与提交需要明确的一致性边界，例如用事务或条件更新约束撤回、撤权与写入的先后。本课只用合成身份和单线程内存数据排列这些事件：原例不检查有效期，不处理重启或重放，也没有真实提交或外发能力。</p>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 用户有保存权限，也批准过，但草稿正文刚被改过。应用应怎么做？</div><div class="quiz-options"><button data-answer="wrong">沿用原来审批记录</button><button data-answer="wrong">仅凭权限直接保存</button><button data-answer="correct">暂停保存重新审批</button><button data-answer="wrong">自动还原草稿原文</button></div><div class="quiz-explanation">旧决定只覆盖原版。权限仍有效也不等于用户同意新版，应用应展示新版、等待新的明确决定。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>4. 动手：先判拒绝，再核对有没有写入</h2>
+  <div class="card">
+    <p><strong>跟做：补一条版本判断</strong></p>
+    <p><strong>起点：</strong><code>tenant-a</code> 的 <code>user-1</code> 仍可保存 <code>draft-1</code>，批准的正文是「请核对导出保留期。」，<code>saved = {}</code>。现在只在正文末尾加上「请附上所需证据。」，沿用旧批准。</p>
+    <p><strong>只做一步：</strong>身份、动作和草稿 ID 已核对；用已批版摘要 <code>approved_version</code> 和当前版摘要 <code>current_version</code> 补全 <code>if ___: return "stale"</code>。</p>
+    <p><strong>自检：</strong>改稿时返回 <code>stale</code> 且 <code>saved</code> 仍为空；不改稿时不触发这条拒绝。</p>
+  </div>
+  <p>先为每个用例写出预期状态和保存次数，再将下段保存为 Python 文件，用 Python 3.11+ 运行 <code>python -I 文件名.py</code>。<code>scope</code> 是应用传入的（租户，已认证用户）夹具，<code>decisions</code> 模拟应用记录的人工决定，不接收模型或客户端直接传来的审批状态。<code>drafts</code> 是待审内容，<code>saved</code> 才是保存区。</p>
+  <details><summary>展开本地审批护栏与验收</summary><pre><code class="language-python" id="l50-approval-check">from hashlib import sha256
+
+SAVE = "save_draft"
+owner, peer, other = ("tenant-a", "user-1"), ("tenant-a", "user-2"), ("tenant-b", "user-1")
+draft_id = "draft-1"
+editors = {(scope, draft_id) for scope in (owner, peer, other)}
+key = (owner[0], draft_id)
+text = "请核对导出保留期。"
+drafts = {key: text, (other[0], draft_id): text}
+saved, decisions = {}, {}
+
+
+def binding(scope, action, draft_id, body):
+    return scope, action, draft_id, sha256(body.encode("utf-8")).hexdigest()
+
+
+def execute(scope, action, draft_id, decision_id=None):
+    if action != SAVE:
+        return "forbidden_action"
+    if (scope, draft_id) not in editors:
+        return "not_authorized"
+    key = (scope[0], draft_id)
+    body, decision = drafts.get(key), decisions.get(decision_id)
+    if body is None or decision is None:
+        return "needs_approval"
+    state, target = decision
+    if target[:3] != (scope, action, draft_id):
+        return "approval_mismatch"
+    if state in ("denied", "revoked"):
+        return state
+    if state != "approved":
+        return "needs_approval"
+    if target != binding(scope, action, draft_id, body):
+        return "stale"
+    saved[key] = body
+    return "saved"
+
+
+v1 = binding(owner, SAVE, draft_id, text)
+decisions["no"] = ("denied", v1)
+assert execute(owner, SAVE, draft_id, "no") == "denied"
+decisions["withdrawn"] = ("approved", v1)
+decisions["withdrawn"] = ("revoked", v1)
+assert execute(owner, SAVE, draft_id, "withdrawn") == "revoked"
+assert execute(owner, SAVE, draft_id, "模型建议：请确认保存") == "needs_approval"
+decisions["yes"] = ("approved", v1)
+editors.remove((owner, draft_id))
+assert execute(owner, SAVE, draft_id, "yes") == "not_authorized"
+editors.add((owner, draft_id))
+for scope in (peer, other):
+    assert execute(scope, SAVE, draft_id, "yes") == "approval_mismatch"
+for action in ("submit", "email"):
+    decisions["blocked"] = ("approved", binding(owner, action, draft_id, text))
+    assert execute(owner, action, draft_id, "blocked") == "forbidden_action"
+drafts[key] += "请附上所需证据。"
+assert execute(owner, SAVE, draft_id, "yes") == "stale"
+assert saved == {}
+
+decisions["yes-v2"] = ("approved", binding(owner, SAVE, draft_id, drafts[key]))
+assert execute(owner, SAVE, draft_id, "yes-v2") == "saved"
+assert saved == {key: drafts[key]}
+print("L50 ACCEPTED")</code></pre></details>
+  <p>唯一通过标记为 <code>L50 ACCEPTED</code>。<code>target[:3]</code> 比对身份（租户与用户）、动作和草稿 ID，随后比对完整绑定以核对正文版本。另一租户和同租户另一用户各自有保存资格，但不能沿用原审批；就算夹具给出匹配的「批准」，禁止动作仍被拒绝。只有重新获批的新版写入内存草稿区，没有真实端点、提交或外发。</p>
+  <div class="best-practice-point" id="bp-l50">
+    <h3>最佳实践：在写入边界同时核对审批快照和当前授权</h3>
+    <p class="bp-scenario"><strong>适用：</strong>用户预览并决定是否保存特定工单草稿，预览与写入之间可能改稿、撤权或撤回审批。<strong>边界：</strong>原例信任宿主提供的合成身份与决定，只测试单线程本地保存；它不验证认证、审批有效期或并发一致性。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">错误：把旧批准当作当前执行资格</span><p>用户批准第 1 版，随后改成第 2 版或失去保存资格。执行器只看「已批准」，仍保存未审批的内容，或在用户已无资格时写入。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">正确：旧批准只覆盖原快照</span><p>同样的改稿或撤权下，执行器先核对动作白名单和当前资格，再按租户、用户、动作、草稿和版本核对当前决定。两种情况都零写入；只有具备资格并明确获批的第 2 版可保存。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>原因与代价：</strong>审批回答「是否同意这一份内容」，授权回答「现在能否做这个动作」，两者可独立变化。复核需要稳定的快照表示、可信决定存储；并发时还要让撤回、撤权与业务写入遵循同一个一致性边界。若产品只需要预览，可以不给执行器保存入口，从根本上移除该副作用。</p>
+    <ol class="bp-steps">
+      <li>运行<a href="#l50-approval-check">原审批验收</a>，先分别预测撤回、撤权、换租户和改稿四条路径的状态与保存次数。</li>
+      <li>在临时副本中只移除正文版本检查，观察哪一条失败；再复原并只移除当前资格检查。每次都从空保存区运行。</li>
+    </ol>
+    <p class="bp-result"><strong>结果诊断：</strong>完整版本只输出 <code>L50 ACCEPTED</code>。如果撤权仍能保存，检查是否只信审批；如果改稿被保存，检查是否只比了绑定前缀；拒绝状态正确但保存区非空，则检查业务写入是否发生在复核之前。</p>
+  </div>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：实验室设备时段预留</h2>
+  <p><strong>任务：</strong>成员可以预留设备时段，不能启用设备。审批绑定机构、成员、动作、申请 ID 及确切的设备和时段快照（含版本）。先画出有资格且获批、批准后改时段、批准后撤权三条路径；再交换「撤回决定」与「写入预留」的顺序，预言两次调用的状态和实际预留条数。</p>
+  <p>时间由测试传入，批准只在 <code>now &lt; expires_at</code> 时有效。先撤回则不写；写入后撤回只阻止后续执行，不会撤销已提交的预留，取消应走独立流程。身份、当前资格和人工决定均为可信宿主夹具；这是逐条排列的事件顺序，不是并发压测。真实应用要在写入边界处理有效期，并给撤回、撤权与写入明确的先后关系。</p>
+  <details class="bp-check"><summary>展开参考程序（Python 3.11+，标准库、离线）</summary><pre><code class="language-python" id="l50-transfer-check">from dataclasses import dataclass, replace
+
+RESERVE = "reserve_slot"
+member = ("lab-a", "member-1")
+peer, other = ("lab-a", "member-2"), ("lab-b", "member-1")
+
+
+@dataclass(frozen=True)
+class Slot:
+    revision: int
+    device: str
+    hour: int
+
+
+@dataclass(frozen=True)
+class Decision:
+    binding: tuple
+    status: str = "approved"
+    expires_at: int = 10
+
+
+def bind(scope, action, request, snapshot):
+    return scope, action, request, snapshot
+
+
+class Lab:
+    def __init__(self):
+        self.slot = Slot(1, "microscope", 14)
+        self.qualified = {member, peer, other}
+        self.requests = {(scope, "req-1"): self.slot for scope in self.qualified}
+        self.requests[(member, "req-2")] = self.slot
+        self.decisions = {"review": Decision(bind(member, RESERVE, "req-1", self.slot))}
+        self.reservations = []
+
+    def execute(self, scope, action, request, decision_id, now):
+        if action != RESERVE:
+            return "forbidden_action"
+        key = (scope, request)
+        if scope not in self.qualified or key not in self.requests:
+            return "not_authorized"
+        decision = self.decisions.get(decision_id)
+        if decision is None or decision.binding[:3] != (scope, action, request):
+            return "needs_matching_review"
+        if decision.status in ("pending", "denied", "revoked"):
+            return decision.status
+        if decision.status != "approved":
+            return "needs_matching_review"
+        if now &gt;= decision.expires_at:
+            return "expired"
+        snapshot = self.requests[key]
+        if decision.binding != bind(scope, action, request, snapshot):
+            return "stale_snapshot"
+        self.reservations.append((key, snapshot))
+        return "reserved"
+
+
+def attempt(lab, now=9):
+    return lab.execute(member, RESERVE, "req-1", "review", now)
+
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+lab = Lab()
+assert lab.execute(member, RESERVE, "req-1", "missing", 9) == "needs_matching_review"
+for scope, request in ((peer, "req-1"), (other, "req-1"), (member, "req-2")):
+    assert lab.execute(scope, RESERVE, request, "review", 9) == "needs_matching_review"
+lab.decisions["enable"] = Decision(bind(member, "enable_device", "req-1", lab.slot))
+assert lab.execute(member, "enable_device", "req-1", "enable", 9) == "forbidden_action"
+assert lab.execute(member, RESERVE, "req-1", "enable", 9) == "needs_matching_review"
+assert lab.reservations == []
+
+for status in ("pending", "denied", "revoked"):
+    lab = Lab()
+    lab.decisions["review"] = replace(lab.decisions["review"], status=status)
+    assert attempt(lab) == status and lab.reservations == []
+lab = Lab()  # 批准先到，授权在执行之前失效。
+lab.qualified.remove(member)
+assert attempt(lab) == "not_authorized" and lab.reservations == []
+lab = Lab()  # 即使时段调整时漏增版本号，也必须拒绝。
+for changed in (replace(lab.slot, hour=15), replace(lab.slot, revision=2, hour=15)):
+    lab.requests[(member, "req-1")] = changed
+    assert attempt(lab) == "stale_snapshot" and lab.reservations == []
+lab = Lab()  # 在有效期边界首次尝试。
+assert attempt(lab, now=10) == "expired" and lab.reservations == []
+lab = Lab()  # 先执行再撤回：已完成的预留不会消失，也不会新写。
+assert attempt(lab, now=9) == "reserved"
+lab.decisions["review"] = replace(lab.decisions["review"], status="revoked")
+assert attempt(lab, now=9) == "revoked"
+assert lab.reservations == [((member, "req-1"), lab.slot)]
+print("L50 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>保存整段，用 <code>python -I 文件名.py</code> 运行，只应输出 <code>L50 TRANSFER PASSED</code>。同名成员或另一申请复用批准时，查决定绑定；恰好到期仍写入时，查边界比较；先撤回仍写入时，查是否缓存了旧决定；后撤回导致记录消失时，查是否把撤回审批误当成撤销预留。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>同事也有草稿保存权限，能用你的审批编号保存原稿吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不能。授权回答「同事现在能否保存」，可信审批回答「谁同意了哪一次保存」；编号只用于查决定，不能转移该决定。本课用同租户的另一编辑者调用，断言 <code>approval_mismatch</code> 且 <code>saved</code> 为空。</p>
+      <p><strong>追问：</strong>如果你本人拿着匹配批准，但保存资格刚被取消呢？</p>
+      <p><strong>答题要点：</strong>应返回 <code>not_authorized</code>，仍不写入；审批不能恢复已经失去的权限。即使批准真实，也不能开放白名单外的动作。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>批准后只改了标题，正文摘要还一样；如果标题也要保存，旧批准能用吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不能。正文摘要足以覆盖本课原例，却不能证明用户看过新版标题。预览和审批版本都要覆盖实际保存的字段。给扩展用例只改标题，断言旧批准零写入；对新版重新批准后，核对保存的是新版完整快照。</p>
+      <p><strong>追问：</strong>编辑时漏增了版号，只比版号会发生什么？</p>
+      <p><strong>答题要点：</strong>会错把新版当旧版。版号必须指向不可变快照，或像时段练习那样同时核对实际字段；可故意保持版号不变，验证改动仍被拒绝。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>设备预留批准在时间 10 到期，分别在 9 和 10 首次尝试会怎样？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>其他条件相同且都满足时，9 可预留，10 应返回 <code>expired</code>，因为有效区间不含到期点。用两份空预留夹具传入 9 和 10，分别核对 <code>reserved</code>／一条与 <code>expired</code>／零条。</p>
+      <p><strong>追问：</strong>时间 9 已预校验，排队到 10 才到写入边界，能沿用校验吗？</p>
+      <p><strong>答题要点：</strong>不能。写入边界要用当时的可信时间复核；预校验通过不等于到期后仍可写。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>同一份预留，撤回发生在提交之前或之后，应分别看到什么？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>撤回先发生，返回 <code>revoked</code>、零预留；提交先发生，后续尝试仍应被拒，但已提交的那条保留。撤回只改变后续执行所依据的决定，不等于取消预留。用两份空夹具交换操作顺序，核对状态和原记录。</p>
+      <p><strong>追问：</strong>如果撤回与保存并发，只给插入套事务够吗？</p>
+      <p><strong>答题要点：</strong>不够，事务外读到的批准可能已失效。要让复核、撤回与写入有明确先后，例如在同一数据库内用事务约束；本课顺序用例不证明并发正确。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L50">L50 疑难解答 →</a><div class="qa-related"><a href="0057-L49-memory-lifecycle.html">上一课：L49 记忆生命周期</a> · <a href="0059-L51-approval-checkpoint-resume.html">下一课：L51 审批暂停与恢复</a>。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>文本地图：白名单 → 当前业务授权 → 人工决定 → 核对绑定和版本 → 仅保存本地草稿；任何一步不满足则不写。</p><p><a href="https://docs.langchain.com/oss/python/langgraph/interrupts">LangGraph · Interrupts</a>（对照人工介入如何暂停与恢复；中断机制不替应用验证身份、授权和审批绑定，本课不使用该框架）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

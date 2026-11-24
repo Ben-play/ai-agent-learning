@@ -33,7 +33,38 @@ CASES = (
     ("0050-L42-context-evidence-budget.html", ("l42-context-check",), "L42 ACCEPTED"),
     ("0051-L43-progressive-skill-disclosure.html", ("l43-skill-check",), "L43 ACCEPTED"),
     ("0052-L44-project-acceptance-handoff.html", ("l44-handoff-check",), "L44 ACCEPTED"),
+    ("0053-L45-function-workflow-agent.html", ("l45-architecture-check",), "L45 ACCEPTED"),
+    ("0054-L46-bounded-agent-loop.html", ("l46-loop-check",), "L46 ACCEPTED"),
+    ("0055-L47-typed-tool-contract.html", ("l47-tool-check",), "L47 ACCEPTED"),
+    ("0056-L48-context-notes-compaction.html", ("l48-context-check",), "L48 ACCEPTED"),
+    ("0057-L49-memory-lifecycle.html", ("l49-memory-check",), "L49 ACCEPTED"),
+    ("0058-L50-approval-boundaries.html", ("l50-approval-check",), "L50 ACCEPTED"),
+    ("0059-L51-approval-checkpoint-resume.html", ("l51-checkpoint-check",), "L51 ACCEPTED"),
+    ("0060-L52-idempotent-draft-replay.html", ("l52-replay-check",), "L52 ACCEPTED"),
+    ("0061-L53-harness-regression.html", ("l53-regression-check",), "L53 ACCEPTED"),
+    ("0062-L54-harness-acceptance.html", ("l54-harness-check",), "L54 ACCEPTED"),
 )
+
+# Near-transfer checks run independently of the worked examples above.
+PRACTICE_LESSONS = tuple(
+    (int(expected.split()[0][1:]), name)
+    for name, _, expected in CASES
+    if 39 <= int(expected.split()[0][1:]) <= 54
+)
+PRACTICE_CASES = tuple(
+    (name, (f"l{number}-transfer-check",), f"L{number} TRANSFER PASSED")
+    for number, name in PRACTICE_LESSONS
+)
+CHECKPOINT_CASES = (
+    ("0051-L43-progressive-skill-disclosure.html", ("l43-stage-check",), "P4 CONTEXT AND SKILL PASSED"),
+    ("0056-L48-context-notes-compaction.html", ("l48-stage-check",), "P5 HARNESS BOUNDARIES PASSED"),
+    ("0060-L52-idempotent-draft-replay.html", ("l52-stage-check",), "P5 DURABLE APPROVAL PASSED"),
+)
+WALKTHROUGH_CASES = (
+    ("0055-L47-typed-tool-contract.html", ("l47-protocol-walkthrough",), "L47 PROTOCOL PASSED"),
+    ("0055-L47-typed-tool-contract.html", ("l47-generic-walkthrough",), "L47 GENERIC PASSED"),
+)
+ALL_CASES = CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
 
 
 class CodeBlocks(HTMLParser):
@@ -61,7 +92,7 @@ class CodeBlocks(HTMLParser):
 
 def main() -> int:
     failures = 0
-    for filename, ids, expected in CASES:
+    for filename, ids, expected in ALL_CASES:
         try:
             parser = CodeBlocks()
             parser.feed((ROOT / "lessons" / filename).read_text(encoding="utf-8"))
@@ -72,7 +103,7 @@ def main() -> int:
                 cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=30,
                 check=False,
             )
-            if result.returncode or result.stdout.strip() != expected:
+            if result.returncode or result.stdout.strip() != expected or result.stderr.strip():
                 failures += 1
                 print(f"FAIL {filename}")
                 print(result.stdout.strip())
@@ -82,7 +113,7 @@ def main() -> int:
         except (KeyError, OSError, ValueError, SyntaxError, subprocess.TimeoutExpired) as exc:
             failures += 1
             print(f"FAIL {filename}: {exc}")
-    print(f"Offline examples: {len(CASES) - failures}/{len(CASES)} passed")
+    print(f"Offline examples: {len(ALL_CASES) - failures}/{len(ALL_CASES)} passed")
     return 1 if failures else 0
 
 

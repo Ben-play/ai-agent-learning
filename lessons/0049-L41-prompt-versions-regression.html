@@ -11,22 +11,52 @@
 <body>
 <main>
 <div class="section"><div class="lesson-header">
-  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
   <h1>Prompt 版本与回归</h1><p class="subtitle">把模板放进版本控制，用同一批用例比较改动</p>
 </div></div>
 <div class="section"><h2>为什么这课重要？</h2><p>给客服助手多加一句「尽量提供帮助」，也许改善了正常问答，却让它在缺证据时开始猜测。只有保留旧版本和同一份判定标准，才能指出哪里变好了、哪里退步了。</p><h3>学习目标</h3><p>能记录一个可复跑的 Prompt 版本，区分开发集、验收集和回归集的用途，并从逐案差异而不是总分判断改动。</p></div>
-<div class="section"><h2>1. 版本标识回答「到底跑了什么？」</h2>
-  <p>在仓库中保留模板内容和唯一版本，改内容时分配新版本（例如 <code>v1</code> → <code>v2</code>），不要覆盖已评测的快照。每次报告至少记录模板版本、案例集版本、案例数和失败 ID。实际调用还要固定或记录模型、接口、模型配置及证据集版本；本课只演示离线记录。</p>
-  <table><thead><tr><th scope="col">集合</th><th scope="col">何时使用</th><th scope="col">不能做什么</th></tr></thead><tbody>
-    <tr><td>开发集</td><td>挑例子、调提示、观察变化。</td><td>不能把调出来的高分当成独立验收。</td></tr>
-    <tr><td>独立验收集</td><td>模板候选确定后，按预定门槛检查。</td><td>案例曝光后若用来继续调提示，不能再说它没被用来调参。</td></tr>
-    <tr><td>回归集</td><td>保留关键能力和曾失败的案例，每次改动复跑。</td><td>反复运行并据此修复的案例不等于独立验收集。</td></tr>
+<div class="section">
+  <h2>1. 用运行清单锁定「到底跑了什么」</h2>
+  <p><strong>回归</strong>要问的是「改动后，原来通过的用例是否变坏」，所以先保留旧版，不能原地覆盖。清单不能只写「客服提示最新版」：它要让别人拿回当时的模板、输入与判定规则。同一批题更换了标准，或同一份模板换了证据，也不是只改提示的比较。</p>
+  <ul>
+    <li><strong>模板快照：</strong><code>v1</code> 和 <code>v2</code> 各指向一份固定文本，含演示和变量占位。记录装配逻辑与证据快照，或保存脱敏后的完整请求，才能核对实际交给模型的内容。</li>
+    <li><strong>主案例集版本：</strong><code>demo-1</code> 固定用于两版主对照的案例 ID、请求、证据和期望；另记评分规则和必过清单的版本。它不是模型标识，模型换了也不自动改变题集。</li>
+    <li><strong>运行与结果：</strong>真实试验另记接口、模型快照、采样设置及每题试验次数；保留逐案输出、判定、失败 ID 和总数。本课只对照手写记录，没有模型。能重建请求不表示模型每次返回相同文本。</li>
+  </ul>
+</div>
+<div class="section">
+  <h2>2. 同一套题、同一个分数，不同的门槛结论</h2>
+  <p>假设 <code>demo-1</code> 有下表三题。本例只检查状态，每题一分。看候选结果前，先约定 <code>no-source</code> 必过：没有恢复政策就不能作答。两列输出均为人工构造，并非模型推理的结果。</p>
+  <table><thead><tr><th scope="col">案例与期望状态</th><th scope="col"><code>v1</code> 观察值</th><th scope="col"><code>v2</code> 观察值</th></tr></thead><tbody>
+    <tr><th scope="row"><code>support</code>：有保留期证据，<code>answered</code></th><td><code>answered</code>，通过</td><td><code>answered</code>，通过</td></tr>
+    <tr><th scope="row"><code>no-source</code>：无恢复政策，<code>needs_evidence</code>（必过）</th><td><code>needs_evidence</code>，通过</td><td><code>answered</code>，失败</td></tr>
+    <tr><th scope="row"><code>draft</code>：明确要起草且有证据，<code>drafted</code></th><td><code>answered</code>，失败</td><td><code>drafted</code>，通过</td></tr>
+    <tr><th scope="row">总分 / 本项门槛</th><td>2/3，通过</td><td>2/3，阻断</td></tr>
   </tbody></table>
-  <div class="best-practice-point"><h3>最佳实践：把危险退化写成硬门槛</h3><p>缺证据瞎答、未请求却起草等结果不能被其他题加分抵消。一次从「会」变「不会」即可阻断当前候选；新旧版本都失败的关键例同样不许过门。起始项目以 <code>PROMPT_SNAPSHOTS</code> 保存两个实际版本；从仓库根运行 <code>python code/phase4-prompt-context/main.py</code> 可看前两行的版本和字节差异。这证明模板进入了请求，不证明哪版质量更好。</p></div>
+  <p><code>v2</code> 修好 <code>draft</code>，却让 <code>no-source</code> 从正确拒答变成无证作答。分数没变，是一进一退；门槛只问候选有没有违反必过规则。即使必过题两版都失败，也不能因为没有新增失败而放行。<code>v1</code> 通过的只是这道门槛，不等于达到全部发布条件。</p>
+</div>
+<div class="section">
+  <h2>3. 查对照是否有效，再决定用哪批题重跑</h2>
+  <p>若报告只剩两题，先查漏跑，不要拿 2/2 对比 2/3。若题、证据或判定有意改动，就分配新的版本，用新的基准把旧版和候选一起重跑。线上发现具体退化后，可以把它加入回归集；把完整契约拆成状态、证据支持度和禁止动作分别验，才能定位是哪一项没守住。</p>
+  <p><strong>开发集</strong>让你看错因、挑示例和改模板；<strong>回归集</strong>长期守住已知能力和旧错；<strong>独立验收集（holdout）</strong>留到候选确定后再检查，不参与设计。若看过验收失败并据此改过提示，就把相关题转作开发或回归，另留未参与调优的新题，覆盖不同的请求与证据组合，而不是只把已曝光的题换个说法。</p>
+  <div class="best-practice-point" id="bp-l41">
+    <h3>最佳实践：用逐案硬门槛决定能不能交付</h3>
+    <p class="bp-scenario"><strong>适用与限制：</strong>模板改动可能修好常见问题，却破坏「缺证据不猜」之类的业务约束。面向已知风险的回归门槛可以每次跑，但不拿它估计未见题的表现。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">错误做法：同分就放行</span><p>同一批 3 题，<code>v1</code> 和 <code>v2</code> 都得 2 分。看见 <code>v2</code> 修好了起草题便放行，漏掉它在 <code>no-source</code> 题无证作答。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">推荐做法：核对关键案例</span><p>同一份 2/3 的结果，逐案列出修复的 <code>draft</code> 和退步的 <code>no-source</code>，阻断 <code>v2</code>。即使关键题在两版都失败，候选也不能过门。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>先定必过案例，再逐案比较，避免高分掩盖禁止行为；代价是要维护案例和判定标准。总分适合在过门后的候选之间作补充对照。用开发题调 Prompt、用回归题守住约束；若独立验收题已经被拿来调提示，把它转作开发或回归，另留新题作独立验收。</p>
+    <ol class="bp-steps"><li>锁定模板快照、案例集版本和预期状态，再运行<a href="#l41-regression-check">原逐案对照</a>，指出哪题修好、哪题阻断。</li><li>想核对实际快照时，从仓库根运行 <code>python code/phase4-prompt-context/main.py</code>，看前两行的版本与输入字节；固定响应器不评估模板措辞。</li></ol>
+    <p class="bp-result"><strong>结果诊断：</strong><code>L41 ACCEPTED</code> 表示门槛能从同分结果里识别关键退化，也拒绝漏测的报告；评分记录是人工构造的，不能证明哪版真实模型表现更好。</p>
+  </div>
   <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 你用验收题的错误答案反复调 Prompt。这批题现在适合做什么？</div><div class="quiz-options"><button data-answer="wrong">保留为独立验收集</button><button data-answer="correct">转用作开发或回归</button><button data-answer="wrong">改用作模型配置集</button><button data-answer="wrong">删除后直接上生产</button></div><div class="quiz-explanation">这些题已经影响了提示设计，可以留作开发或回归；要估计未见案例表现，应另留独立用例。</div></div>
 </div>
-<div class="section best-practice-lesson"><h2>2. 动手：总分一样也可能有退步</h2>
+<div class="section best-practice-lesson"><h2>4. 动手：总分一样也可能有退步</h2>
   <p>下面是<strong>人工构造的试验结果</strong>，不是起始项目的模型输出。先找出哪题修好了、哪题退步了，以及为何不能发布。再打开参考对照。</p>
+  <div class="card" id="guided-l41"><h3>跟做：先算一组失败集合</h3><pre><code class="language-python">failed = {"no-source"}
+critical = {"no-source"}
+# TODO：用集合判定这一版能不能过门；不要用总分。</code></pre><p><strong>通过标准：</strong>这组要阻断；把失败集合换成只有 <code>draft</code> 时应通过同一门槛。再把判定接回第 2 节的逐案报告。</p></div>
   <details><summary>展开逐案比较与离线自检</summary><pre><code class="language-python" id="l41-regression-check">expected = {"support": "answered", "no-source": "needs_evidence", "draft": "drafted"}
 critical = {"no-source"}
 observations = {
@@ -62,7 +92,70 @@ else:
 print("L41 ACCEPTED")</code></pre></details>
   <p>用 <code>python -I 文件名.py</code> 执行。两个版本都是 2/3，但 <code>v2</code> 在「缺证据不猜」上失败，不应通过。真实模型可能波动；记录试验次数，必要时对每题重复，不从这组手写结果推断模板优劣。</p>
 </div>
-<div class="section"><h2>面试自查</h2><details><summary>只记录 Prompt 名称够吗？</summary><p>不够。要能恢复当时的内容与运行数据；名称可以重用，版本快照与案例版本不应被覆盖。</p></details><details><summary>为什么一定要比较相同用例？</summary><p>题目不同会改变难度和构成，分数变化不能归因为一个提示改动。</p></details><details><summary>回归测试全过等于线上质量好？</summary><p>只证明覆盖的检查通过，不证明未覆盖任务或真实模型表现。</p></details><details><summary>两个版本的总分相同怎么选？</summary><p>先看禁止失败是否发生，再对照逐案差异以及成功任务的用量和时延。</p></details></div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：总分提高，关键旧错还在</h2>
+  <p>设备归还助手修好了「写交接草稿」，却和旧版一样，在没有登记记录时声称设备已归还。为这批已知风险写一个发布门槛：不光找新增失败，还要查候选是否满足每项必过规则。</p>
+  <details class="bp-check"><summary>展开独立参考：区分旧错和新增退化</summary><pre><code class="language-python" id="l41-transfer-check">expected = {"hours": "answered", "draft": "drafted", "unconfirmed": "needs_evidence"}
+critical = {"unconfirmed"}
+
+
+def failures(observed):
+    if observed.keys() != expected.keys():
+        raise ValueError("案例必须齐全且一致")
+    return {case for case in expected if observed[case] != expected[case]}
+
+
+def compare(baseline, candidate):
+    old, new = failures(baseline), failures(candidate)
+    return {"fixed": old - new, "regressed": new - old, "blocked": new &amp; critical}
+
+
+# 人工记录：不代表模型真实运行。
+old = dict(hours="answered", draft="answered", unconfirmed="answered")
+new = dict(old, draft="drafted")
+report = compare(old, new)
+assert report["fixed"] == {"draft"} and not report["regressed"], report
+assert report["blocked"] == {"unconfirmed"}, "关键旧错不能因总分上升放行"
+assert not compare(old, dict(new, unconfirmed="needs_evidence"))["blocked"], "修复后应过此门槛"
+print("L41 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">整块复制后用 <code>python -I 文件名.py</code> 运行，应只打印 <code>L41 TRANSFER PASSED</code>。若无新增失败就放行，检查是否用 <code>regressed</code> 代替了候选的必过规则。这里评审的是已知回归；挑好候选再用未参与调优的验收集评估。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>两份报告都写 <code>v2</code>，同一用例却从能回答变成缺证据。先怀疑模型波动吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>先确认两次究竟跑了什么。用版本快照核对实际模板、装入的证据、运行设置和判定规则。名称没变不代表内容没变；若请求不同，就不能把结果差异先归给模型波动。</p>
+      <p><strong>追问：</strong>脱敏后留存完整请求，就能重现同一句模型回答吗？</p>
+      <p><strong>答题要点：</strong>不一定。能复查请求，不保证输出相同；真实试验另记模型和采样设置，必要时重复。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>候选在独立验收里答错一道题。你看了错因改提示，再把那道题换个措辞，能继续当独立验收吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不能。这个案例已经影响了提示设计，改写题面恢复不了独立性。原题可转到开发或回归；先定候选，再用没参与调优的新请求及证据组合验收，才能检查是否只修好了已知题。</p>
+      <p><strong>追问：</strong>原题修好后，每次改提示还要跑它吗？</p>
+      <p><strong>答题要点：</strong>如果对应的是需要长期守住的行为，就把它留在回归集；但不能拿它代表新案例表现。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>同一套 40 题，旧版过 37 题，新版过 39 题；新版唯一败在必过题「没库存记录却承诺有货」，旧版也错。放不放？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不放。逐题对照能确认两道普通题修好了，但必过项仍在候选的失败清单里。门槛看候选有没有违反承诺条件，不只看有没有新增错误；得分提高不抵消这类关键旧错。</p>
+      <p><strong>追问：</strong>修好库存题后，只补跑这道就能放行吗？</p>
+      <p><strong>答题要点：</strong>不能。对冻结的题集重跑修订版，确认没有新的退步；通过这道门槛仍不等于满足全部发布条件。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>基线是 11/12，候选是 11/11。查到候选有一道必过题运行超时，报告把它略掉了。怎么修这个对照？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>报告不完整，必过门槛不能放行。对照计划与实跑的案例 ID，保留这题的超时和运行记录，不把它记成通过，也不删掉分母。按预先约定的超时规则复跑，再用完整的同一批题比较。</p>
+      <p><strong>追问：</strong>如果修复时换了题目的证据快照，只补跑候选的漏测题够吗？</p>
+      <p><strong>答题要点：</strong>不够。为变动后的题集分配新版本，让基线和候选都按新基准重跑。</p>
+    </div>
+  </details>
+</div>
 <div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase4-qa.html#L41">L41 疑难解答 →</a><div class="qa-related">延伸：<a href="0048-L40-few-shot-counterexamples.html">L40 示例对照</a> · <a href="0050-L42-context-evidence-budget.html">L42 证据与预算</a>。有疑问时，带上两版提示的修改点和失败案例 ID。</div></div></div>
 <div class="section"><h2>小结与一手参考</h2><p>版本化模板 → 同题对照 → 看逐案差异 → 关键失败阻断。隔日不用看代码，写出一对总分相同但上线结论不同的报告。</p><p><a href="https://developers.openai.com/api/docs/guides/evaluation-best-practices">OpenAI · Evaluation best practices</a>（精读任务指标、独立用例和持续评测；不使用托管 Evals 平台）。</p></div>
 </main>

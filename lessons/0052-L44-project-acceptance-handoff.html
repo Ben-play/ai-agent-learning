@@ -11,21 +11,49 @@
 <body>
 <main>
 <div class="section"><div class="lesson-header">
-  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span></div>
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
   <h1>项目验收与交接</h1><p class="subtitle">交付一份别人可以复跑的证据问答和草稿报告</p>
 </div></div>
 <div class="section"><h2>为什么这课重要？</h2><p>下一阶段要把同一个项目扩展成有边界、可恢复的 Agent。若只交一段 Prompt 和成功截图，任何重构都无法确认行为没变。本课的目标是交付<strong>同一批输入、判定方法、实测结果和未证明项</strong>。</p><h3>学习目标</h3><p>能跑通并解释阶段回归，记录版本、引用、预算和禁止副作用，指出哪些断言应继续复用到 Phase 5。</p></div>
-<div class="section"><h2>1. 定义交接包和失败门槛</h2>
-  <ol><li><strong>复现信息：</strong>仓库版本、提示版本、案例集编号、运行命令。注明使用的是固定响应器。</li><li><strong>必过规则：</strong>正确引用；没有证据不生成答案；没要求不出草稿；草稿不提交；预算不足不调用。发现任一退化先修，不用总分抵消。</li><li><strong>观测：</strong>按案例记录状态、来源 ID、是否有草稿、适配器调用次数和输入字节。记录未测的真实模型、在线用量、权限与持久化。</li></ol>
-  <p>先在仓库根目录运行起始项目原有回归：</p>
+<div class="section"><h2>1. 先约定验收门槛，再写交接包</h2>
+  <p>一份交接记录要让另一位维护者回答三个问题：跑的是不是同一份代码，什么算通过，本次实际上观察到了什么。先写仓库版本（未提交的改动也要注明）、Python 版本、提示快照 <code>v2</code>、案例集 <code>phase4-handoff-1</code>、固定响应器和运行命令。仓库版本定位程序和内置草稿模板；提示版本定位送进请求的指令；案例集定位输入及预期。三处分别记录，今后才能判断是实现改了，还是比较条件改了。</p>
+  <p>在跑之前就写下每案的预期状态、引用、草稿和调用次数。正常问答有有效引用但没有草稿；起草只能返回待确认文本；缺证据、输入预算不够和禁止提交都不能走到适配器。任一必过规则失败即停，不用正常路径的分数来抵消越界动作。所谓「通过」还要写明范围：本次是固定响应器的本地回归，不是上线许可。</p>
+</div>
+<div class="section"><h2>2. 读一份样例记录：把预期同观察值分开</h2>
+  <p>下表的预期取自五案契约，观察值在 Python 3.14.6 下用起始项目 <code>v2</code> 和固定响应器实测。预期只有 <code>answer</code>、<code>draft</code> 引用 KB-01、KB-02，其余三案无答案、无引文、无草稿。这两条正常路径用相同问句和证据；应用先验意图，再找证据、核输入预算、调用适配器、验返回引用，最后才按 <code>intent="draft"</code> 组装草稿。起草意图不改变适配器请求，所以两案实测都是 387 输入字节。实际交接请补自己的仓库版本和运行记录。</p>
+  <table><thead><tr><th scope="col">案例及条件</th><th scope="col">预期（状态 / 草稿 / 调用）</th><th scope="col">实测（状态 / 草稿 / 调用）</th><th scope="col">实测引用 / 输入字节</th></tr></thead><tbody>
+    <tr><td><code>answer</code>：问保留期</td><td><code>answered</code> / 无 / 1</td><td><code>answered</code> / 无 / 1</td><td>KB-01、KB-02 / 387</td></tr>
+    <tr><td><code>missing</code>：问能否恢复</td><td><code>needs_evidence</code> / 无 / 0</td><td><code>needs_evidence</code> / 无 / 0</td><td>无 / 0</td></tr>
+    <tr><td><code>draft</code>：要求起草</td><td><code>drafted</code> / 有 / 1</td><td><code>drafted</code> / 有 / 1</td><td>KB-01、KB-02 / 387</td></tr>
+    <tr><td><code>budget</code>：输入上限 1 字节</td><td><code>budget_exceeded</code> / 无 / 0</td><td><code>budget_exceeded</code> / 无 / 0</td><td>无 / 0</td></tr>
+    <tr><td><code>forbidden-send</code>：要求提交</td><td><code>invalid_request</code> / 无 / 0</td><td><code>invalid_request</code> / 无 / 0</td><td>无 / 0</td></tr>
+  </tbody></table>
+  <p>复跑按这个顺序：冻结版本和预期，在起始项目目录跑单测，再跑演示确认两版提示及输出，最后回仓库根跑本页五案并记录差异。若 <code>missing</code> 或 <code>budget</code> 的调用数非零，查证据或预算守卫是否放在调用前；若 <code>answer</code> 出现草稿，查意图分支；若引用有变化，先比本轮发送清单与实际原文。只有字节改变时，先对照提示版本和序列化方式，不把它解释成质量变化。</p>
+</div>
+<div class="section"><h2>3. 验收返回、动作尝试和业务结果</h2>
+  <p><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Anthropic 的 Agent 评测文章</a>区分执行轨迹和环境结果。以 <code>draft</code> 为例：返回 <code>drafted</code> 和「需人工确认：导出保留期」只说明交出了什么。<code>adapter_calls=1</code> 表示尝试调用一次本地问答替身，计数在调用前增加，既不能证明响应成功，也不是提交动作的计数。单测另外监看打开文件、网络连接、数据库连接和进程启动等入口；通过表示这次未触及这些被观察的入口。</p>
+  <p>业务结果要看目标记录实际有没有变化。例如下方访客公告的独立练习中，同一份草稿返回值可以伴随公告被改写；对照前后内容能发现变化，动作轨迹还能揭示曾写入又撤销的尝试。起始项目没有真实工单系统，本次交接只证明固定案例的返回、调用计数和单测所观察的边界。Phase 5 可复用这些业务断言，另验审批暂停、持久状态、重启恢复和重复执行；真实模型质量、在线用量与真实授权也不在本报告范围内。</p>
+  <div class="best-practice-point" id="bp-l44">
+    <h3>最佳实践：交接自己复跑的结果和状态证据</h3>
+    <p class="bp-scenario"><strong>适用与限制：</strong>把证据问答和起草交给下一位维护者时，随版本与命令附上实测记录；如果这次只跑了离线替身，就不能用报告证明真实模型、权限或持久恢复。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">错误做法：用输出截图代替验收</span><p>输入「起草保留期确认工单」，看到标题写着「需人工确认」就记作「没有提交」，甚至直接抄示例报告。截图没有观测任何动作或状态。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">推荐做法：分别记录返回和变化</span><p>同一份起草任务，用自己的运行记录核对 <code>drafted</code>、引用和草稿；再查看单元测试观测到的 I/O 边界，并说明哪些外部状态没测。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>结果记录说明系统给了什么，动作记录或前后状态说明系统做了什么；两者不能互相替代。固定案例易复跑，但覆盖有限。进入 Phase 5 时保留业务契约，另测暂停审批、退出后恢复和重复执行；「待确认」标题不是持久审批状态。</p>
+    <ol class="bp-steps"><li>记下代码与模板版本、案例集和命令，再跑<a href="#l44-handoff-check">原五案交接自检</a>及项目单元测试。</li><li>摘录自己看到的案例字段和边界检查，标明是替身观测还是实际状态，并列出未测项。</li></ol>
+    <p class="bp-result"><strong>结果诊断：</strong><code>L44 ACCEPTED</code> 对应五案返回和计数断言；失败先看用例 ID。若只有这行而没有动作或状态观测，不写「已证明未提交」；单元测试也只证明观测到的那些边界未被调用。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 哪个结果可作为这次离线交接的结论？</div><div class="quiz-options"><button data-answer="wrong">模型质量已经达标</button><button data-answer="correct">固定案例契约通过</button><button data-answer="wrong">线上成本已经下降</button><button data-answer="wrong">持久恢复已经实现</button></div><div class="quiz-explanation">离线检查证明覆盖的控制路径；真实质量、费用和持久恢复需要各自的验证证据。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>4. 动手：运行可交接的验收表</h2>
+  <p>从仓库根目录开始，先复跑起始项目的单测和命令行演示：</p>
   <pre><code class="language-bash">cd code/phase4-prompt-context
 python -m unittest discover -s tests -v
 python main.py</code></pre>
-  <p>第一条 Python 命令验证项目单元测试；第二条演示两版提示、草稿及缺证据的结果。两版测到的字节数只能用于比较本地请求大小，固定响应器不会反映提示对真实模型质量的影响。</p>
-  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 哪个结果可作为这次离线交接的结论？</div><div class="quiz-options"><button data-answer="wrong">模型质量已经达标</button><button data-answer="correct">固定案例契约通过</button><button data-answer="wrong">线上成本已经下降</button><button data-answer="wrong">持久恢复已经实现</button></div><div class="quiz-explanation">离线检查证明覆盖的控制路径；真实质量、费用和持久恢复需要各自的验证证据。</div></div>
-</div>
-<div class="section best-practice-lesson"><h2>2. 动手：运行可交接的验收表</h2>
-  <p>先写五个案例的预期：答复、缺证据、起草、预算不足和拒绝提交，再对照答案。回到仓库根目录，将下段保存为 Python 文件并用 <code>python -I 文件名.py</code> 运行（标准库，无密钥）。练习输出一行通过标记；写交接报告时，可先用 <code>print(evidence)</code> 查看这些记录，再补实际的仓库版本和未测项。</p>
+  <p>回到仓库根目录，将下段保存为 Python 文件并用 <code>python -I 文件名.py</code> 运行（标准库，无密钥）。按预先写好的五案预期对照结果。练习输出一行通过标记；写交接报告时，可先用 <code>print(evidence)</code> 查看这些记录，再补实际的仓库版本和未测项。</p>
+  <div class="card" id="guided-l44"><h3>跟做：写一行可交接的预期</h3><pre><code class="language-text">案例：导出文件能否恢复？  提示版本：v2
+预期状态：___  草稿：___  适配器调用次数：___</code></pre><p><strong>通过标准：</strong>状态说明缺的是证据而不是预算，答案和草稿为空，且请求未发到适配器。运行后把观察值另记一列，不覆盖预期。</p></div>
   <details><summary>展开回归脚本与交接记录</summary><pre><code class="language-python" id="l44-handoff-check">import runpy
 from pathlib import Path
 
@@ -59,10 +87,77 @@ for label, text, options, status, ids, has_draft, calls in cases:
 assert len(evidence["cases"]) == 5
 print("L44 ACCEPTED")</code></pre></details>
   <p>验证输出应为 <code>L44 ACCEPTED</code>。这里的第五条是禁止提交的反例；项目单元测试另外观察文件、网络和数据库边界。本脚本不能观察所有外部状态，也不能替未来的审批、检查点和恢复测试。</p>
-  <div class="best-practice-point"><h3>交接后保留什么</h3><p>把任务目标、案例集、授权拒绝和草稿契约带到 Phase 5；换架构仍跑同一组案例，再加「暂停审批→进程退出→恢复」与重复执行测试，不把“待确认”的标题当成真正的审批状态。</p></div>
 </div>
-<div class="section"><h2>面试自查</h2><details><summary>怎样证明没有执行错误动作？</summary><p>检查拒绝路径，也应观察动作调用或实际状态；只看最终语言不够。</p></details><details><summary>字节变化等于账单变化吗？</summary><p>不等于；真正账单取决于目标服务的计量和价格，本地报告只有字节。</p></details><details><summary>迁移架构应该重写验收用例吗？</summary><p>复用业务契约用例，另加架构引入的新风险；不要为了通过测试改掉原成功标准。</p></details><details><summary>为什么报告要写未覆盖项？</summary><p>它说明证据只支持哪些决策，防止把固定样例当作上线证明。</p></details></div>
-<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase4-qa.html#L44">L44 疑难解答 →</a><div class="qa-related">延伸：<a href="0045-phase4-prompt-context-outline.html#starter">起始项目入口</a> · <a href="0046-phase5-to-11-planned-outlines.html#phase-5">Phase 5 草案</a>。遇到自检失败时，提供用例 ID 和出错断言，不贴密钥或真实用户数据。</div></div></div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：有草稿不等于访客公告没被改动</h2>
+  <p>交接「拟将访客到达时间改为 15:00」的草稿功能，约定返回待确认草稿，但本地公告板不应变化。自己运行后记下案例版本、返回值和前后状态，不抄参考结果；同时说明这里没有真实的公告系统。</p>
+  <details class="bp-check"><summary>展开独立参考：分别录下返回和前后状态</summary><pre><code class="language-python" id="l44-transfer-check">def draft(new_time, _board):
+    return {"status": "drafted", "title": "待确认：访客时间变更", "body": f"拟改为 {new_time}。"}
+
+
+def writes_then_drafts(new_time, board):
+    result = draft(new_time, board)
+    board["posted"] = result["body"]  # 故意改变替身状态，返回仍然一样。
+    return result
+
+
+def observe(run):
+    board = {"posted": "访客预计 14:00 到达。"}
+    before = dict(board)
+    result = run("15:00", board)
+    return {"case": "visitor-change-1", "result": result, "before": before, "after": dict(board)}
+
+
+def accepted(report):
+    return (report["result"] == {"status": "drafted", "title": "待确认：访客时间变更", "body": "拟改为 15:00。"}
+            and report["after"] == report["before"])
+
+
+observed = observe(draft)
+assert accepted(observed), observed
+negative = observe(writes_then_drafts)
+assert negative["result"] == observed["result"], "反例应保持相同的返回值"
+assert not accepted(negative), "只验返回，漏掉替身公告状态变化"
+print("L44 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">整块复制后用 <code>python -I 文件名.py</code> 运行，应只打印 <code>L44 TRANSFER PASSED</code>。可另跑一次，加 <code>print(observed)</code> 取自己的记录。相同返回却允许状态改变，说明交接漏验了副作用；这里只能验替身的前后状态，不能排除中途写入又撤销，正式验收还要看动作记录。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>交接只有五案通过的截图和一句「用的 v2」。你接手后至少要补哪些记录才能复跑？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>补代码版本和本地改动、提示快照、案例集、运行环境、固定响应器和命令。把每案预期与复跑观察分开，记录状态、引文、草稿、计数和字节。截图既不能说明跑的是哪一份，也不代表线上验收。</p>
+      <p><strong>追问：</strong>字节从 387 降到 360，能写「线上成本下降」吗？</p>
+      <p><strong>答题要点：</strong>不能。先查提示和序列化有没有变；本地测的是字节，线上还要看实际计量和价格。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>换到 Phase 5 后，草稿界面仍显示「待确认」。哪些旧检查能沿用，哪些不能只凭这行字验收？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>继续检查问答有据、缺证据不猜、起草不提交。另测审批前是否暂停、重启后是否能恢复同一任务、重复执行有没有重复动作。标题只说明交付文案，不是持久状态或动作记录。</p>
+      <p><strong>追问：</strong>如何验证「待确认」不是重启后新建的一份任务？</p>
+      <p><strong>答题要点：</strong>对照重启前后的任务标识和待审批状态，并检查动作轨迹，而不是比较标题。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>交接临近：约定起草不能碰写入入口。公告草稿正确，问答替身计数为 1，写入探针也记了 1 次尝试，公告板前后都显示「10:00」。能先签过吗？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>不能。问答替身计数不是提交计数；写入探针表明被监看的入口尝试了一次，违反只起草的约定。公告未见最终变化，不能据此判定尝试失败，也不能证明真实系统没有副作用。报告应分栏记录并阻断该项。</p>
+      <p><strong>追问：</strong>怎样区分写入从未生效与生效后被撤销？</p>
+      <p><strong>答题要点：</strong>对照同一试验的写入结果、目标状态变更历史与撤销记录；只有前后快照时应标明未知。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span><code>forbidden-send</code> 案返回 <code>invalid_request</code>，草稿也为空，但 <code>adapter_calls=1</code>。交接报告该怎么判，修复后怎么验？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>判失败。预期是拒绝请求且不尝试调用适配器，计数为一说明这条路径仍有调用尝试。先查意图守卫的位置；修后用同一禁止用例断言零调用，再用正常问答核对一次调用，避免把所有调用都关掉。</p>
+      <p><strong>追问：</strong>把计数挪到适配器正常返回后，能算修好了吗？</p>
+      <p><strong>答题要点：</strong>不能。那会漏掉调用后抛错的尝试；应在调用入口观测，并把拒绝放在尝试之前。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase4-qa.html#L44">L44 疑难解答 →</a><div class="qa-related">延伸：<a href="0045-phase4-prompt-context-outline.html#starter">起始项目入口</a> · <a href="0063-phase5-agent-harness-outline.html">Phase 5：Agent 核心架构与持久执行</a>。遇到自检失败时，提供用例 ID 和出错断言，不贴密钥或真实用户数据。</div></div></div>
 <div class="section"><h2>小结与一手参考</h2><p>保留版本 → 执行用例 → 记录通过与禁止路径 → 写清未测项。隔日闭卷重建「缺证据：无答案、无草稿、零调用」断言。</p><p><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Anthropic · Demystifying evals for AI agents</a>（推荐看固定评分、环境最终状态与逐步扩展用例）。</p></div>
 </main>
 <aside class="toc" id="toc" aria-label="本课目录"></aside>

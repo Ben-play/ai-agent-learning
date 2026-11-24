@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <title>Phase 4 · Prompt 与 Context 工程实践复盘</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>Phase 4 · Prompt 与 Context 工程实践复盘</h1>
+<p>用于阶段末复盘。不重抄单课代码；先通过课内变式和跨课检查点，再用这四个问题判断改动能否交接。</p>
+<div class="section"><h2>1. 什么才算完成了用户的任务？</h2>
+<p>先给出输入、证据、预期状态和禁止动作。材料存在不等于支持当前结论；缺证据时请求补充可能正是正确结果。草稿文本、模型说已提交和实际存储状态是三件事。</p>
+<p><a href="../lessons/0047-L39-testable-task-contract.html#bp-l39">L39 任务契约</a>：可程序检查的条件用断言；事实支持度和表达可读性按明确标准另评。</p></div>
+<div class="section"><h2>2. 怎么知道一次 Prompt 改动更好？</h2>
+<p>用相同案例、模型和配置比较；一次只改可归因的变量。示例用最容易误判的近邻反例补边界，不把演示句当独立验收。版本化模板和用例；曾用于调参的用例归开发或回归。相同总分不能抵消关键退化。</p>
+<p><a href="../lessons/0048-L40-few-shot-counterexamples.html#bp-l40">L40 控制变量</a> · <a href="../lessons/0049-L41-prompt-versions-regression.html#bp-l41">L41 关键失败门槛</a>。固定响应器只验证请求和评分逻辑。</p></div>
+<div class="section"><h2>3. 请求里应该放什么，谁授权执行？</h2>
+<p>按任务选能支持结论的材料，让原文与来源一起进预算；选不下主证据就停止。先验引用确来自本轮发送的片段，再验是否覆盖回答所需的依据；只有补充条款不算答完。Skill 只加载相关流程；应用仍须判断谁能执行什么。</p>
+<p><a href="../lessons/0050-L42-context-evidence-budget.html#bp-l42">L42 证据与预算</a> · <a href="../lessons/0051-L43-progressive-skill-disclosure.html#stage-practice-context-and-skill">L43 检查点：证据、预算和起草触发</a>。本地字节不是 Token；匹配不是工具授权。</p></div>
+<div class="section"><h2>4. 怎么交给下一阶段？</h2>
+<p>用 <a href="../lessons/0052-L44-project-acceptance-handoff.html#l44-handoff-check">L44 阶段验收</a>在同一环境复跑，提交模板与案例版本、预期和实测状态、证据来源、调用次数以及未验证事项。报告须让接手者能区分「没有发请求」「响应后拒绝」和「明确不允许提交」。</p></div>
+<nav class="card" aria-label="导航"><a href="../lessons/0045-phase4-prompt-context-outline.html">← Phase 4 大纲</a> · <a href="../qa/phase4-qa.html">有疑问可带最小离线用例提问</a></nav>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

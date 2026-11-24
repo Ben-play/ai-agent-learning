@@ -44,6 +44,10 @@ code/
 
 [证据问答＋工单草稿](phase4-prompt-context/README.md) 复用 L38 的离线调用边界，练习提示版本、证据来源、预算和拒绝无依据输出。只产出草稿，不执行工单动作。项目配合 [Phase 4 的 L39–L44](../lessons/0045-phase4-prompt-context-outline.html#lesson-plan) 学习，不另计课号。
 
+## Phase 5 Harness 项目
+
+[离线 Harness 项目](phase5-agent-harness/harness-lab/README.md) 复用 Phase 4 的证据与草稿，练习有界运行、应用审批、SQLite 检查点和幂等保存。只使用本地合成数据；配合 [L45–L54](../lessons/0063-phase5-agent-harness-outline.html#lesson-plan) 学习，不另计课号。
+
 ## 使用规范
 
 - 使用第三方依赖的项目提供自己的 `pyproject.toml` 与 `uv.lock`，从项目根运行 `uv run --offline --locked ...`；纯标准库起始项目使用自身说明中的 Python 命令；

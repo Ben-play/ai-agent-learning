@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>单 Agent Harness · 验收速查</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>单 Agent Harness · 验收速查</h1>
+<p>适用于 Phase 5 的「证据问答＋本地工单草稿」。这是一份复盘清单，不是生产准入证明，也不另计课号。</p>
+<div class="section"><h2>决定要不要加 Agent</h2>
+<ul><li>固定规则已经满足业务契约，先用函数；步骤需要独立检查时用确定性流程。</li><li>下一步确需按观测选择时，才比较单 Agent。<a href="../lessons/0053-L45-function-workflow-agent.html">L45</a> 的固定路径对照只验证练习差异，不证明模型性能。</li><li>把预算检查放在调用之前；区分成功、依赖失败、预算耗尽。工具的类型、参数合法和执行授权是三道不同检查。见 <a href="../lessons/0054-L46-bounded-agent-loop.html">L46</a> / <a href="../lessons/0055-L47-typed-tool-contract.html">L47</a>。</li></ul></div>
+<div class="section"><h2>遇到失败时看什么</h2>
+<table><thead><tr><th scope="col">场景</th><th scope="col">需要观察</th></tr></thead><tbody>
+<tr><td>压缩旧交互</td><td>调用与结果整组闭合，原文和来源可回查；重组后重新计数。<a href="../lessons/0056-L48-context-notes-compaction.html">L48</a></td></tr>
+<tr><td>更正或删除偏好</td><td>在同一租户和用户范围检查现值、来源、到期与删除。<a href="../lessons/0057-L49-memory-lifecycle.html">L49</a></td></tr>
+<tr><td>审批未通过或草稿改版</td><td>禁止执行；应用核对身份、实际动作和确切版本，不认模型话术。<a href="../lessons/0058-L50-approval-boundaries.html">L50</a></td></tr>
+<tr><td>进程重启</td><td>同一待审任务恢复，不能凭恢复成功执行；审批前草稿表为空。<a href="../lessons/0059-L51-approval-checkpoint-resume.html">L51</a></td></tr>
+<tr><td>本地提交后丢响应</td><td>原操作 ID 读回同一结果，且实际只有一次写入。外部结果未知先核对。<a href="../lessons/0060-L52-idempotent-draft-replay.html">L52</a></td></tr>
+</tbody></table></div>
+<div class="section"><h2>交接</h2><p>保留输入、可判定结果、必要轨迹及未验证项。迁移框架时复跑业务断言，不硬编码合法实现的顺序。见 <a href="../lessons/0062-L54-harness-acceptance.html">L54</a>；<a href="../qa/phase5-qa.html">有疑问可带最小离线用例提问</a>。</p></div>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

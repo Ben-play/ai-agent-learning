@@ -11,6 +11,7 @@ on:
       - code/phase1-python/phase1-practices-capstone/README.md
       - code/phase2-model-selection/phase2-practices-capstone/README.md
       - code/phase4-prompt-context/README.md
+      - code/phase5-agent-harness/harness-lab/README.md
       - lessons/**
       - qa/**
       - reference/**

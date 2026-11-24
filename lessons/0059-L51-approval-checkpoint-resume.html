@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L51 · 审批暂停、进程退出与恢复</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>审批暂停、进程退出与恢复</h1><p class="subtitle">换一个进程，继续等待同一份工单草稿的审批</p>
+</div></div>
+<div class="section">
+  <h2>为什么这课重要？</h2>
+  <p>Agent 拟好工单草稿后，审批人可能明天才回来。部署重启不能丢掉草稿或换一个任务重新跑，更不能因为恢复成功就跳过审批。<a href="0052-L44-project-acceptance-handoff.html">L44 的交接</a>已把这条恢复路径列为待验证项；本课用真正退出的 Python 子进程补上它。</p>
+  <h3>学习目标</h3>
+  <ul><li>区分会话记录、检查点和业务写入。</li><li>从同一 SQLite 路径用新进程恢复相同的任务、草稿版本和待审批状态。</li><li>验证审批缺失或不匹配时零草稿写入，只有匹配的批准才执行原动作。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 三种记录回答三个不同的问题</h2>
+  <p>对任务 <code>task-demo-51</code>，会话记录（transcript）回答「当时说了什么」。即使聊天里有「已经批准」，那也是一句话，不是可信审批。重播会话还可能重新生成不同的草稿，不能用它猜下一步。</p>
+  <p>检查点（checkpoint）回答「下次从哪一步继续」。本例记录的是 <code>tenant-demo</code> 的 <code>requester-demo</code> 发起的原任务，下一步是等待批准 <code>save_draft</code>，正文固定为第 2 版 <code>Training draft</code>。把正文写入检查点是保存续跑状态，不是完成保存草稿的动作。</p>
+  <p>业务效果（business effect）回答「实际改变了什么」：本例看 <code>drafts</code> 表有没有原任务的第 2 版。若系统另存执行回执（execution receipt），可以用操作 ID 查到某一步实际提交的草稿编号，却不能从回执推断整个任务的下一步。原例直接查业务表，没有独立回执；后面的调拨练习才把回执、转运标签和下一步分别查询。</p>
+</div>
+<div class="section">
+  <h2>2. 沿时间线走一遍：先提交检查点，恢复后再验批</h2>
+  <ol>
+    <li><strong>暂停并提交：</strong>旧进程把原任务、身份、动作、内容及版本写入 SQLite，提交 <code>pending_approval</code> 后退出。此时库里有检查点、没有业务草稿；不持锁等审批人。</li>
+    <li><strong>换进程找回原任务：</strong>新进程只接收同一库路径、命令、任务 ID 和调用方身份，按任务与身份查找。换成其他发起人时查不到，不建新任务，也不返回原草稿。查到原任务时，从检查点取正文，不靠内存或对话重建。</li>
+    <li><strong>核对决定才写入：</strong>没有审批、第 1 版获批或第 2 版被拒时，不满足匹配批准，仍返回原待审状态，草稿表为空。测试驱动写入第 2 版的匹配批准后，新进程核对任务、身份、动作和版本，在一个短事务内写入原正文并标记 <code>done</code>；提交后才返回完成状态。</li>
+  </ol>
+  <p>恢复命令没有「已批准」参数；决定来自测试驱动模拟的可信来源。版本须对应不可变的正文，改稿就换版重审。真实系统还要认证调用人和审批人、核对审批权限、处理撤回与过期；恢复成功不能代替这些检查，也不能扩大允许的动作。</p>
+</div>
+<div class="section">
+  <h2>3. 分开验证跨进程续跑、审批闸门和业务效果</h2>
+  <p>只关闭并重开数据库连接，可以检验新连接能否读到已提交状态，但不能排除程序靠原进程内存补齐遗漏字段。这里等旧子进程正常退出，再启动新解释器，不传正文和状态；比较恢复结果的完整快照，查的是任务有没有原样续上。另用独立连接查业务表：仍待审却有草稿，要排查写入是否绕开审批；返回 <code>done</code> 却没有原版草稿，要排查提交及完成状态是否同步。只断言返回状态，会漏掉这两类问题。</p>
+  <p>再次恢复 <code>done</code> 时仍只有一条草稿，说明这个本地流程不会重做已标记完成的任务。它没模拟强杀进程或断电，也没制造「业务效果已经提交、调用方却没收到结果，检查点仍待办」的窗口。L52 专门制造这个窗口，用稳定操作 ID 和持久回执判断是否已生效；能续跑并不等于在未知结果下可以安全重做。</p>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 新进程读到原任务仍待审批，应当怎样决定是否执行？</div><div class="quiz-options"><button data-answer="wrong">按对话记录判断放行</button><button data-answer="wrong">按等待时长判断放行</button><button data-answer="correct">按绑定审批判断放行</button><button data-answer="wrong">按恢复成功判断放行</button></div><div class="quiz-explanation">等待时长、消息文本和恢复成功都不能授予权限。只有可信审批里的决策及绑定字段都匹配，才执行约定的草稿动作。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>4. 动手：关停进程，再恢复任务</h2>
+  <div class="card">
+    <p><strong>跟做：只改审批版本，追踪两次恢复</strong></p>
+    <p><strong>起点：</strong>原进程已退出。<code>task-demo-51</code> 的检查点是 <code>pending_approval</code>，待保存第 2 版 <code>Training draft</code>，<code>drafts</code> 为 0 行。</p>
+    <p><strong>只做一步：</strong>两次都用新进程和原发起人恢复，先填「返回状态 / 草稿表行数」，再展开对照。</p>
+    <ol>
+      <li>记录第 1 版批准后恢复：___ / ___。</li>
+      <li>只把批准改为第 2 版，再恢复：___ / ___。</li>
+    </ol>
+    <p><strong>自检：</strong>旧版批准不能写入；匹配批准才返回 <code>done</code>，表中只能有原任务的第 2 版正文。</p>
+  </div>
+  <p>建议分两段：先读 worker 如何落盘与恢复，再跑下方六条验收路径。先写两列预期：「恢复出的状态」和「草稿表行数」。填入首次暂停、无审批恢复、旧版批准、明确拒绝、有效批准但换了发起人，以及匹配批准这六种情况；想清楚哪一步可以看到第一条草稿，再展开对照。</p>
+  <p>把整段保存为 Python 文件，用 <code>python -I 文件名.py</code> 运行（Python 3.11+，只用标准库）。每次 <code>step</code> 都在临时目录启动一个新解释器，并等待它退出；恢复只带数据库路径、命令和任务／调用方身份，不传草稿。子进程只执行本课内置的固定代码；<code>-I</code> 用于隔离 Python 导入环境，不是安全沙箱。</p>
+  <details><summary>展开参考实现与验收断言</summary><pre><code class="language-python" id="l51-checkpoint-check">import json
+import sqlite3
+import subprocess
+import sys
+from contextlib import closing
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+# 固定的本地 worker，不依赖外层代码来自文件还是 python -c。
+WORKER = '''
+import json
+import sqlite3
+import sys
+from contextlib import closing
+
+path, command, task_id, tenant, requester = sys.argv[1:]
+with closing(sqlite3.connect(path, isolation_level=None)) as db:
+    db.row_factory = sqlite3.Row
+    if command == "pause":
+        db.executescript("""
+            CREATE TABLE checkpoints (
+                task_id TEXT PRIMARY KEY NOT NULL, tenant TEXT NOT NULL,
+                requester TEXT NOT NULL, action TEXT NOT NULL,
+                revision INTEGER NOT NULL, body TEXT NOT NULL, state TEXT NOT NULL
+            );
+            CREATE TABLE approvals (
+                task_id TEXT PRIMARY KEY NOT NULL, tenant TEXT NOT NULL,
+                requester TEXT NOT NULL, action TEXT NOT NULL,
+                revision INTEGER NOT NULL, decision TEXT NOT NULL
+            );
+            CREATE TABLE drafts (
+                task_id TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL
+            );
+        """)
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        if command == "pause":
+            db.execute("INSERT INTO checkpoints VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (task_id, tenant, requester, "save_draft", 2,
+                        "Training draft", "pending_approval"))
+        row = db.execute(
+            "SELECT * FROM checkpoints WHERE task_id=? AND tenant=? AND requester=?",
+            (task_id, tenant, requester),
+        ).fetchone()
+        result = dict(row) if row is not None else None
+        if (command == "resume" and result is not None
+                and result["state"] == "pending_approval" and result["action"] == "save_draft"):
+            approved = db.execute("""
+                SELECT 1 FROM approvals
+                WHERE task_id=? AND tenant=? AND requester=? AND action=?
+                  AND revision=? AND decision='approved'
+            """, (task_id, tenant, requester, result["action"], result["revision"])).fetchone()
+            if approved is not None:
+                db.execute("INSERT INTO drafts VALUES (?, ?, ?)",
+                           (task_id, result["revision"], result["body"]))
+                db.execute("UPDATE checkpoints SET state='done' WHERE task_id=?", (task_id,))
+                result["state"] = "done"
+print(json.dumps(result))  # 已退出事务，提交后才报告状态。
+'''
+
+
+def step(path, command, task_id, tenant, requester):
+    child = subprocess.run(
+        [sys.executable, "-I", "-c", WORKER, str(path), command, task_id, tenant, requester],
+        cwd=path.parent, capture_output=True, encoding="utf-8", check=True, timeout=10,
+    )  # 返回时子进程已经退出；下次调用会启动全新进程。
+    return json.loads(child.stdout)
+
+
+def record_fixture(path, identity, revision, decision):
+    # 仅测试驱动可写，模拟可信审批端交付当前决策；不是对话或模型输入。
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("INSERT OR REPLACE INTO approvals VALUES (?, ?, ?, ?, ?, ?)",
+                   (*identity, "save_draft", revision, decision))
+
+
+def drafts(path):
+    with closing(sqlite3.connect(path)) as db:
+        return db.execute("SELECT task_id, revision, body FROM drafts").fetchall()
+
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "tasks.sqlite"
+    identity = ("task-demo-51", "tenant-demo", "requester-demo")
+    pending = step(path, "pause", *identity)
+    assert pending == dict(task_id=identity[0], tenant=identity[1], requester=identity[2],
+                           action="save_draft", revision=2, body="Training draft",
+                           state="pending_approval")
+    assert drafts(path) == []
+
+    assert step(path, "resume", *identity) == pending  # 不重建任务，不执行动作。
+    assert drafts(path) == []
+    for revision, decision in [(1, "approved"), (2, "denied")]:
+        record_fixture(path, identity, revision, decision)
+        assert step(path, "resume", *identity) == pending
+        assert drafts(path) == []
+
+    record_fixture(path, identity, 2, "approved")
+    assert step(path, "resume", identity[0], identity[1], "other-requester") is None
+    assert drafts(path) == []
+    done = {**pending, "state": "done"}
+    assert step(path, "resume", *identity) == done
+    assert step(path, "resume", *identity) == done
+    assert drafts(path) == [(identity[0], 2, "Training draft")]
+
+print("L51 ACCEPTED")</code></pre></details>
+  <p>通过时只输出 <code>L51 ACCEPTED</code>。这里的「零写入」指业务草稿表为空；检查点和模拟审批当然需要写盘。这是正常退出后换进程读取同一个 SQLite 文件的验收，不测试强制终止、机器断电、真实审批系统或外部副作用。</p>
+  <div class="best-practice-point" id="bp-l51">
+    <h3>最佳实践：用检查点续跑，用回执核对效果，用对话回看</h3>
+    <p class="bp-scenario"><strong>适用：</strong>工单草稿等待人工审批时，部署可能更换工作进程。<strong>边界：</strong>这里验证正常退出后换进程读同一个 SQLite 文件，不测试断电或外部效果；只重开连接不能排除旧进程内存补齐状态。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">错误：换进程后从对话重建并推断进度</span><p>待审批时原进程退出。新进程重播对话来生成草稿，又把聊到的「批准」当决定，可能生成另一版或在尚无可信批准时就写入。即使页面仍说「等待」，也无法证明业务表没写。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">正确：以持久检查点找回相同的待办</span><p>同样退出再恢复，按原身份找回原版本和下一步；没有匹配批准时保持等待，草稿表仍是零行。匹配后验证表中只有原草稿；若系统另有执行回执，则按操作键核对本次业务结果，不用回执或对话推断整个任务的下一步。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>原因与代价：</strong>对话可供解释但不授予权限；检查点保存控制流而不是效果证明；回执绑定已提交的操作。分开后需维护版本、持久化边界和对账规则。数据库里若已有按稳定操作键唯一且可核对的业务行，它可充当回执，不必复制数据。把审批核对和本地写入放在短事务中，不持锁等人（参见 <a href="https://www.sqlite.org/lang_transaction.html">SQLite 事务说明</a>）。</p>
+    <ol class="bp-steps">
+      <li>运行<a href="#l51-checkpoint-check">原跨进程验收</a>前，记录「首次暂停、旧版批准、正确批准」各自的完整快照与业务行数。核实每次 <code>step</code> 都启动子进程并等待它退出。</li>
+      <li>在临时副本中去掉审批查询里的版本条件和对应参数，其余不变。观察旧版批准在哪条路径首先改变状态；恢复条件后重新运行。</li>
+    </ol>
+    <p class="bp-result"><strong>结果诊断：</strong>原样只输出 <code>L51 ACCEPTED</code>。删掉条件后，旧版批准用例应首先失败。状态仍「等待」但业务表有行时，查写入是否越过闸门；状态为 <code>done</code> 但原版本不在表中时，查事务和效果核验，而不是重播对话。</p>
+  </div>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：馆际调拨先登记标签，再交接打包</h2>
+  <p><strong>任务：</strong>工作人员为一册待调拨图书登记转运标签。实现三个独立查询：恢复时按任务找下一步；按操作键查标签回执；查看备注里的对话。先在纸上填出「待审、仅有聊天声称批准、旧版审批、正确审批、再次恢复」的下一步、标签和回执行数，并说明为何「有标签」不代表打包已完成。</p>
+  <p>每次 <code>step</code> 启动新 Python 进程并等待它退出，只传固定程序、同一数据库路径与合成任务身份，不传状态、正文或决定；主程序用独立连接扮演可信审批源并核对业务表。只换数据库连接是持久化检查，不是进程隔离测试。</p>
+  <details class="bp-check"><summary>展开参考程序（Python 3.11+，标准库、离线）</summary><pre><code class="language-python" id="l51-transfer-check">import json
+import sqlite3
+import subprocess
+import sys
+from contextlib import closing
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+WORKER = '''
+import json
+import sqlite3
+import sys
+from contextlib import closing
+
+path, command, job, owner = sys.argv[1:]
+with closing(sqlite3.connect(path, isolation_level=None)) as db, db:
+    db.execute("BEGIN IMMEDIATE")
+    if command == "pause":
+        db.execute("INSERT INTO checkpoints VALUES (?, ?, ?, ?, ?, ?)",
+                   (job, owner, "book-42", 2, "label-req-42", "awaiting_review"))
+    row = db.execute("SELECT * FROM checkpoints WHERE job=? AND owner=?",
+                     (job, owner)).fetchone()
+    if command == "resume" and row and row[-1] == "awaiting_review":
+        approved = db.execute("""
+            SELECT 1 FROM reviews WHERE job=? AND owner=? AND item=? AND revision=?
+              AND decision='approved'
+        """, row[:4]).fetchone()
+        if approved:
+            label_id = db.execute("INSERT INTO labels(item) VALUES (?)", (row[2],)).lastrowid
+            db.execute("INSERT INTO receipts VALUES (?, ?)", (row[4], label_id))
+            db.execute("UPDATE checkpoints SET next_step='pack' WHERE job=?", (job,))
+            row = (*row[:-1], "pack")
+print(json.dumps(row))
+'''
+
+
+def step(path, command, owner="library-a/clerk-1"):
+    child = subprocess.run(
+        [sys.executable, "-I", "-c", WORKER, str(path), command, "transfer-42", owner],
+        check=True, capture_output=True, encoding="utf-8", timeout=10,
+    )
+    return json.loads(child.stdout)
+
+
+def effects(path):
+    with closing(sqlite3.connect(path)) as db:
+        return (db.execute("SELECT id, item FROM labels").fetchall(),
+                db.execute("SELECT op, label_id FROM receipts").fetchall())
+
+
+def query(path, statement, key):
+    with closing(sqlite3.connect(path)) as db:
+        return db.execute(statement, (key,)).fetchone()
+
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "library.sqlite"
+    with closing(sqlite3.connect(path)) as db, db:
+        db.executescript("""
+            CREATE TABLE checkpoints(job TEXT PRIMARY KEY, owner TEXT, item TEXT,
+                                     revision INTEGER, op TEXT, next_step TEXT);
+            CREATE TABLE transcript(job TEXT, message TEXT);
+            CREATE TABLE reviews(job TEXT PRIMARY KEY, owner TEXT, item TEXT,
+                                 revision INTEGER, decision TEXT);
+            CREATE TABLE labels(id INTEGER PRIMARY KEY, item TEXT);
+            CREATE TABLE receipts(op TEXT PRIMARY KEY, label_id INTEGER);
+        """)
+    pending = ["transfer-42", "library-a/clerk-1", "book-42", 2, "label-req-42", "awaiting_review"]
+    assert step(path, "pause") == pending and effects(path) == ([], [])
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("INSERT INTO transcript VALUES (?, ?)", (pending[0], "Approved and packed"))
+    transcript_query = "SELECT message FROM transcript WHERE job=?"
+    receipt_query = "SELECT label_id FROM receipts WHERE op=?"
+    assert query(path, transcript_query, pending[0]) == ("Approved and packed",)
+    assert step(path, "resume") == pending and effects(path) == ([], [])
+    assert query(path, receipt_query, pending[4]) is None
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("INSERT INTO reviews VALUES (?, ?, ?, ?, 'approved')", (*pending[:3], 1))
+    assert step(path, "resume") == pending and effects(path) == ([], [])
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("UPDATE reviews SET revision=? WHERE job=?", (2, pending[0]))
+        db.execute("DELETE FROM transcript WHERE job=?", (pending[0],))
+    assert step(path, "resume", "library-b/clerk-1") is None
+    assert effects(path) == ([], [])
+    ready_to_pack = [*pending[:-1], "pack"]
+    assert step(path, "resume") == ready_to_pack
+    labels, receipts = effects(path)
+    assert len(labels) == 1 and labels[0][1] == "book-42"
+    assert receipts == [(pending[4], labels[0][0])]
+    assert query(path, receipt_query, pending[4]) == (labels[0][0],)
+    assert query(path, transcript_query, pending[0]) is None
+    assert step(path, "resume") == ready_to_pack and effects(path) == (labels, receipts)
+print("L51 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>保存整段，用 <code>python -I 文件名.py</code> 运行，只应输出 <code>L51 TRANSFER PASSED</code>。聊天声称「批准」后若有标签，查是否读错决定来源；没有聊天就恢复失败，查是否把恢复绑在对话上。回执已有标签但下一步仍待审，查状态推进；再次恢复多出标签，查是否重做已完成的子动作，而不是继续等待打包。</p>
+</section>
+<div class="section">
+  <h2>文字知识图</h2>
+  <ul><li>待审批检查点已提交 → 原进程退出 → 新进程按原 ID 和身份找回原状态。</li><li>身份不匹配 → 不恢复；没有匹配的批准 → 保持等待，零草稿。</li><li>可信批准匹配固定版本和动作 → 本地写入原草稿并标记完成。</li></ul>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>调拨备注写「已打包」，库里有标签回执，检查点的下一步是 <code>pack</code>。续跑该交接打包、跳过打包，还是重打标签？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>交接打包，不跳过也不重打。检查点给出下一步，原操作键匹配的回执仅证明登记过标签，备注不能证明打包完成。分别查询三处记录，并确认回执指向本任务实际登记的标签。</p>
+      <p><strong>追问：</strong>标签查到了，但检查点仍写「待审」，该重打一张吗？</p>
+      <p><strong>答题要点：</strong>不要重打。先核对回执与原操作键，排查状态推进是否漏做；旧检查点不能证明标签未登记。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>第 2 版工单待审时进程要退出，哪些数据必须提交到检查点？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>提交任务 ID、租户与发起人、下一动作 <code>save_draft</code>、不可变的第 2 版正文及 <code>pending_approval</code> 状态。这样能找回同一待办，不必重生成正文。独立连接应查到完整快照，但业务草稿表仍为零行。</p>
+      <p><strong>追问：</strong>同租户另一发起人传入相同任务 ID，如何验收？</p>
+      <p><strong>答题要点：</strong>恢复应找不到任务，不返回原草稿，不创建新任务。检查响应无快照、检查点未变、草稿表仍为空。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>同进程重开 SQLite 连接已通过，怎样证明续跑没借用原进程内存？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>等保存检查点的子进程成功退出，再启动新解释器，只给同一库路径、恢复命令、任务 ID 和调用方身份，不传正文或状态。新进程返回的完整快照应与暂停时相同；只换连接不能排除原内存补齐遗漏字段。</p>
+      <p><strong>追问：</strong>这能作为强制终止后也能恢复的证据吗？</p>
+      <p><strong>答题要点：</strong>不能，只证明正常退出后能换进程读取已提交的快照。强制终止需要另设故障点并单独取证。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>新进程找回第 2 版待审任务，怎样证明「能续跑」不等于「能保存」？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>恢复先找回原快照，再从可信来源核对与任务、身份、动作和版本匹配的批准。分别注入无审批、第 1 版获批和第 2 版被拒，断言都仍待审且零草稿；换成第 2 版匹配批准后，才应返回 <code>done</code> 并在独立连接查到唯一一条原版草稿。</p>
+      <p><strong>追问：</strong>若返回 <code>done</code>，独立连接却查不到原稿，先查什么？</p>
+      <p><strong>答题要点：</strong>先确认查的是同一库和原任务版本，再看草稿插入与 <code>done</code> 是否同事务提交、是否在提交前就报告完成；不能只信返回值。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L51">L51 疑难解答 →</a><div class="qa-related"><a href="0058-L50-approval-boundaries.html">上一课 L50 · 审批边界</a> · <a href="0060-L52-idempotent-draft-replay.html">下一课 L52 · 草稿幂等重放</a>。能指出哪一条断言证明「恢复不等于放行」吗？若仍有疑问，附上本课小节或失败断言，只用合成样例。</div></div></div>
+<div class="section">
+  <h2>小结与一手参考</h2>
+  <p>先落盘，再退出；用原身份找回同一待审批任务；核对批准后才能写入原草稿。会话可供回看，检查点可供续跑，业务表才是本课观察效果的地方。</p>
+  <p>课题来源：<a href="0046-phase5-to-11-planned-outlines.html#phase-5">阶段 5 纲要 · 第 7 题</a>。<a href="https://www.sqlite.org/lang_transaction.html">SQLite 官方文档 · Transaction</a>（对照 <code>BEGIN IMMEDIATE</code> 和提交边界：审批检查与业务写入在同一个数据库事务内）。</p>
+</div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

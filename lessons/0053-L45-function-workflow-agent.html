@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L45 · 先选函数、Workflow 还是单 Agent</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>先选函数、Workflow 还是单 Agent</h1><p class="subtitle">固定任务与证据，比较谁决定下一步</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>接手 <a href="0052-L44-project-acceptance-handoff.html">L44</a> 的证据问答和工单草稿项目时，换架构不应换掉验收条件。先看任务是否需要「读了才知道下一步」，再决定要不要承担 Agent 的调度和验收成本。</p><h3>学习目标</h3><p>能区分函数、固定工作流和单 Agent 的控制权；能用同一组用例读出各自真实的本地调用轨迹，解释何时不必升级架构。</p></div>
+<div class="section" id="l45-route-design">
+  <h2>1. 用同一份任务契约搭三条路径</h2>
+  <p>先写交付条件，而不是先选框架。用同一份合成知识库：问保留期必须引用 KB-01（生成后保留 7 天）；明确要求起草时须引用 KB-01 和 KB-02（过期需重新导出），并标记待人工确认；问能否恢复时没有支持结论的政策，应返回 <code>needs_evidence</code>。共享的 <code>finish</code> 根据任务和取到的证据做这道验收；草稿只作为文本返回，不写入或提交。</p>
+  <ul>
+    <li><strong>直接函数：</strong>把任务映射到所需来源，本例用 <code>REQUIRED</code> 查表，再读证据并产出。这里的「函数」指直接解题，不是说另外两种写法不能用函数。</li>
+    <li><strong>Workflow（工作流）：</strong>代码定义节点及其流转。固定版先读两条再产出；也可以让代码在已知条件下分支，例如索引返回「纸质」才读纸质发票政策。需要分别验各节点时，这样拆比重写业务规则更有用。</li>
+    <li><strong>单 Agent：</strong>让模型根据目标和工具反馈决定下一步读哪里或何时停，宿主仍决定可用工具、调用上限和交付条件。下面的 <code>plan()</code> 是手写规则，只代演这道控制接缝；不会理解新问法或自行找到新来源。</li>
+  </ul>
+</div>
+<div class="section" id="l45-route-trace">
+  <h2>2. 跟三种输入走一遍：数读取，也数停下前的规划</h2>
+  <p>轨迹里的证据 ID 表示真的尝试读取（即使没读到）；<code>plan</code> 表示调用了一次本地规划函数，包括最后那次返回 <code>None</code> 的停止决定。不把 <code>finish</code> 等普通函数也记成规划或工具调用。用「读几次、规划几次」分别对账：</p>
+  <ul>
+    <li><strong>问保留期（<code>qa</code>）：</strong>函数只读 KB-01（1 读、0 规划），固定工作流还读 KB-02（2 读、0 规划）。模拟 Agent 先规划读 KB-01，读完再规划并停止（1 读、2 规划）。三者都只引用 KB-01。</li>
+    <li><strong>要求草稿（<code>draft</code>）：</strong>都按 KB-01、KB-02 的顺序读取。函数和固定工作流各 2 读、0 规划；模拟 Agent 在两次读取前及最后停下时各规划一次，共 2 读、3 规划。含两条证据才返回 <code>drafted</code>。</li>
+    <li><strong>问恢复（<code>restore</code>）：</strong>函数知道没有可用来源（0 读、0 规划），固定工作流仍双读（2 读、0 规划），模拟 Agent 仍照默认规则读 KB-01 再停（1 读、2 规划）。相同的 <code>needs_evidence</code> 不代表走了相同的路。</li>
+  </ul>
+</div>
+<div class="section" id="l45-route-choice">
+  <h2>3. 看差异出在哪里，再决定要不要升级</h2>
+  <p>给草稿用例去掉 KB-01：函数和固定工作流仍尝试读取两个来源；模拟 Agent 第一次规划后读不到 KB-01，第二次规划就停止，不再试 KB-02。三者都必须返回 <code>needs_evidence</code>。若还有草稿，先查共享验收是否漏判必需证据；若只有多余的读取，才查选择路径或提前停止条件。已知两条缺一不可时，也可以给工作流加一条「首条缺失就停」的分支。</p>
+  <p>需要先读索引才能选证据，并不足以证明要上 Agent：索引的返回值与去向有稳定映射，预设分支仍然合适。如果遇到固定规则难以覆盖的代表性任务，才值得测试模型能否依据新发现选择下一步，并用同一批用例核对证据、拒答和调用上限。这里数的是本地尝试，不是实测的模型成本、质量或延迟；也不能用一条少读的轨迹证明线上更划算。</p>
+  <div class="best-practice-point" id="bp-l45">
+    <h3>最佳实践：先过同一道验收门，再为动态规划付费</h3>
+    <p class="bp-scenario"><strong>适用：</strong>常见导出任务的所需证据可预先列出，三条路径必须给出相同的答案、来源与缺证状态。<strong>边界：</strong>若观察结果决定接下来到哪里找证据，且固定分支难以穷举或维护，不能只用这些常规样例否决 Agent。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：少读一条就选 Agent</span><p>同问「保留多久」，同用 KB-01 和 KB-02，同要求答 7 天并引用 KB-01。单 Agent 只读 1 次，比固定读两条的 Workflow 少 1 次，却还规划 2 次；若读取和规划各记 1 点，实际是 3 点对 2 点。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：先跑直接函数，再计算总投入</span><p>相同问法、证据与验收线下，函数只读 KB-01、无需规划，交付仍是 7 天和 KB-01，合计 1 点。再用草稿和恢复询问检查它没有靠省略证据或编造结论省下调用。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>已知「问法 → 所需证据」时，规划器在运行时重做了可预先确定的选择。需要独立重试、审计节点时，可以保留 Workflow 并加预设的提前停止分支；只有代表性难例超过固定方案的质量或维护上限，且动态路径仍能守住执行边界，才值得试 Agent。这些点数只是本地计数，不是线上价格或延迟；上线比较要纳入规划、重试与失败的实测成本。</p>
+    <ol class="bp-steps">
+      <li>运行 <a href="#l45-architecture-check">三条路径的对照自检</a>，先对齐输出与来源，再分开数读操作和规划。</li>
+      <li>对照双来源草稿；然后在调用中去掉 KB-01，检查业务状态和轨迹是否符合各自的停止规则。</li>
+    </ol>
+    <p class="bp-result"><strong>结果诊断：</strong>正常草稿都读 2 次，单 Agent 另规划 3 次。缺 KB-01 却交付草稿是验收门漏检；单 Agent 此时还读 KB-02，说明没有用已知缺证来提前停止。只看到「少读」却算不出总调用，应检查是否漏计规划和最终停止决策。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 规则已知，直接函数已通过所需用例。当前只需实现这些任务，应先选什么？</div><div class="quiz-options"><button data-answer="wrong">改用流程按节点处理</button><button data-answer="wrong">改用代理按反馈处理</button><button data-answer="correct">沿用函数按规则处理</button><button data-answer="wrong">改用团队按分工处理</button></div><div class="quiz-explanation">既有规则已满足契约，不必为了能动态选工具而增加规划和调度；先证明存在固定路径解决不好的用例再升级。</div></div>
+</div>
+<div class="section" id="example-l45"><h2>4. 示例：对账证据、结果和轨迹</h2>
+  <p>先写出三种架构在草稿用例中的轨迹，再把 KB-01 从副本移除，预测有没有草稿、是否仍读 KB-02。展开后复制脚本，用 <code>python -I 文件名.py</code> 运行；唯一输出应为 <code>L45 ACCEPTED</code>。日志记的是读证据和调用本地规划器的尝试，不是 API 次数。</p>
+  <div class="card">
+    <p><strong>跟做：</strong>补出实际轨迹，尝试读取但没读到也要记。</p>
+    <pre data-label="跟做起点"><code>architecture, task = "agent", "draft"
+kb = {"KB-01": "导出文件生成后保留 7 天。"}
+trace = ...</code></pre>
+    <p><strong>对照：</strong>2 次试读、3 次规划；状态为 <code>needs_evidence</code>，没有草稿。</p>
+  </div>
+  <details><summary>展开参考实现与离线自检</summary><pre><code class="language-python" id="l45-architecture-check">KB = {"KB-01": "导出文件生成后保留 7 天。", "KB-02": "超过保留期需重新发起导出。"}
+REQUIRED = {"qa": ("KB-01",), "draft": ("KB-01", "KB-02"), "restore": ()}
+
+
+def finish(task, facts):
+    ids = REQUIRED[task]
+    if not ids or any(not facts.get(key) for key in ids):
+        return "needs_evidence", (), None
+    text = "".join(facts[key] for key in ids)
+    if task == "draft":
+        return "drafted", ids, "需人工确认：" + text
+    return "answered", ids, text
+
+
+def run(architecture, task, kb=KB):
+    trace, facts = [], {}
+
+    def read(key):
+        trace.append(key)
+        facts[key] = kb.get(key)
+
+    def plan():
+        trace.append("plan")
+        if "KB-01" not in facts:
+            return "KB-01"
+        if task == "draft" and facts["KB-01"] and "KB-02" not in facts:
+            return "KB-02"
+        return None
+
+    if architecture == "agent":
+        for _ in range(3):
+            key = plan()
+            if key is None:
+                break
+            read(key)
+    elif architecture in {"function", "workflow"}:
+        keys = REQUIRED[task] if architecture == "function" else ("KB-01", "KB-02")
+        for key in keys:
+            read(key)
+    else:
+        raise ValueError("未知执行方式")
+    return finish(task, facts), trace
+
+
+missing = ("needs_evidence", (), None)
+answers = [("answered", ("KB-01",), KB["KB-01"]),
+           ("drafted", ("KB-01", "KB-02"), "需人工确认：" + KB["KB-01"] + KB["KB-02"]), missing]
+traces = {"function": ["KB-01", "KB-01 KB-02", ""], "workflow": ["KB-01 KB-02"] * 3,
+          "agent": ["plan KB-01 plan", "plan KB-01 plan KB-02 plan", "plan KB-01 plan"]}
+for route, expected in traces.items():
+    for task, result, steps in zip(("qa", "draft", "restore"), answers, expected):
+        assert run(route, task) == (result, steps.split()), (route, task)
+    expected_steps = "plan KB-01 plan" if route == "agent" else "KB-01 KB-02"
+    assert run(route, "draft", {"KB-02": KB["KB-02"]}) == (missing, expected_steps.split())
+print("L45 ACCEPTED")</code></pre></details>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：按发票类型查附件入口</h2>
+  <p>发票索引返回电子或纸质，只有这一步之后才知道该读哪条附件政策。用同一组夹具比较固定双读、预设分支和模拟 Agent，要求答复与来源一致，未知类型或缺政策时不给答复。读一次记 1 点、规划一次记 2 点；先全过用例，再从单例最高成本不超过 3 点的方案中选最低者。删去预设流程的纸质分支再选一次：这是在验质量门，不是在模拟规划器能发现新政策。</p>
+  <details class="bp-check"><summary>独立完成后展开参考程序（离线，Python 3.11+）</summary><pre><code class="language-python" id="l45-transfer-check">POLICIES = {"INV-E": "在发票详情下载。", "INV-P": "在档案柜领取。"}
+ROUTES = {"digital": "INV-E", "paper": "INV-P"}
+MISSING = ("needs_evidence", None, None)
+TRIALS = [
+    ({"index": "digital", **POLICIES}, ("answered", "INV-E", POLICIES["INV-E"])),
+    ({"index": "paper", **POLICIES}, ("answered", "INV-P", POLICIES["INV-P"])),
+    ({"index": "unknown", **POLICIES}, MISSING),
+    ({"index": "paper", "INV-E": POLICIES["INV-E"]}, MISSING),
+]
+
+
+def run(mode, kb, branches):
+    facts, trace = {}, []
+
+    def read(key):
+        trace.append(key)
+        facts[key] = kb.get(key)
+
+    def plan():
+        trace.append("plan")
+        if "index" not in facts:
+            return "index"
+        source = ROUTES.get(facts["index"])
+        return source if source and source not in facts else None
+
+    if mode == "agent":
+        while (source := plan()) is not None:
+            read(source)
+        source = ROUTES.get(facts["index"])
+    else:
+        read("index")
+        source = (branches if mode == "branch" else ROUTES).get(facts["index"])
+        if mode == "eager":
+            for key in POLICIES:
+                read(key)
+        elif source:
+            read(source)
+    text = facts.get(source)
+    return (("answered", source, text) if text else MISSING), trace
+
+
+def measure(branches):
+    scores = {}
+    for mode in ("eager", "branch", "agent"):
+        passed, costs = True, []
+        for kb, expected in TRIALS:
+            result, trace = run(mode, kb, branches)
+            passed = passed and result == expected
+            costs.append(sum(2 if step == "plan" else 1 for step in trace))
+        scores[mode] = (passed, max(costs))
+    return scores
+
+
+def choose(scores, cap):
+    eligible = [(cost, mode) for mode, (passed, cost) in scores.items() if passed and cost &lt;= cap]
+    return min(eligible)[1] if eligible else "hold"
+
+
+scores = measure(ROUTES)
+assert scores == {"eager": (True, 3), "branch": (True, 2), "agent": (True, 8)}
+assert choose(scores, 3) == "branch"
+assert choose(scores, 1) == "hold"  # 不放宽门槛，也不硬选某条路
+without_paper = {"digital": "INV-E"}
+assert run("branch", TRIALS[1][0], without_paper) == (MISSING, ["index"])
+assert measure(without_paper)["branch"] == (False, 2)
+assert choose(measure(without_paper), 3) == "eager"
+print("L45 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>结果诊断：</strong>唯一输出应为 <code>L45 TRANSFER PASSED</code>。最高成本分别是 3 / 2 / 8 点，完整分支方案胜出。删掉纸质分支后，即使该用例少读一次，也应改选固定双读；仍选分支就是把成本放在正确性之前。把上限改为 1 点应得到 <code>hold</code>，不是拣一个最接近的方案。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>查导出保留期只需 KB-01；草稿则要先取齐证据，再生成待确认的文本，且两个阶段要分别重试和审计。两类任务各选什么？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>保留期用直接函数，按已知映射只读 KB-01；草稿用预设工作流，把取证和起草拆成独立节点。步骤和验收都已知，不必让模型选下一步。核对问答只引用 KB-01；用节点失败的夹具验证只重试失败的节点，缺任一来源不出草稿，证据齐备也只返回待确认的文本。</p>
+      <p><strong>追问：</strong>要先读发票索引才知道读电子还是纸质政策，这就变成 Agent 了吗？</p>
+      <p><strong>答题要点：</strong>不是。只要「电子 → INV-E、纸质 → INV-P」由代码规定，仍是工作流；分别喂入两个索引值，核对实际读取的来源即可。关键是由谁选路径，不是有没有分支。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>发票练习读一次记 1 点、规划一次记 2 点，单个用例最多 3 点。固定双读、预设分支和模拟 Agent 都通过业务验收时，选哪条路？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>选预设分支。固定双读最坏是索引加两条政策，共 3 点；预设分支是索引加命中的政策，共 2 点；模拟 Agent 最坏是 2 次读取、3 次规划（含停止），共 8 点。逐例对照答案、来源和缺证状态，再按实际轨迹求各方案的最高点数，不能只看平均值。</p>
+      <p><strong>追问：</strong>漏掉纸质分支后，纸质用例只读了索引，是否更值得选？</p>
+      <p><strong>答题要点：</strong>不。索引为 <code>paper</code> 且有 INV-P 时，必须答出它的政策并引用它。分支方案未通过这条用例；上限仍为 3 点时，改选通过全部用例的固定双读。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>草稿缺 KB-01，模拟 Agent 的轨迹是「plan → KB-01 → plan」，却返回了草稿。先查哪一层？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>先核对进入 <code>finish</code> 的证据。轨迹中的 KB-01 只表示尝试过；若证据确实未取到，<code>finish</code> 应阻止交付。用仅有 KB-02 的测试数据跑三条路径，断言都是 <code>needs_evidence</code>、无引用、无草稿，再核对各自的读取轨迹。</p>
+      <p><strong>追问：</strong>固定工作流仍尝试读取了 KB-02，却正确返回缺证，是同一个故障吗？</p>
+      <p><strong>答题要点：</strong>不是，交付边界守住了，多读属于路径取舍。如果两条证据缺一不可，可加「KB-01 缺失就停」的分支，并验证少一次读取但交付结果不变。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>模拟 Agent 查保留期比固定工作流少读一条，但多了两次本地规划。上线前，怎样验证是否值得替换？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>先不凭本地计数决定。让候选方案和最简单的可用基线跑同一批代表性任务：常规问答、双来源草稿、缺证，以及确实需要根据新发现选来源的难例。先核对引用、拒答和调用上限，再在目标环境量端到端耗时和每个完成任务的成本，计入规划、重试和失败消耗。</p>
+      <p><strong>追问：</strong>能只报成功请求的平均耗时吗？</p>
+      <p><strong>答题要点：</strong>不能只报这一项。快速失败或超时的任务会被漏掉；同批样本还要分开报告成功、缺证和运行失败的数量与耗时，再判断改动有没有真正改善服务。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L45">L45 疑难解答 →</a><div class="qa-related">上一课：<a href="0052-L44-project-acceptance-handoff.html">L44 项目验收与交接</a> · 下一课：<a href="0054-L46-bounded-agent-loop.html">L46 有界 Agent Loop</a>。追问时带上用例、预期结果和调用轨迹。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p><strong>知识地图：</strong>同一业务契约 → 函数基线 / 预设节点 / 观测选动作 → 结果与轨迹对账 → 选择最简单的可用实现。</p><p><a href="https://www.anthropic.com/research/building-effective-agents">Anthropic · Building effective agents</a>：精读「What are agents?」，区分预定义路径与模型动态指挥。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

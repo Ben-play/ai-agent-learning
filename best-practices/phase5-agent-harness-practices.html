@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <title>Phase 5 · Harness 工程实践复盘</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>Phase 5 · Harness 工程实践复盘</h1>
+<p>这页把单课决策归成四个工程问题；先按出现顺序通过检查点，再回到这里诊断整条流程。各练习是本地合成案例，不证明生产准入或真实模型表现。</p>
+<div class="section"><h2>1. 什么时候值得用 Agent？</h2>
+<p><strong>判断：</strong>固定规则能够满足业务契约，先用函数或确定性流程。只有需要根据新观测选下一步、且收益大于额外调度和验收成本时，再评估单 Agent。走哪条路径不是成效证据；同题对照业务成功率、延迟和成本才是。</p>
+<p><strong>检查：</strong><a href="../lessons/0053-L45-function-workflow-agent.html#bp-l45">L45 选择最简单的实现</a> · <a href="../lessons/0054-L46-bounded-agent-loop.html#bp-l46">L46 分派前核预算</a>。超预算未执行与执行后失败要能分别观测。</p></div>
+<div class="section"><h2>2. 哪些输入可以进上下文或工具？</h2>
+<p><strong>判断：</strong>类型接口、参数结构和授权是三道不同检查；笔记的来源不等于授权，更不能晋升为系统指令。把旧交互整组移出后按版本回查，复算预算；缺证据、超限或无权时别强行补全。</p>
+<p><strong>检查：</strong><a href="../lessons/0055-L47-typed-tool-contract.html#bp-l47">L47 分派守卫</a> · <a href="../lessons/0056-L48-context-notes-compaction.html#stage-practice-harness-boundaries">L48 检查点：工具、预算与证据</a> · <a href="../lessons/0057-L49-memory-lifecycle.html#bp-l49">L49 记忆作用域和时效</a>。删除当前记录不等于完成所有副本或备份清理。</p></div>
+<div class="section"><h2>3. 恢复成功为什么不等于可以继续写？</h2>
+<p><strong>判断：</strong>会话记录供回看，检查点说下一步是什么，审批说某人同意哪个动作和版本，回执说哪个效果已提交。它们不能互相替代。外部响应丢失且没有可核对的结果时，保留未知状态并交复核；同库事务的承诺不能外推到外部。</p>
+<p><strong>检查：</strong><a href="../lessons/0058-L50-approval-boundaries.html#bp-l50">L50 审批边界</a> · <a href="../lessons/0059-L51-approval-checkpoint-resume.html#bp-l51">L51 检查点与业务状态</a> · <a href="../lessons/0060-L52-idempotent-draft-replay.html#stage-practice-durable-approval">L52 检查点：批准与持久重放</a>。</p></div>
+<div class="section"><h2>4. 换框架前留下什么？</h2>
+<p><strong>判断：</strong>旧版用例应确实复现失败；修复后既要阻断旧故障，也要保住正常用例。迁移时复跑同一合同，对照结果、必要轨迹和业务表，不照抄合法的内部调用顺序。</p>
+<p><strong>检查：</strong><a href="../lessons/0061-L53-harness-regression.html#lesson-best-practices">L53 回归变式</a> · <a href="../lessons/0062-L54-harness-acceptance.html#l54-harness-check">L54 项目验收</a>。交接至少包括版本、合成用例、预期终态、实际尝试、已提交效果、结果未知的处理和未测项。零落盘与零次进入写入边界分别留证。</p></div>
+<nav class="card" aria-label="导航"><a href="../lessons/0063-phase5-agent-harness-outline.html">← Phase 5 大纲</a> · <a href="../qa/phase5-qa.html">有疑问可用最小离线用例提问</a></nav>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

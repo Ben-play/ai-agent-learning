@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L49 · 记忆的写入、纠正与删除</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>记忆的写入、纠正与删除</h1><p class="subtitle">先决定谁能读、何时失效，再决定要不要记住</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>用户在客服对话中说「以后请用短答」，后来改成「以后请详细解释」。要是模型把临时对话、某个工单的笔记和跨会话偏好混在一起，下次可能还用旧值，甚至把别人的偏好带进回复。</p><h3>学习目标</h3><p>区分三类记忆的用途和作用域，用显式时钟测试有来源的写入、纠正、过期和删除。</p></div>
+<div class="section" id="l49-memory-scopes">
+  <h2>1. 先定查询作用域，再建三层记忆</h2>
+  <p>「这次请简短」和「以后请简短」不应走同一条写入路径。先从可信身份上下文取出租户和用户（本例合成的 <code>owner</code>），再由应用按用途挑选存储；不能让模型填写所有者或扩大查询范围。三层用字典就能练习，分层的理由不是介质不同，而是同一条记录在什么查询里可见、应该何时失效：</p>
+  <ul>
+    <li><strong>会话记忆：</strong><code>sessions[(owner, session_id)]</code> 记录本会话刚问了什么。它只供这段对话读取，关闭会话清理，不带到下个会话。</li>
+    <li><strong>工作记忆：</strong><code>work[(owner, task_id)]</code> 保存如 L48 的任务证据笔记。同一任务换会话可继续读，换任务不能带走，任务结束时清理。</li>
+    <li><strong>长期记忆：</strong>用 <code>durable[owner]</code> 查询跨任务偏好，因为本例只存「答复风格」这一项；多种偏好还要区分各自的键。只有应用核验过的用户确认才入库，连同来源、写入时间和到期时间。读回的偏好用于调整表达，不代替证据或覆盖系统规则。</li>
+  </ul>
+  <p>「长期」指允许跨会话、跨任务使用，不表示这份字典能跨进程保存。即使两个租户恰好使用相同用户和任务 ID，读、写、删也必须匹配完整作用域。</p>
+</div>
+<div class="section" id="l49-memory-trace">
+  <h2>2. 跟确认、纠正、到期和删除走一遍</h2>
+  <p>用合成事件和手动传入的 UTC 时间，不等真实时间流逝。1 月 1 日 <code>event-1</code> 确认「简短」，写入时消费这笔确认；未经确认的 <code>model-guess</code> 不写。到 1 月 2 日，<code>event-2</code> 把现值改为「详细」，覆盖旧值和来源；重放已消费的 <code>event-1</code> 不会恢复「简短」。2 天的有效期（TTL）从第二次写入计算，因此到期时刻是 1 月 4 日零点。</p>
+  <p>关闭 <code>s1</code> 后，新会话 <code>s2</code> 看不到旧对话，但选中原 <code>task-1</code> 时仍读得到 KB-01 笔记。切到 <code>task-2</code> 不再看到该笔记，仍能用「详细」。结束原任务只清那份笔记，不动偏好。若关闭会话连笔记一起丢，先查是否按会话键误清任务数据，不要靠延长偏好寿命补救。</p>
+  <p>到期前一秒仍能读；恰在到期时，<code>now &gt;= expires_at</code> 让结果为空，本例同时移除字典里的值。若这一刻还能读，查边界比较；无人读取时，本例没有后台清理。主动删除是另一条路径：同一时刻用 <code>event-3</code> 重新确认并写入尚未到期的值，再主动删除，确认它读不到、已消费的事件也不能把它写回来。</p>
+</div>
+<div class="section" id="l49-memory-ordering">
+  <h2>3. 判断旧事件，看来源版本而不是到达时间</h2>
+  <p>消费确认只能去掉这个进程里已用过的事件，挡不住第一次投递却早已过时的确认。以迁移练习为例：删除 4 先到，旧确认 3 晚到，接收时间虽然更新，仍要拒绝；新确认 5 才能再次写入。<code>updated_at</code> 记何时应用记录，<code>expires_at</code> 决定何时不可读；两者都不替代可信来源在同一偏好键上分配的递增序号。</p>
+  <p>保留每个键已处理的最高序号（水位），删除和到期只移除现值，不同时抹掉水位。写入 5 后，重到的删除 4 不能移除新值；5 到期后，重到的确认 5 也不能把它写回来。生产中值与水位需一致保存，并在回放和缓存读取时同样执行失效策略；本练习只看在线值，不能证明日志、索引或备份已清除。不需要跨任务个性化时，可以只保留会话或任务层，省去这套长期治理。</p>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 用户明确要求以后用详细答复，当前长期偏好为简短。应怎样处理？</div><div class="quiz-options"><button data-answer="wrong">并列保留两个偏好</button><button data-answer="wrong">只改这一轮的答复</button><button data-answer="correct">凭新确认替换旧值</button><button data-answer="wrong">让同租户共享偏好</button></div><div class="quiz-explanation">更正的是同租户、同用户的长期记录。替换现值并记录新来源与时间，旧值不该再被读作当前偏好，也不能影响其他用户。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>4. 动手：不用等时间流逝也能复现到期</h2>
+  <p>先写出关闭会话、关闭任务、刚好到期和删除后的预期结果，再将下段保存为 Python 文件，用 Python 3.11+ 运行 <code>python -I 文件名.py</code>。<code>owner</code> 是（租户，用户）二元组；<code>confirmed</code> 是应用已核验、尚未处理的合成用户事件，模型无权写入。写入时消费该事件，避免练习中用同一事件覆盖纠正或恢复已删除值。<code>now</code> 由调用者显式传入，不从系统取时；<code>datetime(..., tzinfo=UTC)</code> 表示带时区的 UTC 时间，<code>timedelta(days=2)</code> 是时长，不是另一个时间点。</p>
+  <div class="card">
+    <p><strong>跟做：</strong>新偏好已写入且未主动删除，补出到期的 UTC 时刻。</p>
+    <pre data-label="跟做起点"><code>source, value = "event-3", "详细"
+written_at = datetime(2026, 1, 4, tzinfo=UTC)
+TTL = timedelta(days=2)
+expires_at = ...</code></pre>
+    <p><strong>对照：</strong>所填时刻读到 <code>None</code>，早 1 秒仍读到「详细」。</p>
+  </div>
+  <details><summary>展开本地记忆与生命周期验收</summary><pre><code class="language-python" id="l49-memory-check">from datetime import UTC, datetime, timedelta
+
+owner = ("tenant-a", "user-1")
+other_tenant, other_user = ("tenant-b", "user-1"), ("tenant-a", "user-2")
+sessions = {(owner, "s1"): "刚问了导出保留期"}
+work = {(owner, "task-1"): "证据笔记：KB-01"}
+confirmed = {(owner, "event-1"): "简短", (owner, "event-2"): "详细",
+             (owner, "event-3"): "详细"}
+durable = {}
+TTL = timedelta(days=2)
+
+
+def write_preference(scope, source, now):
+    value = confirmed.pop((scope, source), None)
+    if value is None:
+        return False
+    durable[scope] = {"value": value, "source": source,
+                      "updated_at": now, "expires_at": now + TTL}
+    return True
+
+
+def read_preference(scope, now):
+    record = durable.get(scope)
+    if record is not None and now &gt;= record["expires_at"]:
+        del durable[scope]
+        return None
+    return record.copy() if record is not None else None
+
+
+def delete_preference(scope):
+    return durable.pop(scope, None) is not None
+
+
+def read_layers(scope, session_id, task_id, now):
+    return (sessions.get((scope, session_id)), work.get((scope, task_id)),
+            read_preference(scope, now))
+
+
+t0 = datetime(2026, 1, 1, tzinfo=UTC)
+t1 = t0 + timedelta(days=1)
+assert not write_preference(owner, "model-guess", t0) and durable == {}
+assert write_preference(owner, "event-1", t0)
+assert read_preference(owner, t0)["value"] == "简短"
+for outsider in (other_tenant, other_user):
+    assert not write_preference(outsider, "event-1", t0)
+    assert not delete_preference(outsider)
+    assert read_layers(outsider, "s1", "task-1", t0) == (None, None, None)
+assert write_preference(owner, "event-2", t1)
+assert not write_preference(owner, "event-1", t1)
+expected = {"value": "详细", "source": "event-2", "updated_at": t1, "expires_at": t1 + TTL}
+assert read_layers(owner, "s1", "task-1", t1) == ("刚问了导出保留期", "证据笔记：KB-01", expected)
+del sessions[(owner, "s1")]
+assert read_layers(owner, "s1", "task-1", t1)[0] is None
+assert read_layers(owner, "s2", "task-1", t1) == (None, "证据笔记：KB-01", expected)
+assert read_layers(owner, "s2", "task-2", t1) == (None, None, expected)
+del work[(owner, "task-1")]
+assert read_layers(owner, "s2", "task-1", t1) == (None, None, expected)
+t2 = t1 + TTL
+assert read_preference(owner, t2 - timedelta(seconds=1)) == expected
+assert read_preference(owner, t2) is None and owner not in durable
+assert write_preference(owner, "event-3", t2)  # 新确认，准备主动删除用例
+assert delete_preference(owner)
+assert not write_preference(owner, "event-3", t2)
+assert read_preference(owner, t2) is None and owner not in durable
+print("L49 ACCEPTED")</code></pre></details>
+  <p>唯一通过标记为 <code>L49 ACCEPTED</code>。到期测试对比到期前一秒与到期时刻；示例在读取时顺便清除到期值，并不代表后台会主动清理未被读取的记录。主动删除用例重新准备夹具，在未到期时移除，避免把「已过期」误当成「删除成功」。</p>
+  <div class="best-practice-point" id="bp-l49">
+    <h3>最佳实践：按寿命清理，阻止旧确认恢复当前值</h3>
+    <p class="bp-scenario"><strong>适用：</strong>客服任务可能换会话继续，已确认的答复偏好可供后续任务使用。<strong>边界：</strong>本例只阻止已消费的确认事件在同一进程内重用；不验证持久事件、乱序到达、备份清理或法定擦除。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">错误：用一份用户摘要承载全部记忆</span><p>结束会话、继续同一工单、纠正并删除偏好，再重放初次确认。整份摘要一起清会丢工单证据；选择保留再从旧摘要填空，则可能继续用已删除的「简短」。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">正确：按作用域查找，按寿命退场</span><p>同样的流程中，换会话仍能查到同一工单证据；换工单不能看到那条笔记。纠正后只读到「详细」，删除后读不到偏好，已消费的旧确认也写不回来。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>原因与代价：</strong>会话、任务和用户授权的偏好有不同的所有者键和终止条件，统一寿命无法同时满足三者。分层要维护各自的读路径、清理触发点和隔离测试。若产品不需要跨任务个性化，可以只存会话或任务数据；若存在异步重放，就需要在实时读写之外保存能拒绝旧事件的版本边界。</p>
+    <ol class="bp-steps">
+      <li>运行<a href="#l49-memory-check">原生命周期验收</a>，对照关闭会话、换任务、过期和主动删除后的三层读数。</li>
+      <li>用临时副本做两次独立扰动：把 <code>confirmed.pop</code> 改为 <code>confirmed.get</code>；还原后再把到期比较从 <code>&gt;=</code> 改成 <code>&gt;</code>。记录最先失败的断言，复原后再跑。</li>
+    </ol>
+    <p class="bp-result"><strong>结果诊断：</strong>只有 <code>L49 ACCEPTED</code> 才通过。第一种变更应在纠正后重放 <code>event-1</code> 时失败；第二种应在恰好到期时失败。若关闭会话后任务笔记也消失，检查清理范围而不是调整 TTL。</p>
+  </div>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：自提预约的无障碍偏好</h2>
+  <p><strong>任务：</strong>图书馆自提服务有三层状态：当前页面选中的分馆、随预约流转的取件备注、用户授权跨预约保留的「大字取件单」偏好。模拟事件乱序：编号 3 的旧确认尚未投递，删除指令 4 却先到。先画出三层各自的键和清理位置，再写出 3 晚到、5 重新确认、5 到期的预期读数。</p>
+  <p>只处理同一可信来源按每个（机构，读者）的偏好键分配的递增序号；序号不是到达时间，也不由模型或客户端输入。删除只移除在线值，保留不含偏好正文的序号水位；到期也不重置水位。生产需让水位与值一致地持久化，并在缓存失效、备份恢复及事件重放时共同执行删除策略。此练习不证明任何日志或备份已擦除。</p>
+  <details class="bp-check"><summary>展开参考程序（Python 3.11+，标准库、离线）</summary><pre><code class="language-python" id="l49-transfer-check">class PreferenceStore:
+    def __init__(self):
+        self.values = {}
+        self.watermarks = {}
+
+    def apply(self, owner, sequence, value, expires_at=None):
+        # value=None 是受信任的删除事件，不是缺字段的确认。
+        if sequence &lt;= self.watermarks.get(owner, 0):
+            return "stale"
+        self.watermarks[owner] = sequence
+        if value is None:
+            self.values.pop(owner, None)
+            return "deleted"
+        self.values[owner] = (value, expires_at)
+        return "stored"
+
+    def read(self, owner, now):
+        record = self.values.get(owner)
+        if record is None:
+            return None
+        value, expires_at = record
+        if now &gt;= expires_at:
+            del self.values[owner]
+            return None
+        return value
+
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+owner, other = ("library-a", "reader-1"), ("library-b", "reader-1")
+views = {(owner, "view-1"): "north branch"}
+pickups = {(owner, "pickup-1"): "use side desk"}
+preferences = PreferenceStore()
+assert preferences.apply(owner, 1, "large print", 20) == "stored"
+assert preferences.apply(owner, 2, "standard print", 20) == "stored"
+views.pop((owner, "view-1"))
+assert not views and pickups[(owner, "pickup-1")] == "use side desk"
+assert (owner, "pickup-2") not in pickups and (other, "pickup-1") not in pickups
+pickups.pop((owner, "pickup-1"))
+assert not pickups and preferences.read(owner, 5) == "standard print"
+assert preferences.read(other, 5) is None
+assert preferences.apply(other, 1, "large print", 30) == "stored"
+
+assert preferences.apply(owner, 4, None) == "deleted"
+assert preferences.apply(owner, 3, "large print", 20) == "stale"  # 首次到达，但比删除旧。
+assert preferences.read(owner, 6) is None and owner not in preferences.values
+assert preferences.read(other, 6) == "large print"
+assert preferences.apply(owner, 5, "large print", 10) == "stored"
+assert preferences.apply(owner, 4, None) == "stale"  # 旧删除也不能覆盖新确认。
+assert preferences.read(owner, 9) == "large print"
+assert preferences.read(owner, 10) is None and owner not in preferences.values
+assert preferences.apply(owner, 5, "large print", 10) == "stale"
+assert preferences.read(owner, 10) is None
+print("L49 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>保存整段，用 <code>python -I 文件名.py</code> 运行，只应输出 <code>L49 TRANSFER PASSED</code>。若 3 能恢复值，检查删除时是否抹掉了水位，或误把到达顺序当版本；若 5 写不进去，检查是否把删除做成了永久封禁。另一机构受影响则检查作用域键，关闭页面后备注消失则检查清理层级。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>在 s1 里，用户说「这次请简短」，task-1 有一条 KB-01 笔记，用户另确认「以后请详细」。关掉 s1 后，s2 和新任务分别该读到什么？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>「这次请简短」不写长期偏好；关闭 s1 后不再读到这次会话的内容。同一用户在 s2 继续 task-1 时仍能查到任务笔记，也能读到未到期的「详细」；切到 task-2，只能从这些旧记录中读到长期偏好。按这两种切换分别断言三层读数，不要为了续任务而保留整个会话。</p>
+      <p><strong>追问：</strong>另一租户也有 <code>user-1</code> 和 <code>task-1</code>，可复用同一条笔记吗？</p>
+      <p><strong>答题要点：</strong>不能。用宿主确认的（租户，用户）再加任务 ID 定位笔记；用同名 ID 的另一租户做反例，验证它既读不到也改不动原记录。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>UTC 1 月 1 日零点确认「简短」，1 月 2 日零点用 <code>event-2</code> 确认「详细」，每次有效期 2 天。1 月 3 日最后一秒和 1 月 4 日零点各读到什么？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>前者读到「详细」，来源为 <code>event-2</code>；后者读到 <code>None</code>，不回退到「简短」。新确认覆盖旧值并重算到期，读路径在 <code>now &gt;= expires_at</code> 时使记录失效。传入两个固定时刻做边界测试，不等真实时间流逝。</p>
+      <p><strong>追问：</strong>如果零点没人读，本课示例也会自动移除字典里的值吗？</p>
+      <p><strong>答题要点：</strong>不会。示例在读取时才顺手移除到期值；可先核对字典仍有记录，再以到期时刻读取，验证返回空且值被移除。不可读和后台已清理是两回事。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>大字取件单偏好先处理删除 4，随后才第一次收到旧确认 3；用户又明确确认了 5。该接受哪些事件？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>执行删除 4 并保留该键的最高事件序号；3 即使第一次到也比 4 旧，返回 <code>stale</code>；可信的新确认 5 可以写入。按这个顺序回放，断言读数先为空、旧确认后仍为空、新确认后才有值。到达时间不能替代来源分配的序号。</p>
+      <p><strong>追问：</strong>5 在第 10 刻到期后，再重放确认 5 能续期吗？</p>
+      <p><strong>答题要点：</strong>不能。到期只使现值失效，不重置最高序号；重放仍是 <code>stale</code>，读数为空。要防止旧事件在重启后被重新应用，值和序号边界需要一致地持久化，并补重启测试。</p>
+    </div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>主动删除后，在线读取返回空。怎样验明确实删了尚未到期的偏好，又不把结果夸大为所有副本均已擦除？</summary>
+    <div class="think-q-answer">
+      <p><strong>参考回答：</strong>固定在到期前的同一时刻，先证明值可读（有缓存时先让缓存命中），再执行删除，核对主存储无现值、在线读取为空。随后重放旧确认，确认旧偏好不会恢复。索引、日志和备份要按产品的保留和删除策略另行核对，报告只声明验证过的范围。</p>
+      <p><strong>追问：</strong>如果备份还在约定的保留期内，恢复测试要检查什么？</p>
+      <p><strong>答题要点：</strong>不要称备份已清除。用备份恢复演练验证恢复的数据在重新提供服务前应用删除记录或有效的失效策略，保证旧偏好不会重新可读；另核对备份自身的到期和清理安排。</p>
+    </div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase5-qa.html#L49">L49 疑难解答 →</a><div class="qa-related"><a href="0056-L48-context-notes-compaction.html">上一课：L48 上下文压缩</a> · <a href="0058-L50-approval-boundaries.html">下一课：L50 审批边界</a>。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>文本地图：会话随对话、笔记随任务、偏好跨任务；先核身份与来源 → 写入或纠正 → 按时间读取 → 到期或主动删除。</p><p><a href="https://docs.python.org/3/library/datetime.html">Python 官方文档 · datetime</a>（读带时区的时间与 <code>timedelta</code>）；<a href="https://docs.langchain.com/oss/python/langgraph/add-memory">LangGraph · Add memory</a>（对照线程内状态与跨线程存储；身份、保留与删除政策仍由应用定义，本课不使用该框架）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>
