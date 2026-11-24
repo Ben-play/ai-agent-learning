@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <title>L56 · LangGraph 中断、持久恢复与重放</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第六阶段 · LangGraph 与 MCP</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>LangGraph 中断、持久恢复与重放</h1><p class="subtitle">恢复的是下一步，不是执行权限</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p><a href="0064-L55-langgraph-state-graph.html">L55</a> 的图从起点一路跑到终点。真实草稿会等人批准，等待期间进程可能退出；获准写入后也可能在返回前失败。两种情况下都要恢复原来的任务，却不能把「恢复」理解成重新生成草稿或照旧再写一条。</p><h3>学习目标</h3><p>用状态快照找到待办节点，区分中断恢复与故障重放，并为两者写出相反的业务写入断言。</p></div>
+<div class="section"><h2>1. 先弄清三份记录各证明什么</h2>
+  <p>给图编译时传一个 <code>SqliteSaver</code>，用宿主选定的 <code>thread_id</code> 查同一条执行历史。线程标识是定位键，不是身份令牌。<code>get_state</code> 返回的 <code>values</code> 是已持久化的图状态，<code>next</code> 是待执行节点名，不说明为何停住；中断或异常的信息看 <code>tasks</code>。本课由测试驱动显式选择 <code>resume</code> 或 <code>recover</code>，宿主只用 <code>next</code> 检查命令是否匹配当前阶段。新进程用同一库文件和线程标识读取进度；内存 saver 不跨进程保留这些记录。</p>
+  <table><thead><tr><th scope="col">本课的三个 SQLite 文件</th><th scope="col">用来回答什么</th><th scope="col">不能代替什么</th></tr></thead><tbody>
+    <tr><td><code>graph.sqlite</code></td><td>图还待执行什么？状态保留修订版、内容摘要、编排状态和业务操作 ID；中断值只有任务名和修订版。</td><td>不证明这个人批准了，也不证明一次业务提交。</td></tr>
+    <tr><td><code>reviews.sqlite</code></td><td>可信测试驱动记录的决定是否对应当前身份、任务、动作与快照？</td><td>不能替业务库证明草稿已保存；不是生产认证。</td></tr>
+    <tr><td><code>business.sqlite</code></td><td>业务检查点保留原始标题、正文和来源 ID。保存后，草稿行也保留这些字段及原操作 ID。</td><td>不能推断图已把哪个节点标为完成。</td></tr>
+  </tbody></table>
+  <p>宿主展示的原始预览和返回的完整草稿都不写入图检查点。不要把 <code>Command(resume="approve")</code>、用户话术或客户端自报的身份直接传给保存入口充当批准；本课只从可信的合成决定库取决定。</p>
+</div>
+<div class="section"><h2>2. 带着第 2 版工单走一次暂停和恢复</h2>
+  <p><code>review</code> 先核对业务检查点的绑定，再用任务名和修订版调用 <code>interrupt</code>。默认调用形式把中断对象放在 <code>__interrupt__</code>；宿主另查匹配的业务检查点来展示预览，不保持数据库事务等待人。旧进程退出后，新进程用同一线程读到 <code>next=("review",)</code>，并独立读回原标题、正文、来源 ID 和修订版。绑定不符时不拿新版冒充原预览。</p>
+  <p>无匹配决定不恢复；有匹配决定时，宿主用 <code>Command(resume="review_recorded")</code> 发送唤醒信号，不传批准。节点从头再跑，这次 <code>interrupt</code> 返回该信号。中断前只核对检查点，不插入草稿。进入 <code>apply_review</code> 才重新读取决定并调用 Phase 5 的保存口。</p>
+  <p>若业务事务已提交但节点尚未返回，业务库已有草稿，图却仍待 <code>apply_review</code>。该故障的恢复不再用审批 <code>Command</code>：宿主使用 <code>invoke(None, snapshot.config, durability="sync")</code> 重跑当前快照中已安排的节点，不跳回任意历史审批。通过业务保存口读取原回执和原草稿，而非再次插入。</p>
+</div>
+<div class="section"><h2>3. 区分安全重跑与已经提交的效果</h2>
+  <p>从第 2 版的内容摘要和作用域得到同一业务操作身份。Phase 5 在一个业务事务里写草稿与可核对结果，后来者读原记录，不再发起插入。图的 <code>durability="sync"</code> 约束图先持久化步骤再推进，不会把两个数据库自动变成一个事务。如果确认不了业务回执，停下来核对，不因为图还 pending 就生成新的操作标识。外部服务超时和真正的进程强杀是若干不同故障，不由本地异常替身替代。</p>
+  <div class="best-practice-point" id="bp-l56"><h3>最佳实践：中断前只读，写入边界仍要可重放</h3>
+    <p class="bp-scenario"><strong>适用：</strong>任务经人工决定后会保存一份可恢复草稿。<strong>不适用：</strong>无副作用的短任务不必为每一步增加持久化；远端操作不能沿用同库事务的结论。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：从上次行号继续</span><p>在 <code>interrupt</code> 前先写一条业务行，以为恢复不会再次经过它。</p></div><div class="bp-right"><span class="bp-compare-label">对照：暂停和提交分开</span><p>同样暂停后重进，节点只重读预览。获准再进入保存，丢响应也用原操作读回结果。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>业务去重与图持久化要维护两种记录，但可以解释「任务没结束，效果已发生」。并发撤权若是产品要求，还需专门设计一致性边界，不由本课的顺序夹具保证。</p>
+    <ol class="bp-steps"><li>分别观察图快照、决策、插入入口与独立查询。</li><li>先加无有效批准的负例，再注入提交后故障，最后查原 ID、正文和行数。</li></ol>
+    <p class="bp-result">零行不等于零次尝试；相同返回也不等于同一个操作。若重放反而新增写入，查保存口是否沿用了旧绑定，而不是调整图进度来遮掉问题。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 图仍待保存，独立查询发现绑定相同的操作已提交。该怎么做？</div><div class="quiz-options"><button data-answer="wrong">更换操作标识再保存</button><button data-answer="wrong">删除图停点并重跑</button><button data-answer="correct">核对回执并读回原稿</button><button data-answer="wrong">只用图状态报未保存</button></div><div class="quiz-explanation">图状态只说明该节点尚未报告完成；业务库的原回执才说明是否已写入。</div></div>
+</div>
+<div class="section best-practice-lesson"><h2>4. 跟做：补一条跨进程验收记录</h2>
+  <div class="card" id="guided-l56"><h3>先填关键观察点</h3><pre><code class="language-text">新解释器读取同一线程，第 2 版待审；唯一审批属于第 1 版。
+对照首个进程：标题 ___；正文 ___；来源 ID ___；修订版 ___。
+图是否推进 ___；新增插入尝试 ___；业务草稿行数 ___。</code></pre><p><strong>通过标准：</strong>四个预览字段与首次暂停相同；旧批准不推进图，也不触发草稿插入。另用有效批准模拟提交后故障，重跑时取回原操作和完整草稿。</p></div>
+  <details><summary>展开参考：保存合同对照与运行入口</summary>
+    <p>跟读顺序：<code>stage</code> 写业务检查点并暂停 → 新进程 <code>inspect</code> 读同一预览 → <code>resume</code> 核对当前决定 → 若提交后丢响应，用 <code>recover</code> 取回原草稿。</p>
+    <table><thead><tr><th scope="col">场景</th><th scope="col">直接调用 Phase 5 保存口</th><th scope="col">图宿主返回或停点</th><th scope="col">单步插入尝试 / 提交草稿行数</th></tr></thead><tbody>
+      <tr><td>无决定、错人/租户/任务/动作、旧版批准</td><td><code>rejected</code></td><td><code>pending</code>，仍待 <code>review</code></td><td>0 / 0</td></tr>
+      <tr><td>匹配的拒绝</td><td><code>denied</code></td><td><code>denied</code></td><td>0 / 0</td></tr>
+      <tr><td>有效批准</td><td><code>saved</code></td><td><code>saved</code></td><td>1 / 1</td></tr>
+      <tr><td>提交后丢响应</td><td>抛出 <code>LostReply</code></td><td>同一异常，仍待 <code>apply_review</code></td><td>1 / 1</td></tr>
+      <tr><td>丢响应后重放</td><td><code>replayed</code></td><td><code>replayed</code></td><td>0 / 1，原操作 ID、原完整草稿</td></tr>
+    </tbody></table>
+    <p><code>pending</code> 是图宿主的等待状态：无匹配决定时不调用保存；<code>rejected</code> 是直接调用保存口的返回。只对照业务效果，不把两种标签当成相等。测试分别观察草稿插入入口和独立连接查到的已提交行，不以行数推断尝试。Phase 5 直接调用重开连接，图命令由独立解释器调用；表中是合同预期，不是等同运行环境或并发、强杀验证。<strong>SDK 验收：待实跑。</strong></p>
+    <pre><code class="language-python" id="l56-resume-check">import subprocess
+import sys
+from pathlib import Path
+
+project = Path("code/phase6-langgraph-mcp/graph-lab").resolve()
+result = subprocess.run(
+    [sys.executable, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests"],
+    cwd=project, capture_output=True, text=True, encoding="utf-8", timeout=90,
+)
+assert result.returncode == 0 and "Ran 0 tests" not in result.stderr, result.stdout + result.stderr
+print("L56 ACCEPTED")</code></pre><p>待获准安装依赖后，在仓库根执行。<a href="../code/phase6-langgraph-mcp/graph-lab/README.md">项目说明</a>提供详细模式；可在项目目录跟读 <code>draft_graph.py</code> 的宿主流程与 <code>tests/test_graph.py</code> 的断言。</p></details>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：图的运行次数不是出库次数</h2>
+  <p>迁移到良品托盘标签。同一托盘同一次打标签可在保存后丢响应，节点会被重新调用。先写独立的判定：最多允许一次实际插入；两次执行后仍是同一个标签编号。再做错版，只修改一次条件：重放时改用新的业务操作键。</p>
+  <div class="card"><h3>独立起点：先填恢复调用的键</h3><pre><code class="language-text">初次：托盘 A，业务键 pallet-A/v1，已提交标签 1，响应丢失。
+重放的业务键 ___ → 预期标签 ___，累计插入次数 ___。
+反例键 pallet-A/v1/attempt-2 → 预期标签 ___，累计插入次数 ___。</code></pre><p><strong>通过标准：</strong>相同业务键返回原标签，入口不再增加；反例必须在存储或入口观察上失败，不能只比较两次调用是否都有回复。</p></div>
+  <details class="bp-check"><summary>展开变式参考（持久效果，用标准库对照）</summary><pre><code class="language-python" id="l56-transfer-check">from contextlib import closing
+from pathlib import Path
+import sqlite3
+from tempfile import TemporaryDirectory
+
+
+def label(path, operation, attempted):
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("CREATE TABLE IF NOT EXISTS labels(id INTEGER PRIMARY KEY, op TEXT UNIQUE)")
+        old = db.execute("SELECT id FROM labels WHERE op=?", (operation,)).fetchone()
+        if old:
+            return old[0]
+        attempted.append(operation)
+        return db.execute("INSERT INTO labels(op) VALUES (?)", (operation,)).lastrowid
+
+
+with TemporaryDirectory() as tmp:
+    for suffix in ("stable", "changed"):
+        path = Path(tmp) / suffix
+        attempted = []
+        first = label(path, "pallet-A/v1", attempted)
+        key = "pallet-A/v1" if suffix == "stable" else "pallet-A/v1/attempt-2"
+        recovered = label(path, key, attempted)
+        with closing(sqlite3.connect(path)) as db:
+            rows = db.execute("SELECT id, op FROM labels ORDER BY id").fetchall()
+        accepted = first == recovered and rows == [(1, "pallet-A/v1")] and attempted == ["pallet-A/v1"]
+        assert accepted == (suffix == "stable"), (recovered, rows, attempted)
+        if suffix == "changed":
+            assert rows == [(1, "pallet-A/v1"), (2, key)] and len(attempted) == 2
+print("L56 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">只应输出 <code>L56 TRANSFER PASSED</code>。这里只测顺序、同库、换连接的业务去重对照，不用这段代码当跨进程图恢复证据；完整跨进程验收在上一节。</p>
+</div>
+<div class="section" id="interview"><h2>面试自查</h2><p>先按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>新进程用原 <code>thread_id</code> 查到第 2 版待审，能否当作批准开始写？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。标识定位状态，不赋予身份或权限；用可信决定按身份、动作、任务和修订快照核对。无匹配决定时，精确检查草稿不变，插入计数为零。</p><p><strong>追问：</strong>同一个人在旧版本批准过，能换一个唤醒字符串跳过吗？</p><p><strong>答题要点：</strong>不能；字符串不传递批准。应以第 2 版的正确绑定做单变量对照。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>把保存草稿放在 <code>interrupt</code> 上方会有什么后果？怎么证实？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>暂停前就触及写入，恢复从节点开头再运行。用空业务库在首次暂停就断言零尝试，再检测恢复。不要把去重当审批的替代。</p><p><strong>追问：</strong>若同一段只读了不变的预览呢？</p><p><strong>答题要点：</strong>可重读但要核对原修订版，不能恢复成新预览；如内容变了，应拒绝旧绑定。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>异常后图还在 <code>apply_review</code>，要不要再发 <code>Command(resume=...)</code>？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不是人工中断，按待执行快照重跑失败步骤。先确认异常在提交前还是提交后；若已提交，通过业务回执取回原结果。测试让响应在提交后丢失，再比 ID 和插入计数。</p><p><strong>追问：</strong>增加同步图持久化就能保证外部写入一次吗？</p><p><strong>答题要点：</strong>不能。图提交点不控制外部事务；外部效果未知要查权威结果。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>从同一进程关连接再开已经通过，如何避免把它误报成换进程恢复？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先让旧解释器结束，再启动新解释器；只给同一临时库和任务定位条件，不传原正文或决定。用两边的持久状态和业务查询作证。</p><p><strong>追问：</strong>这能替代强杀和多工作者测试吗？</p><p><strong>答题要点：</strong>不能。正常退出重启、特定故障点、任意时刻强杀、并发抢占是不同验收条件，应分开记录。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase6-qa.html#L56">L56 疑难解答 →</a><div class="qa-related"><a href="0059-L51-approval-checkpoint-resume.html">L51 业务检查点</a> · <a href="0060-L52-idempotent-draft-replay.html">L52 回执与幂等</a> · <a href="0066-L57-mcp-stdio.html">L57 本地 MCP</a>。提问时带上出错前后的图下一步、审批绑定与业务行。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>检查点说明下一步；可信审批决定能不能执行；业务回执说明写没写。隔天闭卷解释「节点要重跑」与「业务要重写」的差别。</p><p>LangGraph 官方：<a href="https://docs.langchain.com/oss/python/langgraph/interrupts">中断</a> · <a href="https://docs.langchain.com/oss/python/langgraph/persistence">持久化</a> · <a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel">从快照重放</a>。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

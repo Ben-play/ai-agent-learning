@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L57 · 先走本地 MCP stdio</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第六阶段 · LangGraph 与 MCP</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>先走本地 MCP stdio</h1><p class="subtitle">让证据跨过进程边界，不让权限跟着扩大</p>
+</div></div>
+<div class="section"><h2>为什么这课重要？</h2><p>沿用 <a href="0062-L54-harness-acceptance.html">L54</a> 的问题「导出文件有效期？」。答案仍要靠 KB-01 支持，但这次证据不再由宿主直接查表，而是从本地子进程取回。换了取证方式，不能把「接口返回了」当成「证据可以使用」。</p><h3>学习目标</h3><p>能读懂指定版本的 stdio 轨迹；能分别验证读取入口、结果结构和任务作用域；能定位失败发生在传输、协议、工具还是宿主验收。</p></div>
+<div class="section" id="l57-roles">
+  <h2>1. 先划边界：谁取证，谁决定交给模型什么？</h2>
+  <p>用户问导出文件保留多久，并没有授权读取本机任何目录，也没有要求写草稿。<strong>宿主（host）</strong>管理任务、用户许可和模型上下文；本课由固定代码把这个问题映射为 <code>export</code> 作用域和 <code>KB-01</code> 来源。<strong>客户端（client）</strong>在宿主内，一对一连接一个服务端：启动课程子进程、编码请求、按 ID 对齐响应、超时后收尾。<strong>服务端（server）</strong>在子进程内，公布能力、认工具名、校验参数，再从内存夹具取证。宿主可以拥有多个客户端，但某个服务端不会因此获得别的服务端结果或完整对话。这里父子真跨进程，选工具与组织证据由代码演示，没有模型参与。</p>
+  <table><thead><tr><th scope="col">接口</th><th scope="col">通常由谁选、拿来做什么</th><th scope="col">同一知识库怎么选</th></tr></thead><tbody>
+    <tr><td>工具（tool）</td><td>模型可建议调用；宿主控制是否暴露和执行。用 <code>tools/list</code> 发现，用 <code>tools/call</code> 传入参数并得到结果。</td><td>问题需要在回答前按来源 ID 查一次，选只读 <code>read_evidence</code>，便于观察是哪个参数触发读取。</td></tr>
+    <tr><td>资源（resource）</td><td>应用决定取哪些上下文。用 <code>resources/list</code> 发现，以 URI 通过 <code>resources/read</code> 读取。</td><td>如果页面只是让用户勾选一条已知政策作为附件，可以把政策建成资源，不必把每段文字都包装成工具。</td></tr>
+    <tr><td>提示模板（prompt）</td><td>通常由用户选择何时使用。用 <code>prompts/list</code> 发现，用 <code>prompts/get</code> 取服务端定义的模板内容。</td><td>「按来源写保留期答复」可以是模板；它约束答复形式，并不等于已读 KB-01，也不会授予读取权限。</td></tr>
+  </tbody></table>
+  <p>本实验只公布工具能力，没有资源读取接口或模板。发现工具只是看见目录，<code>capabilities.tools</code> 也只是协议能力，不是授权。这里的 <code>scope</code> 是业务夹具的分区，不是 OAuth scope 或真实身份；来源 ID 只有和分区配对才有意义。宿主从任务决定分区，不从工具结果、模型建议、进程 ID 或自报的客户端名称推导权限。</p>
+</div>
+<div class="section" id="l57-wire">
+  <h2>2. 跟一次真实轨迹：从启动到 KB-01</h2>
+  <p>客户端使用当前 <code>sys.executable</code> 和固定的课程源码绝对路径启动子进程，不经过 shell，也不把用户文字当命令、路径或环境变量。父进程写子进程的 <code>stdin</code>，从子进程的 <code>stdout</code> 读响应；每条消息是一行 UTF-8 的 JSON-RPC，实际换行符只作分隔，字符串里的换行应由 JSON 转义，不能把排版后的多行 JSON 发到线上。日志另走 <code>stderr</code>，客户端单独排空；诊断有内容不等于调用失败。版本信息在消息体，不设 HTTP 头。</p>
+  <p>本课固定 MCP <code>2026-07-28</code>。每条请求的 <code>params._meta</code> 都带 <code>io.modelcontextprotocol/protocolVersion</code> 和 <code>io.modelcontextprotocol/clientCapabilities</code>，也带上建议提供的 <code>io.modelcontextprotocol/clientInfo</code>。先发 <code>server/discover</code>（ID 1），确认响应中的 <code>supportedVersions</code> 和 <code>capabilities.tools</code>；服务端必须实现这个方法，对客户端则是可选的发现，不是建立会话的握手。接着 <code>tools/list</code>（ID 2）确认唯一允许的工具和本地预期的输入、输出契约。这两条成功响应都带 <code>ttlMs: 0</code> 与 <code>cacheScope: "public"</code>：目录不因用户而变，且实验不复用缓存。即使走 stdio，也须按 <a href="https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching">MCP 缓存规范</a>填写这两个提示；它们不替代权限检查。发现结束后也不能省略下一条的版本或能力。</p>
+  <p>这是实测 ID 3 的两条线帧（上下为请求、响应；每行仍是一个完整 JSON 值）：</p>
+  <pre data-label="stdin → 子进程 / stdout → 客户端"><code class="language-json">{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_evidence","arguments":{"scope":"export","source_id":"KB-01"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"l57-host","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
+{"jsonrpc":"2.0","id":3,"result":{"resultType":"complete","isError":false,"content":[{"type":"text","text":"{\"scope\":\"export\",\"source_id\":\"KB-01\",\"excerpt\":\"导出文件生成后保留 7 天。\"}"}],"structuredContent":{"scope":"export","source_id":"KB-01","excerpt":"导出文件生成后保留 7 天。"},"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"l57-evidence","version":"1.0"}}}}</code></pre>
+  <p>客户端对上响应 ID 才交回宿主。宿主检查结果类型、错误标记，以及 <code>structuredContent</code> 的字段、类型、长度和预期的分区／来源；只投影 <code>source_id</code> 与 <code>excerpt</code>，不把请求元数据、原始结果、文本副本或诊断日志塞进模型上下文。若将来接模型，摘录仍是待引用的数据，不是指令；结构正确也不保证内容真实。<code>content</code> 中的 JSON 文本是兼容用的副本，本课不在结构缺失时降级信任它。</p>
+  <p><strong>怎样读旧教程：</strong><code>2025-11-25</code> 先发 <code>initialize</code>，在它的 <code>params</code> 中协商版本，再发 <code>notifications/initialized</code>。本课没有这两帧，也不自动降级。若现代形状中版本不受支持，按 <code>-32022</code> 的 <code>supported</code> 列表看是否有共同版本；看到这个错误不代表对方是旧服务端。官方 Python SDK 稳定版 <code>2.3.0</code> 已支持现代版本，<code>1.x</code> 是旧握手系列；本环境未获准安装外部 SDK 验证 Windows 运行，因此用已实测的标准库教学子集，不是通用 SDK，也不声称完整合规。</p>
+</div>
+<div class="section" id="l57-diagnosis">
+  <h2>3. 失败时先看哪一层？</h2>
+  <p>ID 4 把 <code>export</code> 配上 <code>PICKUP-01</code>：两个值分别出现在枚举里，却不是合法的一对。调用外壳可解析，工具返回 <code>resultType: "complete"</code> 加 <code>isError: true</code>，没有结构化证据。ID 5 的工具名不存在，返回 JSON-RPC <code>error.code: -32602</code>；把 <code>arguments</code> 直接传成数组也是协议错误，但原因是外壳不合法。不能把这三种情况都记成「证据为空」，否则会把参数错误误诊成缺政策。三次调用中，真实读取入口的审计只有 <code>evidence-read export KB-01</code> 一条；验证的是拒绝发生在读取前，不只是报错文案。</p>
+  <p>如果完全收不到一行，在父端区分超时和提前 EOF，检查是否刷出了完整一行；如果首行是日志或 ID 不对，先排查输出通道或对应关系，不重试业务。实验为每次写入和等响应合计留 3 秒；失败就结束这次运行。收尾先关闭输入给子进程 EOF，再限时等它退出，必要时终止、强杀并等待回收。真实系统还需设计每请求取消、重启和重试策略；此处不把关闭整个子进程说成已实现 <code>notifications/cancelled</code>。</p>
+  <div class="best-practice-point" id="bp-l57">
+    <h3>最佳实践：要不要把本地取证拆成 stdio？</h3>
+    <p class="bp-scenario"><strong>适用：</strong>证据服务需要独立运行或被多个支持 MCP 的宿主复用，且可把入口缩成可审查的参数和结果。<strong>边界：</strong>若同一 Python 应用内部已能直接查固定表，拆进程不自动提高正确率或隔离权限；需要远端接入、多人授权或多路请求时，本实验也不是现成方案。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：列得到就开放，答得像就使用</span><p>把清单中的所有工具都交给模型，见到带 KB-01 的文本就采纳。同名证据可能属于另一个分区；缺少结构或调用其实失败时，漂亮的文字仍会混进答案。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：先绑定调用，再绑定结果</span><p>固定可信程序和允许的工具，服务端在读之前验参数配对；宿主在投影前用独立的任务预期验作用域和来源，再拿同 ID、错分区的结果测试验收门。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>拆开后能独立看协议轨迹和读取日志，也引入启动、编码、超时和版本匹配的成本。课程严格比对单工具契约，变化即停；正式集成通常只筛选允许的工具，再用版本化契约接受兼容变化，不必因无关工具加入就断开整个服务。stdio 是传输，不是 OS 沙箱。</p>
+    <ol class="bp-steps"><li>记录固定路径、协议版本、允许的工具和每个任务所需来源。</li><li>同时查响应与读取审计：有效调用读一次，不合法的调用不读。</li><li>在<a href="#l57-transfer-check">迁移自检</a>中保留正确结构，只替换分区，确认宿主不输出错证。</li></ol>
+    <p class="bp-result"><strong>结果诊断：</strong>拒绝响应伴随读取日志，说明门放在动作后；无额外读取但已接纳同 ID 的异区结果，说明宿主只验了形状或 ID。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 调用返回匹配的 JSON-RPC ID，结构有效且来源都是 <code>PICKUP-01</code>，但当前任务是北校区、返回的却是南校区。最能防止误用的做法是什么？</div><div class="quiz-options"><button data-answer="wrong">再查请求 ID 是否等于响应 ID</button><button data-answer="wrong">改用同一结果的文本副本</button><button data-answer="correct">把返回分区与宿主自己的任务分区比较</button><button data-answer="wrong">以工具目录中的枚举值为准</button></div><div class="quiz-explanation">ID 对齐只能识别哪次请求收到该响应，枚举也只描述哪些值可能有效；都不能证明内容属于本次任务的分区。</div></div>
+</div>
+<div class="section" id="example-l57">
+  <h2>4. 跟做：给三次调用对账</h2>
+  <p>从仓库根执行命令（Python 3.11+，无依赖）。<code>trace</code> 是阅读实测帧的诊断模式；<code>worked</code> 的唯一输出应为 <code>L57 ACCEPTED</code>。</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase6-langgraph-mcp/stdio-lab/lab.py trace
+python -I -X utf8 code/phase6-langgraph-mcp/stdio-lab/lab.py worked</code></pre>
+  <div class="card"><h3>任务：先预测，再按 ID 填表</h3><pre data-label="跟做起点"><code class="language-text">ID 3  export / KB-01      → ___；宿主纳入的字段 ___；读取 ___ 次
+ID 4  export / PICKUP-01  → ___；读取 ___ 次
+ID 5  missing_tool       → ___；读取 ___ 次</code></pre><p><strong>通过标准：</strong>正常项只交出来源和摘录，两种拒绝分属工具结果和协议错误；三项合计只有一条子进程读取审计，且子进程正常退出。再标出审计出现在哪个流，而不是把它算成第四条调用结果。</p></div>
+  <details><summary>展开参考：轨迹答案与可复跑验收</summary>
+    <p>ID 3 为 <code>complete</code>、<code>isError: false</code>，给模型侧留下来源与摘录，读 1 次。ID 4 是 <code>complete</code>、<code>isError: true</code>；ID 5 是 <code>-32602</code>；均读 0 次。审计来自子进程 <code>stderr</code>，只有 ID 3 的业务读取。</p>
+    <pre><code class="language-python" id="l57-stdio-check">import asyncio
+import runpy
+from pathlib import Path
+
+# 在仓库根运行；路径固定，不来自调用参数。
+lab = runpy.run_path(str(Path("code/phase6-langgraph-mcp/stdio-lab/lab.py")))
+report = asyncio.run(lab["worked_report"]())
+assert report["model_view"] == {"source_id": "KB-01", "excerpt": "导出文件生成后保留 7 天。"}
+assert report["bad"]["isError"] is True and "structuredContent" not in report["bad"]
+assert report["unknown"]["code"] == -32602
+for (request, reply), method in zip(report["trace"][:2], ("server/discover", "tools/list"), strict=True):
+    assert request["method"] == method
+    assert (reply["result"]["ttlMs"], reply["result"]["cacheScope"]) == (0, "public")
+assert report["audit"] == ["evidence-read export KB-01"]
+assert report["returncode"] == 0
+print("L57 ACCEPTED")</code></pre>
+    <p>可将此 Python 块复制为脚本，从仓库根运行 <code>python -I -X utf8 路径到脚本.py</code>；唯一输出应为 <code>L57 ACCEPTED</code>。实现与测试见<a href="../code/phase6-langgraph-mcp/stdio-lab/README.md">本课实验 README</a>。</p>
+  </details>
+</div>
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：同编号的校区领取政策</h2>
+  <p>新场景是器材领取，不再使用 KB-01。北校区和南校区在各自目录都用 <code>PICKUP-01</code>，地点不同。用同一个子进程按各自分区读取两条，确认都可用于自己的任务。模拟宿主缓存只按来源编号取快照，把真实的南校区结果当作北校区候选。不改字段、不造坏 JSON，也不发第三次读取；比较只验形状与再验任务绑定的结果。</p>
+  <div class="card"><h3>独立任务：写出两道门的预期</h3><pre data-label="迁移起点"><code class="language-text">北校区任务期望：north-campus / PICKUP-01
+候选：south-campus / PICKUP-01 / 南校区器材在体育馆西台领取。
+只验结构 → ___；再绑定当前任务 → ___；新增读取 → ___</code></pre><p><strong>通过标准：</strong>两条各自返回正确地点；调错的快照能通过结构门却不能进入北校区的模型视图，审计里只有两次真实读取。只比较编号若接纳了南区快照，就没有验到分区。</p></div>
+  <details class="bp-check"><summary>展开迁移参考与自检</summary>
+    <p>结构门会通过，任务绑定门应拒绝，新增读取 0 次。生产缓存如需复用，键还要纳入实际访问边界和失效约定；这里只验证读取结果与任务分区绑定。</p>
+    <pre><code class="language-python" id="l57-transfer-check">import asyncio
+import runpy
+from pathlib import Path
+
+lab = runpy.run_path(str(Path("code/phase6-langgraph-mcp/stdio-lab/lab.py")))
+report = asyncio.run(lab["transfer_report"]())
+assert report["north"] == {"source_id": "PICKUP-01", "excerpt": "北校区器材在图书馆东台领取。"}
+assert report["south"] == {"source_id": "PICKUP-01", "excerpt": "南校区器材在体育馆西台领取。"}
+assert report["shape_only"]["scope"] == "south-campus"
+assert report["shape_only"]["source_id"] == report["north"]["source_id"]
+assert report["wrong_scope_view"] is None
+assert report["audit"] == ["evidence-read north-campus PICKUP-01", "evidence-read south-campus PICKUP-01"]
+assert report["returncode"] == 0
+print("L57 TRANSFER PASSED")</code></pre>
+  </details>
+  <p class="bp-result"><strong>运行标准：</strong>从仓库根用 <code>python -I -X utf8 code/phase6-langgraph-mcp/stdio-lab/lab.py transfer</code>，或将上面的块保存为脚本并以 <code>python -I -X utf8 路径到脚本.py</code> 运行。唯一输出应为 <code>L57 TRANSFER PASSED</code>。</p>
+</div>
+<div class="section" id="interview">
+  <h2>面试自查</h2>
+  <p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q1</span>宿主、客户端与服务端中，谁决定给模型什么，谁真正取证？</summary>
+    <div class="think-q-answer"><p><strong>参考回答：</strong>宿主选允许的工具和任务分区，校验并投影结果；客户端维护与单个服务端的协议连接；服务端校验工具名与参数后取证。用请求参数、读取入口审计和宿主投影三处对账，不看一条成功响应就下结论。</p><p><strong>追问：</strong>用户在界面选了「保留期答复」模板，可以跳过读取 KB-01 吗？</p><p><strong>答题要点：</strong>不能。模板是怎么组织消息，不是答案证据。如果政策以资源暴露，宿主仍要读取并验来源。</p></div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q2</span>发现成功后，去掉第二条请求的 <code>_meta</code>，应该发生什么？</summary>
+    <div class="think-q-answer"><p><strong>参考回答：</strong>现代版本每条请求自带版本与客户端能力。缺必填项应回 <code>-32602</code>，不能从发现响应补齐；用同个子进程先发现，再发无元数据和有元数据的两次列表对照。</p><p><strong>追问：</strong>发现返回 <code>-32022</code>，是否该直接发 <code>initialize</code>？</p><p><strong>答题要点：</strong>不该。这是现代错误，有可支持的版本列表就找交集。本课只实现一个版本，无交集就停止；旧握手不是现代请求的补丁。</p></div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q3</span>坏参数已报错，但子进程还多出一条读取日志，能过验收吗？</summary>
+    <div class="think-q-answer"><p><strong>参考回答：</strong>不能，拒绝必须发生在证据读取之前。把日志记在实际读取入口，同一次运行同时做有效对照与坏参数、未知工具两种拒绝，核对只有有效对照真的到达入口。</p><p><strong>追问：</strong>把日志从 stderr 重定向到 stdout，客户端解析为什么可能失败？</p><p><strong>答题要点：</strong>stdout 每行必须是有效的协议消息。普通日志会让 JSON 解析或响应信封检查失败，不能通过略过任意非 JSON 行来假装协议正常。</p></div>
+  </details>
+  <details class="think-q">
+    <summary><span class="think-q-tag">Q4</span>北校区拿到来源编号相同的南校区证据，为什么请求 ID 和输出 schema 都不能证明它属于本次任务？</summary>
+    <div class="think-q-answer"><p><strong>参考回答：</strong>请求 ID 只关联帧，schema 只证明字段形状。宿主用任务自己的分区和来源约束绑定结果；拿真实南区响应做负例，保留其结构和编号，证明只验形状时会误收。</p><p><strong>追问：</strong>若分区吻合但摘录内容可疑，可以当系统指令执行吗？</p><p><strong>答题要点：</strong>不可以。宿主只把合适的字段当数据使用；分区与结构检查不是内容真实性或指令授权。真实使用还要审查来源和披露范围。</p></div>
+  </details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase6-qa.html#L57">L57 疑难解答 →</a><div class="qa-related">上一课：<a href="0065-L56-langgraph-durable-resume.html">L56 LangGraph 持久恢复</a> · 下一课：<a href="0067-L58-mcp-streamable-http.html">L58 MCP Streamable HTTP</a> · <a href="0069-phase6-langgraph-mcp-outline.html">第六阶段大纲</a>。追问时注明协议版本、请求 ID、所在通道和观察到的读取次数。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2>
+  <p><strong>已实测：</strong>真实本地子进程的 UTF-8 线帧、发现与 list/call、两类拒绝与读取入口审计、作用域负例、等待响应超时与 EOF 后退出，以及不给 EOF 时逾时终止并回收。<strong>未验证：</strong>完整 MCP 互操作、终止后再强杀的升级分支、旧版本回退、并发与取消、资源和模板、远端授权、真实身份或模型答复。没有模型调用、密钥、上传或外网运行依赖。</p>
+  <ul>
+    <li>MCP <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio">stdio</a>、<a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning">版本兼容</a>、<a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/index#_meta">元数据字段</a>与<a href="https://modelcontextprotocol.io/specification/2026-07-28/server/discover">发现</a>；另见 <a href="https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle">2025-11-25 旧握手</a>。</li>
+    <li>MCP <a href="https://modelcontextprotocol.io/specification/2026-07-28/architecture">架构</a>、<a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">工具</a>、<a href="https://modelcontextprotocol.io/specification/2026-07-28/server/resources">资源</a>和<a href="https://modelcontextprotocol.io/specification/2026-07-28/server/prompts">提示模板</a>。</li>
+    <li>官方 Python SDK <a href="https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.3.0">v2.3.0 发布说明</a>、<a href="https://github.com/modelcontextprotocol/python-sdk/blob/v2.3.0/docs/protocol-versions.md">v2.3.0 版本支持</a>。</li>
+  </ul>
+</div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

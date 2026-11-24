@@ -12,6 +12,9 @@ on:
       - code/phase2-model-selection/phase2-practices-capstone/README.md
       - code/phase4-prompt-context/README.md
       - code/phase5-agent-harness/harness-lab/README.md
+      - code/phase6-langgraph-mcp/graph-lab/README.md
+      - code/phase6-langgraph-mcp/stdio-lab/README.md
+      - code/phase6-langgraph-mcp/http-lab/README.md
       - lessons/**
       - qa/**
       - reference/**

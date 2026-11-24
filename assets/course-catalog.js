@@ -67,7 +67,13 @@
     { file: '0059-L51-approval-checkpoint-resume.html', title: '审批暂停、进程退出与恢复', phase: '第五阶段' },
     { file: '0060-L52-idempotent-draft-replay.html', title: '副作用已提交但响应丢失', phase: '第五阶段' },
     { file: '0061-L53-harness-regression.html', title: '用回归用例改进 Harness', phase: '第五阶段' },
-    { file: '0062-L54-harness-acceptance.html', title: '阶段验收：固化框架无关契约', phase: '第五阶段' }
+    { file: '0062-L54-harness-acceptance.html', title: '阶段验收：固化框架无关契约', phase: '第五阶段' },
+    { file: '0069-phase6-langgraph-mcp-outline.html', title: '第六阶段大纲', phase: '', outlineFor: '第六阶段' },
+    { file: '0064-L55-langgraph-state-graph.html', title: '把手写 Harness 迁入最小状态图', phase: '第六阶段' },
+    { file: '0065-L56-langgraph-durable-resume.html', title: 'LangGraph 中断、持久恢复与重放', phase: '第六阶段' },
+    { file: '0066-L57-mcp-stdio.html', title: '先走本地 MCP stdio', phase: '第六阶段' },
+    { file: '0067-L58-mcp-streamable-http.html', title: 'MCP Streamable HTTP 与 SSE', phase: '第六阶段' },
+    { file: '0068-L59-mcp-skill-authority.html', title: 'Skill、Scope 和业务权限', phase: '第六阶段' }
   ];
 
   var PHASE_NUMBERS = {

@@ -55,14 +55,20 @@
     "L51": 45,
     "L52": 60,
     "L53": 45,
-    "L54": 45
+    "L54": 45,
+    "L55": 45,
+    "L56": 45,
+    "L57": 45,
+    "L58": 45,
+    "L59": 55
   },
   "phase_totals_min": {
     "phase1": 625,
     "phase2": 430,
     "phase3": 560,
     "phase4": 280,
-    "phase5": 475
+    "phase5": 475,
+    "phase6": 235
   },
-  "course_total_min": 2370
+  "course_total_min": 2605
 }

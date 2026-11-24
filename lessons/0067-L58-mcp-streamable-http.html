@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L58 · MCP Streamable HTTP</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第六阶段 · LangGraph 与 MCP</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>MCP Streamable HTTP</h1><p class="subtitle">用同一条只读证据跑通 JSON 与 POST 请求范围内的 SSE</p>
+</div></div>
+<div class="section">
+  <h2>为什么这课重要？</h2>
+  <p>从 L57 的子进程管道换到 HTTP，导出文件保留期仍是七天，证据编号仍是 <code>KB-01</code>；本课重点比较消息封装、请求边界和两种响应形态。之前的 Harness 先检查来源，再生成答复；这里把同一条合成知识库原文交给工具返回，不靠模型凑出答案。验收一条能返回原文的请求，也要验收一条没有进入读取工具的请求。如果只看到 HTTP 200 就让调用者继续，可能把中间进度当作答案，或把业务拒绝当成成功。</p>
+  <p><strong>不是无缝换线：</strong>L57 的 stdio 夹具收 <code>scope + source_id</code>，返回 <code>scope / source_id / excerpt</code>；本课 HTTP 夹具只有一套合成证据，收 <code>source_id</code>，返回 <code>source_id / quote</code>。这两处是工具契约差异，不是 HTTP 的要求。真正只迁移传输时，应保留原字段与校验，或用显式适配层转换；不能靠换传输移除任务分区验证。</p>
+  <h3>学习目标</h3>
+  <ul><li>在真实的 <code>127.0.0.1</code> 回环套接字上发送现代 MCP 请求，读出两种响应并按请求 ID 配对。</li><li>用 HTTP 状态、JSON-RPC 错误与读取入口记录，区分版本不支持、头部与正文不一致、以及工具没找到证据。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 一次 POST 带齐本次调用的上下文</h2>
+  <p>本课锁定 <strong>2026-07-28</strong> 规范，而不是把旧版教程的报文拼过来。客户端对固定的 <code>/mcp</code> 端点发送一个 JSON-RPC 请求。无需先发 <code>initialize</code>，也没有 MCP 会话 ID；即使复用 TCP 连接，服务端也不能从上一条请求继承版本或客户端能力。客户端可先请求 <code>server/discover</code> 查看版本和能力，再用 <code>tools/list</code> 看有哪些工具；也能直接请求已知的 <code>read_evidence</code>。发现是查询，不是解锁后续调用的握手。</p>
+  <p>接下来顺着这一条报文走。示意里的 <code>&lt;port&gt;</code> 由系统临时分配，HTTP 库填写 <code>Host</code> 与正文长度。客户声明两种响应媒体类型都能读；请求头 <code>MCP-Protocol-Version</code>、<code>Mcp-Method</code>、<code>Mcp-Name</code> 依次镜像正文中的版本、<code>method</code> 和 <code>params.name</code>。最后一个只在本课的 <code>tools/call</code> 上需要。如果只改其中一侧，路由与实际调用就可能看见不同的信息，所以服务端在调用工具前对照两侧，以正文为语义来源。头字段名不区分大小写，字段值不是这样；<code>read_evidence</code> 与 <code>READ_EVIDENCE</code> 不等。</p>
+  <pre><code class="language-http">POST /mcp HTTP/1.1
+Host: 127.0.0.1:&lt;port&gt;
+Content-Type: application/json
+Accept: application/json, text/event-stream
+MCP-Protocol-Version: 2026-07-28
+Mcp-Method: tools/call
+Mcp-Name: read_evidence
+
+{
+  "jsonrpc": "2.0", "id": 58, "method": "tools/call",
+  "params": {
+    "name": "read_evidence", "arguments": {"source_id": "KB-01"},
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": {"name": "course-client", "version": "1.0"},
+      "io.modelcontextprotocol/clientCapabilities": {}
+    }
+  }
+}</code></pre>
+  <p><code>params._meta</code> 里的协议版本和客户端能力是必填项；空对象表示本请求不声明任何可选能力，不能省掉整个字段。<code>clientInfo</code> 建议发送但不是必填，且是客户端自报，不是登录身份。先留意这里的请求 ID：它用于配对响应，只在尚未应答的调用之间要求不重复，不是操作审批、重试去重或会话凭证。一个证据编号同样只是查找键，不表示该请求被授予了任何权限；L59 会把授权独立出来验证。</p>
+</div>
+<div class="section">
+  <h2>2. GET 通知流移除了，POST 的 SSE 响应仍在</h2>
+  <p>第一次调用不带进度令牌：实验服务端回 <code>200</code> 和 <code>application/json</code>，一个响应对象带原 ID、<code>resultType: "complete"</code>，结构化结果为 <code>{"source_id":"KB-01","quote":"导出文件生成后保留 7 天。"}</code>。第二次用新的请求 ID，并把 <code>"progressToken":"read-59"</code> 加到同一个 <code>params._meta</code>。实验服务端按这个固定条件选择 <code>text/event-stream</code>：在这次 POST 的响应连接中写入进度事件，再写入最终响应后关闭。选择规则是本实验的约定；规范允许服务端选择 JSON 或 SSE，客户端必须会读两种，不能把令牌当作强制开流的开关。</p>
+  <pre><code class="language-text">HTTP 200 · Content-Type: text/event-stream · X-Accel-Buffering: no
+
+data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"read-59","progress":1,"total":2}}
+
+data: {"jsonrpc":"2.0","id":59,"result":{...}}
+
+[最终帧后连接关闭；省略的 result 与 JSON 版相同]</code></pre>
+  <p>进度是一个没有 ID 的通知，通过令牌和所属的 POST 配对；它只说明工作进行中，不承载最终证据。读取端逐行累积事件，到空行才解析这一帧；TCP 分段不是 SSE 分帧。看到有相同请求 ID 的最终结果才交付答案。断开前没读到它，不能把进度记作完成。现代版本没有 <code>Last-Event-ID</code> 恢复；真要重新发起这次只读查询，需要新请求 ID。对带副作用的动作，协议层重发并不保证业务安全，仍应沿用 L52 的原操作证据核对，不因换了传输层就盲重放。</p>
+  <p>这不是旧式「先 GET 开通道再 POST」。现代服务器若支持清单变化订阅，长流也是 <code>POST subscriptions/listen</code> 的响应，服务于订阅的变化通知；本课只有本次请求范围内的短流，不实现订阅或后台任务。对本实验的 <code>GET /mcp</code> 和 <code>DELETE /mcp</code>，返回 <code>405</code>、<code>Allow: POST</code>，既不会开第二条通知流，也不会建立、回显或删除协议会话。</p>
+</div>
+<div class="section">
+  <h2>3. 都是 400，先看 JSON-RPC 错误再决定</h2>
+  <p>把正常请求沿原路径逐项改动，每次只改一个条件。头与正文同写不支持的版本，表示双方对要说哪版没有分歧，只是服务器不会说这一版；错误要给出它会说的版本。保留正文版本、只改请求头时，不能把错误解释成版本协商，必须先修好报文。两类拒绝均不进入读取工具；清单查询也不计为读取证据。为了把证据和响应分开，实验只在 <code>read_evidence</code> 的实际入口记一条记录，而不是每收一个请求就加一。</p>
+  <table><thead><tr><th scope="col">本地对照输入</th><th scope="col">线上观察</th><th scope="col">下一步</th></tr></thead><tbody>
+    <tr><td>头与正文都写 <code>1900-01-01</code></td><td><code>400 / -32022</code>，<code>data={"supported":["2026-07-28"],"requested":"1900-01-01"}</code></td><td>找交集；只有双方都支持才按那一版重建整个请求，否则明示不兼容。</td></tr>
+    <tr><td>只改版本头；或缺一个应有的镜像头</td><td><code>400 / -32020</code>（HeaderMismatch）</td><td>从同一份请求对象生成头和正文，不回退到旧握手。</td></tr>
+    <tr><td>镜像齐全，但缺正文中的 <code>clientCapabilities</code></td><td><code>400 / -32602</code>（Invalid params）</td><td>补本次请求的能力对象；不是用头部代替正文。</td></tr>
+    <tr><td>有效版本和镜像，但 RPC 方法未实现</td><td><code>404 / -32601</code>（Method not found）</td><td>检查客户端选了哪个方法，不当成整个端点不存在。</td></tr>
+    <tr><td>请求合规，证据编号不在固定清单</td><td><code>200</code>，<code>result.isError: true</code>、<code>unknown_evidence</code></td><td>不要编造引文；更正编号或报告没有证据。</td></tr>
+  </tbody></table>
+  <p>服务端还在进入方法分派前检查 <code>Origin</code>：没有此头的本地命令行客户端允许继续，存在时只接受本次实例的精确回环来源；不合法就回 <code>403</code>。实验另外限制 <code>Host</code>、请求体大小和套接字等待时间，退出时关闭服务。这些限制没有认证用户或证明生产部署安全。只在回环地址上用合成数据测试，不使用真实凭据、外部端点或任意文件路径。</p>
+  <div class="best-practice-point" id="bp-l58">
+    <h3>最佳实践：固定报文版本，从线上的证据决定修复点</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一个只读工具通过两种响应形态提供证据，或团队要判断一个客户端能否连上。<strong>边界：</strong>只对实测客户端／服务端与版本作兼容性结论；双时代兼容需要另测，不能由同名传输推断。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">错误：遇到 400 就尝试旧握手</span><p>忽略明确的 <code>-32020</code>，回退后仍无法取证；有进度帧就显示完成，用户看不到最终证据。</p></div><div class="bp-right"><span class="bp-compare-label">正确：先校验镜像、再按错误分流</span><p>能从响应判出是修报文还是换到共同支持的版本；JSON 和 SSE 分开解码，最终都按原 ID 与来源字段验收。</p></div></div>
+    <p class="bp-rationale"><strong>原因与代价：</strong>中间层可能先读头，工具则按正文执行；保持一致要维护镜像校验与回归。短 SSE 要处理帧边界和结束条件；不需要进度时 JSON 已足够。</p>
+    <ol class="bp-steps"><li>记录本次的版本、方法、工具名和请求 ID，保留两个终态的来源对照。</li><li>分别只改头、同时改头与正文，按错误码检查路径，并核对实际读取入口记录。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>两种 400 都得到相同错误码，查校验顺序；入口先增加才报错，查分派之前的门槛；SSE 只有进度没有终态，不算通过。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 正文仍是 2026-07-28，只把版本头改为不支持的值，应看到什么？</div><div class="quiz-options"><button data-answer="wrong">400 / -32022</button><button data-answer="correct">400 / -32020</button><button data-answer="wrong">400 / -32602</button><button data-answer="wrong">404 / -32601</button></div><div class="quiz-explanation">先判定头与正文不一致。双方声明一致但版本不受支持，才是 -32022。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>4. 动手：在回环连接上交叉验证同一证据</h2>
+  <div class="card" id="guided-l58"><h3>跟做：先填三列，再运行</h3><p><strong>起点：</strong>打开短生命周期的只读实例，计数为空。使用 <code>rpc(58, "tools/call", name="read_evidence", arguments={"source_id": "KB-01"})</code> 作为第一个请求。</p><ol><li>正确的 POST：填「媒体类型 / 最终 ID / 累计读取入口次数」。</li><li>只把 <code>Mcp-Name</code> 改成不同值：填「HTTP 状态 / RPC 错误码 / 累计入口次数」。</li><li>恢复正确名字，换 ID 并附 <code>progress="read-59"</code>：记录进度令牌、最终 ID、原文与累计入口次数。</li></ol><p><strong>通过标准：</strong>入口次数依次为 1、1、2；两次成功里都能查到 <code>KB-01</code> 及七天原文，但第二次先有进度帧，再有最终响应。</p></div>
+  <p>把代码块保存到本地，用 Python 3.11+ 在<strong>可信课程仓库根</strong>执行 <code>python -I -X utf8 文件名.py</code>；不要加 <code>-O</code>。程序只加载固定的<a href="../code/phase6-langgraph-mcp/http-lab/README.md">课程 HTTP 实验</a>，使用系统分配的回环端口，不访问外部互联网。</p>
+  <details><summary>展开参考实现与验收断言</summary><pre><code class="language-python" id="l58-http-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase6-langgraph-mcp/http-lab/main.py")
+rpc = lab["rpc"]
+args = {"source_id": "KB-01"}
+with lab["local_lab"]() as (client, state):
+    request = rpc(58, "tools/call", name="read_evidence", arguments=args)
+    plain = client.post(request)
+    assert (plain.status, plain.media_type, plain.final["id"]) == (200, "application/json", 58)
+    assert plain.final["result"]["structuredContent"] == {
+        "source_id": "KB-01", "quote": "导出文件生成后保留 7 天。",
+    }
+    assert state.read_entries == ["KB-01"]
+    wrong = client.post(request, headers={"Mcp-Name": "read_catalog"})
+    assert (wrong.status, wrong.final["error"]["code"]) == (400, -32020)
+    assert state.read_entries == ["KB-01"]
+    stream = client.post(rpc(59, "tools/call", name="read_evidence", arguments=args,
+                             progress="read-59"))
+    assert (stream.status, stream.media_type, len(stream.messages)) == (200, "text/event-stream", 2)
+    progress, final = stream.messages
+    assert progress == {"jsonrpc": "2.0", "method": "notifications/progress",
+                        "params": {"progressToken": "read-59", "progress": 1, "total": 2}}
+    assert final["id"] == 59 and final["result"] == plain.final["result"]
+    assert final["result"]["resultType"] == "complete" and not final["result"]["isError"]
+    assert state.read_entries == ["KB-01", "KB-01"]
+print("L58 ACCEPTED")</code></pre></details>
+  <p>只输出 <code>L58 ACCEPTED</code> 才算通过。此程序没有测并发、完整 SSE 语法、订阅、重连、TLS 或 SDK 互通；每条请求使用各自的新 HTTP 连接。</p>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：过期后怎么办？</h2>
+  <p><strong>独立任务：</strong>客户不是问「保留多久」，而是问「已经过期，怎么拿到一份新的导出？」选择 <code>KB-02</code>，不要把 <code>KB-01</code> 的七天当作动作建议。另开一个空的回环实例，先预测 HTTP 状态、RPC 错误码和实际读取入口数：请求头和正文都写旧版 <code>2025-11-25</code>、只改方法头、缺能力对象、证据 <code>KB-99</code> 不存在；最后才放行证据查询。额外验证拒绝独立 GET 并不阻止正确 POST 流。</p>
+  <div class="card"><h3>独立起点：只改版本，检查有没有读取</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase6-langgraph-mcp/http-lab/main.py")
+with lab["local_lab"]() as (client, state):
+    request = lab["rpc"](1, "tools/call", name="read_evidence",
+                         arguments={"source_id": "KB-02"}, version="2025-11-25")
+    reply = client.post(request)
+    # TODO：核对 HTTP 状态、RPC 错误码和 state.read_entries。
+</code></pre><p><strong>通过标准：</strong>不支持旧版的响应应给出支持列表且零次读取；改成当前版本后，应只读一次 KB-02，并取回「超过保留期需重新发起导出」。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检（标准库、仅回环）</summary><pre><code class="language-python" id="l58-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase6-langgraph-mcp/http-lab/main.py")
+
+def evidence(request_id, source_id="KB-02", **options):
+    return lab["rpc"](request_id, "tools/call", name="read_evidence",
+                      arguments={"source_id": source_id}, **options)
+
+with lab["local_lab"]() as (client, state):
+    old = client.post(evidence("old", version="2025-11-25"))
+    assert old.status == 400 and old.final["error"] == {
+        "code": -32022, "message": "Unsupported protocol version",
+        "data": {"supported": ["2026-07-28"], "requested": "2025-11-25"},
+    }
+    assert state.read_entries == []
+    wrong = client.post(evidence("method"), headers={"Mcp-Method": "tools/list"})
+    assert (wrong.status, wrong.final["error"]["code"]) == (400, -32020)
+    assert state.read_entries == []
+    request = evidence("no-capabilities")
+    del request["params"]["_meta"]["io.modelcontextprotocol/clientCapabilities"]
+    missing = client.post(request)
+    assert (missing.status, missing.final["error"]["code"]) == (400, -32602)
+    assert state.read_entries == []
+    unknown = client.post(evidence("unknown", "KB-99"))
+    assert unknown.status == 200 and unknown.final["result"]["isError"]
+    assert unknown.final["result"]["structuredContent"] == {"status": "unknown_evidence"}
+    assert client.exchange("GET").status == 405 and state.read_entries == []
+    stream = client.post(evidence("renewal", progress="renewal-progress"), headers={"Origin": client.origin})
+    assert (stream.status, stream.media_type, stream.final["id"]) == (200, "text/event-stream", "renewal")
+    assert stream.messages[0]["params"]["progressToken"] == "renewal-progress"
+    assert "Mcp-Session-Id" not in stream.headers
+    assert not stream.final["result"]["isError"]
+    assert stream.final["result"]["structuredContent"] == {
+        "source_id": "KB-02", "quote": "超过保留期需重新发起导出。",
+    }
+    assert state.read_entries == ["KB-02"]
+print("L58 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>通过标准：</strong>从仓库根以同一个命令运行，只有正确 POST 进入工具，入口记录只有 <code>KB-02</code>，只输出 <code>L58 TRANSFER PASSED</code>。错误版本若返回一条证据，查版本检查是否绕过了分派；返回七天，查是否把来源硬编码成上一题的输入。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>先合上答案，按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>接入某服务端时，可以跳过发现直接调用工具吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>可以。现代规范要求服务器提供 <code>server/discover</code>，但客户端可直接发携带版本和能力的请求。发现提供能力和候选版本，不在连接上登记会话。用全新的连接直接发送完整 <code>tools/call</code>，再在另一条连接请求发现，两个响应都应成功。</p><p><strong>追问：</strong>刚在发现时声明了某能力，调用时可以省略 <code>clientCapabilities</code> 吗？</p><p><strong>答题要点：</strong>不行。每次请求都要携带本次能力；缺失是 <code>400 / -32602</code>，不能从发现请求继承；空对象与缺字段也不等价。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>GET 返回 405，排查时能否得出服务端不支持 SSE？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。GET 旧通道已移除，但一条 POST 可以返回请求范围内的 SSE；现代订阅也是另一个 POST。用接受 JSON 与 SSE 的客户端发送两次只读调用，分别核对响应的媒体类型、进度归属和最终 ID；不是只用浏览器开一个 GET。</p><p><strong>追问：</strong>收到进度 1/2 后断开，能用这个令牌续流、或用新请求 ID 保证写入不重复吗？</p><p><strong>答题要点：</strong>都不能。进度令牌不是恢复游标，现代流不支持 <code>Last-Event-ID</code>；请求 ID 只用于配对，写入重放看独立的业务原操作 ID、回执和当前许可。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>同样报 HTTP 400，为什么不能都换成旧版再试？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>对照同一个调用，两处一致但版本不支持才是 <code>-32022</code>，按 <code>data.supported</code> 找交集；仅头与正文不一致或头缺失是 <code>-32020</code>，应该修请求构造。用不变的证据编号和入口计数验证两条都未分派，然后用合法报文做正控。</p><p><strong>追问：</strong>只把头字段名改成小写，应被判为头缺失吗？</p><p><strong>答题要点：</strong>不应。字段名大小写等价；值要按规范比较。可以让小写 <code>mcp-method</code> 配合法值通过，再只变值做负例。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>从课程实现换成 Python SDK，怎么交接才不夸大兼容性？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>记录客户端与服务端的具体发布版和实际使用的协议版，跑发现、两种响应、错误体、Origin 拒绝和入口计数。官方 Python SDK v2.3.0 的文档列出了新旧协议支持，但文档声明不等于课程子集与 SDK 双方已联调；这一项仍待验收。</p><p><strong>追问：</strong>已测 JSON 能读、SDK 也声明支持该版本，能把订阅和长时断开恢复写成通过吗？</p><p><strong>答题要点：</strong>不能。那些是不同的行为；订阅需单独测试，现代 SSE 的流本身不支持恢复。先写「未覆盖」，再按需求增加对照，不把换依赖当成验收。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase6-qa.html#L58">L58 疑难解答 →</a><div class="qa-related"><a href="0066-L57-mcp-stdio.html">上一课 L57 · MCP stdio</a> · <a href="0068-L59-mcp-skill-authority.html">下一课 L59 · Skill 与业务授权</a> · <a href="0069-phase6-langgraph-mcp-outline.html">阶段 6 纲要</a>。复盘时带一份正常报文、一份失败报文和读取入口记录。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>每个 POST 独自携带版本和能力；头与正文一致后才分派。JSON 一次交付结果，SSE 按帧给进度和最终响应，移除 GET 不等于移除 SSE。</p><p><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http">MCP · Streamable HTTP（2026-07-28）</a>（端点、镜像头、错误与 POST 流） · <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning">MCP · Versioning and Compatibility</a> · <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/index#_meta">MCP · 每请求元数据</a> · <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/progress">MCP · Progress</a> · <a href="https://github.com/modelcontextprotocol/python-sdk/blob/v2.3.0/docs/protocol-versions.md">MCP Python SDK v2.3.0 · 版本支持说明</a>。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

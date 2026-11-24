@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phase 6 · LangGraph 与 MCP 工程实践复盘</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>Phase 6 · LangGraph 与 MCP 工程实践复盘</h1>
+<p>先通过单课的跟做与变式，再用这页检查迁移报告。不要把一个通过标记当作图、协议和授权三层都验过。</p>
+<div class="section"><h2>1. 迁移改变了什么？</h2><p><strong>判断：</strong>节点安排可以换，保证不能换。固定问题和证据，对照终态、来源与实际分派；加零预算或最后一次可成功的例子，防止一刀切。</p><p><strong>证据：</strong><a href="../lessons/0064-L55-langgraph-state-graph.html#bp-l55">L55 迁移对照</a>。不报线上延迟或模型质量。</p></div>
+<div class="section"><h2>2. 图停住时，业务真的没写吗？</h2><p><strong>判断：</strong>分别读取图的下一步、匹配的人工决定和业务结果。模拟提交后丢响应时，图未结束、业务一行可以同时成立；按原操作身份重跑，而不是新增插入。</p><p><strong>证据：</strong><a href="../lessons/0065-L56-langgraph-durable-resume.html#bp-l56">L56 持久恢复</a>。记录是否真换进程和故障点；SDK 未实跑时如实记「待验证」。</p></div>
+<div class="section"><h2>3. 哪种 MCP 连接已经验证？</h2><p><strong>判断：</strong>先确定传输、协议修订、两端实现，再查对应的帧。stdio 的 stdout 只传协议；HTTP POST 可以返回 JSON 或 SSE。旧版独立 GET 流不等于新版 SSE 响应。</p><p><strong>证据：</strong><a href="../lessons/0066-L57-mcp-stdio.html">L57 子进程</a> · <a href="../lessons/0067-L58-mcp-streamable-http.html">L58 loopback 矩阵</a>。未测的 SDK 或协议功能不要填「兼容」。</p></div>
+<div class="section"><h2>4. 工具被发现后，什么时候才允许动作？</h2><p><strong>判断：</strong>知识库证据与 Skill 模板决定预览写什么，不决定是否能保存。发现、scope、资源权限与当前批准分别判断。每次只改一个条件，核对是哪个门拒绝、会不会触及保存入口，以及正控保存的是不是原预览。外部操作仍需独立验收。</p><p><strong>证据：</strong><a href="../lessons/0068-L59-mcp-skill-authority.html">L59 授权矩阵</a> · <a href="../lessons/0068-L59-mcp-skill-authority.html#stage-practice-skill-and-authority">阶段检查点</a>。用合成凭证，不把本地 fixture 称为生产 OAuth。</p></div>
+<nav class="card" aria-label="阶段导航"><a href="../lessons/0069-phase6-langgraph-mcp-outline.html">← Phase 6 大纲</a> · <a href="../qa/phase6-qa.html">阶段答疑</a></nav>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

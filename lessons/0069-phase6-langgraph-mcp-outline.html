@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>阶段 6 · LangGraph 与 MCP</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>阶段 6 · LangGraph 与 MCP 实战</h1>
+<p>从 L54 的「证据问答＋工单草稿」出发：先换任务编排，再练工具传输。LangGraph 负责步骤；MCP 负责能力描述和通信。两者都不替应用做业务授权或证明副作用已经提交。</p>
+<div class="total-bar"><span>5 节课 · L55–L59 · 235 分钟</span><span>本地合成数据；不调用真实模型或工单系统</span></div>
+<aside class="toc" id="toc" aria-label="本阶段目录"></aside>
+<nav aria-label="阶段导航"><a href="0062-L54-harness-acceptance.html">← L54 交接</a> · <a href="../qa/phase6-qa.html">阶段答疑</a> · <a href="0001-ai-agent-learning-path-overview.html#phase-6-body">课程总纲</a></nav>
+<div class="section"><h2 id="lesson-plan">逐课练习与验收</h2>
+<table><thead><tr><th scope="col">课程</th><th scope="col">主题</th><th scope="col">验收证据</th></tr></thead><tbody>
+<tr><td>L55 <span class="lesson-num-time">45min</span></td><td><a href="0064-L55-langgraph-state-graph.html">迁入最小状态图</a></td><td>同输入对照手写版与图，核对状态、来源和分派边界。</td></tr>
+<tr><td>L56 <span class="lesson-num-time">45min</span></td><td><a href="0065-L56-langgraph-durable-resume.html">中断、持久恢复与重放</a></td><td>退出后查原快照；查旧批准和拒绝零写入；模拟丢回复后读原结果。</td></tr>
+<tr><td>L57 <span class="lesson-num-time">45min</span></td><td><a href="0066-L57-mcp-stdio.html">本地 MCP stdio</a></td><td>真实子进程发现、调用、核验结果；协议输出与诊断分离。</td></tr>
+<tr><td>L58 <span class="lesson-num-time">45min</span></td><td><a href="0067-L58-mcp-streamable-http.html">Streamable HTTP 与 SSE</a></td><td>版本明确，区分 JSON 与 POST 响应流；区分头体不符与版本不支持。</td></tr>
+<tr><td>L59 <span class="lesson-num-time">55min</span></td><td><a href="0068-L59-mcp-skill-authority.html">Skill、Scope 和业务权限</a></td><td>分开核对凭证、授权和业务许可；阻断路径不进入业务执行。</td></tr>
+</tbody></table></div>
+<div class="section"><h2 id="practice">阶段复盘与交接</h2>
+<p>每课先完成可见的跟做，再做变式；不要只复述概念或抄成功标记。完成 L56 以后，单独记录图的终态、挂起节点与已提交效果。完成 L59 后做<a href="0068-L59-mcp-skill-authority.html#stage-practice-skill-and-authority">取证、Skill 加载和审批检查点</a>，把记录扩展为「用什么版本通信、拒绝发生在哪一层、业务执行几次」。下一阶段把证据来源从合成政策扩展到数据和 RAG，权限校验仍在读取之前。</p>
+<p>练习按层拆分：<a href="../code/phase6-langgraph-mcp/graph-lab/README.md">LangGraph 实验</a>、<a href="../code/phase6-langgraph-mcp/stdio-lab/README.md">stdio 实验</a>及<a href="../code/phase6-langgraph-mcp/http-lab/README.md">loopback HTTP 实验</a>，不假称三个实验已串成生产服务。MCP 课使用 <a href="https://modelcontextprotocol.io/specification/2026-07-28">2026-07-28</a> 的明确子集；<strong>待验证：</strong>L55–L56 的 LangGraph 用例待依赖安装后实跑；L58 的官方 MCP Python SDK 双端互通仍未验收，只记录标准库教学子集的此前结果。OAuth 实验仅为本地夹具，不测生产授权。</p>
+<p>看<a href="../best-practices/phase6-langgraph-mcp-practices.html">阶段工程复盘</a>；再进入<a href="0046-phase5-to-11-planned-outlines.html#phase-7">Phase 7 数据与 RAG 草案</a>。</p></div>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

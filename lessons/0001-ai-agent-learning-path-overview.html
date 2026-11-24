@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>课程范围：</strong>已有 Phase 1–5 的 54 节正式课（L01–L54）。Phase 6–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>已有 Phase 1–6 的 59 节课（L01–L59）。Phase 7–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -257,7 +257,7 @@
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-6-body">
     <h3>Agent 框架入门与 MCP 实战</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">5-6 课</span>
+      <span class="phase-meta-item">5 课 · L55–L59</span>
       <span class="phase-meta-item">1-2 周</span>
     </div>
     <div class="phase-toggle">▼</div>
@@ -268,12 +268,13 @@
   </div>
   <div class="phase-body" id="phase-6-body">
     <div class="card">
-      <span class="tag tag-agent">规划 · 验收目标</span><br>
+      <span class="tag tag-agent">已编写 · LangGraph 待实跑</span><br>
       <strong>一个框架贯穿深学：</strong>为持久图编排目标，主线采用 LangGraph，先学最小状态与工具循环，Phase 10 再深化；Pydantic AI / OpenAI Agents SDK 仅对照类型、事件与授权接缝，不要求再做完整项目。框架选择按任务与证据，不做通用排名。<br><br>
-      <strong>MCP 基础：</strong>Host / Client / Server、Tool / Resource / Prompt 与 stdio / Streamable HTTP。保留规范基线 <strong>2026-07-28</strong>；<a href="https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.0.0">官方 Python SDK v2.0.0</a> 已声明支持该规范，备课时再固定实测的客户端/服务端版本。新版没有 initialize 握手、协议 session 或 GET 通知流，仍支持 SSE 响应。详见<a href="../reference/0003-mcp-a2a-protocols.html">版本化协议与迁移检查表</a>。<br><br>
+      <strong>MCP 基础：</strong>Host / Client / Server、Tool / Resource / Prompt 与 stdio / Streamable HTTP。以规范 <strong>2026-07-28</strong> 为基线，本课程使用标准库实现的教学子集，不把它当官方 SDK 或完整兼容性证明。新版没有 initialize 握手、协议 session 或 GET 通知流，仍支持 SSE 响应。详见<a href="../reference/0003-mcp-a2a-protocols.html">版本化协议与迁移检查表</a>。<br><br>
       <strong>授权与 Skills 接入：</strong>HTTP 授权是可选能力，采用时按该规范实现发现、PKCE、resource/audience、issuer 与最小 scope；stdio 从环境获取凭证。工具可发现不代表允许执行，Skill 匹配也不授权。<br><br>
       <strong>验收目标：</strong>将 Phase 5 同一个项目迁入主线框架，沿用同一套检查点、审批重启与幂等回归。MCP 先用 stdio 跑通，再验证 HTTP 的版本不兼容、JSON/SSE 响应和权限拒绝。Tasks 是官方可选扩展，不替代恢复。<br><br>
-      <a href="0046-phase5-to-11-planned-outlines.html#phase-6">查看 Phase 6 逐课草案 →</a>
+      <a href="0069-phase6-langgraph-mcp-outline.html">查看 Phase 6 课程与项目 →</a><br>
+      <a href="../best-practices/phase6-langgraph-mcp-practices.html">Phase 6 工程实践复盘 →</a> · <a href="../qa/phase6-qa.html">阶段答疑 →</a>
     </div>
   </div>
 </div>
@@ -425,7 +426,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 6–11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 7–11 对应项仍为规划。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>
