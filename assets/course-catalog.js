@@ -73,7 +73,18 @@
     { file: '0065-L56-langgraph-durable-resume.html', title: 'LangGraph 中断、持久恢复与重放', phase: '第六阶段' },
     { file: '0066-L57-mcp-stdio.html', title: '先走本地 MCP stdio', phase: '第六阶段' },
     { file: '0067-L58-mcp-streamable-http.html', title: 'MCP Streamable HTTP 与 SSE', phase: '第六阶段' },
-    { file: '0068-L59-mcp-skill-authority.html', title: 'Skill、Scope 和业务权限', phase: '第六阶段' }
+    { file: '0068-L59-mcp-skill-authority.html', title: 'Skill、Scope 和业务权限', phase: '第六阶段' },
+    { file: '0080-phase7-data-rag-outline.html', title: '第七阶段大纲', phase: '', outlineFor: '第七阶段' },
+    { file: '0070-L60-rag-data-access.html', title: '数据模型与行级访问', phase: '第七阶段' },
+    { file: '0071-L61-rag-citation-chunks.html', title: '解析、清洗与可定位分块', phase: '第七阶段' },
+    { file: '0072-L62-rag-lexical-retrieval.html', title: '先做授权词法检索', phase: '第七阶段' },
+    { file: '0073-L63-rag-vector-retrieval.html', title: 'Embedding 与向量检索', phase: '第七阶段' },
+    { file: '0074-L64-rag-hybrid-retrieval.html', title: '用失败题判断是否混合检索', phase: '第七阶段' },
+    { file: '0075-L65-rag-reranking.html', title: '对同一候选集重排', phase: '第七阶段' },
+    { file: '0076-L66-rag-cache-invalidation.html', title: '热缓存中的撤权、改版与删除', phase: '第七阶段' },
+    { file: '0077-L67-rag-trust-boundary.html', title: '证据数据与执行权限', phase: '第七阶段' },
+    { file: '0078-L68-rag-retrieval-evals.html', title: '检索评估：权限、召回与覆盖', phase: '第七阶段' },
+    { file: '0079-L69-rag-generation-evals.html', title: '生成评估：引用、忠实度与拒答', phase: '第七阶段' }
   ];
 
   var PHASE_NUMBERS = {

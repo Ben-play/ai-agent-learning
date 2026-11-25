@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L67 · RAG 信任边界</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>RAG 信任边界</h1><p class="subtitle">原文可核验，正文仍是数据，批准来自应用</p>
+</div></div>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>客服 Mei 问「导出文件保留多久」，系统找到原文「导出文件生成后保留 7 天。」这是证据，不是给应用下达任务的通道。即使来源是企业正式发布的知识库，索引记录也只能说明某处写了什么；能用来答保留期，并不意味着能够改变流程、代表用户同意，或获得额外的读取权限。上一课处理缓存过期，本课接着问：即使缓存完全正确，哪些决定仍然不能交给缓存里的正文？</p>
+  <ul><li>把来源可核验、事实是否可信、当前主体的读取权限与业务批准分别验收。</li><li>用无指令的合成标记保留正文的数据身份，用内存模拟审核核对应用侧权限，全程执行数为零。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 同一条原文要过哪些判断？</h2>
+  <table><thead><tr><th scope="col">判断</th><th scope="col">谁提供依据</th><th scope="col">能得出的结论</th></tr></thead><tbody>
+    <tr><td>本次允许读吗？</td><td>应用已知的租户与用户、当前资料授权</td><td>限定候选集合；先定范围，再排序。</td></tr>
+    <tr><td>真出自这里吗？</td><td>应用用文档编号、版本、定位查当前授权原文，逐字对照</td><td>可复核引文。不证明原文观点正确，也不授予额外权限。</td></tr>
+    <tr><td>适合当这道题的证据吗？</td><td>产品定义的来源等级、负责人、时效及适用范围</td><td>正文可被引用或排除；不同来源冲突时，应提示分歧或转人工。</td></tr>
+    <tr><td>允许处理这个动作吗？</td><td>应用掌握的主体、允许动作、暂存意图与独立的批准记录</td><td>只对所核准的具体对象和版本有效，不能从正文推导。</td></tr>
+  </tbody></table>
+  <p>「可核验」回答的是出处，并非「可信」的一次性勾选。部门公告与过期业务手册可以各自逐字查到，却不应都作为当前政策依据；一份最新公告也只在指定地区或客户范围内有效。实现上让来源字段来自受控的索引或资料库，不让正文自报来源等级；由资料负责人和生效范围决定证据能否支撑这道题。桩程序只验证身份范围和精确引文，不替组织制定来源等级，也不裁决冲突的制度。</p>
+  <p>应用拿到允许的资料后，用 <code>Evidence</code> 保留核验时的租户和用户，为证据加结构化标签 <code>untrusted_data</code>；独立练习还在正文加入不含任何指令的印刷校验标记 <code>〔样张-蓝〕</code>。前者是应用赋的角色，后者只是普通字符。两者同时存在说明可以完整保存、定位和核对正文，仍不给正文控制力。标签有助于保持上下文边界和审计，但它不负责强制模型服从，也不该成为唯一防线；应用仍要在送出数据和收到结构化建议的两个方向各自检查。</p>
+</section>
+<section class="section">
+  <h2>2. 从读取到审核，把权力留在应用</h2>
+  <p>本地路径是「固定的宿主主体 → SQLite 授权范围内查询 → 精确回查来源 → 带标记的数据 → 确定性本地审核」。例如 <code>support/mei</code> 可用 <code>EXPORT-POLICY v1 §1</code> 作答；<code>operations/mei</code> 有相同编号和定位，却对应另一套政策，不能把响应或缓存只按编号复用。练习只测正文的证据身份和审核，不把字符串传给真实模型，也不联络外部服务。生产里应从可信认证上下文取得主体，若授权或资料版本在生成期间变化，交付前应按当前规则再查，不沿用旧的授权快照。</p>
+  <p>为了观察审批路径，应用另存一个合成的标签预览意图，包含所有者、动作、目标、版本和标签值。建议可以请求这个预览，不能为它盖章。审核只认宿主提供的暂存意图和模拟批准：当前主体必须是所有者，动作必须是 <code>preview_label</code>，建议与暂存意图一致，批准也须绑定同一份意图。没有批准就保持待审；哪怕版本未变，只改了标签值也要重新确认。「模拟已批准」是审核结果，不是执行完成。正控会给内存预览日志加一条，说明审核路径确实接通；拒绝不增加日志。本课结构上没有执行器，日志不是业务回执，也不测试真实执行入口。</p>
+  <p>权衡在于只读问答不必每次打断用户确认，但一旦离开只读路径，就要为人工复核承担延迟与状态维护成本。对只读界面，直接不提供执行能力比展示一套永远不该使用的能力更容易维护。排查时把证据核验结果和审批结果分列：引用失败先查租户、当前版本、定位及原文；来源通过但没有批准，是正常的待审路径，而不是去重试引用。记录关联键和类别即可，不把原文或身份凭证随意写入日志。</p>
+  <div class="best-practice-point" id="bp-l67">
+    <h3>决策卡：查询保持只读，审核只接受宿主证据</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一个界面既引用企业资料，又展示可审查的建议。<strong>边界：</strong>本课审核标签预览，不连接执行器，不证明模型对不可信输入的处理效果。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：出处正确就允许下一步</span><p>把引文通过、用户可读、动作获批都塞进同一个「已验证」标志。</p></div><div class="bp-right"><span class="bp-compare-label">选择：分别留证</span><p>查询以主体划界，出处按精确元组验证。审核要求宿主决定，批准匹配后依然只显示本地模拟结果。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>需要维护业务意图和独立审批记录，但可清楚定位哪道门失败。标记正常且审批缺失时，不要求用户更换资料。</p>
+    <ol class="bp-steps"><li>固定原文变更主体；再固定主体变更引文版本，分别验证拒绝。</li><li>固定同一可核验证据，比对无批准、变更建议、完整匹配三种审核状态；每条独查内存预览日志的增量。</li></ol>
+    <p class="bp-result"><strong>验收门槛：</strong>可核验引文不赋予审批，只有正控进入模拟日志；零业务执行来自不接执行器的设计，不是对生产效果入口的测试。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 当前用户可读并能核验引文，预览建议与暂存内容一致，但宿主没有批准。应记录什么？</div><div class="quiz-options"><button data-answer="wrong">引文可核验，审核已批准</button><button data-answer="correct">引文可核验，审核待批准</button><button data-answer="wrong">引文不可用，审核待批准</button><button data-answer="wrong">引文需重查，审核已批准</button></div><div class="quiz-explanation">读取和来源验证都通过，不改变独立审批状态。待批准路径没有执行。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：一条原文，三种审核结果</h2>
+  <p>使用 <a href="../code/phase7-data-rag/rag-lab/README.md">课程 RAG 实验</a>。保存代码块，在<strong>可信课程仓库根</strong>用 Python 3.11+ 执行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。每次打开新的内存数据库；只加载仓库固定路径。</p>
+  <div class="card" id="guided-l67"><h3>最小起点：取证后先不要批准</h3><pre><code class="language-python">import runpy
+
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+scope = a["Scope"]("support", "mei")
+with lab["open_demo"]() as db:
+    hit, = db.search(scope.tenant, scope.user, lab["Query"](("保留",)), k=1)
+    citation = a["cite"](scope, hit.chunk)
+    staged = a["Intent"](scope, "preview_label", "sample-01", 2, "保留期样张")
+    log = a["PreviewLog"]()
+    # TODO：核验原文，再用 review_preview 对照未批准、批准、同版改标签。
+</code></pre><p><strong>通过标准：</strong>取回七天的精确原文，标签是 <code>untrusted_data</code>；无批准待审、匹配时只模拟批准、同版改标签未获准。日志累计 0、1、1；没有业务执行。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l67-worked-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+scope = a["Scope"]("support", "mei")
+with lab["open_demo"]() as db:
+    hit, = db.search(scope.tenant, scope.user, lab["Query"](("保留",)), k=1)
+    citation = a["cite"](scope, hit.chunk)
+    assert (citation.key, citation.quote) == (("EXPORT-POLICY", 1, "§1"), "导出文件生成后保留 7 天。")
+    evidence = a["admit_evidence"](db, scope, citation)
+    assert evidence.scope == scope and evidence.tag == "untrusted_data" and evidence.citation == citation
+    assert a["admit_evidence"](db, scope, replace(citation, key=("EXPORT-POLICY", 2, "§1"))) is None
+    staged = a["Intent"](scope, "preview_label", "sample-01", 2, "保留期样张")
+    approval = a["MockApproval"](staged)
+    log = a["PreviewLog"]()
+    for proposed, decision, status, expected_entries in (
+        (staged, None, "approval_required", []),
+        (staged, approval, "mock_approved_no_execution", [staged]),
+        (replace(staged, label="另一张样签"), approval, "intent_changed", [staged]),
+    ):
+        assert a["review_preview"](scope, staged, proposed, decision, log) == status
+        assert log.entries == expected_entries
+print("L67 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：值班样张的印刷标记</h2>
+  <p>不用导出政策。新窗口内把同步公告升到第 2 版；在原文末尾保留无指令标记 <code>〔样张-蓝〕</code>，比较当前同租户用户、同名异租户、旧版引文。之后用当前公告做预览审核，交换审核人的租户或批准的动作，并保留一条匹配正控。</p>
+  <div class="card"><h3>独立起点：替换当前公告</h3><pre><code class="language-python">from dataclasses import replace
+import runpy
+
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+scope = a["Scope"]("support", "lin")
+other = a["Scope"]("operations", "lin")
+with lab["open_demo"]() as db:
+    old = db.source("support", "lin", ("SYNC-POLICY", 1, "§1"))
+    sample = replace(old, version=2, text=old.text + "〔样张-蓝〕")
+    db.replace_document("support", sample.doc_id, 2, (sample,))
+    citation = a["cite"](scope, sample)
+    staged = a["Intent"](scope, "preview_label", "shift-02", 4, "值班样张")
+    approval = a["MockApproval"](staged)
+    log = a["PreviewLog"]()
+    # TODO：对照当前、跨租户和旧版，再用 review_layout 做另一动作的审核对照。
+</code></pre><p><strong>通过标准：</strong>正确引文保留标记且仍是数据；跨租户、旧版引文不可用。另验同名异租户审核拒绝、其他动作的批准不能用于标签预览、非白名单动作持有匹配批准也不放行。只有当前标签预览的匹配批准新增一条日志；无业务执行。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l67-transfer-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+scope = a["Scope"]("support", "lin")
+other = a["Scope"]("operations", "lin")
+with lab["open_demo"]() as db:
+    old = db.source("support", "lin", ("SYNC-POLICY", 1, "§1"))
+    sample = replace(old, version=2, text=old.text + "〔样张-蓝〕")
+    db.replace_document("support", sample.doc_id, 2, (sample,))
+    citation = a["cite"](scope, sample)
+    evidence = a["admit_evidence"](db, scope, citation)
+    assert evidence.scope == scope and evidence.tag == "untrusted_data"
+    assert evidence.citation.quote == "同步任务每天 02:00 运行。〔样张-蓝〕"
+    assert a["admit_evidence"](db, other, citation) is None
+    assert a["admit_evidence"](db, scope, a["cite"](scope, old)) is None
+    staged = a["Intent"](scope, "preview_label", "shift-02", 4, "值班样张")
+    approval = a["MockApproval"](staged)
+    layout = replace(staged, action="review_layout")
+    other_action = a["MockApproval"](layout)
+    log = a["PreviewLog"]()
+    for actor, intent, decision, status, expected_entries in (
+        (other, staged, approval, "not_allowed", []),
+        (scope, staged, other_action, "approval_required", []),
+        (scope, layout, other_action, "not_allowed", []),
+        (scope, staged, approval, "mock_approved_no_execution", [staged]),
+    ):
+        assert a["review_preview"](actor, intent, intent, decision, log) == status
+        assert log.entries == expected_entries
+print("L67 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L67 TRANSFER PASSED</code>。标记丢失，查展示与引用是否改变了原文；旧版仍能核验，查是否回到当前资料库；只按用户名放行，查主体是否缺租户。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2><p>先说判定依据，再说最小验收用例。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>两篇正式公告都能逐字核验，但保留期不同，该以哪篇作答？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>逐字核验仅证明各自写了什么。用发布负责人、生效时间和适用对象判断；不能确定时展示分歧或转人工，不取排序第一的值当事实。</p><p><strong>追问：</strong>有新的发布日期，但适用地区不同呢？</p><p><strong>答题要点：</strong>时效和适用范围都要匹配；新不等于对当前客户有效。用地区各一条正控和不匹配例验证。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>缓存命中后还要回查授权和出处吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>要避免把缓存的历史判定当当前判定。按租户和主体隔离缓存，用授权与资料版本判定是否过期；展示引文前核对当前精确来源。</p><p><strong>追问：</strong>用户没变，但文档版本已换，旧段落还能展示吗？</p><p><strong>答题要点：</strong>按本课当前版本契约不能。重新查询；若产品提供历史档案，应另订历史读取与标注策略。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>工单预览已获批，编辑只改显示标签、没改版号，还能复用批准吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不复用。批准绑定主体、动作、对象、版号和内容，不能只比版号。可用同版本改标签与完全匹配做对照，读取证据不受影响。</p><p><strong>追问：</strong>用户界面显示「模拟已批准」，能把它当业务回执吗？</p><p><strong>答题要点：</strong>不能。审核和真实执行是两个阶段；本课没有执行器，也不测真回执。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>上线前看到所有样张标记都正确，是否能据此声明系统安全？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>只能证明合成正文保留了数据身份，并且本地审核有预期结果。上线需独立验收生产身份绑定、效果入口的权限检查、权限变更与失败审计。</p><p><strong>追问：</strong>只读助手还需要保留动作接口供以后拓展吗？</p><p><strong>答题要点：</strong>没有业务需要时不暴露；未来加动作时增加独立权限与审批，不让提示词或来源标签代替。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L67">L67 疑难解答 →</a><div class="qa-related"><a href="0076-L66-rag-cache-invalidation.html">上一课 L66 · 缓存失效</a> · <a href="0078-L68-rag-retrieval-evals.html">下一课 L68 · 检索评测</a> · <a href="0080-phase7-data-rag-outline.html">阶段 7 纲要</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>按当前主体精确核验原文；事实是否可信还要看来源与适用范围；业务批准独立于引用和内容。</p><ul><li><a href="https://csrc.nist.gov/pubs/sp/800/207/final">NIST SP 800-207 · Zero Trust Architecture</a>：资源访问不依赖隐含信任，认证和授权是独立判断。</li><li><a href="https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final">NIST SP 800-53 Rev. 5</a>：查阅 AC-3（访问强制）与 AC-6（最小权限）；不是本地模拟的合规背书。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

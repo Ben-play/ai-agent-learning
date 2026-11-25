@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L62 · 先做授权词法检索</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据基础与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>先做授权词法检索</h1><p class="subtitle">先数哪些片段可读，再数哪些词命中</p>
+</div></div>
+<div class="section">
+  <h2>为什么先做词法基线？</h2>
+  <p>从 <a href="0071-L61-rag-citation-chunks.html">L61 的可定位分块</a>接过一批证据：文档编号、版本和段落定位已经固定，但有引用键不等于有阅读权限。两位客服问的是同一句「导出文件保留多久，过期怎么办？」一位可以看到保留条款和操作指引，另一位只能看到保留条款。这不是两个检索器表现不一致，而是两份合法视图本来就不同。本课先用能手算的词法基线分开检验可见性、命中、名次和来源。这里没有生成模型；练习交付的是可引用原文，不能把有结果自动记作答对整道题。</p>
+  <h3>学习目标</h3>
+  <ul><li>沿着授权池、令牌交集、稳定排序与引用回查解释一次检索。</li><li>区分授权排除、词法零命中、预算截掉和证据不支持问题，并为精确匹配写反例。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 权限决定候选，词项只决定命中</h2>
+  <p>从一次可信上下文开始：宿主已经认定请求属于 <code>support</code> 租户、操作者是 <code>mei</code>。实验把这两个标识作为参数注入，既不从问题里提取用户名，也不把夹具当成身份认证。<code>db.authorized(tenant, user)</code> 以同一租户的文档授权记录选择当前片段，得到这次调用唯一的排序输入。<code>db.search</code> 先取得这份授权池，再交给纯函数 <code>rank</code>；后者没有租户与用户字段，自己无法补查许可。写独立的候选排序实验时也要把授权池作为参数，不要把全库片段交给它再删几行。</p>
+  <p>如果另一租户也使用 <code>EXPORT-POLICY v1 §1</code>，同一个三元组可能指向另一段正文。检索先确定租户，引用回查还要带同一租户、当前用户和完整键。对找不到或不可读的键，实验的 <code>db.source</code> 都返回 <code>None</code>；业务上不把这两种状态的内部差异回显为证据。先排全库前两名再过滤，即使最终列表里只剩合法片段，也可能把原本排名靠前的授权条款挤掉；在同一授权池里排前两名与这条错误流程不等价。</p>
+  <p>通过授权门后才开始匹配。夹具预先给每段写好词项，查询也显式提交 <code>Query(terms)</code>，不是用空格拆中文，不暗中做同义改写。评分等于两个词项集合的交集大小：顺序无关，重复写两次「导出」不加倍，得零分就没有命中。评分高者在前，同分比较 <code>chunk.key</code>，最后切到 <code>k</code> 条。<code>k</code> 是上限，不是承诺填满；<code>k=0</code> 返回空。词也可能来自人工标签而非正文原样，如「有效期」可以命中写作「保留」的条款；最终引用仍必须取正文，不能把标签说成原文。</p>
+</div>
+<div class="section">
+  <h2>2. 同问同租户，逐行验算</h2>
+  <p>为这道双问提供词项 <code>("导出", "保留", "过期", "有效期")</code>。下表从维护者已知的合成清单推演；不可读行只写「不进入」，不计算、不展示该行的分数，更不能把这张教学对照表当作用户的搜索响应。</p>
+  <table><caption>候选选择在评分前，<code>k=2</code> 在评分后</caption><thead><tr><th scope="col">support 租户片段</th><th scope="col">mei 的轨迹</th><th scope="col">lin 的轨迹</th></tr></thead><tbody>
+    <tr><th scope="row"><code>EXPORT-POLICY v1 §1</code></th><td>导出、保留、有效期 → 3，第 1</td><td>同样 3，第 1</td></tr>
+    <tr><th scope="row"><code>EXPORT-OPS v1 §2</code></th><td>导出、过期 → 2，第 2</td><td>未获许可，不进入</td></tr>
+    <tr><th scope="row"><code>SYNC-POLICY v1 §1</code></th><td>已授权，交集为空 → 不返回</td><td>已授权，交集为空 → 不返回</td></tr>
+    <tr><th scope="row"><code>EXPORT-INTERNAL v1 §1</code></th><td>未获许可，不进入</td><td>未获许可，不进入</td></tr>
+  </tbody></table>
+  <p><code>mei</code> 最终可以回查两段原文：「导出文件生成后保留 7 天。」和「导出文件过期后，需重新发起导出。」<code>lin</code> 则只拿到第一段。假如把 <code>mei</code> 的 <code>k</code> 改成 1，输出也只有第一段，但这次操作指引在已授权命中列表的第二位，是预算截掉而非没权限。如果一份片段已授权却使用「留存、期限」这样的新词项，就可能连保留条款也匹配不到。三种缺证据的外观相似，分别需要解释权限边界、名次预算或词项覆盖，不应都用放宽权限、调高 <code>k</code> 或更换模型来处理。</p>
+  <p>拿到前两名也不保证问题的两部分都覆盖。例如两段如果都重复「保留七天」，它们可以是不同引用键、占两个位置，但仍无法支持过期后的操作。先决定每个子问题需要哪条事实，再核对正文有没有说到，最后用 <code>source</code> 回查。产品若允许分项作答，可以只回答有证据的部分并标明缺项；若问答合同要求覆盖全部要点，则应整题暂不作答。无论哪种合同，都不能把「搜不到」翻译为「没有这条规定」，也不能借生成器补出缺失步骤。合成示例可检查回答用的键和原句，在真实数据上还要单独检查改版后引用是否仍可读。</p>
+</div>
+<div class="section">
+  <h2>3. 什么时候换索引，不换契约？</h2>
+  <p>本地演示只扫描小授权池并计算集合交集，不是 SQL <code>LIKE</code> 也不是 BM25。语料增多后，可以用倒排索引从词项找到候选出现位置，而不必对每段正文重新分词。SQLite FTS5 或 PostgreSQL 全文搜索的分析器、查询构造与排序都有自己的合同；例如 FTS5 的 <code>MATCH</code> 可做短语或前缀，默认 <code>bm25()</code> 分数低的靠前。换实现时，先按语言与字段验证分词：编号、时间与全角半角标点要不要归一，应由业务定义并固定测试。别把这些后端的默认匹配规则混同于本课的「有一个共同词项就命中」，也不要假定默认分析器会按你需要的方式切中文。先比较同一授权语料中哪些键进候选，再看排名；索引、打分和授权是三件事。</p>
+  <div class="best-practice-point" id="bp-l62">
+    <h3>决策卡：先把可见性和匹配作成两份记录</h3>
+    <p class="bp-scenario"><strong>适用：</strong>政策词、状态码、时刻等字面线索有价值，且需要一个可手算的回归基线。<strong>边界：</strong>真实同义改写很多时，词法可能漏掉授权证据，先收集漏题再考虑下一课。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：只要返回行合法，就算检索正确</span><p>先从全库截取前两名，再按用户过滤；合法但靠后的证据可能永远到不了调用者。</p></div><div class="bp-right"><span class="bp-compare-label">对照：授权池 → 候选交集 → top-k</span><p>从同租户两人的授权键开始对照，再记录正分键、未截断的名次与最终来源。允许结果不足 <code>k</code>。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>词项可解释、回归便宜，但新短语和分词差异需要维护。测试可记合成键；真实用户结果及日志都不应带出不可读正文。</p>
+    <ol class="bp-steps"><li>先独立写出两位用户的授权键，再跑<a href="#l62-worked-check">同问自检</a>核对分数、名次和原文。</li><li>最后跑<a href="#l62-transfer-check">完整时刻对照</a>，确认词项归一没有把前缀变成合法命中。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>授权键不对先查授权选择；授权正确、分数不对再查词项；分数对而条目缺失，查截断位置。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> <code>mei</code> 的指引在 <code>k=2</code> 可见，改为 <code>k=1</code> 后消失。授权池没变，先检查什么？</div><div class="quiz-options"><button data-answer="wrong">文档是否已撤权</button><button data-answer="correct">未截断名次与预算</button><button data-answer="wrong">查询是否需要同义改写</button><button data-answer="wrong">引用版本是否应回退</button></div><div class="quiz-explanation">匹配与授权都已在对照中成立；这里只有截断位置变了。</div></div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 查询只含「留存、期限」，授权的保留条款无共同词项。本基线该返回什么？</div><div class="quiz-options"><button data-answer="wrong">改写词项后继续查</button><button data-answer="wrong">用零分片段补满</button><button data-answer="wrong">报告文档已删除</button><button data-answer="correct">返回空命中列表</button></div><div class="quiz-explanation">精确交集为零；这不是对语料存在性或文档权限的判断。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>4. 跟做：用两个授权池验证同一句问题</h2>
+  <p>把展开的 Python 块分别保存为文件，从<strong>可信课程仓库根目录</strong>用 <code>python -I -X utf8 文件名.py</code> 运行，不加 <code>-O</code>。<a href="../code/phase7-data-rag/rag-lab/README.md">项目说明</a>里的数据库是内存合成数据，不调用模型或服务。</p>
+  <div class="card" id="guided-l62"><h3>起点：只填两份名单</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+q = lab["Query"](("导出", "保留", "过期", "有效期"))
+with lab["open_demo"]() as db:
+    hits = db.search("support", "mei", q, k=2)
+    # TODO：对照 mei 和 lin 的授权键与命中键；再对 mei 仅改 k。</code></pre><p><strong>通过标准：</strong>两人第 1 条相同但只有 mei 读得第 2 条；同步已授权却不命中；内部文档不在两人候选池；缩小 <code>k</code> 不改变来源可读性。引用回查要核对原文而不只是标题。</p></div>
+  <details><summary>展开跟做参考与契约断言</summary><pre><code class="language-python" id="l62-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+query = lab["Query"](("导出", "保留", "过期", "有效期"))
+policy = ("EXPORT-POLICY", 1, "§1")
+ops = ("EXPORT-OPS", 1, "§2")
+sync = ("SYNC-POLICY", 1, "§1")
+internal = ("EXPORT-INTERNAL", 1, "§1")
+
+with lab["open_demo"]() as db:
+    for user, pool, expected in (
+        ("mei", {policy, ops, sync}, ((policy, 3), (ops, 2))),
+        ("lin", {policy, sync}, ((policy, 3),)),
+    ):
+        authorized = db.authorized("support", user)
+        assert {chunk.key for chunk in authorized} == pool
+        hits = db.search("support", user, query, k=2)
+        assert tuple((hit.chunk.key, hit.score) for hit in hits) == expected
+        assert hits == lab["rank"](authorized, query, k=2)
+        assert all(db.source("support", user, hit.chunk.key) == hit.chunk for hit in hits)
+        assert hits[0].chunk.text == "导出文件生成后保留 7 天。"
+        assert db.source("support", user, internal) is None
+    assert db.source("support", "lin", ops) is None
+    assert db.source("support", "mei", ops).text == "导出文件过期后，需重新发起导出。"
+    assert tuple(h.chunk.key for h in db.search("support", "mei", query, k=1)) == (policy,)
+print("L62 ACCEPTED")</code></pre></details>
+  <p>通过时只打印 <code>L62 ACCEPTED</code>。若授权键就不一致，先查租户和授权；授权一致但分数不符，再查词项处理。</p>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：时刻不是任意前缀</h2>
+  <p>新的需求是为 <code>support/lin</code> 按<strong>完整时刻</strong>找同步政策，输入端接受合成样例里的半角 <code>02:00</code> 或全角冒号 <code>02：00</code>。只归一冒号，不把输入补成别的时刻，不额外加入「同步」来掩盖匹配错误。把不完整的 <code>02:0</code> 当成负控：它是现有词项的前缀，但不是合同里的完整时刻。</p>
+  <div class="card"><h3>独立起点</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+
+def clock_terms(raw):
+    # TODO：只归一冒号，其他字符原样保留；返回一个词项的元组。
+    raise NotImplementedError
+
+with lab["open_demo"]() as db:
+    for raw in ("02:00", "02：00", "02:0", "03：00"):
+        hits = db.search("support", "lin", lab["Query"](clock_terms(raw)), k=2)
+        print(raw, [hit.chunk.key for hit in hits])</code></pre><p><strong>通过标准：</strong>前两个输入命中同步引用；后两个为空。<code>03：00</code> 必须归一成 <code>03:00</code>，不能硬改成已有的 <code>02:00</code>。把自己写的 <code>clock_terms</code> 替换进下方参考块，保留原断言验证重复词项和前缀。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检</summary><pre><code class="language-python" id="l62-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+Query = lab["Query"]
+key = ("SYNC-POLICY", 1, "§1")
+
+def clock_terms(raw):
+    return (raw.replace("：", ":"),)
+
+with lab["open_demo"]() as db:
+    for raw in ("02:00", "02：00"):
+        terms = clock_terms(raw)
+        assert terms == ("02:00",)
+        (hit,) = db.search("support", "lin", Query(terms), k=2)
+        assert (hit.chunk.key, hit.score) == (key, 1.0)
+        assert db.source("support", "lin", key).text == "同步任务每天 02:00 运行。"
+        assert db.search("support", "lin", Query(terms * 2), k=2) == (hit,)
+    new_time = clock_terms("03：00")
+    assert new_time == ("03:00",), "归一冒号不能改动时刻"
+    assert db.search("support", "lin", Query(new_time), k=2) == ()
+    (prefix,) = clock_terms("02:0")
+    assert prefix == "02:0"
+    authorized = db.authorized("support", "lin")
+    wrong_prefix_keys = tuple(c.key for c in authorized if any(t.startswith(prefix) for t in c.terms))
+    assert wrong_prefix_keys == (key,)  # 前缀实现会把不完整时刻误当成可用输入。
+    assert db.search("support", "lin", Query((prefix,)), k=2) == ()
+print("L62 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应只打印 <code>L62 TRANSFER PASSED</code>。若末条断言失败，核对是误做前缀匹配、错误补全，还是额外塞进了别的检索词。本练习的归一规则不等于通用时刻解析。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>先说明结论、边界和判定证据，再展开追问。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>两位同租户客服得到两组结果，你怎么证明不是检索不稳定？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>冻结租户、词项、语料版本和 <code>k</code>，只变用户，先断言授权键，再逐键比交集分、名次和来源。共享条款应一致；仅一人被授权的指引只进入这个人的排序。</p><p><strong>追问：</strong>另一个租户复用同一引用三元组呢？</p><p><strong>答题要点：</strong>三元组是租户内定位；回查与缓存归属不能省略租户与当前授权范围。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>上线后短语「留存期限」没有结果，是索引失效吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先确认条款在授权池，再检查实际词项与交集。换成已知命中「保留」作正控；若只是改写词未覆盖，可先评估受控别名，而非先重建索引。</p><p><strong>追问：</strong>能为所有未匹配词自动放宽成前缀吗？</p><p><strong>答题要点：</strong>不能套用到需要字面精度的字段，特别是编号、时刻；用完整值正控和不完整值负控约束边界。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>双问的两条结果都讲保留期，可否认为证据够了？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能用结果条数代替覆盖。分别标记「多久」和「过期后怎么做」需要的正文；重复证据只覆盖前一项，无动作证据则明示缺失。</p><p><strong>追问：</strong>把 <code>k</code> 加到 10 就行吗？</p><p><strong>答题要点：</strong>只有正确片段在授权正分列表但被截掉时才可能有用；若是授权排除或词项漏配，扩大输出上限不能解决。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>把扫描换成 FTS5，为什么旧排序断言会失败？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>比较分析器、<code>MATCH</code> 语义与排序方向。基线是重复不加分、任一共同词就计入；FTS 的短语、布尔条件与 BM25 另有定义。先验权限不变，再重测匹配与排名。</p><p><strong>追问：</strong>哪些断言不应因为换索引而放松？</p><p><strong>答题要点：</strong>未经许可的内容不能进入业务候选，结果必须能按当前权限和完整版本键回查；空证据不能变成无来源的答案。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L62">L62 疑难解答 →</a><div class="qa-related"><a href="0071-L61-rag-citation-chunks.html">上一课 L61 · 可定位分块</a> · <a href="0073-L63-rag-vector-retrieval.html">下一课 L63 · 向量检索</a> · <a href="0080-phase7-data-rag-outline.html">阶段 7 纲要</a></div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>授权决定「能查谁」，词法决定「谁命中」，截断决定「发几条」，正文决定「能答什么」。复盘时分别写出四个判断，避免用搜索结果替代证据审核。</p><ul><li><a href="https://www.sqlite.org/fts5.html#full_text_query_syntax">SQLite · FTS5 全文查询语法</a>及<a href="https://www.sqlite.org/fts5.html#the_bm25_function">官方 BM25 实现说明</a>。</li><li><a href="https://www.postgresql.org/docs/current/textsearch-controls.html">PostgreSQL · 文本查询构造、解析和排序</a>。</li></ul></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

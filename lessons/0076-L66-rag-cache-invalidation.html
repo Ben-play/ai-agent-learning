@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L66 · 热缓存中的撤权、改版与删除</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>热缓存中的撤权、改版与删除</h1><p class="subtitle">问句没变，不代表上一次的证据和回答仍然有效</p>
+</div></div>
+<div class="section">
+  <h2>为什么这课重要？</h2>
+  <p><code>support/mei</code> 问「导出文件保留多久？」第一次答七天，下一次命中缓存也答七天。此后可能发生三件互不等价的事：梅失去读取资格、七天改为十四天、这份政策不再存在。只用冷启动请求测这三类变更，容易漏掉旧答案从另一层缓存直接返回的问题。清掉引用标签也没用：正文中那句旧规则已经是依赖源文档的衍生内容。</p>
+  <h3>学习目标</h3>
+  <ul><li>把源记录、检索缓存和答案缓存的依赖列清楚，先证明两层都热再改变一个条件。</li><li>用旧键、上下文、引用、回答与未受影响的正控证明失效，不把全部拒答当安全通过。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 先分清缓存放的是键，还是已经写好的话</h2>
+  <p>沿用 SQLite 夹具：<code>support/mei</code> 和 <code>support/lin</code> 都可读 <code>EXPORT-POLICY v1 §1</code>，正文是「导出文件生成后保留 7 天。」；两人也能读 <code>SYNC-POLICY v1 §1</code>。只有 <code>mei</code> 获准读导出过期处理。另一个租户有同名、同版本和同定位的 <code>EXPORT-POLICY</code>，却写着三十天。这说明 <code>(doc_id, version, locator)</code> 只标识租户内片段，不能自行证明来源可读或跨租户等价。姓名也只是可信宿主注入的测试作用域，不是认证凭据。</p>
+  <table>
+    <caption>同一请求在两层缓存中的依赖</caption>
+    <thead><tr><th scope="col">数据位置</th><th scope="col">值的形状</th><th scope="col">使用前核对</th></tr></thead>
+    <tbody>
+      <tr><td>当前 SQLite</td><td>文档活动版本、片段（原文、词项、固定向量）、逐人授予</td><td><code>source(tenant, user, key)</code> 必须找到授权的精确当前键；旧键不重定向到新版。</td></tr>
+      <tr><td>检索缓存</td><td>预算内选中片段的有序键元组，包括空元组</td><td>按键查当前原文并重绘完整证据包；任一依赖不可读，就重跑检索和打包。</td></tr>
+      <tr><td>答案缓存</td><td><code>Answer(text, context, citations)</code> 与原证据包里的全部依赖</td><td>直接返回前也读回依赖并比较内容；答案正文及引用必须对应同一当前片段，不能只换标签。</td></tr>
+    </tbody>
+  </table>
+  <p>检索键是 <code>(epoch, tenant, user, Query, Plan)</code>；计划固定检索模式、候选数、重排线索和证据预算。答案键还加上<strong>本题所需词项</strong>。这个确定性替身只摘录入包后第一条含有全部所需词项的片段；默认用查询词项；粗粒度或纯向量查询可以显式传 <code>required_terms</code>，没有所需词项也拒答。这是手工标签规则，不是语义蕴含或真实问答质量评测。若无合格片段，返回「没有可用证据，无法回答。」及空引用、空回答上下文，即使检索包并非空。</p>
+  <p>例如查询词项 <code>("导出", "过期")</code>：林有权限读保留期，且「导出」使该片段入包，但它不支持过期后的动作，答案应拒答；梅能读到过期处理，应摘录动作并引用 <code>EXPORT-OPS v1 §2</code>。检索包与回答引用可不同；答案缓存仍登记检查过的全部入包片段。真实系统还要绑定模型、提示、模板等生成合同的版本。</p>
+</div>
+<div class="section">
+  <h2>2. 按顺序走一遍冷读、热读和变更</h2>
+  <p>对 <code>mei</code> 的保留期题执行四步：第一次 <code>retrieve</code> 做一次实际检索；第一次 <code>answer</code> 命中检索缓存并合成一次；再取证命中第二次；再提问直接命中答案一次。工作计数依次是 <code>(searches, retrieval_hits, compositions, answer_hits) = (1, 2, 1, 1)</code>。相同文字返回两遍不能证明热命中；计数证明第二层不是每次都重算。用同一个问题让 <code>lin</code> 也预热，发现隔离错时才不会被单用户测试掩盖。</p>
+  <p>每个场景重新打开同一初始库，只做一个变更。成功变更后核心把粗粒度 <code>epoch</code> 加一；缓存宿主在下一次调用观察到变化，清空两个字典，再用当前授权检索。变更后首个入口故意走 <code>answer</code>：它必须实际增加一次检索和一次合成，旧检索命中和旧答案命中都不能增长。随后调用检索入口，应只命中新建的证据包；这样可区分「两个缓存都更新了」和「只是第一次绕过一个缓存」。</p>
+  <table>
+    <caption>每个场景都从原来的七天规则和两份热缓存开始</caption>
+    <thead><tr><th scope="col">唯一变更</th><th scope="col">当前源库</th><th scope="col">mei 旧问题</th><th scope="col">lin 同一问题</th></tr></thead>
+    <tbody>
+      <tr><td>撤销 mei 的保留期文档授权</td><td>v1 仍在，只有 lin 仍能读这两人原先共见的 v1</td><td>无证据；空上下文、空引用、安全文字</td><td>仍是七天，引 v1</td></tr>
+      <tr><td>用 v2 替换活动保留期片段</td><td>两人的授权不变，v1 精确查找失败，两人读 v2</td><td>十四天，引 v2，不保留七天正文</td><td>同样十四天，引 v2</td></tr>
+      <tr><td>删除保留期文档</td><td>活动文档及其授予、片段行级联删除</td><td>无证据；不得返回旧文本</td><td>无证据；不得返回旧文本</td></tr>
+    </tbody>
+  </table>
+  <p>这组词法查询使用「保留、有效期」，与仍存在的过期处理片段没有词项重合。每个变更后再用 <code>mei</code> 查未预热的「同步」，应得到原同步政策和 02:00：旧答消失但同步也拒答，不算通过。阶段检查点再改用混合检索和重排；这时保留期仍可能入包，但不能取代过期处理来作答。</p>
+</div>
+<div class="section">
+  <h2>3. 区分不可再返回、主动清理和底层擦除</h2>
+  <p>粗代际与当前源复查在本进程的顺序调用里互相补充。清空字典保守但会冲掉其他人及其他租户可以继续使用的条目；依赖复查也不是零成本。相反，只在读取时检查旧键仍存在，会漏掉已有片段没变但新规则应当排到前面的情况（尤其是无证据缓存没有键可查）。代际改变使这种查询也重新排序。TTL 可以限制闲置内存或允许陈旧数据的停留时间，但不能给撤权提供即时边界。这里没有 TTL、跨进程消息、并发屏障或崩溃重建，变更到下次请求之间旧对象仍可能驻留内存。</p>
+  <p><strong>本实验有活动检索数据，没有独立的外部索引。</strong>正文、手工词项与固定向量同存于活动 <code>chunks</code> 行，授权后直接读这些行评分；重排顺序是临时结果，入包键和衍生答案分别缓存在内存。检查点分别验证活动授权读／排名、重建证据包和回答；单元测试另查删除时活动文档、片段和授予行的级联，不等于测试了外部索引同步和清理。</p>
+  <p>活动行删除也不能证明底层字节、备份、日志、副本或已发给用户的回答被擦除。线上需要列清各索引、派生摘要、上下文快照、答案与审计记录的持有者和保留期，再单独验证多进程变更传播、索引追赶及恢复后的删除策略。不能从这里的本地顺序测试推出即时一致或物理擦除。</p>
+  <div class="best-practice-point" id="bp-l66">
+    <h3>决策卡：先切断读路径，再验证变更是否准确</h3>
+    <p class="bp-scenario"><strong>适用：</strong>回答从可撤权、可改版的证据生成，又希望重用结果。<strong>不适用：</strong>缓存命中无法绑定可信作用域和版本，或业务要求更强一致性却无法证明；此时优先不用该结果缓存。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：清检索缓存就够了</span><p>答案入口绕过检索，仍带出七天、旧上下文及旧引用；到期再清也不能撤回已经返回的内容。</p></div><div class="bp-right"><span class="bp-compare-label">对照：两层分开预热，变更后各看入口</span><p>同时观察源键、证据包、正文与命中计数；其他用户或未变文档仍可正常回答。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>低流量先用粗代际和权威读回，把正确性做实；失效放大到影响负载时，再评估逐文档、逐授权的依赖索引及事件可靠性，不用命中率掩盖错误。</p>
+    <ol class="bp-steps"><li>记录变更前真命中，独立做撤权、改版和删除，而不是在同一个库里把三次结果混成一条。</li><li>用旧请求证明不能回放，用其他用户和新请求证明没有误伤。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>旧源已查不出但旧文字仍返回，先查答案入口；两层都冷但取出旧证据，再查实际检索依赖的索引或副本。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span>仅撤销 mei 对保留期文档的授权。两人各自的检索和答案已预热。在本课的粗代际策略下，两人各自下次问保留期会怎样？</div><div class="quiz-options"><button data-answer="wrong">两人重算证据，mei 仍复用旧正文</button><button data-answer="wrong">两人重算证据，两人都拒答</button><button data-answer="correct">两人重算证据，仅 lin 得到保留期</button><button data-answer="wrong">只有 mei 重算证据，lin 命中旧缓存</button></div><div class="quiz-explanation">粗代际使两人的缓存重建，但不改变 lin 的授权；mei 的旧正文和引用都不能沿用。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>4. 跟做：先证明热命中，再逐个执行变更</h2>
+  <div class="card" id="guided-l66"><h3>起点：预热两个缓存</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+q = lab["Query"](("保留", "有效期"))
+plan = lab["Plan"](top_k=1, max_chars=64, max_bytes=120)
+new_text = "导出文件生成后保留 14 天。"
+with lab["open_demo"]() as db:
+    caches = lab["EvidenceCaches"](db)
+    for _ in range(2):
+        caches.retrieve("support", "mei", q, plan)
+        caches.answer("support", "mei", q, plan)
+    # TODO：核对命中计数，再预热 lin；撤权后首先请求答案。</code></pre><p><strong>通过标准：</strong>四次调用得到一次查询、两次检索缓存命中、一次合成和一次答案命中。改版用上面的 v2 正文，删除用初始 v1，三次分别起库。每次只改一处，再核对两个用户和同步题。</p></div>
+  <p>在可信课程仓库根把代码块另存为脚本，用 <code>python -I -X utf8 文件名.py</code> 运行（Python 3.11+，不加 <code>-O</code>）。<a href="../code/phase7-data-rag/rag-lab/README.md">项目说明</a>记录共享 SQLite 读取合同。程序只运行固定本地路径，不使用真实账户或外部服务。</p>
+  <details><summary>展开参考：每次只改撤权、改版或删除之一</summary><pre><code class="language-python" id="l66-worked-check">from dataclasses import astuple, replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+query = lab["Query"](("保留", "有效期"))
+plan = lab["Plan"](top_k=1, max_chars=64, max_bytes=120)
+sync_query = lab["Query"](("同步",))
+v1 = ("EXPORT-POLICY", 1, "§1")
+v2 = ("EXPORT-POLICY", 2, "§1")
+sync = ("SYNC-POLICY", 1, "§1")
+old_text = "导出文件生成后保留 7 天。"
+new_text = "导出文件生成后保留 14 天。"
+no_evidence = "没有可用证据，无法回答。"
+users = ("mei", "lin")
+
+
+def check_answer(answer, key, text):
+    assert answer.text == text
+    assert answer.citations == ((key,) if key else ())
+    if key:
+        doc, version, locator = key
+        assert f"[{doc} v{version} {locator}]" in answer.context and text in answer.context
+    else:
+        assert answer.context == ""
+
+
+for event in ("revoke", "revise", "delete"):
+    with lab["open_demo"]() as db:
+        caches = lab["EvidenceCaches"](db)
+        for user in users:
+            first = caches.retrieve("support", user, query, plan)
+            before = caches.answer("support", user, query, plan)
+            check_answer(before, v1, old_text)
+            assert first.context == before.context and first.citations == (v1,)
+            assert caches.retrieve("support", user, query, plan) == first
+            assert caches.answer("support", user, query, plan) == before
+        assert astuple(caches.stats) == (2, 4, 2, 2)
+        epoch = db.epoch
+
+        if event == "revoke":
+            db.revoke("support", "mei", v1[0])
+            expected = ((None, no_evidence), (v1, old_text))
+        elif event == "revise":
+            old = db.source("support", "mei", v1)
+            db.replace_document("support", v1[0], 2, (replace(old, version=2, text=new_text),))
+            expected = ((v2, new_text), (v2, new_text))
+        else:
+            db.delete_document("support", v1[0])
+            expected = ((None, no_evidence), (None, no_evidence))
+        assert db.epoch == epoch + 1
+
+        for user, (key, text) in zip(users, expected, strict=True):
+            old = db.source("support", user, v1)
+            assert (old.text if old else None) == (old_text if key == v1 else None)
+            if key is not None:
+                assert db.source("support", user, key).text == text
+            assert tuple(h.chunk.key for h in db.search("support", user, query)) == ((key,) if key else ())
+            searches, retrieval_hits, compositions, answer_hits = astuple(caches.stats)
+            fresh = caches.answer("support", user, query, plan)  # Test the direct answer path first.
+            assert astuple(caches.stats) == (searches + 1, retrieval_hits, compositions + 1, answer_hits)
+            check_answer(fresh, key, text)
+            if key != v1:
+                assert old_text not in fresh.text and old_text not in fresh.context
+            rebuilt = caches.retrieve("support", user, query, plan)
+            assert (rebuilt.context, rebuilt.citations) == (fresh.context, fresh.citations)
+            assert caches.answer("support", user, query, plan) == fresh
+            assert astuple(caches.stats) == (searches + 1, retrieval_hits + 1, compositions + 1, answer_hits + 1)
+
+        new_request = caches.answer("support", "mei", sync_query)
+        check_answer(new_request, sync, "同步任务每天 02:00 运行。")
+        assert astuple(caches.stats) == (5, 6, 5, 4)
+print("L66 ACCEPTED")</code></pre></details>
+  <p>通过后只输出 <code>L66 ACCEPTED</code>。三条场景都从空缓存出发，不拿先改版再删除的结果代替独立删除验收。</p>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：同名操作者与同键文档跨租户冲突</h2>
+  <p><strong>独立任务：</strong><code>operations/mei</code> 的导出政策原为三十天，<code>support/mei</code> 的同键文档仍是七天。用同一查询和默认计划（只装 1 条、最多 64 字符 / 120 UTF-8 字节）分别预热，两个答案必须不同。只发布运维租户的修订，把保留期改为六十天且定位改为 §4；若读取仍按文档 ID 或旧定位接续，就会引到错文。对照支持租户仍可读旧键；没有运维权限的新请求只得到安全输出。</p>
+  <div class="card"><h3>独立起点：相同 ID，不同原文</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+query = lab["Query"](("导出", "保留"))
+key = ("EXPORT-POLICY", 1, "§1")
+new_ops = "运维导出文件保留 60 天。"  # v2 §4
+with lab["open_demo"]() as db:
+    support = db.source("support", "mei", key)
+    operations = db.source("operations", "mei", key)
+    # TODO：用同一查询和默认计划分别预热，只修订 operations，再核对旧键、正文和引文。</code></pre><p><strong>通过标准：</strong>确认同键但不同内容；旧运维键失效，支持租户还能读七天。运维新片段应可经当前授权定位读回；<code>operations/lin</code> 不继承任何热答案。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检</summary><pre><code class="language-python" id="l66-transfer-check">from dataclasses import astuple, replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+query = lab["Query"](("导出", "保留"))
+key = ("EXPORT-POLICY", 1, "§1")
+old_ops = "运维导出文件保留 30 天。"
+support_text = "导出文件生成后保留 7 天。"
+new_ops = "运维导出文件保留 60 天。"
+
+with lab["open_demo"]() as db:
+    caches = lab["EvidenceCaches"](db)
+    for tenant, text in (("support", support_text), ("operations", old_ops)):
+        evidence = caches.retrieve(tenant, "mei", query)
+        answer = caches.answer(tenant, "mei", query)
+        assert (answer.text, answer.citations, answer.context) == (text, (key,), evidence.context)
+        assert caches.retrieve(tenant, "mei", query) == evidence
+        assert caches.answer(tenant, "mei", query) == answer
+    assert astuple(caches.stats) == (2, 4, 2, 2)
+
+    old = db.source("operations", "mei", key)
+    new = replace(old, version=2, locator="§4", text=new_ops)
+    db.replace_document("operations", key[0], 2, (new,))
+    assert db.source("operations", "mei", key) is None
+    assert db.source("operations", "mei", new.key) == new
+    assert db.source("support", "mei", key).text == support_text
+    assert db.source("support", "mei", new.key) is None
+    rebuilt = caches.answer("operations", "mei", query)
+    assert astuple(caches.stats) == (3, 4, 3, 2)
+    assert (rebuilt.text, rebuilt.citations) == (new_ops, (new.key,))
+    assert "[EXPORT-POLICY v2 §4]" in rebuilt.context and new_ops in rebuilt.context
+    assert old_ops not in rebuilt.context and "v1 §1" not in rebuilt.context
+    assert caches.retrieve("operations", "mei", query).context == rebuilt.context
+    untouched = caches.answer("support", "mei", query)
+    assert (untouched.text, untouched.citations) == (support_text, (key,))
+    assert support_text in untouched.context and new_ops not in untouched.context
+    denied = caches.answer("operations", "lin", query)
+    assert (denied.text, denied.context, denied.citations) == ("没有可用证据，无法回答。", "", ())
+    assert caches.answer("operations", "mei", query) == rebuilt
+    assert astuple(caches.stats) == (5, 5, 5, 3)
+
+    # First cache an empty answer for lin, then verify it cannot mask mei's answer.
+    separate = lab["EvidenceCaches"](db)
+    assert separate.answer("operations", "lin", query) == denied
+    assert separate.answer("operations", "mei", query) == rebuilt
+print("L66 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>通过标准：</strong>只输出 <code>L66 TRANSFER PASSED</code>。修订前同键的两份原文不能混用，也不能把有权限的热结果交给 lin。再用新缓存反向验证：先缓存 lin 的空回答，再让 mei 读新版；空回答没有来源可复查，更不能漏绑用户。</p>
+</section>
+<section class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-retrieval-lifecycle" data-phase-practice="retrieval-lifecycle">
+  <h2>阶段检查点：重排选中的动作证据如何失效</h2>
+  <p>接上 L62–L65：「导出的文件已经过期，我现在应该怎么做？」固定粗粒度检索输入、动作词项和预算如下。比较基线与重排；撤权、改版、删除分别用初始库，先证实重排路径的两层缓存都热。变更后先发原问题走答案入口，再检查重建的证据包。</p>
+  <div class="card"><h3>起点：固定查询、预算和改版内容</h3><pre><code class="language-text">Query(("导出", "保留"), (1., 0., 0.))；重排线索与答案所需词项均为 ("过期", "重新生成")。
+混合检索取 2 条；只装 1 条，最多 80 字符 / 180 UTF-8 字节。
+v2 §2 正文：导出文件过期后，需先核对筛选条件，再重新发起导出。</code></pre><p><strong>通过标准：</strong>初始基线只装保留期，不能答动作；重排能答。改版后检索包和答案都使用 v2；撤权和删除后保留期仍入包，但答案拒答。用保留期题作正控。</p></div>
+  <details class="bp-check"><summary>展开阶段验收</summary><pre><code class="language-python" id="l66-stage-check">from dataclasses import astuple, replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+q = lab["Query"](("导出", "保留"), (1., 0., 0.))
+cues = ("过期", "重新生成")
+baseline = lab["Plan"](mode="hybrid", candidate_k=2, top_k=1, max_chars=80, max_bytes=180)
+ranked = replace(baseline, cues=cues)
+policy, ops, v2 = ("EXPORT-POLICY", 1, "§1"), ("EXPORT-OPS", 1, "§2"), ("EXPORT-OPS", 2, "§2")
+old_text = "导出文件过期后，需重新发起导出。"
+new_text = "导出文件过期后，需先核对筛选条件，再重新发起导出。"
+refusal = ("没有可用证据，无法回答。", "", ())
+
+for event in ("revoke", "revise", "delete"):
+    with lab["open_demo"]() as db:
+        c = lab["EvidenceCaches"](db)
+        scope = ("support", "mei", q)
+        assert tuple(h.chunk.key for h in db.search(*scope, mode="hybrid", k=2)) == (policy, ops)
+        assert c.retrieve(*scope, baseline).citations == (policy,)
+        assert astuple(c.answer(*scope, baseline, required_terms=cues)) == refusal
+        before = c.retrieve(*scope, ranked)
+        old = c.answer(*scope, ranked, required_terms=cues)
+        assert (old.text, old.context, old.citations) == (old_text, before.context, (ops,))
+        assert before.citations == (ops,) and old_text in before.context
+        assert c.retrieve(*scope, ranked) == before
+        assert c.answer(*scope, ranked, required_terms=cues) == old
+        assert astuple(c.stats) == (2, 3, 2, 1)
+
+        if event == "revoke":
+            db.revoke("support", "mei", ops[0])
+        elif event == "revise":
+            revised = replace(db.source("support", "mei", ops), version=2, text=new_text)
+            db.replace_document("support", ops[0], 2, (revised,))
+        else:
+            db.delete_document("support", ops[0])
+
+        fresh = c.answer(*scope, ranked, required_terms=cues)
+        assert astuple(c.stats) == (3, 3, 3, 1)
+        rebuilt = c.retrieve(*scope, ranked)
+        assert db.source("support", "mei", ops) is None
+        assert "[EXPORT-OPS v1 §2]" not in rebuilt.context and old_text not in rebuilt.context
+        keys = tuple(h.chunk.key for h in db.search(*scope, mode="hybrid", k=2))
+        if event == "revise":
+            assert keys == (policy, v2) and db.source("support", "mei", v2).text == new_text
+            expected = "证据：\n[EXPORT-OPS v2 §2] 导出过期处理：" + new_text + "\n"
+            assert (rebuilt.citations, rebuilt.context) == ((v2,), expected)
+            assert (fresh.text, fresh.context, fresh.citations) == (new_text, expected, (v2,))
+        else:
+            assert keys == (policy,) and rebuilt.citations == (policy,)
+            assert astuple(fresh) == refusal
+        assert c.answer(*scope, ranked, required_terms=cues) == fresh
+        assert astuple(c.stats) == (3, 4, 3, 2)
+        control = c.answer(*scope, baseline)  # Keep first-stage order; ask for the retention tags in q.
+        assert (control.text, control.citations) == ("导出文件生成后保留 7 天。", (policy,))
+print("P7 RETRIEVAL LIFECYCLE PASSED")</code></pre></details>
+  <p class="bp-result">独立运行只输出 <code>P7 RETRIEVAL LIFECYCLE PASSED</code>。在仓库根运行 <code>python -I -X utf8 code/phase7-data-rag/rag-lab/lifecycle/test_lifecycle.py -v</code>，可另测林的非空拒答案例与梅的正控、99 字节边界及答案键隔离。两组验证都不覆盖独立索引或语义模型。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>先给结论，再说明对照组与验证位置。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>产品报告撤权后偶尔仍显示旧答，但直接检索没有旧文。该从哪里查起？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先确认直接答案缓存是否绕过检索。让两层先真实命中，撤权后先走答案入口，检查是否实际重新检索、合成，是否同时去掉旧上下文、引用与正文。</p><p><strong>追问：</strong>保留原答案但删除引用行，有没有完成撤权？</p><p><strong>答题要点：</strong>没有。改写、摘要与缓存正文也是源依赖；没有可读证据就不能继续披露旧文。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>文档从 v1 更新到 v2，旧页定位没变，能把旧引用改个版号继续返回吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。旧答案可能仍是七天，而新版是十四天。旧键精确查找应失败；重新检索、打包和合成，核对新版键、上下文及答句。其他有权用户也应看到新版。</p><p><strong>追问：</strong>旧缓存是「没有证据」，为什么也可能失效？</p><p><strong>答题要点：</strong>它没有旧键可核对，新文档却可能提供证据；还要按相关查询或语料代际失效，不能只检查已引用来源。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>团队想用一份语义缓存服务所有客服，因为问题几乎一样。哪一项必须先对照？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>问题相似不保证权限、当前版本或答案适用范围相同。至少验证同名用户跨租户、同租户不同授权、同题不同生成合同，不把语义相似当作准入决策。不能证明隔离时，先关闭共享答案缓存。</p><p><strong>追问：</strong>代际清空使未受影响的租户也重算，是否说明访问控制错了？</p><p><strong>答题要点：</strong>不一定；重算是缓存开销。未受影响的请求仍应得到同样的合法结果，不能因为全量清空而拒答。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>SQLite 级联删除通过，就能对客户承诺所有旧内容已擦除吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。本地活动行与读取路径通过，不代表副本、备份、派生摘要、日志或客户端副本已物理擦除。先按数据流列清存留范围和保留期限，再逐项核实删除或隔离。</p><p><strong>追问：</strong>多个工作者之间正在传播变更时，怎样避免把本地顺序结果误当线上保证？</p><p><strong>答题要点：</strong>定义一致性要求，分别测并发读取、丢失／重放事件、索引延迟和恢复；必要时在交付前做权威复验或拒答。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L66">L66 疑难解答 →</a><div class="qa-related"><a href="0075-L65-rag-reranking.html">上一课 L65 · 重排序</a> · <a href="0077-L67-rag-trust-boundary.html">下一课 L67 · 证据信任边界</a> · <a href="0080-phase7-data-rag-outline.html">阶段 7 纲要</a>。提问时带上变更类型、两层命中增量、源键和受影响范围。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>缓存命中是一条读取路径，不是授权或当前性的凭据。先证明两层已热，再逐项核对源库、真实返回与未受影响的正控。</p><p><a href="https://sqlite.org/foreignkeys.html">SQLite · Foreign Key Support</a>（外键启用与级联删除） · <a href="https://sqlite.org/pragma.html#pragma_secure_delete">SQLite · secure_delete</a>（字节清理与虚表限制） · <a href="https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside">Microsoft Azure Architecture Center · Cache-Aside</a>（失效顺序及一致性局限）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

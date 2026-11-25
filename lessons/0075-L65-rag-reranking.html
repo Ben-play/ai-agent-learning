@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L65 · 对同一候选集重排</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>对同一候选集重排</h1><p class="subtitle">候选池里有答案，不代表最先送进上下文的那条能回答问题</p>
+</div></div>
+<div class="section">
+  <h2>为什么这课重要？</h2>
+  <p>客服问「导出的文件已经过期，我现在应该怎么做？」系统查到了两条证据：一条说导出文件保留七天，另一条说过期后需要重新发起导出。沿用 <a href="0074-L64-rag-hybrid-retrieval.html">L64</a> 的混合检索器，本课改用粗粒度查询表示后，保留期排在第一。它和提问有关，却没有给出下一步动作。上下文只给一条证据时，增加模型参数或换回答模板都不能保证找回那句动作说明。先定位：是候选没找到，还是候选找到了却没被送进去？</p>
+  <h3>学习目标</h3>
+  <ul><li>固定授权池和候选截断，只切换重排，检验指定证据是否晋升并真正进入上下文。</li><li>统计完整证据包的字符数与 UTF-8 字节数；分开报告确定性评分、工作量和墙钟延迟。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 冻结输入，再谈排序收益</h2>
+  <p>宿主指定 <code>(tenant, user) = (support, mei)</code>。SQLite 先找当前可读的 <code>tuple[Chunk]</code>：导出保留期、导出过期处理和同步时间。每条片段有文档 ID、版本、定位、标题、正文、手工词项和固定向量；<code>key = (doc_id, version, locator)</code> 识别片段，而租户和用户另行绑定。检索输入 <code>Query(("导出", "保留"), (1., 0., 0.))</code> 是粗粒度的意图表示，不是完整提问。它来自手写夹具，不是分词或 Embedding 的输出。</p>
+  <p>混合检索在这个池内融合词法和向量排名，截断为 <code>candidate_k=2</code>，返回 <code>tuple[Hit]</code>，每条包括 <code>chunk</code> 和首阶段 <code>score</code>。保留期（<code>EXPORT-POLICY v1 §1</code>）第一，过期处理（<code>EXPORT-OPS v1 §2</code>）第二。同步政策虽然授权，但不在这批候选里；仅审计者可见的内部留存文档不在授权池，更不该被评估。实验让两条路径接收同一个候选元组：第一条保持输入顺序；第二条只对它重排。不要一边把截断从 2 改到 5、一边打开重排，不然即使答对也无法把收益归因给重排。</p>
+  <p>重排的输入追加任务线索 <code>("过期", "重新生成")</code>，用去重后的线索与候选词项取交集，命中几个记几分。过期处理得 2 分，保留期得 0 分；按分数降序，同分沿用候选顺序。新分数不是概率，更不能与 RRF 分相加。实现对每条候选核对版本定位键和完整片段值，遇到重复、缺键、当前无权或同键内容不符就拒绝该批输入，而不是用标题相似度猜一条替代品。合法的输出必须是输入候选的排列；仅检查「输出键在授权池」还不够，因为这会容许偷偷补入没过截断的同步政策。</p>
+  <table>
+    <caption>同一个授权池里的过期处理题：预先标定有效证据为 EXPORT-OPS v1 §2</caption>
+    <thead><tr><th scope="col">控制条件</th><th scope="col">截断后的候选顺序</th><th scope="col">打包前顺序</th><th scope="col">进包证据（字符 / 字节）</th></tr></thead>
+    <tbody>
+      <tr><td>基线：不重排</td><td>保留期 → 过期处理</td><td>保留期 → 过期处理</td><td>保留期（47 / 88），没有动作说明</td></tr>
+      <tr><td>只开启重排</td><td>保留期 → 过期处理</td><td>过期处理 → 保留期</td><td>过期处理（47 / 100），动作说明入包</td></tr>
+      <tr><td>单独反例：候选截断提前到 1</td><td>保留期</td><td>保留期</td><td>保留期（47 / 88），没有动作说明</td></tr>
+    </tbody>
+  </table>
+  <p>第三行不是公平对照的一边，而是独立的召回反例：即使授权池里仍有动作证据，重排也无法把没拿到的候选变出来。排查时分开记录三个位置：授权池是否有目标、首阶段前 <code>candidate_k</code> 是否召回、打包后前 <code>top_k</code> 是否保留。候选已经漏召回，应回到切分、查询或首阶段截断；候选已提升仍没进包，应看预算而不是追加召回。</p>
+</div>
+<div class="section">
+  <h2>2. 算完整证据块，不拿字节猜令牌</h2>
+  <p>本例的 <code>top_k=1</code> 是最多装一条，不是只检查第一条。证据块由「证据：」标题及换行、每条引用标签、空格、标题、全角冒号、正文、条目分隔与末尾换行组成。<code>len(context)</code> 数 Python 字符串的 Unicode 码点，不等于人眼看到的字形数；<code>len(context.encode("utf-8"))</code> 数编码后的字节。示例每尝试加入一条，都先重新生成完整块检查两个上限；放不下就跳过整条，不把一个引用和它的正文截成两半。用 64 字符上限时，动作证据在 100 字节上限处刚好装下；字节上限降为 99，即使它排名第一仍被跳过，且随后 88 字节的保留期能进包。得到非空上下文，不等于支持了当前问题。若把条数放宽为 2 并允许两条都进包，则合计 90 字符、178 字节；不能把 88 和 100 直接相加，因为两条共用一份证据标题。</p>
+  <p>这两个上限覆盖的是 <strong>序列化证据块</strong>，不是模型请求总长。实际要用目标模型对应的 tokenizer 或计数接口，按最终消息结构计算系统指令、用户问题、历史、工具定义及包装开销，为模型输出留余量。不同语种、标点与 tokenizer 的拆分不同，没有固定的字符或字节到 token 转换系数。不要只统计命中的正文，也别把调用不到真实模型时算出的本地字符数当成模型用量。</p>
+  <p>基线不做额外候选评分，重排对两条候选各评分一次；两边各调用一次打包。授权池核对、排序和字符串构建也是工作，不能把「2 次」直接换算成时间。下面的本地报告把查询和授权池读取移到计时外，只比较「打包」与「重排并打包」。若换成 CrossEncoder，每个问句与候选配对评分，可批处理，但计算、网络和排队会改变延迟。两条夹具的耗时只说明本地对照怎么做，不是端到端或生产延迟。</p>
+  <div class="best-practice-point" id="bp-l65">
+    <h3>决策卡：哪一段失败，就改哪一段</h3>
+    <p class="bp-scenario"><strong>适用：</strong>目标已在候选中，但经常被相邻话题挤出证据包。<strong>不适用：</strong>正确来源不在授权池或没有进入首阶段截断；前者不是检索质量问题，后者不是重排问题。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：相关分变高，就部署重排</span><p>同时放宽候选、增大上下文，还用新评分代替证据命中；上线后无法解释收益来自哪里。</p></div><div class="bp-right"><span class="bp-compare-label">对照：候选与预算相同，只切排序</span><p>先过授权与原候选排列的硬门槛，再按人工标定的「动作、例外、时限」检查进包覆盖；没有稳定收益就保留简单基线。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>更大的候选截断给重排更多机会，也多花逐候选评分和检查的成本。若覆盖增益在代表性题集上不能抵消尾延迟或成本增长，就不保留重排。</p>
+    <ol class="bp-steps"><li>保存输入候选、标定的来源键、打包字节数和每段工作量，再做对照。</li><li>召回负例、预算负例分别只改一个边界，不用同一个失败推出两个结论。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>出现不在输入中的键，先修契约；正确证据排名上升却没进包，先看完整序列化成本。</p>
+  </div>
+  <p><strong>选修的触发条件：</strong>同义改写长期漏召回时，可试 HyDE，用生成的假设文档构造检索向量，但引用必须来自实际授权来源；多步取证需要根据缺口换查询时，可试 Agentic RAG，并设迭代、延迟与停止条件；跨文档关系或全局主题是主要误差时，再评估 GraphRAG，还要承担索引更新和衍生摘要的权限管理。三者不是这个重排实验的升级顺序，也不能补授予记录或把推测变成证据。</p>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span>正确的过期处理证据已排第一，但 99 字节上限让它跳过，保留期入包。先查哪里？</div><div class="quiz-options"><button data-answer="wrong">增加首阶段候选数量</button><button data-answer="wrong">更换混合排序的权重</button><button data-answer="correct">核对证据块的预算</button><button data-answer="wrong">提高该片段的重排分</button></div><div class="quiz-explanation">前两阶段已把正确证据放到首位；装包仍要求完整证据块不超限，高分绕不过这一关。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>3. 跟做：把第二名提升到唯一的证据位置</h2>
+  <div class="card" id="guided-l65"><h3>从一批候选出发</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+query = lab["Query"](("导出", "保留"), (1., 0., 0.))
+limits = dict(top_k=1, max_chars=64, max_bytes=100)
+with lab["open_demo"]() as db:
+    pool = db.authorized("support", "mei")
+    candidates = db.search("support", "mei", query, mode="hybrid", k=2)
+    ranked = lab["rerank"](candidates, pool, ("过期", "重新生成"))
+    # TODO：对 candidates 和 ranked 用同一预算打包，核对引用键和完整长度。</code></pre><p><strong>通过标准：</strong>排序交换两个原候选；100 字节上限放得下动作证据，99 字节放不下。把候选截断到 1 后动作证据消失；无权或不存在的候选输入要被拒绝。</p></div>
+  <p>在可信课程仓库根把代码块另存为脚本，用 <code>python -I -X utf8 文件名.py</code> 运行（Python 3.11+，不加 <code>-O</code>）。固定路径只加载<a href="../code/phase7-data-rag/rag-lab/README.md">课程本地项目</a>；不联网也不安装依赖。</p>
+  <p><strong>可选：单独测量开销。</strong>在仓库根运行：</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase7-data-rag/rag-lab/lifecycle/main.py --timing</code></pre>
+  <p>两组复用同一批 2 条授权候选和上述预算，先各热身一次，再交替执行顺序，各采 7 组、每组 1000 次。报告每次的候选评分数、打包调用数和实际入包键，以及各组平均墙钟耗时的中位数。重复运行时操作次数不变，时间会波动；不设毫秒门槛，也不把时间混进下面的验收输出。</p>
+  <details><summary>展开参考：同批候选、召回与预算三组断言</summary><pre><code class="language-python" id="l65-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+Hit, Query, pack, rerank = (lab[name] for name in ("Hit", "Query", "pack", "rerank"))
+policy = ("EXPORT-POLICY", 1, "§1")
+ops = ("EXPORT-OPS", 1, "§2")
+internal = ("EXPORT-INTERNAL", 1, "§1")
+query = Query(("导出", "保留"), (1., 0., 0.))
+cues = ("过期", "重新生成")
+
+with lab["open_demo"]() as db:
+    pool = db.authorized("support", "mei")
+    candidates = db.search("support", "mei", query, mode="hybrid", k=2)
+    assert tuple(h.chunk.key for h in candidates) == (policy, ops)
+    ranked = rerank(candidates, pool, cues)
+    assert tuple((h.chunk.key, h.score) for h in ranked) == ((ops, 2), (policy, 0))
+    assert {h.chunk.key for h in ranked} == {h.chunk.key for h in candidates}
+    assert all(db.source("support", "mei", h.chunk.key) == h.chunk for h in ranked)
+
+    limits = dict(top_k=1, max_chars=64, max_bytes=100)
+    baseline = pack(candidates, **limits)
+    adjusted = pack(ranked, **limits)
+    assert (baseline.citations, baseline.chars, baseline.utf8_bytes) == ((policy,), 47, 88)
+    assert (adjusted.citations, adjusted.chars, adjusted.utf8_bytes) == ((ops,), 47, 100)
+    assert adjusted.context == "证据：\n[EXPORT-OPS v1 §2] 导出过期处理：导出文件过期后，需重新发起导出。\n"
+    assert pack(ranked, **dict(limits, max_bytes=99)).citations == (policy,)
+
+    short = db.search("support", "mei", query, mode="hybrid", k=1)
+    assert pack(rerank(short, pool, cues), **limits) == baseline
+    other_pool = db.authorized("support", "lin")
+    other = db.search("support", "lin", query, mode="hybrid", k=2)
+    assert tuple(h.chunk.key for h in rerank(other, other_pool, cues)) == (policy,)
+
+    current = db.source("support", "mei", ops)
+    foreign = db.source("support", "auditor", internal)
+    missing = lab["Chunk"]("NOT-INDEXED", 1, "§1", current.title, current.text,
+                           current.terms, current.vector)
+    for key in (internal, missing.key):
+        assert db.source("support", "mei", key) is None
+    for rejected in (foreign, missing):
+        try:
+            rerank(candidates + (Hit(rejected, 99),), pool, cues)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted candidate outside the authorized current pool")
+print("L65 ACCEPTED")</code></pre></details>
+  <p>通过后只输出 <code>L65 ACCEPTED</code>。不是统计长度通过就算命中：必须同时核对正文与源键。</p>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：同步时间被导出话题挤到末位</h2>
+  <p><strong>独立任务：</strong>用户在夜班交接问「同步任务什么时候跑？」混合检索的固定向量仍偏向导出，手工词项含同步和导出噪声。比较同样三条候选、同样只装一条时的结果。然后只减少候选截断，证明目标掉出候选时无法恢复；最后恢复候选，单独把字符或字节各缩 1，证明即使排名正确也可能进不了包。</p>
+  <div class="card"><h3>独立起点：带噪声的交接检索</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+query = lab["Query"](("同步", "导出", "保留"), (1., 0., 0.))
+cues = ("同步", "02:00")
+limits = dict(top_k=1, max_chars=64, max_bytes=100)  # 排序、召回对照
+exact = dict(top_k=1, max_chars=46, max_bytes=81)  # 完整同步证据块刚好装下
+with lab["open_demo"]() as db:
+    pool = db.authorized("support", "mei")
+    candidates = db.search("support", "mei", query, mode="hybrid", k=3)
+    # TODO：先用 limits 比排序与召回，再分别把 exact 的一个上限减 1。</code></pre><p><strong>通过标准：</strong>基线不含同步时间，重排后给出 <code>SYNC-POLICY v1 §1</code>，另外两条同分保留原顺序。缺候选时找不到同步来源；分别测试 45 字符 / 81 字节、46 字符 / 80 字节，两次都不输出零碎证据。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检</summary><pre><code class="language-python" id="l65-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lifecycle/main.py")
+pack, rerank = lab["pack"], lab["rerank"]
+query = lab["Query"](("同步", "导出", "保留"), (1., 0., 0.))
+cues = ("同步", "02:00")
+policy, ops, sync = (("EXPORT-POLICY", 1, "§1"), ("EXPORT-OPS", 1, "§2"), ("SYNC-POLICY", 1, "§1"))
+
+with lab["open_demo"]() as db:
+    pool = db.authorized("support", "mei")
+    base = db.search("support", "mei", query, mode="hybrid", k=3)
+    assert tuple(h.chunk.key for h in base) == (policy, ops, sync)
+    ranked = rerank(base, pool, cues)
+    assert tuple((h.chunk.key, h.score) for h in ranked) == ((sync, 2), (policy, 0), (ops, 0))
+    limits = dict(top_k=1, max_chars=64, max_bytes=100)
+    assert pack(base, **limits).citations == (policy,)
+    assert pack(ranked, **limits).citations == (sync,)
+    narrowed = db.search("support", "mei", query, mode="hybrid", k=2)
+    assert pack(rerank(narrowed, pool, cues), **limits).citations == (policy,)
+
+    exact = pack(ranked, top_k=1, max_chars=46, max_bytes=81)
+    assert (exact.citations, exact.chars, exact.utf8_bytes) == ((sync,), 46, 81)
+    assert "同步任务每天 02:00 运行。" in exact.context
+    for chars, byte_limit in ((45, 81), (46, 80)):
+        refused = pack(ranked, top_k=1, max_chars=chars, max_bytes=byte_limit)
+        assert (refused.context, refused.citations) == ("", ())
+print("L65 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>通过标准：</strong>只输出 <code>L65 TRANSFER PASSED</code>。若把重排的输入误换成三个授权片段而非截断后的候选，缺候选负例就会异常地答对；若只限制正文长度，则预算负例会漏过。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>按「结论 → 理由 → 如何验证」作答，再展开追问。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>拉长候选并启用重排后，离线答对更多。如何证明不是拉长候选的功劳？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>同一身份、语料、查询、截断和预算，保存首阶段候选，只改变重排开关，逐题核对真正入包的标定来源。然后单独比较不同的候选截断，量化召回变化。</p><p><strong>追问：</strong>动作证据只在授权池但不在候选里，重排应把它捞上来吗？</p><p><strong>答题要点：</strong>不应；那是新增检索，不是重排。单独检查首阶段召回与截断。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>供应商重排返回同文档、同定位但不同版本的片段，能按标题相同接收吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。应让评分只对应输入候选，核对授权的当前键和内容。版本改变时重取当前候选，不替它改一个版本标签就继续返回。</p><p><strong>追问：</strong>如果返回的是另一个同样获授权的当前片段呢？</p><p><strong>答题要点：</strong>仍要拒绝，因为授权集合比本批候选大；重排输出必须来自同一候选集。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>正确证据已晋升，回答仍说不出操作，你会查什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先确认证据是否进入最终请求，而非停在排序列表。核对完整证据块、条数、上限和源键；若有准确原文却仍答错，再单独测生成环节。</p><p><strong>追问：</strong>工具报告 100 字节，能向模型成本表填 100 token 吗？</p><p><strong>答题要点：</strong>不能；用目标模型消息格式实测 token，预留生成空间，字符与字节只说明本地预算。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>本地多了两次候选打分，可以承诺线上只多几毫秒吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。工作量是可重复的操作计数，实时时间还受输入长度、批处理、硬件、网络和排队影响。在目标负载上分阶段对照，并同时报告覆盖、成本和尾延迟。</p><p><strong>追问：</strong>如果投诉主要是新文档没被召回，要不要先上 GraphRAG？</p><p><strong>答题要点：</strong>先查入库时效、授权、切分和候选覆盖；只有跨文档关系或全局问题存在可量化缺口，才值得为图索引和摘要做单独对照。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L65">L65 疑难解答 →</a><div class="qa-related"><a href="0074-L64-rag-hybrid-retrieval.html">上一课 L64 · 混合检索</a> · <a href="0076-L66-rag-cache-invalidation.html">下一课 L66 · 热缓存失效</a> · <a href="0080-phase7-data-rag-outline.html">阶段 7 纲要</a>。提问时带上候选顺序和实际入包的引用键。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>重排移动的是授权候选中的位置。用首阶段覆盖、完整证据块和同一预算下的入包对照，区分「没找到」「没排上」与「没装下」。</p><p><a href="https://www.sbert.net/examples/sentence_transformer/applications/retrieve_rerank/README.html">Sentence Transformers · Retrieve &amp; Re-Rank</a>（两阶段评分） · <a href="https://aclanthology.org/2023.acl-long.99/">HyDE 原论文</a>（用假设文档构造检索向量） · <a href="https://docs.langchain.com/oss/python/langgraph/agentic-rag">LangGraph 官方 Agentic RAG 教程</a>（查询改写与循环） · <a href="https://microsoft.github.io/graphrag/">Microsoft GraphRAG 文档</a>（图索引及全局检索）。</p></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

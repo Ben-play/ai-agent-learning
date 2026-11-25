@@ -15,6 +15,7 @@ on:
       - code/phase6-langgraph-mcp/graph-lab/README.md
       - code/phase6-langgraph-mcp/stdio-lab/README.md
       - code/phase6-langgraph-mcp/http-lab/README.md
+      - code/phase7-data-rag/rag-lab/README.md
       - lessons/**
       - qa/**
       - reference/**

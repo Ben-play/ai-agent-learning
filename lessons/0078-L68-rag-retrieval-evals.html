@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L68 · RAG 检索评测</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>RAG 检索评测</h1><p class="subtitle">用带租户和用户的评测行，分别判断越权、命中和事实缺口</p>
+</div></div>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>客服问「导出保留多久，过期后怎么办？」用了同一个查询，却不能要求所有用户找回同样的原文。Mei 可以读保留期和过期处理；Lin 只能读保留期。Lin 找回唯一允许的金标，召回率可以是满分，但为完整回答准备的证据仍只有一半。反过来，若一次查询拿回有用资料的同时也带回内部留存文档，任何平均分都不能抵消这个授权问题。先把这三件事分开，下一课才知道该修排序、资料覆盖还是生成。</p>
+  <ul><li>从真正调用 SQLite 搜索所得的返回行计算 Recall@k 与必需事实覆盖，不用手抄的命中数。</li><li>区分空的可读金标、可读但未召回、错误租户或用户，以及结果中的越权条目。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 先为问题和主体标注，再跑检索</h2>
+  <p>一行包含预期租户、预期用户、查询词、截断位置及必需事实到金标证据键的映射。标签由人根据已知的合成资料写好，不能从检索结果反推；证据键精确到文档编号、版本和定位。每个事实可有多个可替代的证据键，至少一个命中才覆盖该事实；如果某个事实需要两段资料联合支撑，要把它拆成两条必须覆盖的子事实，不能在这一模型里把它们错当替代项。对不同租户的制度差异，应分别标注，不能拿编号相同的别租户文档作金标。</p>
+  <p>按<strong>预期主体</strong>手写获准读取的证据键和整段原文，冻结为 <code>DEMO_APPROVED</code>；另用 <code>assert_authorized_snapshot()</code> 逐项核对 <code>db.authorized()</code> 的键和原文。不能把查询时的可读集合直接当期望：如果授权查询错误地漏了一个获准片段，搜索和分母可能同时少算它，让 Recall 虚高到 1。评测用金标和<strong>审批快照</strong>相交，得到允许金标；再对照<strong>实际调用参数</strong>与原始前 <code>k</code> 个返回位置。若实际租户不符，即使键相同也判违规；若同租户但实际用户不符，即使返回恰好重合也不记召回分。每条返回还须核对审批快照里的整段原文。这些检查不替代在线的查询前授权；负例的合成返回只用于断言，不发送给用户或模型。</p>
+  <p><strong>计算顺序：</strong>先截原始前 <code>k</code> 个位置，再检查每个位置；不能先删掉越权条目，让窗口外的证据向上补位。Recall@k 是允许金标中被合法命中的唯一键数除以允许金标总数；重复命中同一键不加分。事实覆盖率以问题全部必需事实为分母，不因当前不可读而去掉某个子问。这里用它衡量能不能回答整道题，不用它处罚某人没有读取权限。无允许金标记为 <code>no_eligible_gold</code>、召回不适用；有允许金标而零命中，才记 <code>miss</code>、召回为零。两者都可能要保留缺口，但排查对象不同。</p>
+</section>
+<section class="section">
+  <h2>2. 从五条评测行定位不同的缺口</h2>
+  <p>用「导出、保留」查询两事实任务，词法检索下保留期排在过期处理前。再改用户或换一个不相关查询，手算下表的分子分母。单问「过期后怎么办」单独使用过期处理金标；Lin 的空结果是预期能力边界，而不是排序器未找回可读文档。</p>
+  <table><thead><tr><th scope="col">评测场景</th><th scope="col">Recall@k</th><th scope="col">事实覆盖</th><th scope="col">诊断</th></tr></thead><tbody>
+    <tr><td>Mei，两问，k=1</td><td>1/2</td><td>1/2</td><td>仅取回保留期；若可接受上下文成本，试 k=2。</td></tr>
+    <tr><td>Mei，两问，k=2</td><td>2/2</td><td>2/2</td><td>两个事实都有可读证据；仍未验证生成内容。</td></tr>
+    <tr><td>Lin，两问，k=2</td><td>1/1</td><td>1/2</td><td>可读范围内已全召回；回答第二问要保留缺口。</td></tr>
+    <tr><td>Lin，单问过期处理</td><td>不适用</td><td>0/1</td><td>无允许金标；不能对外解释具体的受限资料。</td></tr>
+    <tr><td>Mei，两问，却只搜「同步」</td><td>0/2</td><td>0/2</td><td>有可读金标却全漏；查查询词、排序或预算。</td></tr>
+  </tbody></table>
+  <p>报表要带原始行数、参与召回平均的行数、平均事实覆盖、无允许金标行数和漏召回行数；再单列范围错误、出现越权的行数和越权条目数。这个例子对有分母的行做宏平均：每行权重相同，不让常见的大型问题淹没小切片。空分母不能偷偷拿一分奖励，也不能用零分把系统性的权限差距说成查询退化。若按事实数或真实流量加权，另起一列并注明口径。更大的 k 可能改善覆盖，也会增加上下文和延迟；必须固定资料、授权与查询集对比，只改一个参数。哪怕总体改善，一个范围错误也应阻止发布并单独复查。</p>
+  <div class="best-practice-point" id="bp-l68">
+    <h3>决策卡：范围是门槛，召回与覆盖是诊断</h3>
+    <p class="bp-scenario"><strong>适用：</strong>比较两个检索配置，或解释某类用户为什么拿不到完整证据。<strong>边界：</strong>金标只覆盖有人工标签的合成问题，不等于真实流量或答案质量。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：用一个平均 Recall 验收</span><p>先滤掉错误结果再取前 k；把空分母当成功，并隐藏同名的跨租户结果。</p></div><div class="bp-right"><span class="bp-compare-label">选择：保留原始位置与三个结论</span><p>独立对照实际调用范围、允许金标与必需事实；有范围或条目异常不发布。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>需要维护标签、版本和可读快照，但回归时可以解释是范围、窗口还是证据缺口。</p>
+    <ol class="bp-steps"><li>同一批问题先按租户和用户留逐行记录，再做总体汇总。</li><li>让负例单独改变实际用户、租户或窗口；同时断言分母和出错的那一行。</li></ol>
+    <p class="bp-result"><strong>复查顺序：</strong>范围异常先停；其次比较漏召回和覆盖。没有允许金标时，检查标签与授权是否符合规格，而不是扩大检索权限。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 两个子问各有一个金标，用户只允许读其中一个，前两条结果命中它且无越权。应如何记分？</div><div class="quiz-options"><button data-answer="wrong">召回 1/2，覆盖 1/2</button><button data-answer="wrong">召回 1/1，覆盖 2/2</button><button data-answer="correct">召回 1/1，覆盖 1/2</button><button data-answer="wrong">召回不适用，覆盖 1/2</button></div><div class="quiz-explanation">召回以可读金标为分母，覆盖以用户问题的全部必需事实为分母。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：给真实检索返回逐行记分</h2>
+  <p>使用 <a href="../code/phase7-data-rag/rag-lab/README.md">课程 RAG 实验</a>。从<strong>可信课程仓库根</strong>用 Python 3.11+ 执行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。</p>
+  <div class="card" id="guided-l68"><h3>最小起点：先给 Mei 跑两个事实</h3><pre><code class="language-python">import runpy
+
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+mei = a["Scope"]("support", "mei")
+gold = {"retention": frozenset({("EXPORT-POLICY", 1, "§1")}),
+        "renewal": frozenset({("EXPORT-OPS", 1, "§2")})}
+approved = a["DEMO_APPROVED"][mei]
+with lab["open_demo"]() as db:
+    a["assert_authorized_snapshot"](db, mei, approved)
+    hits = db.search(mei.tenant, mei.user, lab["Query"](("导出", "保留")), k=2)
+    # TODO：用 approved 为 k=1 和 k=2 记分；再跑 Lin。
+</code></pre><p><strong>通过标准：</strong>五行符合上表，均无范围或授权错误；四个召回有效行，宏平均 0.625；五行平均覆盖 0.4。空集不是漏召回。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l68-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+mei, lin = (a["Scope"]("support", user) for user in ("mei", "lin"))
+gold = {"retention": frozenset({("EXPORT-POLICY", 1, "§1")}),
+        "renewal": frozenset({("EXPORT-OPS", 1, "§2")})}
+export = ("导出", "保留")
+cases = (
+    (mei, export, 1, gold, ("partial_recall", 0.5, 0.5, {"retention"})),
+    (mei, export, 2, gold, ("full_recall", 1.0, 1.0, {"retention", "renewal"})),
+    (lin, export, 2, gold, ("full_recall", 1.0, 0.5, {"retention"})),
+    (lin, ("重新生成",), 2, {"renewal": gold["renewal"]}, ("no_eligible_gold", None, 0.0, set())),
+    (mei, ("同步",), 2, gold, ("miss", 0.0, 0.0, set())),
+)
+approved = a["DEMO_APPROVED"]
+rows = []
+with lab["open_demo"]() as db:
+    for scope in (mei, lin):
+        a["assert_authorized_snapshot"](db, scope, approved[scope])
+    for scope, terms, k, labels, expected in cases:
+        hits = db.search(scope.tenant, scope.user, lab["Query"](terms), k=k)
+        row = a["grade_retrieval"](scope, approved[scope], scope, hits, labels, k=k)
+        assert row.scope_ok and not row.violations
+        assert (row.status, row.recall, row.coverage, row.covered_facts) == expected
+        rows.append(row)
+assert [row.eligible_gold for row in rows] == [
+    gold["retention"] | gold["renewal"], gold["retention"] | gold["renewal"],
+    gold["retention"], set(), gold["retention"] | gold["renewal"],
+]
+assert a["summarize_retrieval"](tuple(rows)) == {
+    "rows": 5, "scored_recall_rows": 4, "mean_recall": 0.625, "mean_fact_coverage": 0.4,
+    "no_eligible_gold": 1, "misses": 1, "scope_mismatch_rows": 0,
+    "rows_with_violations": 0, "violating_hits": 0,
+}
+print("L68 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：用交班问题抓错范围和虚高分</h2>
+  <p>交班单要同时给出同步运行时间与导出保留期。先用「保留」固定 Mei 的用户名只换租户；再让 <code>support/mei</code> 错替 Lin 搜「同步、过期」。用 Lin 搜「保留、同步」的合法结果做两组对照：重复同步条目；把审计员用「保留」取到的内部条目放到首位、让保留期落到第三位。再用 Lin 搜「重新生成」验证无允许金标。所有负例只检查内存中的合成返回，不渲染正文。</p>
+  <div class="card"><h3>独立起点：只换租户，别换用户</h3><pre><code class="language-python">import runpy
+
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+mei = a["Scope"]("support", "mei")
+lin = a["Scope"]("support", "lin")
+other = a["Scope"]("operations", "mei")
+auditor = a["Scope"]("support", "auditor")
+approved = a["DEMO_APPROVED"]
+labels = {"retention": frozenset({("EXPORT-POLICY", 1, "§1")}),
+          "schedule": frozenset({("SYNC-POLICY", 1, "§1")})}
+with lab["open_demo"]() as db:
+    hits = db.search(other.tenant, other.user, lab["Query"](("保留",)), k=2)
+    # TODO：按 approved[mei] 给错租户返回记分；再做 Lin 的五行对照。
+</code></pre><p><strong>通过标准：</strong>错误用户与错误租户各产生一行范围错误和一个越权条目；截断负例再产生一个越权条目，落在第三位的证据不能补位；重复合法证据只计一次。六行中五行参与召回平均，平均召回 0.4、平均覆盖 1/3。另开测试库故意漏掉 Mei 获准的同步片段；分母仍为 2，召回只能是 1/2。此行不纳入六行汇总。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l68-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+lin = a["Scope"]("support", "lin")
+other_user = a["Scope"]("support", "mei")
+other_tenant = a["Scope"]("operations", "mei")
+internal = a["Scope"]("support", "auditor")
+policy, sync = ("EXPORT-POLICY", 1, "§1"), ("SYNC-POLICY", 1, "§1")
+ops, audit = ("EXPORT-OPS", 1, "§2"), ("EXPORT-INTERNAL", 1, "§1")
+labels = {"retention": frozenset({policy}), "schedule": frozenset({sync})}
+approved = a["DEMO_APPROVED"]
+with lab["open_demo"]() as db:
+    for scope in (lin, other_user):
+        a["assert_authorized_snapshot"](db, scope, approved[scope])
+
+    def search(scope, *terms, k=2):
+        return db.search(scope.tenant, scope.user, lab["Query"](terms), k=k)
+
+    def grade(scope, hits, gold=labels):
+        return a["grade_retrieval"](lin, approved[lin], scope, hits, gold, k=2)
+
+    cross_tenant = a["grade_retrieval"](
+        other_user, approved[other_user], other_tenant, search(other_tenant, "保留"), labels, k=2,
+    )
+    good_hits = search(lin, "保留", "同步")
+    by_key = {hit.chunk.key: hit for hit in good_hits}
+    audit_hit, = search(internal, "保留")
+    results = (
+        grade(lin, good_hits),
+        cross_tenant,
+        grade(other_user, search(other_user, "同步", "过期")),
+        grade(lin, (by_key[sync], by_key[sync])),
+        grade(lin, (audit_hit, by_key[sync], by_key[policy])),
+        grade(lin, search(lin, "重新生成"), {"renewal": frozenset({ops})}),
+    )
+    assert tuple((r.status, r.scope_ok, r.violations, r.recall, r.coverage, r.matched_gold)
+                 for r in results) == (
+        ("full_recall", True, (), 1.0, 1.0, {policy, sync}),
+        ("miss", False, (policy,), 0.0, 0.0, set()),
+        ("miss", False, (ops,), 0.0, 0.0, set()),
+        ("partial_recall", True, (), 0.5, 0.5, {sync}),
+        ("partial_recall", True, (audit,), 0.5, 0.5, {sync}),
+        ("no_eligible_gold", True, (), None, 0.0, set()),
+    )
+    assert all(r.eligible_gold == {policy, sync} for r in results[:5])
+    assert not results[-1].eligible_gold
+assert a["summarize_retrieval"](results) == {
+    "rows": 6, "scored_recall_rows": 5, "mean_recall": 0.4, "mean_fact_coverage": 1 / 3,
+    "no_eligible_gold": 1, "misses": 2, "scope_mismatch_rows": 2,
+    "rows_with_violations": 3, "violating_hits": 3,
+}
+
+# 模拟一次漏行：搜索和运行时可读列表都少了同步片段，批准规格不变。
+with lab["open_demo"](rows=tuple(row for row in lab["DEMO"] if row[1].key != sync)) as db:
+    hits = db.search("support", "mei", lab["Query"](("保留", "同步")), k=2)
+    missing = a["grade_retrieval"](other_user, approved[other_user], other_user, hits, labels, k=2)
+    assert missing.scope_ok and not missing.violations
+    assert (missing.eligible_gold, missing.matched_gold) == ({policy, sync}, {policy})
+    assert (missing.status, missing.recall, missing.coverage) == ("partial_recall", 0.5, 0.5)
+    try:
+        a["assert_authorized_snapshot"](db, other_user, approved[other_user])
+    except AssertionError as exc:
+        assert "approved snapshot" in str(exc)
+    else:
+        raise AssertionError("the runtime pool is missing approved sync evidence")
+print("L68 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L68 TRANSFER PASSED</code>。同键跨租户竟有召回分，查数据范围；冲掉窗口外证据后仍是满分，查截断顺序；总体分数变好却看不到范围错误，查报表口径。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2><p>先对一条评测行下结论，再说明如何推广到批量验收。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>同名文档从别的租户返回，但答案数字碰巧一样，该算命中吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不算。实际调用的租户不对就已经违反范围；对照宿主调用参数和授权快照，而不是从编号或数字推断。</p><p><strong>追问：</strong>同租户但用户不同，所有返回恰好共有呢？</p><p><strong>答题要点：</strong>可能没有越权条目，但仍是错误用户的一行，不能算通过；范围错误和结果越权独立计数。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>同一个用户两条查询都没返回结果，下一步都调大 k 吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先看允许金标分母。为空时召回不适用，保留回答缺口，内部分别查标注和读取范围；非空才是漏召回，要看候选、词法、排序或截断。</p><p><strong>追问：</strong>能对用户显示「仅内部人员可看这条文档」来解释空集吗？</p><p><strong>答题要点：</strong>只给证据不足的安全提示；调试清单不能未经授权展示。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>两篇手册都写了保留期，搜到两篇是否就答齐了复合问题？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>召回按唯一允许证据键计数；事实覆盖按需要回答的子问计。同一事实的两条替代证据只覆盖一个事实；需要再找到过期处理才答齐。</p><p><strong>追问：</strong>如果一个结论要联合两段证据，怎么标？</p><p><strong>答题要点：</strong>拆成两条必需子事实，或明确建联合条件；不要把两段错误地标成任一皆可。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>平均 Recall 提升，但小租户出现一行范围错误，能发布吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。授权是硬门槛，平均值不抵消。固定数据和授权快照重跑该切片，检查应用传来的主体，逐行保留实际窗口，再决定 k 的变更。</p><p><strong>追问：</strong>修好授权后，怎么说明空结果比例升高？</p><p><strong>答题要点：</strong>报告不适用分母、漏召回与平均覆盖各自变化，分清修正权限与检索退化，必要时补可公开使用的资料。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L68">L68 疑难解答 →</a><div class="qa-related"><a href="0077-L67-rag-trust-boundary.html">上一课 L67 · 信任边界</a> · <a href="0079-L69-rag-generation-evals.html">下一课 L69 · 生成评测</a> · <a href="0080-phase7-data-rag-outline.html">阶段 7 纲要</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>分母独立于输出；授权异常独立于分数；检索覆盖不同于答案正确。</p><ul><li><a href="https://nlp.stanford.edu/IR-book/html/htmledition/evaluation-of-unranked-retrieval-sets-1.html">Manning 等 · Introduction to Information Retrieval：检索集合评估</a>：召回基于已标注的相关集合。权限相交与空分母口径是本课约定。</li><li><a href="https://trec.nist.gov/overview.html">NIST TREC · Overview</a>：测试集合、主题和相关性判断的来源与用途。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

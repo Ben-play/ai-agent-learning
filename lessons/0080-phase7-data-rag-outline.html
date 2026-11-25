@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>阶段 7 · 数据基础与可追溯 RAG</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>阶段 7 · 数据基础与可追溯 RAG</h1>
+<p>把 Phase 4–6 的证据问答扩展成可查文档的系统。用户问法变了，来源仍要准确；权限或版本变了，旧结果不能混入当前答复。先从文档、版本、片段和访问记录学起，再用同一批失败用例决定是否增加检索复杂度。</p>
+<div class="total-bar"><span>10 节课 · L60–L69 · 470 分钟</span><span>合成语料；本地验收与待验证项分别记录</span></div>
+<aside class="toc" id="toc" aria-label="本阶段目录"></aside>
+<nav aria-label="阶段导航"><a href="0068-L59-mcp-skill-authority.html">← L59 授权边界</a> · <a href="../qa/phase7-qa.html">阶段答疑</a> · <a href="0001-ai-agent-learning-path-overview.html#phase-7-body">课程总纲</a></nav>
+<div class="section"><h2 id="lesson-plan">逐课练习与验收</h2>
+<table><thead><tr><th scope="col">课程</th><th scope="col">主题</th><th scope="col">要留下的验收证据</th></tr></thead><tbody>
+<tr><td>L60 <span class="lesson-num-time">45min</span></td><td><a href="0070-L60-rag-data-access.html">数据模型与行级访问</a></td><td>同一文档、不同身份，分别核对可见行；区分本地应用过滤与 PostgreSQL 策略。</td></tr>
+<tr><td>L61 <span class="lesson-num-time">45min</span></td><td><a href="0071-L61-rag-citation-chunks.html">解析、清洗与可定位分块</a></td><td>凭文档 ID、版本和页或段落核对引用；旧版不能误指新版。</td></tr>
+<tr><td>L62 <span class="lesson-num-time">45min</span></td><td><a href="0072-L62-rag-lexical-retrieval.html">先做授权词法检索</a></td><td>先确定可见池，再排序；分清检索没命中和证据不可用。</td></tr>
+<tr><td>L63 <span class="lesson-num-time">45min</span></td><td><a href="0073-L63-rag-vector-retrieval.html">Embedding 与向量检索</a></td><td>用固定向量核对维度、余弦和权限边界；不宣称真实模型性能。</td></tr>
+<tr><td>L64 <span class="lesson-num-time">45min</span></td><td><a href="0074-L64-rag-hybrid-retrieval.html">用失败题判断是否混合检索</a></td><td>同语料、同身份、同预算，分辨术语与改写题的实际回报。</td></tr>
+<tr><td>L65 <span class="lesson-num-time">45min</span></td><td><a href="0075-L65-rag-reranking.html">对同一候选集重排</a></td><td>比较打包前后是否保住所需证据；重排不产生新来源。</td></tr>
+<tr><td>L66 <span class="lesson-num-time">55min</span></td><td><a href="0076-L66-rag-cache-invalidation.html">热缓存中的撤权、改版与删除</a></td><td>在缓存确实命中后改变一个条件，再核对引用和答案是否失效。</td></tr>
+<tr><td>L67 <span class="lesson-num-time">45min</span></td><td><a href="0077-L67-rag-trust-boundary.html">证据数据与执行权限</a></td><td>来源可查的材料不能提高授权；无批准时模拟审核日志不增加，实验没有执行器。</td></tr>
+<tr><td>L68 <span class="lesson-num-time">45min</span></td><td><a href="0078-L68-rag-retrieval-evals.html">检索评估：权限、召回与覆盖</a></td><td>逐用户记合法参考答案、越权命中、Recall@k 和事实覆盖。</td></tr>
+<tr><td>L69 <span class="lesson-num-time">55min</span></td><td><a href="0079-L69-rag-generation-evals.html">生成评估：引用、忠实度与拒答</a></td><td>用独立金标评估生成，分别报告召回、打包与回答失败。</td></tr>
+</tbody></table></div>
+<div class="section"><h2 id="practice">阶段检查点与交接</h2>
+<p>完成 <a href="0076-L66-rag-cache-invalidation.html#stage-practice-retrieval-lifecycle">L66 检索生命周期检查点</a> 后，保留权限、混合检索、重排和缓存变更的对照。完成 <a href="0079-L69-rag-generation-evals.html#stage-practice-rag-handoff">L69 交班卡检查点</a> 后，交付分开的检索与生成报告。每次先写预期再对照结果，把故障样例也留进交接，不只提交一个通过标记。</p>
+<p>见<a href="../code/phase7-data-rag/rag-lab/README.md">项目与复跑方式</a>与<a href="../best-practices/phase7-data-rag-practices.html">阶段工程复盘</a>。SQLite、固定向量和人工标注是本地验收；PostgreSQL RLS、SQLAlchemy 和 pgvector 是未运行的对照示例。没有实测真实模型、索引吞吐或分布式失效。下一阶段看<a href="0046-phase5-to-11-planned-outlines.html#phase-8">可观测性、评估与工程实践草案</a>。</p></div>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

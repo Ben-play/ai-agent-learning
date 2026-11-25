@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L61 · 把 PDF、HTML 和 Markdown 切成可引用的证据</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据基础与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>把 PDF、HTML 和 Markdown 切成可引用的证据</h1><p class="subtitle">人能沿引用回到准确的原文，而不是只看到一个能打开的链接</p>
+</div></div>
+<div class="section">
+  <h2>为什么切片不只是拆短文本？</h2>
+  <p>值班同事问「晚班包装什么时候还？」助手回答「20:10」，附上样品退还指引的链接。新同事打开同一篇指引的第二段却看见「20:40」。链接能打开，文档号、段号也都没变，双方仍可能查到不同事实：索引里的段落来自上个版本，浏览器打开的是当前版。没有版本的引用无法解释差异；显示旧引文却把链接跳到当前页，会让人误以为新文档支持旧时间。先把引用定义清楚，比调大检索条数更能解决这类问题。</p>
+  <h3>学习目标</h3>
+  <ul><li>为三种来源保留文档标识、发布版本与原始定位，辨别来源不是同一个文件名或网页入口。</li><li>把固定来源导入共享实验库，从授权检索的结果生成带引用的原文回答，再回查准确的页／段。</li><li>验证缺失、无权和过期的引用不能回查；说清预抽取页夹具和实际 PDF 解析的区别。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 先为原文打坐标，再决定给检索多大一块</h2>
+  <p><code>doc_id</code> 是发布清单给文档分配的稳定标识，不用文件名推断两个文档是否同一份。<code>version</code> 是不可变的发布版；在生产中可以是发布编号或可复核的内容摘要。显示标题可改，内容也可能重排，因而引用至少需要「文档标识、版本、定位」三元组。新增版本应发布新的记录，把旧版留作可选审计资料；不能用新字节覆盖原记录却保留同一个版本号。多租户使用时，文档标识还需要处于 L60 已授权的租户或文档域中。</p>
+  <p><strong>PDF：</strong>先保持物理页序，用 <code>page:2</code> 表示文件第二页，而不是页脚印的「2」。封面、序言和重新排版都会造成页标记与物理序号不一致。文本层可抽取不等于读序正确：多栏、表格、脚注和扫描页会让输出断裂或为空。若一页有好几项截止时间，仅保留页码仍可回查，但发布时还应标明准确摘录或页内位置，跨页规则则要保留两个来源位置，而不是拼完只留第一页。</p>
+  <p><strong>HTML：</strong>示例定位到正文 <code>main</code> 内带原生锚点的段落，按段提取并保留 <code>id</code>；行号不是地址，菜单与导航也不自动成为问答资料。<strong>Markdown：</strong>本课夹具只有标题和由空行分隔的正文，忽略标题，把正文段从一开始编号；段号只对该版本有意义。真实 Markdown 有列表、表格和代码围栏，需按选定语法解析，不能拿这个空行切分器承诺通用支持。两种来源都可能变更段落或锚点，只有原始版本加定位能让后复核的人知道实际取过哪段。</p>
+  <p>本课简化为「一页或一段一个片段」。生产的检索窗可以把同一小节里的相邻段拼起来，补足「此规则仅适用于工作日」等限定语；回答引用时却应选择能支持这条声明的具体来源，不把同窗的其他段都列为证明。遇到很长一页，可分多个检索片段并保留共同页码及可选偏移；分窗或重叠是在帮召回，不应更改原文坐标。片段的内部索引编号适合去重或重排，不应作为用户回查地址。</p>
+  <h2>2. 链接状态与原文证据要分别判定</h2>
+  <p>检索和打开引用都使用宿主选定的租户与用户。回答展示前、再次打开时，都先用 <code>db.source</code> 检查该范围内是否仍能读取完全相同的「文档、版本、定位」。有权读取且摘录相同，才调用 <code>Catalogue.resolve</code>，按当前清单依次核对文档、版本与位置，重读原文并比对正文。无权、记录缺失、过期或原文不符，对外统一为不可用，不用诊断词泄露文档是否存在。</p>
+  <p>只在受信的合成夹具自检中单独观察清单状态：<code>unknown_document</code> 表示不在清单；<code>version_mismatch</code> 表示版本不符，即使当前位置还在也不代补；<code>unknown_locator</code> 表示版本匹配但位置不存在。这不是说旧版本必须删除；若业务允许读历史，可另建带访问限制的归档入口，明确标示旧版本，不能偷偷跳到当前规则。定位和原文一致也不等于它回答了问题，例如「周末单独预约」不支持「周末 18:30 停止」。本课用固定词项和原文回答验证证据回查，不评估模型或检索质量。</p>
+</div>
+<div class="section">
+  <h2>3. 跑清一次数据流：文件 → 授权检索 → 回答与引用 → 原文</h2>
+  <p>工作台按固定清单读取三份材料：PDF 用预抽取页 JSON，HTML 提取正文带锚点的段，Markdown 给正文段编号。<code>Catalogue.seed_rows</code> 把各页／段的原文、版本化定位和少量固定词项转成共享 SQLite 实验库的片段；宿主同时指定每份文档的读者。<code>db.search</code> 先按范围过滤，再按词项匹配排序。只有第一条命中带有全部请求词项、且原文可核对，才摘录作答；这是本地标签门槛，不做语义判断。引用直接取自命中的键，不由问题或答案字符串拼出。否则不回答。L62 用独立合成语料进一步比较词法检索。</p>
+  <table><thead><tr><th scope="col">查询词项</th><th scope="col">回答引用</th><th scope="col">回查的原文文件与位置</th></tr></thead><tbody>
+    <tr><td>cold-room、weekday</td><td>dispatch / 2 / page:2</td><td><code>dispatch-v2.pdf</code> 物理页 2：「Cold-room pickup closes at 18:30 on weekdays. Weekend pickup requires a separate booking.」代码展示 <code>dispatch-v2.pages.json</code> 中的同页文本。</td></tr>
+    <tr><td>周三、纸质登记</td><td>office / 4 / paragraph:counter</td><td><code>office-v4.html</code> 正文段 <code>id="counter"</code>：「周三的纸质登记由西门窗口受理。」</td></tr>
+    <tr><td>蓝色标签</td><td>guide / 1 / paragraph:1</td><td><code>guide-v1.md</code> 第 1 个正文段：「蓝色标签用于当天归还的样品柜。」</td></tr>
+  </tbody></table>
+  <p>可在可信课程仓库的 <code>code/phase7-data-rag/rag-lab/foundations/fixtures/</code> 按上表手动核对。程序回查返回文件名和页／段原文供显示，不接受请求给的路径或 URI，也不会打开浏览器或外部地址。</p>
+  <details><summary>选做：用本地已装的 pdftotext 验证合成 PDF 的文本层</summary>
+    <p>从可信仓库根执行。只读课程生成的两页英文 PDF，只写标准输出，不安装依赖、不读取其他挂载。逐页与预抽取 JSON 对照，允许不同换行和连续空白。没有 <code>pdftotext</code> 就跳过这项单独验收；下方标准库练习的 PDF 部分只覆盖预抽取页的检索和回查，不解析 PDF 字节。</p>
+    <pre><code class="language-bash">pdftotext -enc UTF-8 -f 1 -l 1 code/phase7-data-rag/rag-lab/foundations/fixtures/dispatch-v2.pdf -
+pdftotext -enc UTF-8 -f 2 -l 2 code/phase7-data-rag/rag-lab/foundations/fixtures/dispatch-v2.pdf -</code></pre>
+    <p><strong>观察：</strong>第一页含领取凭条说明，不含 <code>18:30</code>；第二页有工作日 <code>18:30</code> 及周末预约两句。这只验证合成 PDF 的简单文本层，不覆盖 OCR、复杂版面、打印页码或变化后的文件版本。</p>
+  </details>
+  <div class="best-practice-point" id="bp-l61">
+    <h3>最佳实践：每个能展示的引文，都能按发布版找到出处</h3>
+    <p class="bp-scenario"><strong>适用：</strong>政策、操作规程、交接通知等会变更且需要回查的材料。<strong>边界：</strong>没有版本凭据或稳定锚点时，只能声明定位粒度与限制，不能从今天的页面补造昨天的坐标。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">仅保存浏览入口</span><p>命中时只保留 URL 或检索片段编号；网页换版后，点开正常、引用却可能支持另一套规则。</p></div><div class="bp-right"><span class="bp-compare-label">分开检索键与回查键</span><p>索引保存片段及版本化定位，展示时用清单回查，摘录与声明一起校验。旧版不可用时显式拒绝，不重写版号。</p></div></div>
+    <p class="bp-rationale"><strong>权衡：</strong>版本清单、锚点与索引要一起发布，重算与保留成本增加；复核者因此能区分材料更新、定位失败和答案误读。</p>
+    <ol class="bp-steps"><li>抽取前确定文档身份及版本，按页或段建坐标；再设计检索窗大小。</li><li>对同一定位测试旧版与当前版，再用一条确实不存在的定位拆开错误原因。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>版号一致却找不到，先查抽取和定位；同段号的旧引用竟被接受，先查键是否包含版号；链接与内容都正确却结论不对，检查声明是否超出原文。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 一条待发布回答的旧引文说 20:10。当前版仍有第 2 段，但已改成 20:40；另有可核对的独立领取时间。业务只展示当前规则，旧版归档仍可打开。发布前怎么处理？</div><div class="quiz-options"><button data-answer="wrong">标明归还引文来自归档，仍把旧时间当现行规则</button><button data-answer="correct">按当前归还证据重答，保留有效的领取引文</button><button data-answer="wrong">只换成当前版链接，保留旧归还结论与领取引文</button><button data-answer="wrong">删去旧归还引文，改用领取引文支持两个时间</button></div><div class="quiz-explanation">历史归档适合解释旧决策，不能证明当前时间；改链接不等于重核结论。领取证据仍然有效，但不能替代归还证据。只有重取当前归还片段并重新判读，才能同时保留两个正确、独立的结论。</div></div>
+</div>
+<section class="section best-practice-lesson" id="guided-l61">
+  <h2>4. 跟做：检索三种来源，再打开回答引用</h2>
+  <div class="card"><h3>起始代码与通过标准</h3>
+    <p>在<strong>可信课程仓库根</strong>用 <code>python -I -X utf8 文件名.py</code> 运行保存的代码块（Python 3.10+，不加 <code>-O</code>）。先运行 PDF 查询，打印回答、引用与回查结果；再按上表补齐 HTML 与 Markdown 两项。林可读领取手册和标签说明，只有梅可以读办公通知；用同一条办公查询比较两人。</p>
+    <pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/citations.py")
+catalogue = lab["Catalogue"]("desk", lab["WORKED_CURRENT"])
+lin = lab["HostScope"]("desk", "lin")
+grants = {"dispatch": ("lin",), "office": ("mei",), "guide": ("lin",)}
+with lab["open_demo"](rows=catalogue.seed_rows(grants)) as db:
+    reply = lab["answer"](db, catalogue, lin, lab["Query"](("cold-room", "weekday")))
+    print(reply.text, reply.citation)
+    print(lab["reopen"](db, catalogue, lin, reply))
+    # TODO：核对上表三个来源，以及缺候选、缺定位、无权限三类负例。</code></pre>
+    <p><strong>通过标准：</strong>三条回答的键来自授权命中，回查的文件、位置和完整摘录都与上表一致，且不混入导航或相邻段。不存在或无权的证据不返回原文；换用户或租户不能打开已有回答。全部成立才输出 <code>L61 ACCEPTED</code>。</p>
+  </div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l61-worked-check">import runpy
+from dataclasses import replace
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/citations.py")
+Citation, Chunk, Resolution = (lab[name] for name in ("Citation", "Chunk", "Resolution"))
+Scope, Query = lab["HostScope"], lab["Query"]
+answer, reopen = lab["answer"], lab["reopen"]
+catalogue = lab["Catalogue"]("desk", lab["WORKED_CURRENT"])
+lin, mei = Scope("desk", "lin"), Scope("desk", "mei")
+grants = {"dispatch": ("lin",), "office": ("mei",), "guide": ("lin",)}
+office_query = Query(("周三", "纸质登记"))
+unavailable = Resolution("unavailable")
+with lab["open_demo"](rows=catalogue.seed_rows(grants)) as db:
+    for scope, query, citation, filename, quote in (
+        (lin, Query(("cold-room", "weekday")), Citation("dispatch", 2, "page:2"),
+         "dispatch-v2.pdf",
+         "Cold-room pickup closes at 18:30 on weekdays.\nWeekend pickup requires a separate booking."),
+        (mei, office_query, Citation("office", 4, "paragraph:counter"),
+         "office-v4.html", "周三的纸质登记由西门窗口受理。"),
+        (lin, Query(("蓝色标签",)), Citation("guide", 1, "paragraph:1"),
+         "guide-v1.md", "蓝色标签用于当天归还的样品柜。"),
+    ):
+        reply = answer(db, catalogue, scope, query)
+        assert (reply.citation, reply.text) == (citation, quote)
+        assert reopen(db, catalogue, scope, reply) == Resolution("ok", Chunk(citation, quote), filename)
+
+    office = answer(db, catalogue, mei, office_query)
+    assert reopen(db, catalogue, lin, office) == unavailable
+    assert reopen(db, catalogue, Scope("other-desk", "mei"), office) == unavailable
+    assert db.source(lin.tenant, lin.user, office.citation.key) is None
+    assert reopen(db, catalogue, lin, replace(office, scope=lin)) == unavailable
+    partial_match = Query(("蓝色标签", "无此词项"))
+    assert db.search(lin.tenant, lin.user, partial_match, k=1)[0].chunk.key == ("guide", 1, "paragraph:1")
+    for query in (office_query, Query(("无此词项",)), partial_match):
+        assert answer(db, catalogue, lin, query) == lab["Answer"](lin, lab["NO_EVIDENCE"])
+    missing = Citation("office", 4, "paragraph:missing")
+    assert reopen(db, catalogue, mei, replace(office, citation=missing)) == unavailable
+    assert reopen(db, catalogue, mei, replace(office, text="摘录不一致")) == unavailable
+    db.revoke(mei.tenant, mei.user, "office")
+    assert reopen(db, catalogue, mei, office) == unavailable
+
+# 清单诊断只用于可信的本地自检，不是公开的引用接口。
+assert catalogue.resolve(missing) == Resolution("unknown_locator")
+assert catalogue.resolve(Citation("missing", 1, "page:1")) == Resolution("unknown_document")
+
+# 同键但正文失配的索引不可生成回答，即使 SQLite 仍授权这条记录。
+rows = ((tenant, replace(chunk, text="索引正文失配"), users)
+        for tenant, chunk, users in catalogue.seed_rows(grants)
+        if chunk.key == office.citation.key)
+with lab["open_demo"](rows=rows) as db:
+    assert db.search(mei.tenant, mei.user, office_query)[0].chunk.text == "索引正文失配"
+    assert answer(db, catalogue, mei, office_query) == lab["Answer"](mei, lab["NO_EVIDENCE"])
+print("L61 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>5. 独立迁移：同段号新规则，另有一段已被移除</h2>
+  <p>样品退还指引从第 3 版升级到第 4 版。第 2 段的归还时间改了，第 3 段的旧附录被移除；独立的样品领取说明也有第 2 段，讲的是停止发放标签的时间。只用 <code>returns</code> 与 <code>pickup</code> 夹具：先在第 3 版保存归还时间和附录的回答，再发布第 4 版，看哪些引用还能打开。领取说明的版本未变，用它检验换版没有误伤无关资料。</p>
+  <div class="card"><h3>起始代码与通过标准</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/citations.py")
+scope = lab["HostScope"]("samples", "ren")
+previous = lab["Catalogue"](scope.tenant, lab["TRANSFER_INITIAL"])
+current = lab["Catalogue"](scope.tenant, lab["TRANSFER_CURRENT"])
+grants = {"returns": ("ren",), "pickup": ("ren",)}
+query = lab["Query"](("晚班", "归还"))
+with lab["open_demo"](rows=previous.seed_rows(grants)) as db:
+    old = lab["answer"](db, previous, scope, query)
+    db.replace_document(scope.tenant, "returns", 4, lab["index_chunks"]("returns", 4))
+    # TODO：用 current 回查旧回答、重查归还时间，再核对旧附录与领取说明。</code></pre>
+    <p><strong>通过标准：</strong>旧版第 2、3 段先能回查，换版后都不可用；新版也找不到第 3 段。归还时间必须重新查询得到，不能把新段落接到旧引用上；领取时间的既有引用仍可回查。用跟做时同样的命令运行，得到 <code>L61 TRANSFER PASSED</code> 才算通过。</p>
+  </div>
+  <details class="bp-check"><summary>展开独立迁移参考与自检</summary><pre><code class="language-python" id="l61-transfer-check">import runpy
+from dataclasses import replace
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/citations.py")
+Citation, Chunk, Resolution = (lab[name] for name in ("Citation", "Chunk", "Resolution"))
+answer, reopen, Query = lab["answer"], lab["reopen"], lab["Query"]
+scope = lab["HostScope"]("samples", "ren")
+previous = lab["Catalogue"](scope.tenant, lab["TRANSFER_INITIAL"])
+current = lab["Catalogue"](scope.tenant, lab["TRANSFER_CURRENT"])
+grants = {"returns": ("ren",), "pickup": ("ren",)}
+returns_query, pickup_query = Query(("晚班", "归还")), Query(("领取台", "发放标签"))
+appendix_query = Query(("附录",))
+unavailable = Resolution("unavailable")
+with lab["open_demo"](rows=previous.seed_rows(grants)) as db:
+    old = answer(db, previous, scope, returns_query)
+    appendix = answer(db, previous, scope, appendix_query)
+    pickup = answer(db, previous, scope, pickup_query)
+    assert (old.citation, old.text) == (
+        Citation("returns", 3, "paragraph:2"), "晚班包装须在 20:10 前归还；逾时登记到下一班。")
+    assert (appendix.citation, appendix.text) == (
+        Citation("returns", 3, "paragraph:3"), "旧版附录：纸质登记由后门桌收取。")
+    assert reopen(db, previous, scope, old).chunk == Chunk(old.citation, old.text)
+    assert reopen(db, previous, scope, appendix).chunk == Chunk(appendix.citation, appendix.text)
+    assert reopen(db, current, scope, old) == unavailable  # 清单领先于索引也不放行。
+
+    db.replace_document(scope.tenant, "returns", 4, lab["index_chunks"]("returns", 4))
+    assert reopen(db, current, scope, old) == unavailable
+    assert reopen(db, previous, scope, old) == unavailable  # 旧清单也不能绕过当前索引。
+    assert reopen(db, current, scope, appendix) == unavailable
+    assert reopen(db, current, scope, replace(appendix, citation=Citation("returns", 4, "paragraph:3"))) == unavailable
+    assert answer(db, current, scope, appendix_query).citation is None
+    assert answer(db, previous, scope, returns_query).citation is None
+
+    fresh = answer(db, current, scope, returns_query)
+    assert (fresh.citation, fresh.text) == (
+        Citation("returns", 4, "paragraph:2"), "晚班包装须在 20:40 前归还；逾时登记到下一班。")
+    assert reopen(db, current, scope, fresh) == Resolution("ok", Chunk(fresh.citation, fresh.text), "returns-v4.md")
+    assert reopen(db, current, scope, replace(old, citation=fresh.citation)) == unavailable
+    assert (pickup.citation, pickup.text) == (
+        Citation("pickup", 1, "paragraph:2"), "晚班领取台在 19:45 停止发放标签。")
+    assert reopen(db, current, scope, pickup) == Resolution("ok", Chunk(pickup.citation, pickup.text), "pickup-v1.md")
+
+# 错误对照：当前版同段号确实能打开，但不是旧回答引用的版本和正文。
+assert old.citation.locator == fresh.citation.locator and old.text != fresh.text
+assert current.resolve(old.citation) == Resolution("version_mismatch")
+assert current.resolve(Citation("returns", 4, "paragraph:3")) == Resolution("unknown_locator")
+print("L61 TRANSFER PASSED")</code></pre></details>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>回答时先说你会保留哪些证据，再说哪条测试能区分两个相似故障。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>切片已经有唯一编号，为什么仍需要文档和版本定位？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>片段号依赖索引构建，换窗口规则或重建后可能改变。用户回查要知道来自哪份文档的哪次发布和哪一页或段；多片段也可以共享同一来源位置。</p><p><strong>追问：</strong>同一份 PDF 分两种片段长度，引用坐标应随之变化吗？</p><p><strong>答题要点：</strong>文档版本、物理页等原始坐标不变；检索编号可变，摘录范围可更精确，但不能失去原始坐标。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>同样的页码或锚点还能打开，为什么要判可能过期？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>相同定位在不同版上可对应不同内容。先判版本，再找该版定位；只准当前内容时对旧版显式拒绝，重新取证后重核结论。</p><p><strong>追问：</strong>如果业务需要历史证据呢？</p><p><strong>答题要点：</strong>有权限时按指定旧版从不可变归档读取，清楚标记历史，不自动跳转最新版，也不把版号改成当前。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>页 JSON 全部测试通过，可以宣称 PDF 支持完成吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不可以。JSON 测试从已定位的页文本开始；单独抽取一个简单文本 PDF 也只证明这一文件的文本抽取。扫描件和复杂读序还需独立验收。</p><p><strong>追问：</strong>扫描页抽取为空，直接跳过再重新编号可以吗？</p><p><strong>答题要点：</strong>不应挪动后续物理页号。保留缺页状态，按需求单独走 OCR 或人工复核，不能把空页当没有相关规则。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>引用解析成功就说明生成答案可靠吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>成功只说明指定版本和定位可回查。还要查看该摘录是否支持问题对应的条件与结论。例如工作日的截止时间不能直接当周末规则。</p><p><strong>追问：</strong>缓存命中后用户刚失去阅读权限怎么办？</p><p><strong>答题要点：</strong>先在可信宿主上重验权限或清缓存，不能因为曾能回查就继续返回；版本完整与获准访问均是独立门槛。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L61">L61 疑难解答 →</a><div class="qa-related"><a href="0070-L60-rag-data-access.html">上一课 L60 · RAG 数据访问</a> · <a href="0072-L62-rag-lexical-retrieval.html">下一课 L62 · 词法检索</a> · <a href="0080-phase7-data-rag-outline.html">第七阶段纲要</a>。提问时带上出错的文档、版本、定位以及在当前原文看到的句子。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>用于检索的片段可以重切，引用不能丢掉原文版本与坐标。同一定位不代表同一事实；区分获取、版本、定位、权限和内容核对各自能证明什么。</p><ul>
+  <li><a href="https://gitlab.freedesktop.org/poppler/poppler/-/blob/master/utils/pdftotext.1">Poppler · pdftotext 手册源文件</a>：页范围、文本编码与布局选项。</li>
+  <li><a href="https://html.spec.whatwg.org/multipage/dom.html#the-id-attribute">WHATWG · HTML 的 id 属性</a> 与 <a href="https://docs.python.org/3/library/html.parser.html">Python · HTMLParser</a>：定位标识及事件式解析。</li>
+  <li><a href="https://spec.commonmark.org/0.31.2/#paragraphs">CommonMark 0.31.2 · Paragraphs</a>：段落是块的一种，真文档并非只按空行分段。</li>
+</ul></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

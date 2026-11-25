@@ -3,7 +3,8 @@
 
 Uses only the standard library to run explicit allowlists. The default suite needs
 Pydantic v2 for L36 and uses loopback HTTP for L58/L59; it never calls external
-services. The separate LangGraph suite needs the graph-lab dependencies.
+services. The separate LangGraph suite needs the graph-lab dependencies. The
+Phase 7 RAG suite uses just the standard library and local synthetic data.
 No dependencies are installed by this script.
 """
 
@@ -81,7 +82,27 @@ LANGGRAPH_CASES = (
     ("0064-L55-langgraph-state-graph.html", ("l55-transfer-check",), "L55 TRANSFER PASSED"),
     ("0065-L56-langgraph-durable-resume.html", ("l56-resume-check",), "L56 ACCEPTED"),
 )
-ALL_CASES = CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES + PHASE6_LOCAL_CASES
+RAG_LESSONS = (
+    (60, "0070-L60-rag-data-access.html"),
+    (61, "0071-L61-rag-citation-chunks.html"),
+    (62, "0072-L62-rag-lexical-retrieval.html"),
+    (63, "0073-L63-rag-vector-retrieval.html"),
+    (64, "0074-L64-rag-hybrid-retrieval.html"),
+    (65, "0075-L65-rag-reranking.html"),
+    (66, "0076-L66-rag-cache-invalidation.html"),
+    (67, "0077-L67-rag-trust-boundary.html"),
+    (68, "0078-L68-rag-retrieval-evals.html"),
+    (69, "0079-L69-rag-generation-evals.html"),
+)
+RAG_CASES = tuple(
+    (filename, (f"l{number}-{kind}-check",), f"L{number} {expected}")
+    for number, filename in RAG_LESSONS
+    for kind, expected in (("worked", "ACCEPTED"), ("transfer", "TRANSFER PASSED"))
+) + (
+    ("0076-L66-rag-cache-invalidation.html", ("l66-stage-check",), "P7 RETRIEVAL LIFECYCLE PASSED"),
+    ("0079-L69-rag-generation-evals.html", ("l69-stage-check",), "P7 RAG HANDOFF PASSED"),
+)
+ALL_CASES = CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES + PHASE6_LOCAL_CASES + RAG_CASES
 
 
 class CodeBlocks(HTMLParser):
@@ -109,9 +130,10 @@ class CodeBlocks(HTMLParser):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=("local", "langgraph"), default="local")
+    suites = {"local": ALL_CASES, "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES}
+    parser.add_argument("--suite", choices=tuple(suites), default="local")
     suite = parser.parse_args().suite
-    cases = ALL_CASES if suite == "local" else LANGGRAPH_CASES
+    cases = suites[suite]
     failures = 0
     for filename, ids, expected in cases:
         try:
