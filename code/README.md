@@ -52,6 +52,10 @@ code/
 
 [L55–L59](../lessons/0069-phase6-langgraph-mcp-outline.html#lesson-plan) 分开验收 [LangGraph 迁移](phase6-langgraph-mcp/graph-lab/README.md)、[MCP stdio](phase6-langgraph-mcp/stdio-lab/README.md) 和 [loopback HTTP 与授权](phase6-langgraph-mcp/http-lab/README.md)。MCP 仅覆盖课堂子集；LangGraph 的依赖锁定和运行状态见项目说明。
 
+## Phase 7 可追溯 RAG
+
+[L60–L69](../lessons/0080-phase7-data-rag-outline.html#lesson-plan) 使用[可追溯证据问答实验](phase7-data-rag/rag-lab/README.md)：先验授权与来源，再比较检索、重排、缓存和分层评估。课程核心使用合成数据与本地标准库；PostgreSQL 和向量索引的实测状态按课标注。
+
 ## 使用规范
 
 - 使用第三方依赖的项目用 `pyproject.toml` 描述依赖；完成实测后提供 `uv.lock`，从项目根运行 `uv run --offline --locked ...`。纯标准库项目使用自身说明中的 Python 命令；

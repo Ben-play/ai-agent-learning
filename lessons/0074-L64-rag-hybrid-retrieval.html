@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L64 · 用失败题判断是否混合检索</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据基础与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>用失败题判断是否混合检索</h1><p class="subtitle">融合的是两张排名，不是两份权限或两套分数</p>
+</div></div>
+<div class="section">
+  <h2>为什么先收集两种失败题？</h2>
+  <p><a href="0072-L62-rag-lexical-retrieval.html">L62 的词法</a>能把「过期、重新生成」映射到操作指引，却可能不认只含「留存、期限」的改写；<a href="0073-L63-rag-vector-retrieval.html">L63 的向量</a>能按方向找邻居，却可能把保留条款排在操作指引之前。把两个结果混在一起不是默认升级。先找出两路各自漏掉的授权事实，固定问题、用户与输出预算，再问融合能否在相同预算下补回缺失。若两路总漏掉同一条证据，或一条精确查询本来就该锁定时刻，融合可能没收益、甚至更差。所有坐标都是人工夹具，排名故意制造了这两类现象；没有调用模型，也不能从小样本推出线上收益。</p>
+  <h3>学习目标</h3>
+  <ul><li>沿着同一授权池手算 RRF，并区分一路候选深度、融合去重和最终 <code>k</code>。</li><li>用证据目标和固定预算对照三种方式，在精确字段上发现融合反例。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 先选一份候选池，再产生两张排名</h2>
+  <p>从可信的租户与用户开始，<code>db.search</code> 用当前文档与许可取一次 <code>authorized</code>。同一批授权片段给两路使用，不从别的用户或租户借结果，也不因某一路没命中而绕过授权另搜。词法按共同词项数排序，向量按余弦相似度排序；各自只保留正分，同分按片段键排。融合接收<strong>名次</strong>而不是原始分数：词法的 2 是两个词项，余弦的 0.451 表示方向相似程度，两者不能拿来直接相加。只要各路进入融合的名单和名次不变，原始分差的变化就不会改变融合结果。</p>
+  <p>倒数排名融合（RRF）从第 1 名起计数：每路排第 <code>r</code> 的片段贡献 <code>1 / (60 + r)</code>，缺席则贡献 0，同一片段把各路贡献相加。这里 60 是固定的平滑常数，不是输出条数、召回深度或可信概率；它减小相邻名次的贡献差，两路出现的片段有时能压过只在一路排第一的片段。即便两路都认为某条靠前，分数也只能说明排序的共识，不能代替回答所需的原文。本课对同一个 <code>(doc_id, version, locator)</code> 累加，最终只返回该片段一次；同分再按这个键稳定打破。分块版本不同或位置不同即是不同片段，不能简单按标题合并。</p>
+  <p>夹具先生成各自完整的正分列表，融合完才取最终 <code>k</code>。实际系统可能因响应预算而限制每路候选深度，但那是另一个参数：如果先把每路都裁成最终输出的一条，原本排第二的证据就不能再给融合提供贡献；即便最终首位没变，也可能改变分数、并列和后续排名。输出上限为零就不发候选；可读正分候选不足时不补零分。合并同一个键也不消除语义冗余：两段都说「七天」可能占两个位置，对「过期后怎么做」仍然没有帮助。要把去重看成候选处理，把是否覆盖各个事实看成独立结果。</p>
+</div>
+<div class="section">
+  <h2>2. 同一授权池，比较两类已知失败</h2>
+  <p>固定租户 <code>support</code>、用户 <code>mei</code> 和最终 <code>k=1</code>。先从正文标定目标：「过期后怎么操作」需要 <code>EXPORT-OPS v1 §2</code>；「留存期限」需要 <code>EXPORT-POLICY v1 §1</code>。两个查询都给固定向量 <code>(1., 0., 0.)</code>，但提交的词项不同。表中的「保留」指保留条款，「指引」指过期处理；同步条款两路都是零分，不进入融合。内部文档不在授权池。</p>
+  <table><caption>支路名次可追溯，最后一列才按 <code>k=1</code> 截断</caption><thead><tr><th scope="col">工单问题与词项</th><th scope="col">词法 / 向量完整正分列表</th><th scope="col">融合验算与首条证据</th></tr></thead><tbody>
+    <tr><th scope="row">过期操作<br><code>过期、重新生成</code></th><td>词法：指引<br>向量：保留 → 指引</td><td>指引 <code>1/61 + 1/62</code>，保留 <code>1/61</code>；首条为指引。</td></tr>
+    <tr><th scope="row">留存期限<br><code>留存、期限</code></th><td>词法：空<br>向量：保留 → 指引</td><td>保留 <code>1/61</code>，指引 <code>1/62</code>；首条为保留。</td></tr>
+  </tbody></table>
+  <p>固定预算下，词法首条支持第一题、第二题为空；向量首条只支持第二题，第一题是有结果却没有正确证据；混合两题都命中目标。只把用户换为 <code>lin</code> 时，操作指引根本不能进任何一路；第一题仍可能返回保留条款，但正文没提供操作证据，不能拿排名最高的一条硬答。测目标覆盖时用各用户合法且应支持的目标，无法取得支持的题单列验证不作无据回答，不能记成普通召回漏失。</p>
+  <p>诊断命中异常时，记录每路授权目标有没有参与、是否为正分、位于第几名、融合后是否被截。这样可分辨权限排除、表示不合适、支路截断和融合排序问题；最后回查的仍是引用键和正文，而不是任何一路的分数。即使夹具显示两题对两题，真实验收还应分术语、同义改写、多个目标、无证据等题组，比较同样最终条数下的支持率与重复片段占位，再量两路检索与合并的时延和资源。这个例子只比较排序内的成本。先取一次冻结的授权池，再对相同两题重复三种排序，分别报告命中目标的次数、分支评分次数和本机墙钟中位数。不包含 SQLite 查询、嵌入、网络和模型生成，不能外推到线上；三条片段的计时也可能有抖动。</p>
+  <p>从仓库根执行 <code>python -I -X utf8 code/phase7-data-rag/rag-lab/compare_retrieval.py</code>。报告的 <code>covered</code> 对应词法、向量、混合的 <code>1 / 2、1 / 2、2 / 2</code>；每题分支评分次数对应 <code>3、3、6</code>。后者不包含融合、排序或内存开销，因此还要把墙钟值另记一列，不给它设通过阈值。</p>
+</div>
+<div class="section">
+  <h2>3. 哪种情况下保留混合？</h2>
+  <div class="best-practice-point" id="bp-l64">
+    <h3>决策卡：固定预算，用三份失败清单作决定</h3>
+    <p class="bp-scenario"><strong>适用：</strong>标注表明精确术语和改写分别被不同支路漏掉。<strong>不适用：</strong>精确字段有硬约束，或未经混合的简单方案已满足目标与预算。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：合并后结果更多就更好</span><p>同时增大 <code>k</code> 和支路深度，看到更多重复片段，分不清收益来自融合、预算变大还是只返回了冗余证据。</p></div><div class="bp-right"><span class="bp-compare-label">对照：同一授权池，同一交付预算</span><p>同用户、题集、授权池和 <code>k</code> 对照三路；按问题分组报目标覆盖、无证据处理和成本，再决定用词法、向量、混合或精确字段分流。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>RRF 省去校准量纲，但也丢掉原始分差；支路错误会带入融合。双路排序和去重需付出额外工作，不等于已经测到特定延迟。</p>
+    <ol class="bp-steps"><li>先标每题必须回查的证据键，再跑<a href="#l64-worked-check">三路对照</a>。</li><li>保持 <code>k</code> 不变，跑<a href="#l64-transfer-check">强约束时刻反例</a>；按题型决定是否走融合。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>融合首条变差且目标仍在某条支路，查支路深度、并列与截断；两路都没有目标则先查授权和表示。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 指引在词法第 1、向量第 2。融合前误把向量只留一条，直接改变什么？</div><div class="quiz-options"><button data-answer="wrong">减少指引的授权</button><button data-answer="wrong">缩小余弦的分母</button><button data-answer="correct">少算一路的名次</button><button data-answer="wrong">减少词法的命中</button></div><div class="quiz-explanation">向量支路里已找不到指引这条，融合少加 <code>1/62</code>，即使首条排序碰巧没变也不等价。</div></div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 两个不同引用键都只说「保留七天」。什么仍然缺失？</div><div class="quiz-options"><button data-answer="correct">过期操作的原文证据</button><button data-answer="wrong">为同一键合计的分数</button><button data-answer="wrong">第二个唯一引用键</button><button data-answer="wrong">保留期限的原文证据</button></div><div class="quiz-explanation">去重处理键的重复；覆盖检查题目的每部分是否有支持原文，不能互相代替。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>4. 跟做：用固定前一条复核三种方式</h2>
+  <p>把两个展开的 Python 块分别存为文件，从<strong>可信课程仓库根目录</strong>执行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。<a href="../code/phase7-data-rag/rag-lab/README.md">项目说明</a>中的语料和向量都是合成夹具，不需要模型、服务或额外包。</p>
+  <div class="card" id="guided-l64"><h3>起点：先从完整名单写出两个贡献</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+q = lab["Query"](("过期", "重新生成"), (1., 0., 0.))
+with lab["open_demo"]() as db:
+    hits = db.search("support", "mei", q, mode="hybrid", k=1)
+    # TODO：对照两路名次，写出首条分数，再换成改写题。</code></pre><p><strong>通过标准：</strong>两种单路都各有一题首条不支持或为空，混合首条分别得到操作指引和保留期限；每个融合键最多出现一次，<code>lin</code> 不得拿到操作指引，即使混合有结果。把提前裁掉支路第 2 条时的分数写成负控。</p></div>
+  <details><summary>展开三路对照参考与自检</summary><pre><code class="language-python" id="l64-worked-check">import runpy
+from math import isclose
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+ops = ("EXPORT-OPS", 1, "§2")
+policy = ("EXPORT-POLICY", 1, "§1")
+Query = lab["Query"]
+exact = Query(("过期", "重新生成"), (1., 0., 0.))
+paraphrase = Query(("留存", "期限"), (1., 0., 0.))
+
+def keys(hits):
+    return tuple(h.chunk.key for h in hits)
+
+with lab["open_demo"]() as db:
+    for query, lexical, hybrid, excerpt in (
+        (exact, (ops,), (ops, policy), "导出文件过期后，需重新发起导出。"),
+        (paraphrase, (), (policy, ops), "导出文件生成后保留 7 天。"),
+    ):
+        for mode, expected in (
+            ("lexical", lexical), ("vector", (policy, ops)), ("hybrid", hybrid),
+        ):
+            full = db.search("support", "mei", query, mode=mode, k=3)
+            assert keys(full) == expected
+            assert db.search("support", "mei", query, mode=mode, k=1) == full[:1]
+        (first,) = db.search("support", "mei", query, mode="hybrid", k=1)
+        assert db.source("support", "mei", first.chunk.key).text == excerpt
+        assert isclose(first.score, 1 / 61 + (1 / 62 if query == exact else 0))
+        if query == exact:
+            assert not isclose(first.score, 1 / 61)  # 支路先截到 1 会丢掉向量贡献。
+    assert keys(db.search("support", "lin", exact, mode="hybrid", k=3)) == (policy,)
+    assert db.source("support", "lin", ops) is None
+    assert db.search("support", "mei", exact, mode="hybrid", k=0) == ()
+print("L64 ACCEPTED")</code></pre></details>
+  <p>通过时只打印 <code>L64 ACCEPTED</code>。这个块只核对两题的合成目标、排序路径与引用；另跑上面的报告比较本机排序开销。两者均不测线上质量或真实模型。</p>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：时刻查询不是主题推荐</h2>
+  <p>换成 <code>support/lin</code> 的同步排班工单：给定精确字段 <code>02:00</code>，只可返回一条确实支持该时刻的证据。本题故意附上与导出主题同向的夹具向量 <code>(1., 0., 0.)</code>。词法给同步条款第一，向量给保留条款第一；融合分相同，按键保留条款在前。现在要实现一个精确字段路径：只提交这个词项并使用词法，再用「无条件混合」作故意错误的对照。不能把 <code>k</code> 增到 2 来改变题目的交付约束。</p>
+  <div class="card"><h3>独立起点</h3><pre><code class="language-python">def lookup_exact_clock(db, Query, clock):
+    q = Query((clock,), (1., 0., 0.))
+    # TODO：为这个已归一的精确字段选择检索模式，固定 k=1。</code></pre><p><strong>通过标准：</strong>精确路径只返回同步条款，回查有 <code>02:00</code> 原文；无条件混合在同一预算返回不支持该时刻的保留条款，且展开名单可验证并列。只把时刻改成未收录的 <code>03:00</code>，精确路径应为空，不能用不相关主题回填。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检</summary><pre><code class="language-python" id="l64-transfer-check">import runpy
+from math import isclose
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+Query = lab["Query"]
+policy = ("EXPORT-POLICY", 1, "§1")
+sync = ("SYNC-POLICY", 1, "§1")
+
+def lookup_exact_clock(db, Query, clock):
+    q = Query((clock,), (1., 0., 0.))
+    return db.search("support", "lin", q, mode="lexical", k=1)
+
+with lab["open_demo"]() as db:
+    (correct,) = lookup_exact_clock(db, Query, "02:00")
+    assert correct.chunk.key == sync
+    assert db.source("support", "lin", sync).text == "同步任务每天 02:00 运行。"
+    q = Query(("02:00",), (1., 0., 0.))
+    ranked = db.search("support", "lin", q, mode="hybrid", k=2)
+    assert tuple(h.chunk.key for h in ranked) == (policy, sync)
+    assert all(isclose(h.score, 1 / 61) for h in ranked)
+    wrong = db.search("support", "lin", q, mode="hybrid", k=1)
+    assert wrong == ranked[:1] and "02:00" not in wrong[0].chunk.text
+    assert lookup_exact_clock(db, Query, "03:00") == ()
+    (irrelevant,) = db.search("support", "lin", Query(("03:00",), q.vector), mode="hybrid", k=1)
+    assert irrelevant.chunk.key == policy
+print("L64 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应只打印 <code>L64 TRANSFER PASSED</code>。如果两条路径都声称有时刻证据，检查是否把「有结果」当成「支持问题」；若并列后首条漂移，检查是否遗漏键的稳定决胜条件。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>先按同一快照和固定预算说明怎么验证，再展开追问。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>词法给一条 3 分，向量给另一条 0.9 分，可以加权相加吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>未经校准不能把不同量纲当成同一标准。先用 RRF 以可解释名次作基线；若业务确需原分，再用独立标注比较校准方案，记录缺席支路的处理。</p><p><strong>追问：</strong>原始词法第一比第二高十倍，RRF 会因此拉大差距吗？</p><p><strong>答题要点：</strong>不会。名次未变，贡献也不变；这就是不做分数校准的取舍。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>两个检索服务各自权限正确，为什么不直接合并缓存结果？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>确认结果属于同一租户、当前用户和语料／授权快照才有可比性。各自对当时调用者正确，不代表对眼前请求仍正确。重取或校验归属，并按当前身份回查引用。</p><p><strong>追问：</strong>两行文档编号相同就应去重吗？</p><p><strong>答题要点：</strong>不能把别的租户混入，当前租户内仍要比文档、版本和定位完整键；相同编号的不同段可支持不同事实。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>每路先取 1 条再融合，和融合后取 1 条有何区别？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>前者丢掉第二及之后的支路贡献，后者允许那些贡献影响首条。用本课指引在向量第 2 的用例比较 <code>1/61</code> 和 <code>1/61 + 1/62</code>，不能只比较碰巧一致的键。</p><p><strong>追问：</strong>出于时延只能缩小支路深度，怎样确定取值？</p><p><strong>答题要点：</strong>固定最终 <code>k</code>、题组与授权快照，逐级试支路深度，记录有效覆盖、并列和时延；不能只看混合列表更长了多少。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>混合在改写题有增益，却使时刻查询首条变差，怎么决策？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>按任务分组。硬约束字段走精确路径，改写题再与向量及混合比较。把精确值有据正例、未收录值的空结果和错误主题候选纳入回归，同预算核对实际支持，而非只看平均分。</p><p><strong>追问：</strong>要不要立刻上重排序修复？</p><p><strong>答题要点：</strong>先看正确候选有没有到达预算允许的重排窗口；没有就该修候选或分流。重排只能改变已有授权候选的顺序。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L64">L64 疑难解答 →</a><div class="qa-related"><a href="0073-L63-rag-vector-retrieval.html">上一课 L63 · 向量检索</a> · <a href="0075-L65-rag-reranking.html">下一课 L65 · 重排序</a> · <a href="0080-phase7-data-rag-outline.html">阶段 7 纲要</a></div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>授权选候选，支路排候选，融合合名次，最终按证据任务验收。先看失败题有没有互补，再用固定预算找出哪类输入反而不该混。</p><ul><li><a href="https://cormack.uwaterloo.ca/cormacksigir09-rrf.pdf">Cormack、Clarke、Büttcher · Reciprocal Rank Fusion（SIGIR 2009，作者存档）</a>：排名倒数公式与常数 60 的来源；论文结果不是本课程夹具的评测。</li><li><a href="https://github.com/pgvector/pgvector/blob/v0.8.2/README.md#hybrid-search">pgvector v0.8.2 · Hybrid Search</a>：与 PostgreSQL 全文搜索结合的实现方向。</li></ul></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

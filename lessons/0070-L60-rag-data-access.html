@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L60 · RAG 数据访问：先确定谁能读哪一行</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据基础与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>RAG 数据模型与行级访问</h1><p class="subtitle">同一个资料编号，换了查看者，数据库应该返回什么？</p>
+</div></div>
+<div class="section">
+  <h2>为什么先学数据访问？</h2>
+  <p>夜间值班助理收到「领取台几点停止发放？」。北站和南站都用同一个模板，文档编号甚至都叫 <code>KB-01</code>，但结束时间不同。用户需要的是自己所在站点的答案，而不是词面最像的问题对应的答案。北站还有一张复核表，普通成员知道编号也不代表可以查看。接续 L59：宿主仍负责确认当前在代表谁；这里把「能不能读」落实到候选行，而不是让模型从全库结果中挑出自己认为合适的段落。</p>
+  <h3>学习目标</h3>
+  <ul><li>把租户、成员身份、行受众和用户想查的文档编号分开，画出从宿主到证据的边界。</li><li>读懂 PostgreSQL 的默认拒绝、查看角色所需授权及行策略，用同一对象的不同查看者预测实际可见结果。</li><li>用本地标准库实验验证正负对照，知道这些结果不能证明 PostgreSQL 或 SQLAlchemy 已接通。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 显式分开身份、对象与查询条件</h2>
+  <p><strong>租户</strong>规定资料归属范围；<strong>成员关系</strong>规定某人是否属于这个范围，以及在这里是普通读者还是复核员；<strong>行受众</strong>规定一个版本是本租户成员都可读，还是只给复核员。生产设计中，文档业务键是「租户＋文档编号」，不可变的资料版以「租户＋文档编号＋版本」入库；当前版由可信发布清单选择，返回行也带版本交给 L61 引用。若开放历史版本，先按访问规则核对该版本，不能假定读取过旧版便能读取新版。成员键是「租户＋用户」；北站的林与南站的林即使是同一个人，也要分开查成员关系，不能把任一站点的角色提升成全局角色。</p>
+  <p>生产宿主先认证用户，再核对其当前租户及租户成员资格，把结果作为可信上下文传入固定的取数工具；用户能提出要查哪份资料，却不能用自然语言、请求头或工具 JSON 为自己选择租户和角色。若界面提供切换站点，也须先由宿主确认该站点属于当前会话，再构造新的身份。绑定 SQL 参数保护语句结构，不证明参数有权代表谁。历史对话、模型记忆、文档内的指示都不是身份来源；宿主无法建立可信上下文时，终止此次取数，不以默认账号补救。</p>
+  <p>本课把权限检查放在候选集合形成时。想象合法资料在全库排序第四，前三名都是别的站点：如果先做全库前三，再删不可见行，用户会被告知没有资料，即使库里有正确答案；如果已经把这些行交给模型才过滤，数据早就出了边界。查询、索引、缓存与日志都应遵守这一约束：后续若引入索引，不能只在数据库源表上开策略就认为索引自动受保护；要限制搜索范围、处理权限与缓存失效，并在组装证据和打开引用时重新确认权限。</p>
+  <h2>2. 为什么既需要角色授权，也需要行策略？</h2>
+  <p>PostgreSQL 先要求查看角色能使用 schema 并对目标关系执行 <code>SELECT</code>，然后 RLS 决定哪些行可见。只有表授权、没启用 RLS 时，普通查询并不会凭空理解多租户；只建策略但没授表权限，则会报权限错误，不等同于查到零行。启用 RLS 却没有适用策略时，正常查看角色默认看不到行。本课的 <code>FOR SELECT … USING</code> 只控制读：没有写授权，不把读策略误当插入或更新时检查新行的 <code>WITH CHECK</code>。</p>
+  <p>迁移角色拥有表；运行时查看角色必须不是对象所有者或能取得所有者权限的成员，也不能是超级用户或有 <code>BYPASSRLS</code>。所有者通常不受 RLS 限制；<code>FORCE ROW LEVEL SECURITY</code> 可让所有者也受策略约束，但不是给运行时用所有者身份的理由，更不会限制超级用户或具备 <code>BYPASSRLS</code> 的角色。这里直接查基础表，不靠视图替代策略；将来经视图读取，要核对视图以谁的权限与策略读底表，以及调用者所需的授权。审核策略叠加也很重要：默认的宽松策略可按「或」组合，新增一条宽松规则未必会缩小可见集合。</p>
+  <p>预览用 <code>l60_viewer</code> 统一管理只读权限，但各个实际查看身份是独立的固定角色。成员表只让查看者看到 <code>db_role = current_user</code> 的映射；文档策略再使用该映射，要求文档租户一致且角色符合行受众。由于策略用到成员表，查看角色还需要其 <code>SELECT</code>，成员表本身也必须限制行。这里采用「一个已映射的数据库角色对应一个可信租户／用户」是为了让验证直接观察 <code>current_user</code>；并非要求大型系统为每个终端用户创建登录账户。换方案时，仍须回答：由谁设置身份、谁能改它、连接归还后是否留存上一请求的身份？</p>
+</div>
+<div class="section">
+  <h2>3. 跑清一次数据流，再区分实测与预览</h2>
+  <p>宿主选定北站林，用户只提交 <code>KB-01</code>。SQLite 固定查询先以 <code>north/lin</code> 匹配成员关系，再用行受众和编号决定返回值；抵达后续检索或引用模块的候选只有北站的「21:30」，不是南站的「20:30」。同一调用改查北站 <code>KB-02</code>：普通读者返回空，复核员梅返回「22:00」。两个角色都有正常的读取路径，只有符合条件的资料会浮出水面。</p>
+  <table><thead><tr><th scope="col">由宿主选定的租户／用户</th><th scope="col">对象编号</th><th scope="col">进入候选集合的行</th></tr></thead><tbody>
+    <tr><td>north / lin（普通读者）</td><td>KB-01</td><td>north / KB-01，21:30</td></tr>
+    <tr><td>north / lin（普通读者）</td><td>KB-02</td><td>无</td></tr>
+    <tr><td>north / mei（复核员）</td><td>KB-02</td><td>north / KB-02，22:00</td></tr>
+    <tr><td>south / lin（普通读者）</td><td>KB-01</td><td>south / KB-01，20:30</td></tr>
+    <tr><td>north / guest（无成员关系）</td><td>KB-01</td><td>无；与未知编号统一处理</td></tr>
+  </tbody></table>
+  <p>下面有两条不同证据链。<strong>必做</strong>是内存 SQLite 夹具：每站每编号仅一行，不演示版本、发布清单或历史读取；手写参数化查询返回合成行，只需 Python 标准库。SQLite 没有这里的 PostgreSQL 角色和 RLS；只读开关用于避免练习误写，不能把连接交给调用方随意执行 SQL，也不代表认证。<strong>选读</strong>是 PostgreSQL 与 SQLAlchemy 的命令预览：当前环境没有 <code>psql</code> 或 Docker，未执行这些命令、没有实际账户或数据库、没有安装依赖或联网。本课不导入共享检索库。下一课 L61 用共享 SQLite 库保存固定来源的当前版及片段，按用户和文档的授予记录筛选检索候选，并在回查引用时重验同一范围；它不沿用本课的成员角色，也不演示 PostgreSQL 行策略。</p>
+  <details><summary>选读：PostgreSQL 行策略与实际检查命令（未执行）</summary>
+    <p>这是用于演算的完整 SQL 顺序，不是从课程运行的安装脚本。若将来移入单独的 PostgreSQL 16+ 验证环境，前置条件是一个可在隔离环境创建这些角色／schema 并切换角色的管理员、未占用的合成名称，以及事务内执行整段脚本并在出错时停止。所有示例角色都不能登录；<code>INHERIT</code> 的查看角色继承组的读权限，而非拥有表。管理员只用于准备与切换，不能拿管理员自身的查询当验收；最后回滚，不保留对象。</p>
+    <pre><code class="language-sql">BEGIN;
+CREATE ROLE l60_owner         NOLOGIN NOSUPERUSER NOBYPASSRLS;
+CREATE ROLE l60_viewer        NOLOGIN NOSUPERUSER NOBYPASSRLS;
+CREATE ROLE l60_north_lin     NOLOGIN INHERIT NOSUPERUSER NOBYPASSRLS;
+CREATE ROLE l60_north_mei     NOLOGIN INHERIT NOSUPERUSER NOBYPASSRLS;
+CREATE ROLE l60_south_lin     NOLOGIN INHERIT NOSUPERUSER NOBYPASSRLS;
+GRANT l60_viewer TO l60_north_lin, l60_north_mei, l60_south_lin WITH SET FALSE;
+
+CREATE SCHEMA l60 AUTHORIZATION l60_owner;
+SET LOCAL ROLE l60_owner;
+REVOKE ALL ON SCHEMA l60 FROM PUBLIC;
+CREATE TABLE l60.membership (
+  db_role name PRIMARY KEY, tenant text NOT NULL,
+  member_role text NOT NULL CHECK (member_role IN ('reader', 'reviewer'))
+);
+CREATE TABLE l60.document (
+  tenant text NOT NULL, doc_id text NOT NULL, version integer NOT NULL CHECK (version > 0),
+  audience text NOT NULL CHECK (audience IN ('member', 'reviewer')),
+  body text NOT NULL, PRIMARY KEY (tenant, doc_id, version)
+);
+INSERT INTO l60.membership VALUES
+  ('l60_north_lin', 'north', 'reader'), ('l60_north_mei', 'north', 'reviewer'),
+  ('l60_south_lin', 'south', 'reader');
+INSERT INTO l60.document VALUES
+  ('north', 'KB-01', 2, 'member', '北站领取台在 21:30 停止发放。'),
+  ('north', 'KB-02', 3, 'reviewer', '北站复核表在 22:00 汇总。'),
+  ('south', 'KB-01', 2, 'member', '南站领取台在 20:30 停止发放。');
+REVOKE ALL ON l60.membership, l60.document FROM PUBLIC;
+GRANT USAGE ON SCHEMA l60 TO l60_viewer;
+GRANT SELECT ON l60.membership, l60.document TO l60_viewer;
+
+ALTER TABLE l60.membership ENABLE ROW LEVEL SECURITY;
+ALTER TABLE l60.document ENABLE ROW LEVEL SECURITY;
+CREATE POLICY member_self ON l60.membership FOR SELECT TO l60_viewer
+  USING (db_role = current_user);
+CREATE POLICY doc_visible ON l60.document FOR SELECT TO l60_viewer
+  USING (EXISTS (
+    SELECT 1 FROM l60.membership AS m
+    WHERE m.db_role = current_user AND m.tenant = document.tenant
+      AND (document.audience = 'member' OR m.member_role = 'reviewer')
+  ));
+RESET ROLE;
+
+SET LOCAL ROLE l60_north_lin;
+SELECT current_user,
+       has_schema_privilege('l60', 'USAGE') AS schema_usage,
+       has_table_privilege('l60.document', 'SELECT') AS read_document,
+       has_table_privilege('l60.membership', 'SELECT') AS read_membership;
+-- 预期：l60_north_lin, true, true, true。
+SELECT current_user, r.rolsuper, r.rolbypassrls,
+       pg_get_userbyid(c.relowner) AS table_owner,
+       row_security_active(c.oid) AS document_rls,
+       row_security_active('l60.membership'::regclass) AS membership_rls
+FROM pg_catalog.pg_roles AS r CROSS JOIN pg_catalog.pg_class AS c
+WHERE r.rolname = current_user AND c.oid = 'l60.document'::regclass;
+-- 预期：l60_north_lin, false, false, l60_owner, true, true。
+SELECT current_user, tenant, doc_id, version, body FROM l60.document WHERE doc_id = 'KB-02'; -- 预期 0 行
+SELECT current_user, tenant, doc_id, version, body FROM l60.document WHERE doc_id = 'KB-01'; -- 预期 north 一行
+RESET ROLE;
+
+SET LOCAL ROLE l60_north_mei;
+SELECT current_user, row_security_active('l60.document'::regclass); -- 预期 l60_north_mei / true
+SELECT current_user, tenant, doc_id, version, body FROM l60.document WHERE doc_id = 'KB-02'; -- 预期 north 一行
+RESET ROLE;
+
+SET LOCAL ROLE l60_south_lin;
+SELECT current_user, tenant, doc_id, version, body FROM l60.document WHERE doc_id = 'KB-01'; -- 预期 south 一行
+ROLLBACK;</code></pre>
+    <p>零行查询本身显示不了 <code>current_user</code>，所以先单独验证身份和策略确实对当前用户生效，再拿同一条 <code>SELECT</code> 比较普通读者与复核员。不执行预览时，应把上述结果写作「预期」，而不是 PostgreSQL 测试报告。</p>
+  </details>
+  <details><summary>选读：SQLAlchemy 2.x 如何在一次事务内取数（未执行）</summary>
+    <p>连接由宿主在另一隔离环境中预配；需已有 PostgreSQL schema、SQLAlchemy PostgreSQL 驱动及一个无管理权限的服务凭据，服务角色仅能切换到固定的查看角色（需要相应的 <code>SET</code> 成员资格），不能成为所有者、超级用户或可绕过 RLS 的角色。上段预览以回滚结束，因此不会为下段代码留下任何可连接对象。下段只展示事务内的操作，不创建引擎、数据库或凭据。文档编号可由用户提供；固定角色与当前版由宿主和发布清单选择。行策略回答「这个版本的受众是谁」，发布筛选回答「哪个版现在可用」，两者不是同一件事。</p>
+    <pre><code class="language-python">from sqlalchemy import text
+
+ROLE_SQL = {
+    ("north", "lin"): ("l60_north_lin", "SET LOCAL ROLE l60_north_lin"),
+    ("north", "mei"): ("l60_north_mei", "SET LOCAL ROLE l60_north_mei"),
+    ("south", "lin"): ("l60_south_lin", "SET LOCAL ROLE l60_south_lin"),
+}
+
+
+def fetch_document(engine, actor, doc_id, published_versions):
+    # actor 与 published_versions 均来自可信宿主，不来自本轮请求。
+    assignment = ROLE_SQL.get((actor.tenant, actor.user))
+    version = published_versions.get((actor.tenant, doc_id))
+    if assignment is None or version is None:
+        return []
+    role, role_sql = assignment
+    with engine.begin() as conn:
+        conn.exec_driver_sql(role_sql)
+        state = conn.execute(text("""
+            SELECT current_user,
+                   row_security_active(CAST('l60.document' AS regclass)),
+                   row_security_active(CAST('l60.membership' AS regclass))
+        """)).one()
+        if tuple(state) != (role, True, True):
+            raise RuntimeError("unexpected viewer or RLS state")
+        rows = conn.execute(text("""
+            SELECT tenant, doc_id, version, body FROM l60.document
+            WHERE tenant = :tenant AND doc_id = :doc_id AND version = :version
+        """), {"tenant": actor.tenant, "doc_id": doc_id, "version": version}).mappings()
+        return [dict(row) for row in rows]</code></pre>
+    <p><code>SET LOCAL ROLE</code> 和查询必须发生在同一连接的同一真实事务中，不用自动提交。退出事务会提交或回滚，局部角色随之结束；生产集成应让两个不同用户先后借到同一池连接，覆盖成功和异常回滚，确认不会沿用上一人的角色。不能把允许执行任意 SQL 的通道交给模型或终端用户，也不能用连接失败后的高权限重试填补空结果。</p>
+  </details>
+  <div class="best-practice-point" id="bp-l60">
+    <h3>最佳实践：候选入口先验身份，查询结果再排序</h3>
+    <p class="bp-scenario"><strong>适用：</strong>共享相同编号和关键词，但成员资格或行受众不同的知识库。<strong>不适用：</strong>只有单一公开语料、无需按用户隔离的索引；此时不必为每段附加虚构角色，但仍要区分公开与未发布资料。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">后过滤</span><p>先算跨租户全局候选，再删去不可展示的行；既可能占用名额，也扩大候选暴露给后续组件的范围。</p></div><div class="bp-right"><span class="bp-compare-label">限定读取后排序</span><p>从受约束的视图或查询范围形成候选，后续只比较仍可用的资料；换用户，必须换授权范围。</p></div></div>
+    <p class="bp-rationale"><strong>权衡：</strong>数据库与索引必须了解权限维度，缓存颗粒变细，权限变更也要传播。换来的是正确的候选集合和清楚的审计边界。不要在日志写无权正文来证明少了一行。</p>
+    <ol class="bp-steps"><li>同一编号换身份，再同名换租户；对照检索前的候选租户、编号和获准正文。</li><li>零候选时用已知可读项做正控；把预期的不可见与库或角色配置异常区分。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>同一对象两人都读不到，先查表和 schema 权限及正控；同编号得到异地时间，先查租户键和身份绑定。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 北站仅有一条可读匹配，按全库相关度排第四。为了返回最多三条可读记录，哪个设计能保住该匹配，并保证后续处理只收到可读行？</div><div class="quiz-options"><button data-answer="wrong">先对全库排序取前三，再按租户与行受众过滤</button><button data-answer="wrong">先对全库排序取前十，再按成员关系过滤</button><button data-answer="correct">先限定租户内的可读行，再按相关度取前三</button><button data-answer="wrong">先在北站排序取前三，再删去无权的复核行</button></div><div class="quiz-explanation">前两项在授权域之外排名，增加上限也不能保证合法项留下。最后一项只做了租户过滤，不可读的复核资料仍会占名额；必须在形成候选时同时约束租户和行受众。</div></div>
+</div>
+<section class="section best-practice-lesson" id="guided-l60">
+  <h2>4. 跟做：同一编号，分别切换用户和租户</h2>
+  <div class="card"><h3>起始代码与通过标准</h3>
+    <p>只读合成夹具。把代码保存为临时 <code>.py</code>，在<strong>可信课程仓库根</strong>执行 <code>python -I -X utf8 文件名.py</code>（Python 3.10+，不加 <code>-O</code>）。固定路径加载本课模块，不访问网络、真实数据库、外部挂载或用户文件；<code>HostActor</code> 在练习代码里由宿主选定。先填写上面的表，再比较运行结果。</p>
+    <pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/access.py")
+Actor = lab["HostActor"]
+with lab["open_fixture"]() as db:
+    rows = lab["visible_documents"](db, Actor("north", "lin"), "KB-01")
+    # TODO：检查唯一行的租户、编号、正文；再切换到 south/lin。</code></pre>
+    <p><strong>通过标准：</strong>两条同编号正控各返回唯一的本站行；北站复核编号在梅处有正文，在林处为空；非成员与未知编号均无结果。全部成立才打印 <code>L60 ACCEPTED</code>。</p>
+  </div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l60-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/access.py")
+Actor, Doc = lab["HostActor"], lab["Document"]
+read = lab["visible_documents"]
+with lab["open_fixture"]() as db:
+    north = Doc("north", "KB-01", "member", "北站领取台在 21:30 停止发放。")
+    south = Doc("south", "KB-01", "member", "南站领取台在 20:30 停止发放。")
+    restricted = Doc("north", "KB-02", "reviewer", "北站复核表在 22:00 汇总。")
+    assert read(db, Actor("north", "lin"), "KB-01") == (north,)
+    assert read(db, Actor("south", "lin"), "KB-01") == (south,)
+    assert read(db, Actor("north", "lin"), "KB-02") == ()
+    assert read(db, Actor("north", "mei"), "KB-02") == (restricted,)
+    assert read(db, Actor("north", "guest"), "KB-01") == ()
+    assert read(db, Actor("north", "lin"), "MISSING") == ()
+    assert read(db, Actor("north", "lin")) == (north,)
+    assert read(db, Actor("north", "mei")) == (north, restricted)
+print("L60 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>5. 独立迁移：同一个人在两处有不同的角色</h2>
+  <p>巡检助理要汇总码头（<code>quay</code>）的交接记录。任在码头是普通读者，在山站（<code>hill</code>）是复核员；码头另有复核员柏。两处的复核记录都叫 <code>HX-7</code>，只有码头有成员公告 <code>HX-8</code>。现在要验收的是<strong>整批候选</strong>，而不是仅查一个编号。写出每人在各自站点可见的文档集合；然后核对任在码头查单条 <code>HX-7</code> 的结果。不要沿用北／南夹具。</p>
+  <div class="card"><h3>起始代码与通过标准</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/access.py")
+Doc, Member, Actor = (lab[name] for name in ("Document", "Membership", "HostActor"))
+docs = (
+    Doc("quay", "HX-7", "reviewer", "码头复核批次 Q2"),
+    Doc("hill", "HX-7", "reviewer", "山站复核批次 H8"),
+    Doc("quay", "HX-8", "member", "码头公告：到场先登记"),
+)
+members = (
+    Member("quay", "ren", "reader"), Member("hill", "ren", "reviewer"),
+    Member("quay", "bo", "reviewer"),
+)
+# TODO：同一连接内换三种可信身份，比较完整候选；再逐条查 HX-7。</code></pre>
+    <p><strong>通过标准：</strong>任在码头只见公告；切到山站只见山站复核；柏在码头两条都见，始终不能混入山站的同号记录。比较一条错误判断「任只要在任一站是复核员就能读码头复核」：它预测有结果，但查询必须为空。用跟做时同样的命令运行，得到 <code>L60 TRANSFER PASSED</code> 才算通过。</p>
+  </div>
+  <details class="bp-check"><summary>展开独立迁移参考与自检</summary><pre><code class="language-python" id="l60-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/foundations/access.py")
+Doc, Member, Actor = (lab[name] for name in ("Document", "Membership", "HostActor"))
+quay_review = Doc("quay", "HX-7", "reviewer", "码头复核批次 Q2")
+hill_review = Doc("hill", "HX-7", "reviewer", "山站复核批次 H8")
+notice = Doc("quay", "HX-8", "member", "码头公告：到场先登记")
+members = (
+    Member("quay", "ren", "reader"), Member("hill", "ren", "reviewer"),
+    Member("quay", "bo", "reviewer"),
+)
+quay_ren, hill_ren, quay_bo = Actor("quay", "ren"), Actor("hill", "ren"), Actor("quay", "bo")
+# 只对合成成员标签演算一个错误预测，不执行错误的取数路径。
+wrong_prediction = any(m.user == quay_ren.user and m.role == "reviewer" for m in members)
+assert wrong_prediction is True
+read = lab["visible_documents"]
+with lab["open_fixture"]((quay_review, hill_review, notice), members) as db:
+    assert read(db, quay_ren) == (notice,)
+    assert read(db, hill_ren) == (hill_review,)
+    assert read(db, quay_bo) == (quay_review, notice)
+    assert read(db, Actor("quay", "absent")) == ()
+    assert read(db, quay_ren, "HX-7") == ()
+    assert read(db, hill_ren, "HX-7") == (hill_review,)
+    assert read(db, quay_bo, "HX-7") == (quay_review,)
+    assert read(db, quay_ren) == (notice,)
+print("L60 TRANSFER PASSED")</code></pre></details>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>先说明决定发生在哪一层，再说需要观察什么才能证明。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>查询已经用绑定参数，能直接采用请求里的租户编号吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。绑定参数解决语句与数据的分离；代表哪个租户必须由宿主身份和成员关系决定。可由请求提供编号作为查找条件，但服务只会在可信主体的可见行内查它。</p><p><strong>追问：</strong>用户确实属于两个站点，如何切换？</p><p><strong>答题要点：</strong>核实新站点的当前成员关系，重建本次的可信上下文，再查询；不能把另一站角色带过来。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>怎么证明 PostgreSQL 的「查不到」来自行策略？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先确认 <code>current_user</code>、非所有者、无超级用户和绕过属性、当前关系的 RLS 状态，再确认具备 schema 与表的读权限。让普通读者查一条可读行，并对同一受限行比较普通读者的零行与复核员的一行。</p><p><strong>追问：</strong>若返回权限错误，能当作负例通过吗？</p><p><strong>答题要点：</strong>不能；权限错误反映对象授权或策略依赖未配齐，不能证明受众谓词按预期筛掉行。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>SQLAlchemy 连接池里怎样避免把上个用户身份带给下一个？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>在同一真实事务内局部设置固定角色、检查有效用户，再查询并在事务内取完结果。事务结束清理局部身份；连接角色本身只允许受控切换。</p><p><strong>追问：</strong>如何验证异常分支没有遗留身份？</p><p><strong>答题要点：</strong>让下一次调用复用同一池连接，分别覆盖前一请求成功与回滚，检查当前角色和实际可见行；SQLite 夹具不能替代这项测试。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>数据库读权限正确，就能把混合租户的向量索引交给任何人搜索吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。复制到索引后的向量、摘要和原文有新的访问边界。搜索应在获准范围内产生候选，缓存要与权限范围关联，引用回查时仍须重新授权。</p><p><strong>追问：</strong>用户移出站点后，旧缓存还能用吗？</p><p><strong>答题要点：</strong>旧权限不是当前权限。设计撤销后的失效或重验；若不能确认当前有效，不把旧候选交给模型。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L60">L60 疑难解答 →</a><div class="qa-related"><a href="0068-L59-mcp-skill-authority.html">上一课 L59 · MCP 与业务授权</a> · <a href="0071-L61-rag-citation-chunks.html">下一课 L61 · 可引用的文档切片</a> · <a href="0080-phase7-data-rag-outline.html">第七阶段纲要</a>。提问时带上同一对象在两种身份下的结果，以及证明正控接通的那一行。</div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>要先回答「谁能读哪一行」，再问「哪一行更相关」。本课实测的是 SQLite 查询与合成数据；数据库的角色、策略和连接生命周期仍是 PostgreSQL 集成需要验收的事实。</p><ul>
+  <li><a href="https://www.postgresql.org/docs/current/ddl-rowsecurity.html">PostgreSQL · Row Security Policies</a>：默认拒绝、所有者与策略组合；<a href="https://www.postgresql.org/docs/current/ddl-priv.html">Privileges</a>：对象权限。</li>
+  <li><a href="https://www.postgresql.org/docs/current/role-membership.html">PostgreSQL · Role Membership</a> 与 <a href="https://www.postgresql.org/docs/current/sql-set-role.html">SET ROLE</a>：继承权限与有效查看身份；<a href="https://www.postgresql.org/docs/current/functions-info.html">System Information Functions</a>：验证当前角色下策略是否生效。</li>
+  <li><a href="https://docs.sqlalchemy.org/en/20/core/connections.html">SQLAlchemy 2.0 · Working with Engines and Connections</a>：事务边界与连接归还；<a href="https://docs.python.org/3/library/sqlite3.html">Python · sqlite3</a>：标准库连接和参数绑定。</li>
+</ul></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

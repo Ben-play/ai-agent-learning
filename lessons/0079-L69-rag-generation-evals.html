@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L69 · RAG 生成评测</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>RAG 生成评测</h1><p class="subtitle">冻结证据包，分开核对出处、支持、正确性与拒答</p>
+</div></div>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>一个答复说「保留七天」，数值正确，却附上已经替换的旧版本。另一个答复引用完整、版本也对，但拿保留期段落证明过期后自动处理。两者都不合格。还有一种答复，明白告诉用户过期处理缺证据；如果证据包本来就没覆盖它，这是正确的克制，不能当作模型不会答。L68 留下逐行检索记录，本课再把生成部分隔离出来，定位应该修改的环节。</p>
+  <ul><li>固定证据包，用带人工标签的小样本逐条评估；验证准确引文与正确断言互不替代。</li><li>区分证据没给够、生成没有正确用证据、以及两边同时有问题；按缺口进行部分答复或拒答。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 给同一次实验固定输入和评判标准</h2>
+  <p>评生成时冻结问题、已授权的租户及用户、证据包的顺序、完整引文与当前资料快照，换生成配置才有可比性。先用固定的、完整的金标证据包跑一遍，看看生成器在资料齐全时是否仍写错；再用真实检索返回的证据包跑一遍，观察整条链路。每组比较内部不换包，不因为答复说得像真的就回库补材料给它记分。课程用手写的候选答复代替模型，便于每次只变化一个字段；这测的是评判契约而不是实际模型表现。</p>
+  <p>把问题拆成可评判的事实，例如保留期的值是「7 天」、过期处理是「重新发起导出」。金标准答案记录当前业务事实；支持标签另外指定哪个引文表达了哪个事实与值，两类标注不从答复复制。对每条断言独立检查：<strong>出处精确</strong>，当前授权库按租户、文档编号、版本和定位查到整段，逐字等于引文；<strong>包内出现</strong>，完整引文确实送到本轮；<strong>断言正确</strong>，事实和值符合答案标签；<strong>引文支持</strong>，已验证的包内原文确实支持这条断言。找到真实原文不是支持，支持也不等于业务事实正确，例如可读旧培训稿逐字写了错误数值。练习为简化只允许整片、精确匹配；实际短引文要另订字符范围和规范化规则，不能用模糊定位冒充精确核验。</p>
+  <table><thead><tr><th scope="col">看到的结果</th><th scope="col">独立失败项</th><th scope="col">交接给谁</th></tr></thead><tbody>
+    <tr><td>答「7 天」，引文定位写成不存在的 §9</td><td>断言正确，出处及包内核对失败</td><td>查生成器的结构化引用或展示映射</td></tr>
+    <tr><td>引文是保留期原文，却用来证明过期处理</td><td>出处和包内核对通过，但引文不支持断言</td><td>查断言与证据的对应关系</td></tr>
+    <tr><td>过期处理证据未给到，只回答已知的保留期并明确缺口</td><td>答复合格；检索没命中可读金标是检索缺口，命中却装不进是打包缺口</td><td>分别查 L68 的事实覆盖与 L65 的打包预算</td></tr>
+    <tr><td>给足两问的证据，仍把过期处理标为缺口</td><td>不当拒答：漏掉已有支持的事实</td><td>查生成器使用上下文的逻辑</td></tr>
+  </tbody></table>
+</section>
+<section class="section">
+  <h2>2. 拒的是证据缺口，不是整批问题</h2>
+  <p>对每个事实，若固定证据包没有可核验且支持正确值的材料，就不输出该断言。部分有证据就给部分答复，明确列出缺失项；都无证据时才整体拒答。本课不允许一边承认缺证，一边输出无依据的值，也不把库中存在但没送进包里的材料当依据。若检索覆盖不足且生成还硬猜，两个环节都记失败。授权是上游硬门：组包前范围、版本或出处不通过，就不能把该包交给生成器。答复本身附上的旧引用则是下游验收失败。评分器只把无效材料视为没有支持，不能从一个高分推断未发生越权。假如证据互相冲突，产品还应定义权威性、时效和转人工规则；本地支持标签仅说明哪句话表达了什么，不能自动裁决冲突。</p>
+  <p>先用少量手工标注行校验判分器：正控、错误版、错误定位、改过的引文、准确但不支持、来源有误但逐字引用、缺证仍猜、缺证正确拒答。每行保留预期与实际轴，而不是只追求整体通过率。开放问答里语义等价会超出固定值比较；如果另用模型评委，只给它确定性规则不能解决的语义项，先用人工金标做盲测，报告各类分歧（特别是错引、缺证与拒答），并固定评委版本和评分表。在涉及授权或精确出处时，评委不能覆盖程序失败；未校准或版本变化时，回到人工，不把评委的分数当上线证据。本课没有评委调用，不输出真实模型质量结论。</p>
+  <div class="best-practice-point" id="bp-l69">
+    <h3>决策卡：先冻结证据，再改生成；先验硬条件，再评语义</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一个 RAG 问答版本要做回归，或只看最终错误无法定位原因。<strong>边界：</strong>固定标签这里只适用于少量可枚举事实，开放文本须增加人工覆盖。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：看答案顺眼就通过</span><p>同时换检索与生成，评委也没校准，无法解释缺证或错引从哪来。</p></div><div class="bp-right"><span class="bp-compare-label">选择：按轴保留失败行</span><p>固定包评生成；另看真实检索覆盖。先核对授权、精确引用与包，再核对每项事实和拒答。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>人工标签和快照需要维护；收益是同一错误可以稳定复现，并能把修复派给对应环节。</p>
+    <ol class="bp-steps"><li>分别准备完整、部分和空证据包；在每包内固定问题与材料。</li><li>每个负例只改一个字段，对照结构检查、正确性和支持度；保存失败样本而非只保存总分。</li></ol>
+    <p class="bp-result"><strong>复查顺序：</strong>先排越权；再问证据是否完整，最后看生成是否用准了证据。资料齐全仍错时，不先换排序器。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 值正确，库里也能找到该精确引文，但这轮没有把它送进证据包，应怎样记录？</div><div class="quiz-options"><button data-answer="correct">出处通过，断言正确，包内支持不通过</button><button data-answer="wrong">出处通过，断言正确，包内支持通过</button><button data-answer="wrong">出处不通过，断言正确，包内支持通过</button><button data-answer="wrong">出处通过，断言错误，包内支持不通过</button></div><div class="quiz-explanation">资料库校验、独立金标与实际证据包是三份不同输入，任一通过都不能替代另外两项。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：一份证据包，换一条断言</h2>
+  <p>使用 <a href="../code/phase7-data-rag/rag-lab/README.md">课程 RAG 实验</a>。从<strong>可信课程仓库根</strong>用 Python 3.11+ 执行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。不装依赖、不调用模型。</p>
+  <div class="card" id="guided-l69"><h3>最小起点：锁住一个整段引用</h3><pre><code class="language-python">import runpy
+
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+mei = a["Scope"]("support", "mei")
+with lab["open_demo"]() as db:
+    policy = db.source("support", "mei", ("EXPORT-POLICY", 1, "§1"))
+    packet = (a["cite"](mei, policy),)
+    # TODO：在同一个包内，给正确答复、错版本、错定位和错引文逐条判分。
+</code></pre><p><strong>通过标准：</strong>部分答复只写保留期并列出过期处理缺口；独立改版、定位或引文，出处与包内支持都失败但保留期值仍正确；用当前引文答过期处理，出处通过但不支持；在完整包上无故拒答也不通过。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l69-worked-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+Claim, Answer, Citation = (a[name] for name in ("Claim", "Answer", "Citation"))
+mei = a["Scope"]("support", "mei")
+truth = {"retention": "7 天", "renewal": "重新发起导出"}
+policy_key, ops_key = ("EXPORT-POLICY", 1, "§1"), ("EXPORT-OPS", 1, "§2")
+support = frozenset({
+    Claim("retention", "7 天", Citation("support", policy_key, "导出文件生成后保留 7 天。")),
+    Claim("renewal", "重新发起导出", Citation("support", ops_key, "导出文件过期后，需重新发起导出。")),
+})
+with lab["open_demo"]() as db:
+    policy = a["cite"](mei, db.source("support", "mei", policy_key))
+    ops = a["cite"](mei, db.source("support", "mei", ops_key))
+    retention, renewal = Claim("retention", "7 天", policy), Claim("renewal", "重新发起导出", ops)
+    gaps = frozenset({"renewal"})
+    packet = (policy,)
+    partial = Answer("partial", (retention,), gaps)
+
+    def grade(answer, evidence=packet):
+        return a["grade_generation"](db, mei, evidence, answer, truth, support)
+
+    passed = grade(partial)
+    assert passed.accepted and passed.expected_gaps == gaps
+    assert passed.claims == (a["ClaimGrade"](True, True, True, True),)
+    for wrong in (
+        replace(policy, key=("EXPORT-POLICY", 2, "§1")),
+        replace(policy, key=("EXPORT-POLICY", 1, "§9")),
+        replace(policy, quote="导出文件保留 7 天。"),
+    ):
+        bad = grade(replace(partial, claims=(replace(retention, citation=wrong),)))
+        assert bad.claims == (a["ClaimGrade"](False, False, True, False),) and not bad.accepted
+    misplaced = grade(Answer("answer", (retention, replace(renewal, citation=policy))))
+    assert misplaced.claims[1] == a["ClaimGrade"](True, True, True, False)
+    assert not misplaced.gaps_ok and not misplaced.accepted
+    full = (policy, ops)
+    assert grade(Answer("answer", (retention, renewal)), full).accepted
+    needless = grade(partial, full)
+    assert needless.expected_gaps == frozenset() and not needless.accepted
+print("L69 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：同步样张有原文，但不一定有答案</h2>
+  <p>换成 Lin 的值班问题：「同步什么时候运行？」在内存库用第 2 版替换同步文档：§4 是当前政策，§5 是合成培训样张，文字记了错误的时间；另有一篇真实可读但不相关的保留期资料。先把样张和无关资料放进固定包，分别测错误宣称、错误引用；再做一个只含无关资料的独立证据包，同包对照明确拒答和报出真实但无依据的时间。</p>
+  <div class="card"><h3>独立起点：先标注事实，再构造两个固定包</h3><pre><code class="language-python">from dataclasses import replace
+import runpy
+
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+lin = a["Scope"]("support", "lin")
+truth = {"schedule": "02:00"}
+with lab["open_demo"]() as db:
+    old = db.source("support", "lin", ("SYNC-POLICY", 1, "§1"))
+    official = replace(old, version=2, locator="§4")
+    sample = replace(official, locator="§5", text="训练样张写作：同步任务每天 03:00 运行。")
+    db.replace_document("support", old.doc_id, 2, (official, sample))
+    policy = db.source("support", "lin", ("EXPORT-POLICY", 1, "§1"))
+    # TODO：独立标注 §4 和 §5 的原文和值；包 A 放 §5 与保留期，包 B 只放保留期。
+</code></pre><p><strong>通过标准：</strong>包 A 的「03:00」逐字可核验且有支持标签，但业务值错误；「02:00」配库中有效的 §4 仍因包外引用失败。两包都缺正确值的支持，应明确拒答，不能靠猜中获得通过。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l69-transfer-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase7-data-rag/rag-lab/"
+lab = runpy.run_path(root + "lab.py")
+a = runpy.run_path(root + "assessment/checks.py")
+Claim, Answer, Grade, Citation = (a[name] for name in ("Claim", "Answer", "ClaimGrade", "Citation"))
+lin = a["Scope"]("support", "lin")
+truth = {"schedule": "02:00"}
+with lab["open_demo"]() as db:
+    old = db.source("support", "lin", ("SYNC-POLICY", 1, "§1"))
+    official = replace(old, version=2, locator="§4")
+    sample = replace(official, locator="§5", text="训练样张写作：同步任务每天 03:00 运行。")
+    db.replace_document("support", old.doc_id, 2, (official, sample))
+    policy = a["cite"](lin, db.source("support", "lin", ("EXPORT-POLICY", 1, "§1")))
+    fact = Claim("schedule", "02:00", a["cite"](lin, official))
+    wrong = Claim("schedule", "03:00", a["cite"](lin, sample))
+    support = frozenset({
+        Claim("schedule", "02:00", Citation("support", ("SYNC-POLICY", 2, "§4"), "同步任务每天 02:00 运行。")),
+        Claim("schedule", "03:00", Citation("support", ("SYNC-POLICY", 2, "§5"),
+                                            "训练样张写作：同步任务每天 03:00 运行。")),
+    })
+    packet_a, packet_b = (a["cite"](lin, sample), policy), (policy,)
+
+    def grade(packet, answer):
+        return a["grade_generation"](db, lin, packet, answer, truth, support)
+
+    for claim, expected in ((wrong, Grade(True, True, False, True)),
+                            (fact, Grade(True, False, True, False)),
+                            (replace(fact, citation=policy), Grade(True, True, True, False))):
+        result = grade(packet_a, Answer("answer", (claim,)))
+        assert result.claims == (expected,) and not result.accepted
+    refuse = Answer("refuse", gaps=frozenset({"schedule"}))
+    assert grade(packet_a, refuse).accepted and grade(packet_b, refuse).accepted
+    guess = grade(packet_b, Answer("answer", (replace(fact, citation=None),)))
+    assert guess.claims == (Grade(False, False, True, False),) and not guess.gaps_ok
+    assert not guess.accepted
+print("L69 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L69 TRANSFER PASSED</code>。样张数值被判正确，查是否把出处当事实；猜中仍得分通过，查是否漏了证据和拒答门。</p>
+</section>
+<section class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-rag-handoff" data-phase-practice="rag-handoff">
+  <h2>阶段检查点：同一张交班卡如何交接失败</h2>
+  <p>交班卡问「导出保留多久？同步何时运行？」。固定为 <code>support/mei</code> 的词法查询 <code>("保留", "有效期", "同步")</code>；错租户对照用 <code>operations/mei</code>。独立金标为保留期 7 天（<code>EXPORT-POLICY v2 §3</code>：「导出文件生成后保留 7 天。〔交班样张〕」）与每天 02:00（<code>SYNC-POLICY v1 §1</code>：「同步任务每天 02:00 运行。」）。批准快照还保留 Mei 可读但本题无需引用的 <code>EXPORT-OPS v1 §2</code>。证据包保留每项的 <code>Evidence</code> 主体和数据标签，到 <code>grade_generation()</code> 才显式取出引文。</p>
+  <div class="card"><h3>起点：固定预算，填四列交接记录</h3><p>调用 <code>lifecycle/main.py</code> 的 <code>pack()</code>，固定 <code>top_k=2, max_chars=120</code>；只在指定行把字节上限从 256 改为 120。分别填「检索缺口」「打包缺口」「包内有证据支持的正确值」「答复验收」。</p><pre><code class="language-text">错租户，检索 k=2 → 是否允许组包？
+同主体，检索 k=1，256 B → 只答保留期、标记同步缺口；再对照声称答齐
+同主体，检索 k=2，120 B → 同一部分答复；解释缺口为什么换了一层
+同主体，检索 k=2，256 B → 答齐，但先用保留期旧引文 v1 §1，再换当前引文
+负例：只把同步原文改成「同步任务每天 03:00 运行。」，键与批准规格不变
+预览：preview_label，目标 handoff，版号 2，两条当前原文用「；」拼接；先不给批准，再给匹配批准</code></pre><p><strong>通过标准：</strong>错租户不组包；窄检索只召回 1/2，宽检索召回 2/2。宽检索缩小字节预算后实际只装进保留期（106 B），完整包是 177 B。部分答复可通过；完整包的旧版引用仍失败。错写的同步原文须拦下；单独评分时，引用它并声称 02:00 即使出处精确、确实在包、值也正确，仍不受其支持。预览在无批准时写零条，匹配批准时写一条模拟记录；没有执行器。</p></div>
+  <p>在可信课程仓库根运行以下命令，查看每行怎样归因；报告不打印证据全文或模拟预览标签。</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase7-data-rag/rag-lab/assessment/stage.py --report</code></pre>
+  <details class="bp-check"><summary>展开跨课验收：运行同一套断言，只输出成功标记</summary><pre><code class="language-python" id="l69-stage-check">import runpy
+
+stage = runpy.run_path("code/phase7-data-rag/rag-lab/assessment/stage.py")
+stage["run_stage_check"]()
+print("P7 RAG HANDOFF PASSED")</code></pre><p>读 <code>stage.py</code> 的 <code>make_packet()</code> 与 <code>check_case()</code>，比较同一批宽检索命中如何打出两种包，再看 <code>check_wrong_text()</code> 如何把真实交接的阻断与只供评分的对照分开。</p></details>
+  <p class="bp-result">应得到 <code>P7 RAG HANDOFF PASSED</code>。本检查使用 SQLite 词法检索和 L65 的打包函数，不运行重排、嵌入、缓存、生产审批或模型。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2><p>每题先指出哪一层证据足够，再说明最小对照。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>检索没找到过期政策，客服只答保留期并说明缺资料，算生成失败吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>按实际包不是生成失败。查该事实的允许金标；若有而没找到，是检索漏项。另给同样问题完整金标包，验证生成能用它答齐。</p><p><strong>追问：</strong>如果完整包下仍只答保留期呢？</p><p><strong>答题要点：</strong>这次是生成不当拒答或遗漏；保持包不变改生成边界再测。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>数字和原文都对，段落编号已移动，能否只查文档编号便通过？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。核对当前得到授权的精确版本、定位、引文，并与实际包对照；数字正确只通过了事实轴。</p><p><strong>追问：</strong>为什么不把库里找到的新编号自动填成原答复的引文？</p><p><strong>答题要点：</strong>那会改动测试对象；只能另作明确的引用修复，再对新证据包和新答复重新验收。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>客服逐字引用旧培训稿，给了一个不符合现行制度的时间，怎么标？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>若那段训练材料在固定包里且当前可查，出处和文本支持可通过，但业务正确性失败。这表明来源筛选或冲突处理仍须改进。</p><p><strong>追问：</strong>两条有效证据真的互相冲突时，应否选排名高的？</p><p><strong>答题要点：</strong>不能把排名当权威，查适用范围、时效与负责人；无法裁决就保留冲突或转人工。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>新评委给九成高分，能用它替换人工标签上线吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>总分没说明它是否漏错引、漏错猜或处罚正确拒答。先用独立人工标注集盲测并分项报告，冻结评委版本、评分表和样本，再决定能辅助哪些语义项。</p><p><strong>追问：</strong>它对开放题更灵活，可否把授权失败改为通过？</p><p><strong>答题要点：</strong>不可以。权限和精确核验是确定性发布门槛，评委只提供校准后的辅助信号。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L69">L69 疑难解答 →</a><div class="qa-related"><a href="0078-L68-rag-retrieval-evals.html">上一课 L68 · 检索评测</a> · <a href="0080-phase7-data-rag-outline.html">下一页 · 阶段 7 纲要</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>证据不够时标缺口；证据够却写错、错引或漏答时修生成。用独立轴留下能复现的失败样本。</p><ul><li><a href="https://aclanthology.org/2023.emnlp-main.398/">Gao 等 · Enabling Large Language Models to Generate Text with Citations（ALCE）</a>：原论文区分答案正确性与引用质量。</li><li><a href="https://arxiv.org/abs/2306.05685">Zheng 等 · Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena</a>：原研究用人评对照并检查评委偏差。</li><li><a href="https://arxiv.org/abs/2311.09476">Saad-Falcon 等 · ARES</a>：原论文分别评估上下文相关性、答案忠实性和答案相关性，并用人工标注辅助评估。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L63 · Embedding 与向量检索</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第七阶段 · 数据基础与 RAG</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>Embedding 与向量检索</h1><p class="subtitle">先验证精确余弦排序，再判断近似索引是否值得</p>
+</div></div>
+<div class="section">
+  <h2>为什么词法没有命中，不一定是权限问题？</h2>
+  <p>用户换个说法：「导出的留存期限是多久？」把这道改写题表示为「留存、期限」，<a href="0072-L62-rag-lexical-retrieval.html">L62 的词项交集</a>就找不到本来可读的保留条款。如果查询与文档在一个合适的向量空间相近，就有机会在词不相同的情况下找到证据。这节只验证向量给定后候选如何打分、截断和回查。贯穿整课的三维数字由人写入，连「改写落到正确方向」也是预先安排的；它不测试任何嵌入模型是否真的理解这句话，也不报告线上质量或延迟。</p>
+  <h3>学习目标</h3>
+  <ul><li>在同一授权池手算余弦相似度，定位空命中和名次差异。</li><li>比较精确扫描与近似候选的职责，读懂一份待运行的 pgvector 对照计划。</li></ul>
+</div>
+<div class="section">
+  <h2>1. 先过授权，再比较向量的方向</h2>
+  <p>查询入口依然由宿主提供租户和操作者。<code>db.search</code> 先从同租户的当前文档与许可取 <code>db.authorized</code>，再把片段和 <code>Query(terms, vector)</code> 交给排序器；<code>mode="vector"</code> 只读取查询向量，不让词项影响顺序。向量不是引用，不携带许可，也不会因为相近而授予任何访问权。查到命中后仍用租户、用户、文档编号、版本和段落定位回读正文，不能把相似分当作答案的置信度。</p>
+  <p>Embedding（嵌入）是把文本编码成一组数值。典型数据流分两路：入库时编码分块并保存向量及模型版本；查询时按兼容的编码约定把问句变为查询向量。两路在检索时才用同一种距离作比较。这里省掉编码调用，直接把三维文档向量写进夹具，查询也直接传入三维数，所以可以单独验算排序，不把编码效果算进实验结果。</p>
+  <p>余弦相似度等于向量点积除以两个长度的乘积。夹角小的向量方向相近；同向为 1，正交为 0，反向为 −1。把非零向量放大正倍数，方向不变，分数也不应变化，因此不能用未归一化的点积代替。输入必须维数一致、维数非空且元素有限；零向量没有定义良好的方向，夹具把这对向量视作零分，不产生向量命中。非正分被剔除，正分按降序排，同分按片段键排，再切至 <code>k</code>。这道正分门槛是本课约定，并非所有向量数据库的缺省行为，更不是相关性的通用阈值。共享实验库在写入时也检查三维与数值有效性；一条坏向量不应发布成新版，再让整个授权池的向量和混合查询失败。</p>
+  <p>这不是索引演示：本地 SQLite 负责授权选择，Python 对授权池中每个片段逐一计算，完全不跳过邻居。若有 <code>n</code> 段、每向量 <code>d</code> 维，评分做约 <code>n × d</code> 的运算，另有最多 <code>n</code> 条的排序；这里没有用堆提速。称它为<strong>精确线性扫描基线</strong>，指的是相对于这些固定向量没有近似漏邻居，不是说浮点没有误差，也不是说所有排出来的片段都真的支持问题。上线前应固定文档与查询的向量模型、维度、版本及其编码约定；模型或分块版本变了，应重新建立相匹配的向量并重测，不因维数相同就假设向量空间可以混用。</p>
+</div>
+<div class="section">
+  <h2>2. 带着改写问题逐步核对</h2>
+  <p>查询固定为 <code>Query(("留存", "期限"), (1., 0., 0.))</code>，在 <code>support</code> 租户用 <code>k=2</code> 只变用户。下面列的是可解释的候选轨迹；排名使用未四舍五入的实际分数。</p>
+  <table><caption>词法没有命中；同一批可读片段用余弦重新检查</caption><thead><tr><th scope="col">合成片段</th><th scope="col">mei：点积 ÷ 长度积</th><th scope="col">lin：是否参与评分</th></tr></thead><tbody>
+    <tr><th scope="row"><code>EXPORT-POLICY</code></th><td><code>1 / 1 = 1</code>，第 1</td><td>是，1，第 1</td></tr>
+    <tr><th scope="row"><code>EXPORT-OPS</code></th><td><code>0.45 / √0.9946 ≈ 0.451</code>，第 2</td><td>未获许可，不评分</td></tr>
+    <tr><th scope="row"><code>SYNC-POLICY</code></th><td>正交为 0，不返回</td><td>是，0，不返回</td></tr>
+    <tr><th scope="row"><code>EXPORT-INTERNAL</code></th><td>未获许可，不评分</td><td>未获许可，不评分</td></tr>
+  </tbody></table>
+  <p>两个账号各自第一条都能回查「导出文件生成后保留 7 天。」；第二条只对 <code>mei</code> 可读，虽也属于导出主题，却不能单独回答保留多久。把 <code>k</code> 扩到 10 也不会让正交片段入榜，更不会改变许可。排查时先把应支持问题的原文标成目标：目标没进授权池属于可见性；进了却为零分属于表示或匹配；正分却排在预算外属于排名或截断；多个命中若重复同一事实，属于上下文覆盖不足。只有在固定候选、固定向量、固定距离下精确结果与近似结果不同，才适合继续定位近似漏召回。</p>
+</div>
+<div class="section">
+  <h2>3. pgvector 对照：索引与计划示意，未运行</h2>
+  <p><strong>NOT RUN（未运行）：</strong>本课离线验收不使用 PostgreSQL 或 pgvector。下面是给已有 pgvector 0.8.2 扩展的隔离数据库看的 SQL 对照，不是部署脚本。临时表模拟 <code>support/mei</code> 已完成授权的当前快照；<code>topic</code> 只是业务筛选，不承担权限验证。实际系统要由服务端按当前身份强制实施租户与文档许可，不能让客户端挑授权范围，也不能用近邻索引或这个临时表替代权限设计。使用余弦时，pgvector 的 <code>&lt;=&gt;</code> 是<strong>距离</strong>，越小越近；有限非零向量中，距离小于 1 等价于余弦相似度为正。</p>
+  <pre><code class="language-sql">BEGIN;
+CREATE TEMP TABLE l63_visible (
+    doc_id text, version integer, locator text,
+    topic text NOT NULL, embedding vector(3) NOT NULL,
+    PRIMARY KEY (doc_id, version, locator)
+);
+INSERT INTO l63_visible VALUES
+    ('EXPORT-POLICY', 1, '§1', 'export', '[1,0,0]'),
+    ('EXPORT-OPS',    1, '§2', 'export', '[0.45,0.89,0]'),
+    ('SYNC-POLICY',   1, '§1', 'sync',   '[0,0,1]');
+ANALYZE l63_visible;
+
+PREPARE l63_query (vector, text, integer) AS
+SELECT doc_id, version, locator, embedding &lt;=&gt; $1 AS distance
+FROM l63_visible
+WHERE topic = $2 AND (embedding &lt;=&gt; $1) &lt; 1
+ORDER BY embedding &lt;=&gt; $1 ASC
+LIMIT $3;
+
+-- 无向量索引时记录精确计划和结果键。
+EXPLAIN (ANALYZE, BUFFERS) EXECUTE l63_query('[1,0,0]', 'export', 2);
+EXECUTE l63_query('[1,0,0]', 'export', 2);
+
+CREATE INDEX l63_visible_hnsw ON l63_visible USING hnsw (embedding vector_cosine_ops);
+ANALYZE l63_visible;
+-- 同一查询：只有选中 HNSW 索引扫描才是近似对照。
+EXPLAIN (ANALYZE, BUFFERS) EXECUTE l63_query('[1,0,0]', 'export', 2);
+EXECUTE l63_query('[1,0,0]', 'export', 2);
+-- 在 0.8.0+ 可重新记录计划与结果，比较迭代扫描的代价。
+SET LOCAL hnsw.iterative_scan = strict_order;
+EXPLAIN (ANALYZE, BUFFERS) EXECUTE l63_query('[1,0,0]', 'export', 2);
+EXECUTE l63_query('[1,0,0]', 'export', 2);
+DEALLOCATE l63_query;
+ROLLBACK;</code></pre>
+  <p>索引用 <code>vector_cosine_ops</code> 配余弦距离；为保留可选的近邻索引计划，排序直接用距离运算符升序加 <code>LIMIT</code>，不能等价改写成按 <code>1 - 距离</code> 降序并假定计划不变。极小表很可能仍选顺序扫描：先看计划节点是否实际走 <code>Index Scan</code> 及索引名，再看实际返回行、过滤掉的行、耗时和缓冲区。<code>EXPLAIN ANALYZE</code> 会实际执行查询，但它输出的不是业务结果集，也不等同客户端端到端延迟，所以另跑同一 <code>EXECUTE</code> 留下结果键。这两个导出片段没有同分；基线在扩展集上遇到边界同分时，应固定精确并列规则或单独标注并列，不能把近似索引未承诺的同分次序当作回归。</p>
+  <p>按 pgvector 的<a href="https://github.com/pgvector/pgvector/blob/v0.8.2/README.md#filtering">官方 Filtering 说明</a>，若计划使用近似索引，普通 <code>WHERE</code> 过滤发生在索引返回候选之后。业务过滤或权限条件都可能让合法返回量低于上限，即使同样的精确过滤能满额。这与课程的「先取授权池再扫描」物理流程不同；服务端仍必须在交给应用之前强制过滤，不得用应用层的事后丢弃替代授权。过滤很有选择性时，可先用普通索引限制小集合再做精确排序；近似计划则可尝试提高搜索范围 <code>hnsw.ef_search</code>，或从 pgvector 0.8.0 起用迭代扫描继续取候选，直到够量或达到扫描上限。严格次序不等于穷尽邻居；余弦索引本身也不收零向量。每种变化都要重测召回、结果条数、时延和缓冲区，HNSW 的建索引时间与内存还要另外核算。</p>
+  <div class="best-practice-point" id="bp-l63">
+    <h3>决策卡：授权池小，先保留精确；近似用实测换成本</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一批可见片段上需要检验改写题，或精确扫描已经超出实际预算。<strong>边界：</strong>事故复盘不能仅凭索引存在或向量值非零宣布优化成功。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：有索引，改写题一定更准</span><p>索引可能根本没被选中；即使选中也只影响找邻居的成本和近似误差，不能改善模型表示。</p></div><div class="bp-right"><span class="bp-compare-label">对照：冻结输入与许可，再测索引</span><p>相同快照、查询向量、过滤条件和 <code>k</code> 下，比对精确与近似返回键。精确集非空时，用键交集数除以精确返回键数计邻居 Recall@k；为空单列。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>精确基线用于定位索引损失；人工题集与证据标注用于判断嵌入是否有用。单次计划演示不能替代多次、按过滤选择性分组的实际测量。</p>
+    <ol class="bp-steps"><li>用<a href="#l63-worked-check">精确基线自检</a>记录两人的授权键、分数和首条引用。</li><li>跑<a href="#l63-transfer-check">方向与幅度对照</a>；另有真实测试库时，才对同一快照采集精确与近似计划和返回键。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>精确路径也漏目标，先查授权池和向量；仅近似路径漏目标，才核对实际索引节点、过滤和扫描范围。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 查询从 <code>(1,0,0)</code> 变成 <code>(3,0,0)</code>，其余不变。余弦分数应怎样？</div><div class="quiz-options"><button data-answer="correct">保持不变</button><button data-answer="wrong">每个分数乘三</button><button data-answer="wrong">只改变同分排序</button><button data-answer="wrong">所有候选都变零分</button></div><div class="quiz-explanation">向量长度与点积同时乘三，归一后方向与分数不变。</div></div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 指定索引已创建，但计划只有顺序扫描，能得出什么结论？</div><div class="quiz-options"><button data-answer="wrong">已测到近似召回</button><button data-answer="wrong">近似比扫描更慢</button><button data-answer="correct">未测到近似路径</button><button data-answer="wrong">未运行向量评分</button></div><div class="quiz-explanation">计划未选择近似索引，不能将这次结果或耗时归给它。</div></div>
+</div>
+<div class="section best-practice-lesson">
+  <h2>4. 跟做：一份授权池，两种表示</h2>
+  <p>把两个展开的 Python 块分别保存为文件，从<strong>可信课程仓库根目录</strong>执行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。<a href="../code/phase7-data-rag/rag-lab/README.md">项目说明</a>里的三个坐标是固定数，不请求嵌入服务；本验收不运行上一节的 SQL。</p>
+  <div class="card" id="guided-l63"><h3>起点：同一句，先填名次再运行</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+q = lab["Query"](("留存", "期限"), (1., 0., 0.))
+with lab["open_demo"]() as db:
+    hits = db.search("support", "mei", q, mode="vector", k=2)
+    # TODO：核对同一用户的词法结果，再只换用户验证向量排名。</code></pre><p><strong>通过标准：</strong>词法两人都为空；向量为 mei 返回保留条款再返回操作指引，lin 只有保留条款；同步片段已授权但为零分；引用回查返回七天原句。</p></div>
+  <details><summary>展开精确基线参考与自检</summary><pre><code class="language-python" id="l63-worked-check">import runpy
+from math import hypot, isclose
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+query = lab["Query"](("留存", "期限"), (1., 0., 0.))
+policy = ("EXPORT-POLICY", 1, "§1")
+ops = ("EXPORT-OPS", 1, "§2")
+sync = ("SYNC-POLICY", 1, "§1")
+
+with lab["open_demo"]() as db:
+    for user, authorized_keys, ranked_keys in (
+        ("mei", {policy, ops, sync}, (policy, ops)),
+        ("lin", {policy, sync}, (policy,)),
+    ):
+        pool = db.authorized("support", user)
+        assert {c.key for c in pool} == authorized_keys
+        assert db.search("support", user, query, mode="lexical", k=2) == ()
+        hits = db.search("support", user, query, mode="vector", k=2)
+        assert tuple(h.chunk.key for h in hits) == ranked_keys
+        assert hits == lab["rank"](pool, query, mode="vector", k=2)
+        assert isclose(hits[0].score, 1.0)
+        assert db.source("support", user, policy).text == "导出文件生成后保留 7 天。"
+        if user == "mei":
+            assert isclose(hits[1].score, .45 / hypot(.45, .89))
+    assert db.source("support", "lin", ops) is None
+print("L63 ACCEPTED")</code></pre></details>
+  <p>只打印 <code>L63 ACCEPTED</code>。这个结果证明给定词项、固定坐标和权限时的精确排序，不代表模型或数据库索引已验证。</p>
+</div>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：同步排班的方向与幅度</h2>
+  <p>换成 <code>support/lin</code> 的夜间批次改写问题，词项只给「夜间、批次」。本次只准取一条：把查询向量沿第三轴放大，结果不变；再反向或改成全零，不能展示任何候选。并列一条故意错的相似定义，检验它会不会把反方向也算为命中。</p>
+  <div class="card"><h3>独立起点</h3><pre><code class="language-python">terms = ("夜间", "批次")
+vectors = ((0., 0., 1.), (0., 0., 4.), (0., 0., -1.), (0., 0., 0.))
+# TODO：同一授权池、同一个 k，对照四个向量的结果与分数。</code></pre><p><strong>通过标准：</strong>前两组都是同步条款且分数为 1；反向与零向量为空；用绝对值把反向误判为近邻的对照必须命中同步，证明负例能抓到实质错误。再检验不合格的维数和非有限元素进入不了排序结果。</p></div>
+  <details class="bp-check"><summary>展开变式参考与自检</summary><pre><code class="language-python" id="l63-transfer-check">import runpy
+from math import isclose
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+terms = ("夜间", "批次")
+key = ("SYNC-POLICY", 1, "§1")
+reverse = (0., 0., -1.)
+
+with lab["open_demo"]() as db:
+    def search(vector):
+        return db.search("support", "lin", lab["Query"](terms, vector), mode="vector", k=1)
+
+    for vector in ((0., 0., 1.), (0., 0., 4.)):
+        (hit,) = search(vector)
+        assert hit.chunk.key == key and isclose(hit.score, 1.0)
+    assert db.source("support", "lin", key).text == "同步任务每天 02:00 运行。"
+    assert search(reverse) == search((0., 0., 0.)) == ()
+    # 此授权夹具中的向量均为单位向量，点积等于余弦。
+    wrong_keys = tuple(c.key for c in db.authorized("support", "lin")
+                       if abs(sum(x * y for x, y in zip(c.vector, reverse, strict=True))) &gt; 0)
+    assert wrong_keys == (key,)
+    for invalid in ((0., 1.), (0., 0., float("nan"))):
+        try:
+            search(invalid)
+        except ValueError:
+            continue
+        raise AssertionError("invalid vector entered scoring")
+print("L63 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应只打印 <code>L63 TRANSFER PASSED</code>。幅度一变分数就变，检查是否漏除长度；反向也命中，检查是否取绝对值或误把距离的排序方向用于相似度。</p>
+</section>
+<div class="section" id="interview">
+  <h2>面试自查</h2><p>回答时先说你比较了什么，再说能够推出什么。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>合成改写题成功，能不能宣布新嵌入模型提高了召回？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能，查询和片段坐标是人工指定，实验只检验给定向量、授权与余弦的行为。评估模型要用带目标证据的独立改写样本和模型实际输出，在同一快照上与词法比较。</p><p><strong>追问：</strong>如果两种模型恰好都输出 768 维呢？</p><p><strong>答题要点：</strong>形状兼容不等于语义空间兼容；记录并匹配模型版本及编码约定，不随意用一个模型查另一个模型的库。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>换 HNSW 后某用户只能拿到三条，精确查询却有五条，先查什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>确认同用户、同快照、同过滤条件和 <code>k</code>，看实际计划是否用了 HNSW；若用了，过滤可能在近似候选之后，候选被剔除而搜索范围不足。用精确返回键作对照，再量调搜索范围或迭代扫描的影响。</p><p><strong>追问：</strong>可以把权限过滤去掉，靠重排控制结果吗？</p><p><strong>答题要点：</strong>不可以，排序不是授权。若合法池很小，先按权限取小集合做精确排序也可能更合适。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>索引创建成功，为什么查询按相似度降序时未用索引？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>核对距离运算符、索引操作符类和排序形状。余弦索引需要直接按 <code>embedding &lt;=&gt; query</code> 升序与 <code>LIMIT</code>；按变换表达式降序不满足这个形式。即使形式正确，小表也可能选择扫描，须看实际计划。</p><p><strong>追问：</strong>怎么分辨「建了索引」和「本次走了索引」？</p><p><strong>答题要点：</strong>在同一查询的 <code>EXPLAIN (ANALYZE, BUFFERS)</code> 里确认实际扫描节点及索引名，并另取结果键比较。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>最近邻均是导出主题，但没有说多久，是否应答「约七天」？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能用相似分推导事实。标出应覆盖的条款，在授权池、正分列表、top-k 及引用回查依次找它；仅有操作步骤就不能回答保留期限。</p><p><strong>追问：</strong>增大 <code>k</code> 后多了两段重复的操作说明，算改善吗？</p><p><strong>答题要点：</strong>不算这道题的证据覆盖提高；要有可准确定址、确实包含保留时长的正文才算。</p></div></details>
+</div>
+<div class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase7-qa.html#L63">L63 疑难解答 →</a><div class="qa-related"><a href="0072-L62-rag-lexical-retrieval.html">上一课 L62 · 授权词法检索</a> · <a href="0074-L64-rag-hybrid-retrieval.html">下一课 L64 · 混合检索</a> · <a href="0080-phase7-data-rag-outline.html">阶段 7 纲要</a></div></div></div>
+<div class="section"><h2>小结与一手参考</h2><p>固定坐标的精确扫描是对照，不是模型评测。用同一授权范围比较近似索引是否漏掉邻居，再用证据标注判断邻居能否回答。</p><ul><li><a href="https://github.com/pgvector/pgvector/blob/v0.8.2/README.md#indexing">pgvector v0.8.2 · 精确与近似索引</a>、<a href="https://github.com/pgvector/pgvector/blob/v0.8.2/README.md#filtering">过滤与迭代扫描</a>、<a href="https://github.com/pgvector/pgvector/blob/v0.8.2/README.md#why-isnt-a-query-using-an-index">索引计划的排序要求</a>。</li><li><a href="https://www.postgresql.org/docs/current/using-explain.html">PostgreSQL · Using EXPLAIN</a>，区分计划估算、实际执行与缓冲区统计。</li></ul></div>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

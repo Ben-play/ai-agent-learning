@@ -100,8 +100,8 @@
   LangChain 文档加载器集合。Use for: 统一的文档加载接口。
 
 ### 数据库基础
-- [PostgreSQL 官方文档](https://www.postgresql.org/docs/)
-  最强大的开源关系型数据库。Use for: SQL 语法、数据库设计、索引优化。
+- [PostgreSQL 官方文档](https://www.postgresql.org/docs/) · [行级安全策略](https://www.postgresql.org/docs/18/ddl-rowsecurity.html)
+  用于核对 SQL、权限授予与行级策略。L60 要分开验证表权限、行权限和应用连接角色。
 - [SQLAlchemy 文档](https://docs.sqlalchemy.org/)
   Python 最流行的 ORM 框架。Use for: 数据库建模、查询构建、迁移管理。
 - [Redis 官方文档](https://redis.io/docs/)
@@ -110,6 +110,8 @@
   轻量级嵌入式数据库，适合原型和小项目。Use for: 快速原型开发。
 
 ### 向量数据库
+- [pgvector：Filtering 与 Iterative Scan](https://github.com/pgvector/pgvector#filtering)
+  用于 L63 对照精确搜索和近似索引；近似候选量会影响通过过滤的结果数，索引不替代授权。
 - [Chroma 文档](https://docs.trychroma.com/)
   轻量级开源向量数据库，Python 友好。Use for: 本地开发和原型验证。
 - [Pinecone 文档](https://docs.pinecone.io/)
@@ -193,9 +195,9 @@
 - [A2A (Agent-to-Agent) Protocol](https://github.com/google/A2A)
   Google 推出的 Agent 间通信协议标准。
 
-### Agentic RAG（2026 标准）
+### Agentic RAG（按需选修）
 - [arXiv:2501.09136v4 - Agentic RAG: A Survey](https://arxiv.org/html/2501.09136v4)
-  2026 年 4 月综述，定义 Agentic RAG 架构分类法。**必读** — 传统 RAG 已过时。
+  用于了解架构分类。Phase 7 先验证简单检索的权限、覆盖、成本；只有失败案例需要多步取证时，才对照更复杂的编排。
 - [Neo4j: What is Agentic RAG?](https://neo4j.com/blog/agentic-ai/what-is-agentic-rag/)
   Agentic RAG 概念解释，结合知识图谱。
 - [Microsoft GraphRAG](https://github.com/microsoft/graphrag)

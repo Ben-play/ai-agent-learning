@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phase 7 · 可追溯 RAG 工程实践复盘</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>Phase 7 · 可追溯 RAG 工程实践复盘</h1>
+<p>用这页检查证据问答交接，不把成功标记或总分当成业务证据。先留一条正常用例，再留一条结果看似正确但不应该通过的用例。</p>
+<div class="section"><h2>1. 先回答「谁能看」，再回答「哪个更相关」</h2><p><strong>判断：</strong>同一个来源键离开租户与身份就不能单独复用；把授权过滤放在排序和打包之前。重新打开引文也要校验当前权限和文档版本。</p><p><strong>证据：</strong><a href="../lessons/0070-L60-rag-data-access.html">L60 行级访问</a> · <a href="../lessons/0071-L61-rag-citation-chunks.html">L61 可定位分块</a> · <a href="../lessons/0072-L62-rag-lexical-retrieval.html">L62 词法基线</a>。用同问两人的对照观察检索与上下文，不只看最终话术。</p></div>
+<div class="section"><h2>2. 用失败题决定加什么，不默认升级检索栈</h2><p><strong>判断：</strong>精确术语先保住词法；改写难题再验证向量；若两者失误不同，才比较融合。重排只能修候选顺序，修不了候选缺失。前后使用同一批授权候选和打包预算。</p><p><strong>证据：</strong><a href="../lessons/0073-L63-rag-vector-retrieval.html">L63 向量</a> · <a href="../lessons/0074-L64-rag-hybrid-retrieval.html">L64 融合</a> · <a href="../lessons/0075-L65-rag-reranking.html">L65 重排</a>。手工向量没有线上模型质量或延迟结论。</p></div>
+<div class="section"><h2>3. 变化发生后，先让旧结果不可用</h2><p><strong>判断：</strong>先确认缓存已热，再独立改变权限、版本或文档存在性，观察重新打包和答案回读。区分当前应用不可访问与备份或所有副本已删除。材料可追溯不等于可信或有执行权。</p><p><strong>证据：</strong><a href="../lessons/0076-L66-rag-cache-invalidation.html">L66 生命周期</a> · <a href="../lessons/0077-L67-rag-trust-boundary.html">L67 数据与授权</a>。检查旧引用、上下文和本地模拟审核日志，不把它当真实执行验收。</p></div>
+<div class="section"><h2>4. 把检索失败和生成失败分开交接</h2><p><strong>判断：</strong>先问有没有授权证据，能不能召回它，所需事实是否齐全；再固定证据，检查生成的引用、结论和拒答是否正确。权限违规应单列，不能被平均召回掩盖。</p><p><strong>证据：</strong><a href="../lessons/0078-L68-rag-retrieval-evals.html">L68 检索报告</a> · <a href="../lessons/0079-L69-rag-generation-evals.html">L69 生成报告</a>。交接保留版本、分层用例、判定和未测项。</p></div>
+<nav class="card" aria-label="阶段导航"><a href="../lessons/0080-phase7-data-rag-outline.html">← Phase 7 大纲</a> · <a href="../qa/phase7-qa.html">阶段答疑</a></nav>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

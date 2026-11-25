@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>课程范围：</strong>已有 Phase 1–6 的 59 节课（L01–L59）。Phase 7–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>已有 Phase 1–7 的 69 节课（L01–L69）。Phase 8–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -284,7 +284,7 @@
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-7-body">
     <h3>数据基础与 RAG</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">10-12 课</span>
+      <span class="phase-meta-item">10 课 · L60–L69</span>
       <span class="phase-meta-item">3-4 周</span>
     </div>
     <div class="phase-toggle">▼</div>
@@ -295,13 +295,14 @@
   </div>
   <div class="phase-body" id="phase-7-body">
     <div class="card">
-      <span class="tag tag-rag">规划 · 验收目标</span><br>
-      <strong>数据基础：</strong>PostgreSQL / SQLAlchemy、PDF/HTML/Markdown 解析、清洗与分块；Embedding、向量索引和混合检索选一种后端实作，其他仅比较需求与运维取舍。<br><br>
+      <span class="tag tag-rag">已编写 · 本地证据问答</span><br>
+      <strong>数据基础：</strong>练习文档版本、行级权限、PDF/HTML/Markdown 定位和清洗。核心检索使用本地 SQLite、合成词项和固定向量；PostgreSQL / SQLAlchemy 与 pgvector 是另行验收的生产形态，不从 SQLite 结果推断数据库或索引的实际表现。<br><br>
       <strong>企业 RAG 先做可靠性：</strong>文档/片段携带权限、来源定位与版本；检索阶段执行用户/租户访问控制，引用能回到具体证据；更新和删除须传播至索引、缓存与相关派生数据。检索内容是不可信输入，不得覆盖系统规则或直接授权工具。<br><br>
       <strong>分层评测：</strong>检索层测权限过滤、召回和证据覆盖；生成层测引用定位、忠实度、答案正确性与无证据时的拒答。确定性检查优先，RAGAS / Judge 仅作经校准的补充。<br><br>
       <strong>需求驱动选修：</strong>混合检索与 Reranking 建立基线后，再按失败案例选择 HyDE、Agentic RAG 或 GraphRAG，不把更复杂的检索视为默认升级。<br><br>
       <strong>验收目标：</strong>先用简单检索建立权限与引用基线，再比较混合检索和重排。两名权限不同的用户问同一问题时，越权资料不得进入上下文；缓存已热后撤权、修订或删除也不能返回旧内容。分别报告检索与生成问题。<br><br>
-      <a href="0046-phase5-to-11-planned-outlines.html#phase-7">查看 Phase 7 逐课草案 →</a>
+      <a href="0080-phase7-data-rag-outline.html">查看 Phase 7 课程与项目 →</a><br>
+      <a href="../best-practices/phase7-data-rag-practices.html">Phase 7 工程实践复盘 →</a> · <a href="../qa/phase7-qa.html">阶段答疑 →</a>
     </div>
   </div>
 </div>
@@ -426,7 +427,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 7–11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 8–11 对应项仍为规划。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>
