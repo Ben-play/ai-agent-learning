@@ -1,0 +1,14 @@
+{
+  "rubric_version": "p8-judge-v1",
+  "annotation": "课程作者对合成答复的人工金标。非生产人评、非模型成绩。题目：导出保留多久？同步任务何时运行？证据：导出文件生成后保留 7 天。同步任务每天 02:00 运行。",
+  "rows": [
+    {"id": "CAL-01", "answer": "导出文件保留 7 天，同步每天 02:00。", "support": "pass", "completeness": "pass", "note": "两个事实受支持，且两问均回答。"},
+    {"id": "CAL-02", "answer": "导出文件保留 7 天。", "support": "pass", "completeness": "fail", "note": "只答了保留期；没有新增无依据的事实。"},
+    {"id": "CAL-03", "answer": "导出文件保留 30 天，同步每天 02:00。", "support": "fail", "completeness": "pass", "note": "两个槽位均给出明确值，但保留期与固定证据冲突。"},
+    {"id": "CAL-04", "answer": "同步任务每天 03:00 运行。", "support": "fail", "completeness": "fail", "note": "时间错误，且没有回答保留期。"},
+    {"id": "CAL-05", "answer": "同步在每天凌晨两点运行。", "support": "pass", "completeness": "fail", "note": "时间改写等价，但漏答第一问。"},
+    {"id": "CAL-06", "answer": "导出保留 7 天，同步每天 02:00（按交接班时区）。", "support": "uncertain", "completeness": "pass", "note": "两问均答；资料未解释‘交接班时区’是否同口径，暂不裁决忠实度。"},
+    {"id": "CAL-07", "answer": "导出生成后第七天结束保留周期；同步在一天开始后两小时运行，每天一次。", "support": "pass", "completeness": "pass", "note": "按合成题的日历及计时口径，两句都等价且齐全。"},
+    {"id": "CAL-08", "answer": "导出留存一周；同步每日凌晨两点。", "support": "pass", "completeness": "pass", "note": "一周与 7 天等价；每日凌晨两点即每天 02:00。"}
+  ]
+}

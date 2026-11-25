@@ -1,0 +1,15 @@
+{
+  "rubric_version": "p8-judge-v1",
+  "judge_version": "hand-scripted-mock-v1",
+  "origin": "教学用手写预测，故意含误判与弃权；不是模型输出。",
+  "rows": [
+    {"id": "CAL-01", "support": "pass", "completeness": "pass"},
+    {"id": "CAL-02", "support": "fail", "completeness": "pass"},
+    {"id": "CAL-03", "support": "pass", "completeness": "pass"},
+    {"id": "CAL-04", "support": "fail", "completeness": "fail"},
+    {"id": "CAL-05", "support": "abstain", "completeness": "fail"},
+    {"id": "CAL-06", "support": "pass", "completeness": "pass"},
+    {"id": "CAL-07", "support": "pass", "completeness": "abstain"},
+    {"id": "CAL-08", "support": "pass", "completeness": "fail"}
+  ]
+}

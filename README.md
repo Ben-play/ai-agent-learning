@@ -2,16 +2,16 @@
 
 从 Python 基础到可验收的单 Agent 系统，再按需求扩展到生产与协作。
 
-当前已编写 **69 节课（Phase 1–7，L01–L69）**；Phase 8–11 有 29 个逐课草案。离线项目、参考页和未编写的草案不另计课数；离线验证不代表在线能力或生产准入。保留基础课号，以 Responses / 厂商原生 adapter、工具闭环和小型评估为主线，优先函数/workflow 与单 Agent，只选一个框架深学。
+当前已编写 **79 节课（Phase 1–8，L01–L79）**；Phase 9–11 有 19 个逐课草案。离线项目、参考页和未编写的草案不另计课数；离线验证不代表在线能力或生产准入。保留基础课号，以 Responses / 厂商原生 adapter、工具闭环和小型评估为主线，优先函数/workflow 与单 Agent，只选一个框架深学。
 
 - [11 阶段学习路径总纲](lessons/0001-ai-agent-learning-path-overview.html)
-- [Phase 4：Prompt 与 Context](lessons/0045-phase4-prompt-context-outline.html) · [Phase 5：Agent 核心架构与持久执行](lessons/0063-phase5-agent-harness-outline.html) · [Phase 6：LangGraph 与 MCP](lessons/0069-phase6-langgraph-mcp-outline.html) · [Phase 7：可追溯 RAG](lessons/0080-phase7-data-rag-outline.html) · [Phase 8–11 草案](lessons/0046-phase5-to-11-planned-outlines.html#phase-8)
+- [Phase 4：Prompt 与 Context](lessons/0045-phase4-prompt-context-outline.html) · [Phase 5：Agent 核心架构与持久执行](lessons/0063-phase5-agent-harness-outline.html) · [Phase 6：LangGraph 与 MCP](lessons/0069-phase6-langgraph-mcp-outline.html) · [Phase 7：可追溯 RAG](lessons/0080-phase7-data-rag-outline.html) · [Phase 8：Agent 工程实践](lessons/0091-phase8-agent-engineering-outline.html) · [Phase 9–11 草案](lessons/0046-phase5-to-11-planned-outlines.html#phase-9)
 - [Agent Skills 参考小单元（非正式课）](reference/0004-agent-skills.html)
 - [2026-11-06 课程可靠性审查与官方来源](docs/research/2026-11-06-curriculum-audit.md)
 
 ## 课程概览
 
-周数按学习负载分阶段估算，不承诺固定完成时间；已编写课以现有 L01–L69 为准。
+周数按学习负载分阶段估算，不承诺固定完成时间；已编写课以现有 L01–L79 为准。
 
 | 阶段 | 主题 | 已编写 / 规划课数 | 分阶段估算 | 状态 |
 |------|------|-----------------|------------|------|
@@ -22,7 +22,7 @@
 | 5 | Agent 核心架构与持久执行 | 10 课 | 3-4 周 | 已编写 |
 | 6 | 主线框架入门 + MCP | 5 课 | 1-2 周 | 已编写；LangGraph 待实跑 |
 | 7 | 数据基础 + 可追溯 RAG | 10 课 | 3-4 周 | 已编写；本地合成语料 |
-| 8 | 工程化实践（可观测性/评估/安全/成本/系统设计） | 10-12 课 | 3 周 | 规划 |
+| 8 | 工程化实践（可观测性/评估/权限/成本/系统设计） | 10 课 | 3 周 | 已编写；本地工程基线 |
 | 9 | 按需高级能力 | 5-6 课 | 1-2 周 | 规划 |
 | 10 | 编排深化 + 按需多 Agent | 8-10 课 | 2-3 周 | 规划 |
 | 11 | 部署与持续迭代 | 6-8 课 | 2 周 | 规划 |
@@ -74,16 +74,19 @@
 - 🧭 **阶段实践检查点与最终复盘** — 学完相关知识后立即完成跨课检查点，避免拖到阶段末遗忘；Phase 1 的 8 个检查点分布在 L01/L02/L04/L07/L11/L12/L14/L16，[Phase 1 复盘页](best-practices/phase1-python-engineering-practices.html)用于最终索引与验收；Phase 2 的 5 个检查点分布在 L18/L19/L21/L22/L23，[Phase 2 复盘页](best-practices/phase2-model-selection-practices.html)汇总模型评测与选型决策
   - Phase 4：L43 跨课检查点，[阶段复盘](best-practices/phase4-prompt-context-practices.html)。Phase 5：L48、L52 跨课检查点，[阶段复盘](best-practices/phase5-agent-harness-practices.html)。Phase 6：[L59 取证与授权检查点](lessons/0068-L59-mcp-skill-authority.html#stage-practice-skill-and-authority)，[阶段复盘](best-practices/phase6-langgraph-mcp-practices.html)。
   - Phase 7：L66 做检索、重排与变更检查；L69 做检索与生成分层交接，[阶段复盘](best-practices/phase7-data-rag-practices.html)。
+  - Phase 8：L74 核对分层评估；L79 做门禁退化、恢复与工程交接，[阶段复盘](best-practices/phase8-agent-engineering-practices.html)。
 - 💼 **面试自查** — 情境判断、工程取舍、验证方法；先答主问题，再用追问检验条件变化
 - 📚 **参考资源** — 延伸阅读
 
-## 第三至第七阶段本地验收
+## 第三至第八阶段本地验收
 
 在仓库根目录执行 `python -I -X utf8 scripts/check-course-examples.py`，只执行白名单内的自检。L36 需要 Pydantic v2，可使用课程项目已有虚拟环境；L58/L59 仅连接本机回环地址。不请求外部服务，不用 `-O` 禁用断言。LangGraph 的三个框架相关块单独用 `--suite langgraph` 运行；先见[项目依赖与验证状态](code/phase6-langgraph-mcp/graph-lab/README.md)。
 
 Phase 7 可单独执行 `python -I -X utf8 scripts/check-course-examples.py --suite rag`，仅用标准库和合成语料，详见[证据问答实验](code/phase7-data-rag/rag-lab/README.md)。
 
-用 `node scripts/check-course-catalog.cjs` 验证 69 节课、Phase 4–7 导航和未来的三位课号；大纲与 Q&A 不计入学习进度。
+Phase 8 可单独执行 `python -I -X utf8 scripts/check-course-examples.py --suite engineering`；[工程实验](code/phase8-agent-engineering/engineering-lab/README.md)另提供门禁基线、失败对照和交接命令。
+
+用 `node scripts/check-course-catalog.cjs` 验证 79 节课、Phase 4–8 导航和未来的三位课号；大纲与 Q&A 不计入学习进度。
 
 通过只证明指定控制路径，不代表真实模型质量、缓存命中或生产准入。在线实验应另行确认调用预算，并记录模型/API/SDK版本、配置和未测项。
 

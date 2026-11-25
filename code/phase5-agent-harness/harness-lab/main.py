@@ -130,11 +130,14 @@ def _draft(payload):
 
 
 @contextmanager
-def open_store(path: Path, *, on_draft_write_attempt: Callable[[str], None] | None = None):
+def open_store(path: Path, *, on_draft_write_attempt: Callable[[str], None] | None = None,
+               before_stage: Callable[[Draft], None] | None = None):
     """Open a host-owned SQLite store.
 
     The optional host observer receives the operation ID just before the draft
     INSERT inside the transaction; it does not observe checkpoint writes.
+    The optional host validator receives the actual draft before the pending
+    transaction and may raise to withhold it; it cannot replace the payload.
     """
     with closing(sqlite3.connect(path)) as db:
         db.executescript("""
@@ -148,13 +151,15 @@ def open_store(path: Path, *, on_draft_write_attempt: Callable[[str], None] | No
                 tenant TEXT NOT NULL, actor TEXT NOT NULL, job TEXT NOT NULL, payload TEXT NOT NULL
             );
         """)
-        yield DraftStore(db, on_draft_write_attempt=on_draft_write_attempt)
+        yield DraftStore(db, on_draft_write_attempt=on_draft_write_attempt, before_stage=before_stage)
 
 
 class DraftStore:
-    def __init__(self, db, *, on_draft_write_attempt: Callable[[str], None] | None = None):
+    def __init__(self, db, *, on_draft_write_attempt: Callable[[str], None] | None = None,
+                 before_stage: Callable[[Draft], None] | None = None):
         self._db = db
         self._on_draft_write_attempt = on_draft_write_attempt
+        self._before_stage = before_stage
 
     def checkpoint(self, actor: Actor, job: str) -> Checkpoint | None:
         row = self._db.execute(
@@ -175,7 +180,10 @@ class DraftStore:
         if proposal["status"] != "drafted":
             raise ValueError("no evidence-backed draft")
         fields = proposal["draft"]
-        payload = json.dumps([fields["title"], fields["body"], fields["source_ids"]], separators=(",", ":"))
+        draft = Draft(fields["title"], fields["body"], tuple(fields["source_ids"]))
+        if self._before_stage is not None:
+            self._before_stage(draft)
+        payload = json.dumps([draft.title, draft.body, draft.source_ids], separators=(",", ":"))
         with self._db:
             self._db.execute("BEGIN IMMEDIATE")
             current = self.checkpoint(actor, job)

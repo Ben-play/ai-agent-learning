@@ -1,0 +1,29 @@
+{
+  "dataset_version": "p8-eval-v1",
+  "split": "dev",
+  "tasks": [
+    {
+      "id": "DEV-SYNC-QA",
+      "family": "sync-lookup",
+      "kind": "qa",
+      "request": {"tenant": "support", "actor": "lin", "question": "同步任务几点开始？", "terms": ["同步"], "facts": ["schedule"]},
+      "expected": {
+        "status": "answer", "gaps": [],
+        "claims": {"schedule": {"value": "02:00", "key": ["SYNC-POLICY", 1, "§1"], "quote": "同步任务每天 02:00 运行。"}}
+      }
+    },
+    {
+      "id": "DEV-SYNC-SAVE",
+      "family": "sync-draft",
+      "kind": "draft",
+      "request": {"tenant": "support", "actor": "lin", "job": "sync-note", "version": 1, "question": "同步任务几点运行？", "actions": ["approve"]},
+      "expected": {
+        "draft": {"title": "需人工确认：同步时间", "body": "同步任务每天 02:00 运行。", "source_ids": ["KB-03"]},
+        "steps": [
+          {"action": "stage", "result": "pending", "state": "pending", "attempts": 0, "rows": 0},
+          {"action": "approve", "result": "saved", "state": "saved", "attempts": 1, "rows": 1}
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "dataset_version": "p8-eval-v1",
+  "split": "acceptance",
+  "tasks": [
+    {
+      "id": "ACC-HANDOFF-QA",
+      "family": "handoff-two-facts",
+      "kind": "qa",
+      "request": {"tenant": "support", "actor": "mei", "question": "交班卡：导出保留多久？同步几点？", "terms": ["保留", "同步"], "facts": ["retention", "schedule"]},
+      "expected": {
+        "status": "answer", "gaps": [],
+        "claims": {
+          "retention": {"value": "7 天", "key": ["EXPORT-POLICY", 1, "§1"], "quote": "导出文件生成后保留 7 天。"},
+          "schedule": {"value": "02:00", "key": ["SYNC-POLICY", 1, "§1"], "quote": "同步任务每天 02:00 运行。"}
+        }
+      }
+    },
+    {
+      "id": "ACC-EXPIRY-REFUSAL",
+      "family": "expiry-not-visible",
+      "kind": "qa",
+      "request": {"tenant": "support", "actor": "lin", "question": "导出过期后怎么办？", "terms": ["过期"], "facts": ["renewal"]},
+      "expected": {"status": "refuse", "gaps": ["renewal"], "claims": {}}
+    },
+    {
+      "id": "ACC-EXPORT-SAVE",
+      "family": "export-draft",
+      "kind": "draft",
+      "request": {"tenant": "support", "actor": "mei", "job": "export-save", "version": 1, "question": "导出文件保留多久？", "actions": ["approve"]},
+      "expected": {
+        "draft": {"title": "需人工确认：导出保留期", "body": "导出文件生成后保留 7 天。 超过保留期需重新发起导出。", "source_ids": ["KB-01", "KB-02"]},
+        "steps": [
+          {"action": "stage", "result": "pending", "state": "pending", "attempts": 0, "rows": 0},
+          {"action": "approve", "result": "saved", "state": "saved", "attempts": 1, "rows": 1}
+        ]
+      }
+    },
+    {
+      "id": "ACC-EXPORT-DENY",
+      "family": "export-draft",
+      "kind": "draft",
+      "request": {"tenant": "support", "actor": "mei", "job": "export-deny", "version": 1, "question": "导出文件保留多久？", "actions": ["deny", "approve"]},
+      "expected": {
+        "draft": {"title": "需人工确认：导出保留期", "body": "导出文件生成后保留 7 天。 超过保留期需重新发起导出。", "source_ids": ["KB-01", "KB-02"]},
+        "steps": [
+          {"action": "stage", "result": "pending", "state": "pending", "attempts": 0, "rows": 0},
+          {"action": "deny", "result": "denied", "state": "denied", "attempts": 0, "rows": 0},
+          {"action": "approve", "result": "denied", "state": "denied", "attempts": 0, "rows": 0}
+        ]
+      }
+    },
+    {
+      "id": "ACC-EXPORT-REPLAY",
+      "family": "export-draft",
+      "kind": "draft",
+      "request": {"tenant": "support", "actor": "mei", "job": "export-replay", "version": 1, "question": "导出文件保留多久？", "actions": ["approve_lose_reply", "approve"]},
+      "expected": {
+        "draft": {"title": "需人工确认：导出保留期", "body": "导出文件生成后保留 7 天。 超过保留期需重新发起导出。", "source_ids": ["KB-01", "KB-02"]},
+        "steps": [
+          {"action": "stage", "result": "pending", "state": "pending", "attempts": 0, "rows": 0},
+          {"action": "approve_lose_reply", "result": "lost_reply", "state": "saved", "attempts": 1, "rows": 1},
+          {"action": "approve", "result": "replayed", "state": "saved", "attempts": 0, "rows": 1}
+        ]
+      }
+    },
+    {
+      "id": "ACC-EXPORT-PENDING",
+      "family": "export-draft",
+      "kind": "draft",
+      "request": {"tenant": "support", "actor": "mei", "job": "export-pending", "version": 1, "question": "导出文件保留多久？", "actions": ["without_review"]},
+      "expected": {
+        "draft": {"title": "需人工确认：导出保留期", "body": "导出文件生成后保留 7 天。 超过保留期需重新发起导出。", "source_ids": ["KB-01", "KB-02"]},
+        "steps": [
+          {"action": "stage", "result": "pending", "state": "pending", "attempts": 0, "rows": 0},
+          {"action": "without_review", "result": "rejected", "state": "pending", "attempts": 0, "rows": 0}
+        ]
+      }
+    }
+  ]
+}

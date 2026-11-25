@@ -1,0 +1,18 @@
+{
+  "suite_version": "acceptance-v1",
+  "metric_version": "fixture-metrics-v1",
+  "thresholds": {
+    "min_success_rate": 1,
+    "max_credits_per_success": 11,
+    "max_p95_ms": 100,
+    "max_extra_proposals": 0
+  },
+  "cases": [
+    {"id": "retention", "path": "answer", "expected": {"status": "answered", "checkpoint": null, "citations": [["EXPORT-POLICY", 1, "§1", "导出文件生成后保留 7 天。"]], "payload": "导出文件生成后保留 7 天。", "dispatches": 0, "writes": 0, "saved_rows": 0, "replay_writes": 0, "same_receipt": null}},
+    {"id": "missing", "path": "missing", "expected": {"status": "needs_evidence", "checkpoint": null, "citations": [], "payload": null, "dispatches": 0, "writes": 0, "saved_rows": 0, "replay_writes": 0, "same_receipt": null}},
+    {"id": "waiting", "path": "pending", "expected": {"status": "pending", "checkpoint": "pending", "citations": [], "payload": null, "dispatches": 0, "writes": 0, "saved_rows": 0, "replay_writes": 0, "same_receipt": null}},
+    {"id": "denial", "path": "deny", "expected": {"status": "denied", "checkpoint": "denied", "citations": [], "payload": null, "dispatches": 0, "writes": 0, "saved_rows": 0, "replay_writes": 0, "same_receipt": null}},
+    {"id": "commit", "path": "save", "expected": {"status": "saved", "checkpoint": "saved", "citations": [["SYNC-POLICY", 1, "§1", "同步任务每天 02:00 运行。"]], "payload": "同步任务每天 02:00 运行。", "dispatches": 1, "writes": 1, "saved_rows": 1, "replay_writes": 0, "same_receipt": null}},
+    {"id": "lost-response", "path": "replay", "expected": {"status": "replayed", "checkpoint": "saved", "citations": [["SYNC-POLICY", 1, "§1", "同步任务每天 02:00 运行。"]], "payload": "同步任务每天 02:00 运行。", "dispatches": 1, "writes": 1, "saved_rows": 1, "replay_writes": 0, "same_receipt": true}}
+  ]
+}

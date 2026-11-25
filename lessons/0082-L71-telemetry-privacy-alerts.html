@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L71 · 遥测最小化与可解释告警</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>遥测最小化与可解释告警</h1><p class="subtitle">只接收定位问题所需的元数据，用状态决定从何时开始计时</p>
+</div></div>
+<section class="section">
+  <h2>留下诊断线索，不留下原始业务内容</h2>
+  <p>客服说交班预览卡住了。值班人员真正要知道的是卡在检索、推理、预览，还是等人工批准；这一般只需要操作名、所处状态、耗时和有限的错误分类。不需要知道客服写了什么提示，也不需要看到票据内容、检索原文、生成草稿或访问凭证。把整份输入放到追踪系统，等于额外复制了一份业务数据，还让有遥测访问权的人可能读到原本看不到的内容。即使采样率很低，只要有一条原文流出，采样也没保护那条记录。</p>
+  <p>在产生遥测的地方先做<strong>白名单投影</strong>：只按每个操作需要的字段构造新的记录，不复制原字典；限定类型和值的范围。比如操作和阶段是受控枚举，计数必须是非负整数，模型名是课程常量，错误只用固定分类。不能因为键已获准就接受任意字符串：模型名、错误摘要、跨度名称、堆栈、事件与资源标签也可能带业务正文。把内容藏进混合字典或把每个字符串截短，都不相当于删除。用人工造的醒目标记验证接收端，既查不应出现的字段和值，也确认有用的元数据还在；只看「没发现标记」会让「什么也没收到」误通过。</p>
+  <p>读端仍要单独限制：本地接收器只让模拟角色 <code>trace_reader</code> 按追踪标识读副本，<code>support</code> 即使知道标识也不能读。这里的角色只是函数参数，用于演示决策，<strong>不是认证、真实角色授权或租户隔离</strong>。现实要把经过认证的主体、权限和租户绑定到查询，并审计访问。标识并非天然匿名，尤其是短编号、已知邮箱或可猜字符串的哈希；本课的编号都是合成的，不应把业务主键、账号或票据号塞进去。</p>
+  <p>保留期从收到批次时起算，到边界就不再返回，显式清理还能验证到底移除了几批。课程只有一个内存副本，收、读和显式清理时触发检查，没有后台定时任务。真实系统要同时规定来源、接收器、后端、故障转储、备份和人工导出的生命周期；读不到不代表备份也删了。若确需临时内容诊断，另做限范围、限时、审批和删除验证，不在默认遥测上顺手打开正文。采集端白名单优先，Collector 过滤可作为第二道防线，不能撤回已经送出的数据。</p>
+  <h3>学习目标</h3>
+  <ul><li>为检索、模型、工具和状态分别列出字段与值域，按独立预期验收实际收到的记录。</li><li>用合成标记验证模型输入与输出、工具参数与结果均未送出，并核对读角色和批次到期边界。</li><li>区分审批年龄、执行年龄和缺轨迹，验证提示与超时各自在阈值到点触发。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 先找到进入状态的时刻，再决定告警对象</h2>
+  <p>用固定时钟记录进入状态的模拟时刻；用当前时刻减去这个值，得到<strong>当前状态年龄</strong>。审批等待与执行分开计时：等待审批时，即使超过执行预算，也不叫执行超时；达到单独的审批时限时，给审批责任人或值班队列一条提醒。只有已进入 <code>executing</code>，才用该状态的年龄与执行预算比较。课程定义在 <code>age_ms ≥ budget_ms</code> 时触发。成功与失败终态都不再是「正在执行」，即使旧记录的年龄很大也不能继续制造执行超时；业务失败应另有自己的信号。</p>
+  <p>读取不到记录时，不把它当成功，也不编造超时，单独返回 <code>trace_missing</code>：可能没投递、已过期，或标识错误。线上还要区分「系统没有上报状态」与「有证据显示某阶段超时」；权威的执行截止、自动停止和人工干预，必须由应用的状态记录与执行控制负责，不能依赖可能丢失的遥测。重启后也不能把不同进程各自的单调时钟数值直接相减。本地实验把判断做成一张返回记录，只有 <code>signal</code>、<code>state</code> 与 <code>age_ms</code>，不呼叫告警渠道、不续跑任务、不更改审批。</p>
+  <table>
+    <caption>实际本地读数 · 同一固定时钟，审批时限 1000 ms，执行预算 200 ms</caption>
+    <thead><tr><th scope="col">时钟（ms）</th><th scope="col">交班试验 5 · 等审批</th><th scope="col">交班试验 6 · 执行中</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">1000</th><td>已等 700 ms，无信号</td><td>已执行 0 ms，无信号</td></tr>
+      <tr><th scope="row">1199</th><td>已等 899 ms，无信号</td><td>已执行 199 ms，无信号</td></tr>
+      <tr><th scope="row">1200</th><td>已等 900 ms，无信号</td><td>已执行 200 ms，<code>execution_timeout</code></td></tr>
+      <tr><th scope="row">1300</th><td>已等 1000 ms，<code>approval_sla</code></td><td>已执行 300 ms，<code>execution_timeout</code></td></tr>
+    </tbody>
+  </table>
+  <p>第一批等审批从 300 ms 起，第二批执行从 1000 ms 起。表中年龄来自各自跨度末尾的状态快照，不是把两个试验的阶段串在一起。最后两行重复返回同一执行信号只是重复求值；生产应明确聚合、抑制与恢复规则，且只对能处理的症状叫人。通知里给状态、年龄、阈值和查证入口就足够，不附上敏感内容。</p>
+  <div class="best-practice-point" id="bp-l71">
+    <h3>决策卡：在源头减字段，按当前状态计时</h3>
+    <p class="bp-scenario"><strong>适用：</strong>调试跨检索、模型和审批的流程，或值班被人工等待误叫醒。<strong>边界：</strong>只验本地合成记录、模拟读角色与纯告警判定。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：先把整包记下来，用根耗时报警</span><p>读端遮住正文也阻止不了内容入库；从请求发起计时会把人工排队算进执行。</p></div><div class="bp-right"><span class="bp-compare-label">选择：保存受控元数据，分状态判定</span><p>接收前投影；校验读角色和到期删除；审批提醒与执行超时各有计时起点和责任人。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>少保存一些直接复现场景的材料，多维护一份字段表和状态责任表；换来更小的数据暴露面及更可解释的值班信号。</p>
+    <ol class="bp-steps"><li>为每个字段写用途、来源、值域、读者与保留期；没有定位价值的内容不采。</li><li>以合成敏感标记覆盖已准键、未准键和嵌套数据；接收端同时检查关键元数据、越权拒绝和到期边界。</li><li>各准备真实进入等待、执行及终态的合成状态；检查阈值前一毫秒与到点，最后补查没有轨迹的情况。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>标记已到接收端先修产生端；正确角色能读但到期也能读，先查保留起点和边界；等待被当执行，查状态取值和计时起点，不要直接调高阈值。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 检索参数被误塞进已允许的模型名字段，哪一措施最直接？</div><div class="quiz-options"><button data-answer="wrong">保留字段原值，在读端打码</button><button data-answer="wrong">只验证字段名，保留其原值</button><button data-answer="correct">限定字段值，在接收端验收</button><button data-answer="wrong">下调采样率，照收字段原值</button></div><div class="quiz-explanation">白名单要约束值和类型，查看界面上的遮盖不代表没有入库。</div></div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 当前仍在等审批，已等 900 ms；执行预算 200 ms，审批时限 1000 ms。应返回什么？</div><div class="quiz-options"><button data-answer="correct">不出信号，保留等待状态与年龄</button><button data-answer="wrong">执行超时，因为超过 200 ms</button><button data-answer="wrong">提示审批超时，因为还未获批准</button><button data-answer="wrong">同时记录两个超时，之后再去重</button></div><div class="quiz-explanation">状态决定适用的预算。若等到 1000 ms，才提示审批，不报警称执行超时。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>2. 跟做：比对两条轨迹和一次越权读取</h2>
+  <p>使用<a href="../code/phase8-agent-engineering/engineering-lab/README.md">阶段 8 工程实验</a>里的 <code>telemetry/lab.py</code>。从可信仓库根，把每个区块分别保存为独立文件，用 Python 3.11+ 运行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。使用标准库、合成数据和同进程接收器；不要往这段实验填真实内容。</p>
+  <div class="card" id="guided-l71"><h3>可运行起点：同时留下等待与执行轨迹</h3><pre><code class="language-python" id="l71-worked-starter">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+clock = lab["FixedClock"]()
+receiver = lab["LocalReceiver"](clock, retention_ms=1500)
+waiting = lab["run_trial"](receiver, task=71, trial=5, trace_key=715, outcome="waiting_approval",
+                           extra_fields={"credential": "DEMO_ONLY_CANARY"})
+active = lab["run_trial"](receiver, task=71, trial=6, trace_key=716, outcome="executing")
+print(lab["evaluate_alert"](receiver, waiting, execution_budget_ms=200, approval_sla_ms=1000))
+# TODO：用独立字段表核对投影，再验读拒绝、两种告警边界与等待轨迹到期。</code></pre><p><strong>通过标准：</strong>按独立预期比对接收端的操作顺序和每行完整属性；凭证、检索原文、模型输入／输出和工具参数／结果的标记都不出现。无权限读取同一轨迹时拒绝。执行年龄 199 ms 不告警，200 ms 才触发；等待年龄 900 ms 不告警，1000 ms 只提醒审批。时钟到 1800 ms 恰好移除等待批次，执行批次仍可读。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l71-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+clock = lab["FixedClock"]()
+receiver = lab["LocalReceiver"](clock, retention_ms=1500)
+waiting = lab["run_trial"](receiver, task=71, trial=5, trace_key=715, outcome="waiting_approval",
+                           extra_fields={"credential": "DEMO_ONLY_CANARY"})
+active = lab["run_trial"](receiver, task=71, trial=6, trace_key=716, outcome="executing")
+
+def result(trace):
+    return lab["evaluate_alert"](receiver, trace, execution_budget_ms=200, approval_sla_ms=1000)
+
+rows = receiver.read_trace(waiting, role="trace_reader")
+for marker in ("DEMO_ONLY_CANARY", "SYNTHETIC QUERY", "SYNTHETIC EVIDENCE", "SYNTHETIC PROMPT",
+               "SYNTHETIC REPLY", "SYNTHETIC DRAFT", "SYNTHETIC PREVIEW"):
+    assert marker not in repr(rows)
+# 按课程字段表写预期，不调用投影器来生成答案。
+tags = {"phase8.task_id": "task-71", "phase8.trial_id": "trial-5"}
+assert [(r["name"], r["attributes"]) for r in rows] == [
+    ("agent.trial", tags),
+    ("retrieval", {**tags, "gen_ai.operation.name": "retrieval", "phase8.retrieved_count": 1}),
+    ("chat lesson-model", {**tags, "gen_ai.operation.name": "chat", "gen_ai.provider.name": "synthetic_fixture",
+                           "gen_ai.request.model": "lesson-model", "gen_ai.usage.input_tokens": 12,
+                           "gen_ai.usage.output_tokens": 4}),
+    ("execute_tool draft_preview", {**tags, "gen_ai.operation.name": "execute_tool",
+                                    "gen_ai.tool.name": "draft_preview", "gen_ai.tool.type": "function"}),
+    ("approval.check", {**tags, "phase8.approval": "pending"}),
+    ("state.snapshot", {**tags, "phase8.state": "waiting_approval", "phase8.state_since_ms": 300}),
+]
+try:
+    receiver.read_trace(waiting, role="support")
+except PermissionError:
+    pass
+else:
+    raise AssertionError("support must not read traces")
+assert result(waiting) == {"signal": None, "state": "waiting_approval", "age_ms": 700}
+clock.advance(199)
+assert result(active) == {"signal": None, "state": "executing", "age_ms": 199}
+clock.advance(1)
+assert result(active) == {"signal": "execution_timeout", "state": "executing", "age_ms": 200}
+assert result(waiting) == {"signal": None, "state": "waiting_approval", "age_ms": 900}
+clock.advance(100)
+assert result(waiting) == {"signal": "approval_sla", "state": "waiting_approval", "age_ms": 1000}
+clock.advance(499)
+assert len(receiver.read_trace(waiting, role="trace_reader")) == 6
+clock.advance(1)
+assert receiver.purge() == 1 and receiver.purge() == 0
+assert result(waiting) == {"signal": "trace_missing", "state": None, "age_ms": None}
+assert result(active)["signal"] == "execution_timeout"
+print("L71 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：盘点摘要早已完成，另一次运行才超时</h2>
+  <p>时钟从 5000 ms 起。任务 82 第一轮完成，第二轮仍在执行；预算改为 150 ms。故意在第一轮把坏值塞到已允许的模型名和 token 字段，并在一个嵌套字段放合成标记。成功终态已存活很久也不能算执行超时，这是独立负对照；另检查到期后它从「成功终态」变成「没有可读记录」，而不是制造新的超时。第二轮输入用量确为零，以对照坏值被省略。</p>
+  <div class="card"><h3>独立起点：同一任务，两个不同状态</h3><pre><code class="language-python" id="l71-transfer-starter">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+clock = lab["FixedClock"](5000)
+receiver = lab["LocalReceiver"](clock, retention_ms=1400)
+finished = lab["run_trial"](receiver, task=82, trial=1, trace_key=821,
+                            usage=("COUNT_CANARY", False),
+                            extra_fields={"gen_ai.request.model": "MODEL_CANARY",
+                                          "extra": {"body": "NESTED_CANARY"}})
+active = lab["run_trial"](receiver, task=82, trial=2, trace_key=822, usage=(0, 2), outcome="executing")
+print(lab["evaluate_alert"](receiver, finished, execution_budget_ms=150, approval_sla_ms=800))
+# TODO：核对值域白名单，检查 149／150 ms 和第一批到期的分界。</code></pre><p><strong>通过标准：</strong>第一轮模型名是原定常量，两个错误用量值均省略；第二轮保留输入零。时钟 6670 ms 时第二轮正好超时，第一轮年龄已达 850 ms 仍不报。到 7220 ms 时第一轮清除，第二轮仍可查询，不能把缺轨迹当失败或成功。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l71-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+clock = lab["FixedClock"](5000)
+receiver = lab["LocalReceiver"](clock, retention_ms=1400)
+finished = lab["run_trial"](receiver, task=82, trial=1, trace_key=821,
+                            usage=("COUNT_CANARY", False),
+                            extra_fields={"gen_ai.request.model": "MODEL_CANARY",
+                                          "extra": {"body": "NESTED_CANARY"}})
+active = lab["run_trial"](receiver, task=82, trial=2, trace_key=822, usage=(0, 2), outcome="executing")
+
+def result(trace):
+    return lab["evaluate_alert"](receiver, trace, execution_budget_ms=150, approval_sla_ms=800)
+
+closed = receiver.read_trace(finished, role="trace_reader")
+running = receiver.read_trace(active, role="trace_reader")
+assert len(closed) == 7 and len(running) == 6
+for marker in ("CANARY", "SYNTHETIC QUERY", "SYNTHETIC EVIDENCE", "SYNTHETIC PROMPT",
+               "SYNTHETIC REPLY", "SYNTHETIC DRAFT", "SYNTHETIC PREVIEW"):
+    assert marker not in repr((closed, running))
+model = {"phase8.task_id": "task-82", "gen_ai.operation.name": "chat",
+         "gen_ai.provider.name": "synthetic_fixture", "gen_ai.request.model": "lesson-model"}
+assert closed[2]["attributes"] == {**model, "phase8.trial_id": "trial-1"}
+assert closed[3]["attributes"] == {
+    "phase8.task_id": "task-82", "phase8.trial_id": "trial-1", "gen_ai.operation.name": "execute_tool",
+    "gen_ai.tool.name": "draft_preview", "gen_ai.tool.type": "function",
+}
+assert running[2]["attributes"] == {**model, "phase8.trial_id": "trial-2", "gen_ai.usage.input_tokens": 0,
+                                   "gen_ai.usage.output_tokens": 2}
+assert type(running[2]["attributes"]["gen_ai.usage.input_tokens"]) is int
+clock.advance(149)
+assert result(active) == {"signal": None, "state": "executing", "age_ms": 149}
+clock.advance(1)
+assert clock.now_ms == 6670
+assert result(active) == {"signal": "execution_timeout", "state": "executing", "age_ms": 150}
+assert result(finished) == {"signal": None, "state": "succeeded", "age_ms": 850}
+clock.advance(549)
+assert result(finished) == {"signal": None, "state": "succeeded", "age_ms": 1399}
+clock.advance(1)
+assert clock.now_ms == 7220 and receiver.purge() == 1
+assert result(finished) == {"signal": "trace_missing", "state": None, "age_ms": None}
+assert result(active) == {"signal": "execution_timeout", "state": "executing", "age_ms": 700}
+print("L71 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">已完成的一轮也报警时，查是否把年龄直接和执行预算比较；第二轮没报警时，核实执行起点、整数毫秒和是否将「大于等于」写成了「大于」。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 支持同事说看不到票据正文就没法排障，如何设计折中？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先问诊断需要哪项事实。定位卡住的阶段只需状态和耗时，不需要正文；不可替代时另设计限人限时的诊断通道。</p><p><strong>追问：</strong>把票据号做哈希就可以默认加入遥测吗？</p><p><strong>答题要点：</strong>可预测输入的哈希可能被猜出或跨表关联；先评估用途与关联风险。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 负责人说把敏感字段在读页面隐藏就足够，如何反驳？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>隐藏不阻止存储、备份和传输。应在产生端按字段和值投影，再在真实接收结果里查合成标记。</p><p><strong>追问：</strong>为什么不能只断言标记不出现？</p><p><strong>答题要点：</strong>没收到任何跨度也会满足；还要断言关联信息和关键元数据实际收到。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 已经等了二十分钟，执行预算三分钟，值班要接哪个告警？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>若仍待批准，就只看审批时限。超时由审批队列处理；只有执行已开始才计执行年龄。</p><p><strong>追问：</strong>审批后重启，怎么证明执行何时开始？</p><p><strong>答题要点：</strong>查应用持久状态及时间来源，不能拿新进程本地单调时钟减旧进程时钟。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 五分钟前还能看见，现已查不到；可以直接关闭故障吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不可以。查保留策略、投递与关联标识，再向权威业务状态求证；缺轨迹并不等于恢复。</p><p><strong>追问：</strong>模拟角色拒绝了读取，是否证明真实租户隔离？</p><p><strong>答题要点：</strong>没有。生产需对实际认证主体、租户权限和审计进行单独的集成验收。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L71">L71 疑难解答 →</a><div class="qa-related"><a href="0081-L70-agent-telemetry.html">上一课 L70 · 贯通任务、试验与轨迹</a> · <a href="0083-L72-versioned-eval-datasets.html">下一课 L72 · 版本化评估集</a> · <a href="0091-phase8-agent-engineering-outline.html">阶段 8 纲要</a></div></div></section>
+<section class="section"><h2>知识地图与小结</h2><p>定位目的 → 产生端白名单和值域 → 接收端正、负对照 → 受限读取与到期清理 → 以状态年龄解释信号。保存最少字段不是不做观测；它让诊断更清楚，也避免把等待算成故障。</p><ul>
+  <li><a href="https://opentelemetry.io/docs/security/handling-sensitive-data/">OpenTelemetry · 敏感数据处理</a>：源头最小化及额外过滤，不能靠字段名保证值安全。</li>
+  <li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude">OWASP Logging Cheat Sheet · 应排除的数据</a>、<a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#protection">保护</a>与<a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#disposal-of-logs">保留和清理</a>：访问与保留同样是边界。</li>
+  <li><a href="https://sre.google/sre-book/monitoring-distributed-systems/">Google SRE · 监控分布式系统</a>：把可行动的症状交给人，不让通知替代诊断。</li>
+</ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L76 · 按负载比较降本方案</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<section class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>按负载比较降本方案</h1><p class="subtitle">一次调用更便宜，不等于完成一件事更便宜</p>
+</div></section>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>支持和运维租户都会问「导出文件保留多久？」两边的政策编号相同，却分别是七天与三十天。客服还可按需保存经批准的草稿，不能提交或外发。如果一次请求单价下降，却多出重试、缺引用或漏了草稿，报表里的折扣对用户没有意义。本课用同一批任务练习按尝试对账、把正确性与隔离放在排序之前，再解释成本与端到端延迟为什么可能不同步。</p>
+  <h3>学习目标</h3><ul><li>固定身份、语料、失败脚本与顺序，再分别比较缓存、路由和 Token 预算。</li><li>从逐次尝试核算每成功任务成本与 p95，并用独立对照验质量与隔离。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 冻结工作负载，先决定什么算成功</h2>
+  <p><code>export-support-load/v1</code> 固定请求身份、租户、顺序、政策版本、预算用量、失败脚本、排队和取证延迟；每个方案都从空缓存重放同一批。宿主传入可信租户，问题文本不选择租户。预期记录独立手写：回答必须给出本租户的政策值和准确的 <code>EXPORT-POLICY/v1 §1</code>；批准的草稿要保留相同证据，终态恰好一条模拟写入；没有交付的路径不能凭答复措辞假装成功。这里检验字段与模拟终态，不检验开放式文本的语义质量或真实审批系统。</p>
+  <table>
+    <caption>固定顺序；每行另有 100 个固定前缀 Token，表内 Token 数为人工设定</caption>
+    <thead><tr><th scope="col">任务与租户</th><th scope="col">必要／可选后缀；必要／计划输出</th><th scope="col">排队／取证（ms）</th><th scope="col">独立预期</th></tr></thead>
+    <tbody>
+      <tr><td><code>s-lookup</code> 支持，常规问答</td><td>20 / 30；16 / 30</td><td>5 / 10</td><td>七天、当前引文、零写入</td></tr>
+      <tr><td><code>s-repeat</code> 支持，同题再问</td><td>20 / 30；16 / 30</td><td>8 / 10</td><td>同上；缓存组应读取本租户前缀</td></tr>
+      <tr><td><code>o-lookup</code> 运维，同题同文档键</td><td>20 / 30；16 / 30</td><td>5 / 10</td><td>三十天、本租户引文、零写入；缓存组仍冷</td></tr>
+      <tr><td><code>s-draft</code> 支持，已批准</td><td>40 / 40；30 / 50</td><td>9 / 24</td><td>首次超时，重试后保存一条带证据的草稿</td></tr>
+      <tr><td><code>s-recover</code> 支持，取证回答遇到持续故障</td><td>45 / 45；20 / 35</td><td>12 / 20</td><td>两次生成尝试都超时，安全报不可用，零写入</td></tr>
+    </tbody>
+  </table>
+  <p>质量门逐题核对值、引文和终态；隔离门逐题核对返回的证据归属、所有发生缓存读取的尝试的来源归属，失败尝试也不能例外。两个门都过才进入候选。<code>s-recover</code> 的安全停止符合金标，但没有答复或草稿交付，不能进成功分母。因此五条行为都正确，成功仍只有四条。只统计有响应的请求会漏掉失败成本；把所有正确拒绝都计成交付也会虚抬成功率。若拒绝本身是另一产品的约定交付，要在回放前单独版本化定义，不能在看到结果后改口径。</p>
+</section>
+<section class="section">
+  <h2>2. 每次只改一个杠杆，观察哪一项账变了</h2>
+  <p><strong>前缀缓存：</strong>稳定的指令和格式位于固定前缀，问题与当轮政策证据在动态后缀；这里复用的是前缀用量，不是检索结果或答复，命中也仍要取证。用 <code>(tenant, model, prefix_version)</code> 隔离模拟状态，同名文档和相同问题都不能让两个租户共用状态。若提示模板变了却未升级前缀版号，就不能解释命中与错配；实际接入还要验证真实命名空间、匹配条件及边界，不能照搬这个键证明线上隔离。夹具把第一次用作写入，之后用作读取，甚至首次超时也完成写入；没有 TTL、驱逐、并发填充或真实厂商的计费规则。</p>
+  <p><strong>路由：</strong>仅把预标为常规的三条问答交给 <code>lite</code>，草稿和故障对照留在 <code>standard</code>。这不是用题目字符串揣测权限，也不证明 <code>lite</code> 能做任意任务。本地只是改变尝试的计费与时延模型；独立标签约束结果。如果线上要做升级回退，必须记录实际路由、错误分类和升级次数，慢路由的额外尝试不能从分子删掉。即使轻路由让三条问答更快，最慢的草稿没动，整批尾部就可能不变。</p>
+  <p><strong>输入与输出上限：</strong>输入上限针对含前缀的总量，<code>145</code> 优先保留证据及必要字段，只去掉可选上下文；不足以容纳必要内容就不发起生成，而非截掉引用再硬答。输出上限是另一臂，<code>30</code> 允许完整的最小草稿，低于它不会保存不完整草稿。实际系统须依据可核查的内容和停止原因区分压缩成功与截断，不能因为输出少就算答对。两类上限分开试，后续如叠加缓存、路由和预算，应另跑组合对照；单项差值不能相加作承诺。</p>
+</section>
+<section class="section">
+  <h2>3. 手算再看表：失败、等待和重试不能藏起来</h2>
+  <p>教学费率用虚构的计费单位 <strong>microcredit（uc）</strong> 表示，不可换算真实货币。普通输入／前缀写／前缀读／输出的单价，<code>standard</code> 为 <code>3/4/1/5</code>，<code>lite</code> 为 <code>2/3/1/3</code> uc/Token。标准常规问答基线为 <code>150×3 + 30×5 = 600</code>；缓存组的首条任务触发冷写，<code>50×3 + 100×4 + 30×5 = 700</code>，同租户重来才降为 <code>50×3 + 100×1 + 30×5 = 400</code>。运维首次仍是 700，不是 400。缓存读写只替换普通前缀输入，不重复计费。</p>
+  <p>基线草稿先付 <code>180×3 = 540</code>，再付 <code>180×3 + 50×5 = 790</code>；故障题两个尝试各 <code>190×3 = 570</code>。因此总额为 <code>3×600 + 540 + 790 + 2×570 = 4270</code>，除以四个成功得 <code>1067.5 uc/成功任务</code>。零成功时仍报告总额与失败，除法记 <strong>N/A</strong>，不记为零或最便宜。这里的分子只含固定的尝试费，线上还要按口径加检索或其他执行费，对账缺失用量；缺失不是零。</p>
+  <p>模拟尝试耗时是模型固定开销（标准 60、轻量 30 ms）加普通输入数、写入数、读取数整除 5，再加两倍输出数；时间系数只供练习。整条请求从排队算到终态，含取证、所有尝试及一次 40 ms 重试间隔。基线草稿为 <code>9 + 24 + 240 + 40 + 340 = 653 ms</code>；故障题也进延迟分布，为 <code>12 + 20 + 250 + 40 + 250 = 572 ms</code>。本例仅模拟已获批草稿，无异步等批耗时；线上若承诺从接单到交付，应把等待审批单列，并同时报告总时长和主动处理时长。这里的最近秩 p95 是排序后第 5 项（向上取整），样本太少，只是最大值，不是线上 SLO。</p>
+  <table>
+    <caption>同一版本的五条请求；每臂先通过质量与隔离，成功均为 4/5</caption>
+    <thead><tr><th scope="col">方案</th><th scope="col">总额（uc）</th><th scope="col">每成功任务（uc）</th><th scope="col">端到端 p95（ms）</th></tr></thead>
+    <tbody>
+      <tr><td>基线</td><td>4270</td><td>1067.5</td><td>653</td></tr>
+      <tr><td>只开前缀缓存</td><td>3470</td><td>867.5</td><td>493</td></tr>
+      <tr><td>只做常规路由</td><td>3640</td><td>910</td><td>653</td></tr>
+      <tr><td>只限输入至 145</td><td>3745</td><td>936.25</td><td>583</td></tr>
+      <tr><td>只限输出至 30</td><td>4170</td><td>1042.5</td><td>613</td></tr>
+    </tbody>
+  </table>
+  <p>可按任务核回前缀臂：前三条为 <code>700 + 400 + 700</code>，草稿两次热读为 <code>340 + 590</code>，故障两次热读为 <code>370 + 370</code>，共 <code>3470</code>；每成功任务省 <code>(4270 − 3470) ÷ 4 = 200 uc</code>。L77 可以复用计量方法，不应把这组教学数字抄成另一套验收负载的门槛。</p>
+  <div class="best-practice-point" id="bp-l76">
+    <h3>决策卡：先删掉不合格方案，再比较已交付成本</h3>
+    <p class="bp-scenario"><strong>适用：</strong>有同版本任务、独立金标、逐次尝试账本和足以区分租户的正负控。<strong>不适用：</strong>拿这五行决定线上费率、默认模型或发布门槛。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：总额降低就是赢</span><p>压掉草稿的必需字段后尝试费更少，却少完成一件事。</p></div><div class="bp-right"><span class="bp-compare-label">选择：保存逐任务账本，按硬门、成功、成本与延迟解释</span><p>本轮前缀方案两项数值都最好，但冷请求更贵；低复用业务应该重新取样。</p></div></div>
+    <ol class="bp-steps"><li>固定版本、失败脚本及回放顺序，先验金标和隔离，再核对是否为同批。</li><li>把每次尝试按用量类型计入总额，记录成功数及包括失败在内的端到端延迟。</li><li>按租户和任务类型看冷、热、超时和截断，下一轮只改一个可解释条件。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>暖请求少花钱但整批更贵，先查冷写和命中分布；路由更快而 p95 不动，找对照中最慢的任务和重试间隔；输出更短却未交付，回查必填字段和停止原因。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span>一个方案少付了尝试费，却在批准过的草稿题丢失必填字段。怎样处理该方案？</div><div class="quiz-options"><button data-answer="wrong">保留候选，按每次尝试均价排序</button><button data-answer="wrong">保留候选，按成功响应延迟排序</button><button data-answer="correct">挡在质量门外，但照记所有尝试费</button><button data-answer="wrong">从两边删去草稿题，再按同批比较</button></div><div class="quiz-explanation">便宜不能抵销未交付。失败也消耗费用和时间，不能删出账本。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>4. 跟做：重放同一批，用一张账本核门与核账</h2>
+  <p><a href="../code/phase8-agent-engineering/engineering-lab/README.md">工程实验说明</a>。网站不发布 Python 源文件；先获取与课文同版本的可信课程源码，在仓库根用 Python 3.11+ 把块保存为脚本后运行 <code>python -I -X utf8 文件名.py</code>（不加 <code>-O</code>）。只用标准库，不联网。也可直接查看可重用的对照入口：</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase8-agent-engineering/engineering-lab/design/load_cost.py</code></pre>
+  <div class="card" id="guided-l76"><h3>可见起点：跑两个方案，先填草稿行，再补齐对照</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/load_cost.py")
+for name in ("baseline", "prefix"):
+    rows = lab["replay"](lab["ARMS"][name])
+    draft = next(row for row in rows if row.request_id == "s-draft")
+    print(name, [(a.status, a.charge) for a in draft.attempts], draft.elapsed_ms)
+# TODO：跑余下三臂，先用 compare 核对硬门，再逐项核对成功数、总额、均摊和 p95。</code></pre><p><strong>通过标准：</strong>基线草稿付 540、790，延迟 653 ms；前缀臂第二条是本租户热读，第三条是运维冷写。五臂核出上表；把热读记录的归属单改为运维后，金标答复仍对但隔离门要拦下。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l76-worked-check">from dataclasses import replace
+from fractions import Fraction
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/load_cost.py")
+assert lab["WORKLOAD_VERSION"] == "export-support-load/v1"
+expected = {"baseline": (4270, 653), "prefix": (3470, 493), "route": (3640, 653),
+            "input-145": (3745, 583), "output-30": (4170, 613)}
+for name, (total, p95) in expected.items():
+    report = lab["compare"](lab["replay"](lab["ARMS"][name]))
+    assert report.eligible and report.successes == 4
+    assert (report.total_charge, report.charge_per_success, report.p95_ms) == (total, Fraction(total, 4), p95)
+
+base = lab["replay"](lab["ARMS"]["baseline"])
+draft, failed = base[-2:]
+assert [(a.status, a.charge) for a in draft.attempts] == [("timeout", 540), ("complete", 790)]
+assert (draft.retry_ms, draft.elapsed_ms, draft.outcome.draft_writes) == (40, 653, 1)
+assert [a.charge for a in failed.attempts] == [570, 570] and failed.elapsed_ms == 572
+cold, warm, other, *rest = lab["replay"](lab["ARMS"]["prefix"])
+assert [(r.attempts[0].write, r.attempts[0].read) for r in (cold, warm, other)] == [(100, 0), (0, 100), (100, 0)]
+assert (warm.attempts[0].cache_owner, other.outcome.evidence.retention) == ("support", "30 天")
+wrong_owner = replace(warm.attempts[0], cache_owner="operations")
+blocked = lab["compare"]((cold, replace(warm, attempts=(wrong_owner,)), other, *rest))
+assert not blocked.eligible and blocked.quality_errors == () and blocked.isolation_errors == ("s-repeat",)
+assert blocked.total_charge == 3470 and blocked.successes == 3
+print("L76 ACCEPTED")</code></pre></details>
+  <p>通过后只输出 <code>L76 ACCEPTED</code>。改缓存来源的是合成日志行，不改运行逻辑、不访问其他租户；它专测隔离检查不会被正确答复掩盖。</p>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立变式：紧一格输出上限，哪条交付消失？</h2>
+  <p>保持原负载、失败脚本、价格和输入配置，另跑 <code>30</code> 与 <code>29</code>。只改一格以定位瓶颈；另加 <code>15</code> 检查零成功的账务表现，不把这个极端值当发布建议。</p>
+  <div class="card"><h3>独立起点：自己检查负例，不能只抄输出</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/load_cost.py")
+for cap in (30, 29, 15):
+    rows = lab["replay"](lab["Arm"](output_cap=cap))
+    report = lab["compare"](rows)
+    print(cap, lab["format_summary"](report))
+    # TODO：断言 29 只伤一条；检查该行写入为零，再核对除法与零成功。</code></pre><p><strong>通过标准：</strong>30 可比较，29 只因 <code>s-draft</code> 不完整被挡，隔离仍通过；没有草稿写入。总额 4150 uc 比 4170 少，但只完成三件；15 共付 3870 uc 却没有任何成功，显示 N/A。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l76-transfer-check">from fractions import Fraction
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/load_cost.py")
+
+
+def with_output(cap):
+    rows = lab["replay"](lab["Arm"](output_cap=cap))
+    return rows, lab["compare"](rows)
+
+
+_, ok = with_output(30)
+rows, blocked = with_output(29)
+assert ok.eligible and ok.charge_per_success == Fraction(4170, 4)
+assert not blocked.eligible and blocked.quality_errors == ("s-draft",) and blocked.isolation_errors == ()
+draft = next(row for row in rows if row.request_id == "s-draft")
+assert (draft.outcome.status, draft.outcome.draft_writes) == ("output_incomplete", 0)
+assert (blocked.total_charge, blocked.successes, blocked.p95_ms) == (4150, 3, 611)
+assert blocked.total_charge &lt; ok.total_charge and blocked.charge_per_success == Fraction(4150, 3)
+assert blocked.charge_per_success &gt; ok.charge_per_success
+_, zero = with_output(15)
+assert not zero.eligible and zero.successes == 0 and zero.total_charge == 3870
+assert zero.charge_per_success is None and "uc/success=N/A" in lab["format_summary"](zero)
+print("L76 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L76 TRANSFER PASSED</code>。分母仍是四就去核对终态；若 29 仅罚平均分而仍可比较，检查是否漏了硬门。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>两个租户问同一句，返回的留存期都对，却检测到一次跨租户前缀读。可以按成本上线吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不可以。答复金标与尝试来源是两个门；值正确不能批准跨作用域复用。</p><p><strong>追问：</strong>怎样区分缓存没有真正复用与隔离做对了？</p><p><strong>答题要点：</strong>固定同题两租户，验证本租户冷写后出现正确热读，另一租户仍冷，并逐次查读的归属。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>服务返回安全的不可用提示，但发生两次收费尝试；成功任务成本怎么记？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>两笔都计到同批分子；这里没交付答复或草稿，所以不进分母。安全停止仍可通过质量标签。</p><p><strong>追问：</strong>整批没有完成一件时怎么报告？</p><p><strong>答题要点：</strong>报告总额、成功数为零、失败分类，均摊写 N/A 并挡住本轮发布比较。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>轻路由让三条正常查询更快，但整批 p95 不变。先改哪里？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先按任务拆出尾部。最近秩取到草稿，它的排队、取证和重试没变；路线不一定是瓶颈。</p><p><strong>追问：</strong>可否拿这五条的 p95 设线上承诺？</p><p><strong>答题要点：</strong>不行；按实际构成、并发、观察窗口和端到端同口径重测，含失败及重试。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>团队同时开启路由和缓存，为什么不能直接相加两边的节省？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>路由会改变缓存所在的模型命名空间和命中机会，重试也可能改变；两臂不是独立的算术项。</p><p><strong>追问：</strong>怎么验证组合有用？</p><p><strong>答题要点：</strong>用同版本、同顺序另跑组合和冷、热对照，检查逐题门槛与尝试账，再比较成本和延迟。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L76">L76 疑难解答 →</a><div class="qa-related"><a href="0086-L75-tool-authority-bounds.html">上一课 L75 · 工具权限边界</a> · <a href="0088-L77-offline-ci-gates.html">下一课 L77 · 离线 CI 门禁</a> · <a href="0091-phase8-agent-engineering-outline.html">阶段 8 纲要</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2>
+  <p><strong>知识地图：</strong>任务与金标固定 → 质量及来源硬门 → 按尝试计价 → 按交付均摊 → 从排队算到终态 → 把同口径交给离线门禁。</p>
+  <ul><li><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">Anthropic 官方文档 · Prompt caching</a>：真实接入时查前缀匹配与使用量字段，不把本课规则当产品规则。</li><li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">OpenTelemetry · 生成式 AI 语义约定</a>：核对所用版本的时延和用量字段，区分尝试与任务。</li><li><a href="https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/">AWS Builders’ Library · 超时、重试与退避</a>：理解等待、额外开销和分层重试的影响。</li></ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

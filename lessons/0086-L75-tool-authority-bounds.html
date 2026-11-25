@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L75 · 限制过度代理与工具权限</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>限制过度代理与工具权限</h1><p class="subtitle">建议、分发、写入尝试、落库与回执，各有自己的证据</p>
+</div></div>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>客服页面集成了「查询制度」和「保存培训草稿」。检索可读、稿件可展示、甚至工具已被发现，都不能推出「这次应该保存」。如果验收只看最终文字，越权动作可能与正确回答同时发生；如果只统计保存行数，又看不出模型是否反复提出任务不需要的建议。本课把这两条指标分开，用真实的临时 SQLite 和普通合成建议验收宿主的决定。</p>
+  <ul><li>为只读和起草任务划能力边界，用可信主体、scope、当前快照和批准作为不同检查。</li><li>用拒绝例与实际提交正控核对零分发、零写入尝试、零业务记录，不用建议计数代替副作用证据。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 把哪几样东西交给谁？</h2>
+  <table><thead><tr><th scope="col">数据</th><th scope="col">来源与形状</th><th scope="col">用途</th></tr></thead><tbody>
+  <tr><td>事实与样张标记</td><td>从 Phase 7 读取的 <code>SYNC-POLICY v1 §1</code> 和普通样张标签，如「培训样张」</td><td>都进入建议构造，改变标签会改变可见预览；标签不属于证据原文或权限字段。</td></tr>
+  <tr><td>建议</td><td>构造预览并携带 <code>(action, binding)</code></td><td>只有动作和稿件绑定进入分发判定；建议不能授予主体、scope 或批准。</td></tr>
+  <tr><td>任务档位与 scope</td><td>宿主从任务和访问上下文决定是否开放草稿；<code>evidence:read</code> 与 <code>draft:save</code> 分开</td><td>本课用集合模拟已验证的 scope；不解析令牌，也不把有 scope 当作已获业务批准。</td></tr>
+  <tr><td>所有者、当前稿件和批准</td><td>宿主记录主体（租户、用户名）、任务、动作、版本和内容摘要</td><td>当前快照和批准都必须匹配；同名异租户或换稿件后，历史批准都不能复用。</td></tr>
+  </tbody></table>
+  <p>风险要按任务来看：只读问题没有任何保存需要，应该从可见目录去掉保存工具，并在分发入口再拒绝。起草任务可以合理地提出保存，因此一次因缺批准而被挡住的建议不是同一种「多余建议」。不同指标需要不同分母：多余建议可按任务统计，用反例决定是否收紧工具目录；禁止效果必须按条为零，不因总任务量大而被稀释。</p>
+  <p>本课主实验只走 Phase 8 同进程分发与 Phase 5 的 SQLite，不做 HTTP，也不将文本送给模型。需要验证 <a href="0068-L59-mcp-skill-authority.html">L59</a> 的 MCP 分支时，另跑下方的 Phase 6 回环检查。两条检查不共用授权上下文、回执或效果记录，都没有真实 OAuth。生产还需检查受众、有效期、撤权、身份绑定和服务端业务约束；长时间等待后按执行时状态再校验。</p>
+</section>
+<section class="section">
+  <h2>2. 为什么一个「没有写」不够？</h2>
+  <p>每条用例先暂存一份同步时间草稿。只读档直接把保存视为任务以外；起草档但只有读 scope，则报告 <code>scope_required</code>；scope 齐全却没有对当前版本的批准，则是 <code>approval_required</code>。这不是布尔变量「失败」的三个名字：它们分别指向计划约束、接入权限和等待人工，下一步处置不同。换成普通的「交班样张」后，建议预览应变，但这些判定以及获准保存的稿件均不变。</p>
+  <p>用 <code>proposals → dispatches → writes → rows</code> 读一次结果：建议在宿主被记录；通过全部门才进入回调；真正的业务 <code>INSERT</code> 前有独立观察点。事务结束后，<code>saved_drafts()</code> 用只读连接查该库的<strong>全部</strong>业务行，不按预期所有者过滤，以免漏掉误写到别处的行。正控查精确所有者、稿件标题、正文、来源以及回执与持久行的对应；负例查零写入、零提交、没有保存回执。待审检查点本身不算业务写入。分发 1、写入 0 可能只是下游拒绝；写入 1、行 0 可能是回滚；行 1、调用方没有回执则要按 L52 对账。</p>
+  <div class="best-practice-point" id="bp-l75"><h3>决策卡：目录收窄，效果入口仍校验</h3>
+  <p class="bp-scenario"><strong>适用：</strong>同一助手承担只读与草稿任务。<strong>边界：</strong>本课只保存本地培训草稿，不执行外部操作。</p>
+  <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：发现就可调用</span><p>所有任务用同一工具目录，依靠模型说明或最终文字判断是否安全。</p></div><div class="bp-right"><span class="bp-compare-label">选择：逐门给出证据</span><p>宿主限制动作，独立验 scope、所有者和批准，并在效果入口存证。</p></div></div>
+  <p class="bp-rationale"><strong>代价：</strong>要维护任务档位与批准快照；换来可解释的拒绝、可重验的正控和更小的执行面。</p>
+  <ol class="bp-steps"><li>先固定建议和草稿，逐次改任务、scope 或批准。</li><li>再固定 scope 和旧批准，改当前稿件或主体；观察每一层计数是否保持为零。</li></ol>
+  <p class="bp-result"><strong>验收门槛：</strong>禁止路径分发、实际写入尝试、持久行均为零；批准正控三项为 1。全部为零的实验不是充分证据，它可能根本没接上效果入口。</p></div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 起草任务需要保存，scope 充足，现稿已换版；宿主持有旧版批准。应如何处理？</div><div class="quiz-options"><button data-answer="wrong">沿用旧批，保存现稿</button><button data-answer="wrong">沿用旧批，保存旧稿</button><button data-answer="correct">停止分发，重新确认</button><button data-answer="wrong">重试查询，继续保存</button></div><div class="quiz-explanation">旧批准只对应旧快照。不要自动更新已批准的对象，也不自动保存旧版本；展示要确认的当前内容。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：相同的建议，四个不同的门</h2>
+  <p>用 <a href="../code/phase8-agent-engineering/engineering-lab/README.md">Agent 工程实验</a>，从可信仓库根以 Python 3.11+ 运行保存的代码 <code>python -I -X utf8 文件名.py</code>，不要加 <code>-O</code>。每个用例在新库里运行，数据都是合成的。</p>
+  <div class="card"><h3>最小起点：把每个决定和效果分列</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/authority.py")
+for case in ("read_only", "read_scope", "unapproved", "approved"):
+    observed = lab["run_case"](case)
+    print(case, observed["reason"], observed["writes"])
+    # TODO：再验建议、分发、行数与回执，而不只验 reason。</code></pre><p><strong>通过标准：</strong>四条均看到同一个样张。三条负例分别在任务、scope、批准处停下，三种效果计数均 0；正控均 1。只有只读任务计 1 条多余建议。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l75-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/authority.py")
+for case, reason, effect, extra in (
+    ("read_only", "out_of_profile", 0, 1),
+    ("read_scope", "scope_required", 0, 0),
+    ("unapproved", "approval_required", 0, 0),
+    ("approved", "allowed", 1, 0),
+):
+    row = lab["run_case"](case)
+    assert row["quote"] == "同步任务每天 02:00 运行。〔培训样张〕"
+    assert (row["reason"], row["proposals"], row["extra_proposals"]) == (reason, 1, extra)
+    assert (row["dispatches"], row["writes"], row["rows"]) == (effect, effect, effect)
+    assert row["scopes"] == (("evidence:read",) if case == "read_scope" else ("draft:save", "evidence:read"))
+    assert row["checkpoint"] == ("saved" if effect else "pending")
+    assert row["receipt"] is bool(effect)
+    if effect:
+        op_id, tenant, actor, job, payload = row["committed"][0]
+        assert (tenant, actor, job) == ("support", "mei", "training-15")
+        assert payload == ["需人工确认：同步时间", "同步任务每天 02:00 运行。", ["KB-03"]]
+        assert row["result_payload"] == payload
+        assert op_id and row["receipt_id"] == row["checkpoint_receipt"] == op_id
+        assert row["write_ids"] == (op_id,) and row["result_status"] == "saved"
+    else:
+        assert row["committed"] == row["write_ids"] == ()
+        assert row["receipt_id"] is row["checkpoint_receipt"] is row["result_status"] is row["result_payload"] is None
+print("L75 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：同名用户与换版后的草稿</h2>
+  <p>换用普通的「交班样张」。先单独对照同名异租户、同租户异用户、同版但正文不同。再分开两种换版：旧建议先卡在快照，新建议才真正检查旧批准。保留缺 scope、缺批准和未开放动作的对照；最后以同一所有者、当前草稿和批准做正控。</p>
+  <div class="card"><h3>独立起点：改变可见预览，再核对边界</h3><pre><code class="language-python">import runpy
+
+run = runpy.run_path("code/phase8-agent-engineering/engineering-lab/authority.py")["run_case"]
+print(run("approved")["quote"], run("approved", sample_label="交班样张")["quote"])
+# TODO：换用同一个新样张，逐次隔离 scope、所有者、内容和批准，再查全库及回执。</code></pre><p><strong>通过标准：</strong>新标签确实进入预览；没获得权限的用例都没有分发、写入、提交行或回执；有批准的正控只保存可信原稿，和更换标签之前的所有者、正文、来源及回执一致。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l75-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+run = runpy.run_path("code/phase8-agent-engineering/engineering-lab/authority.py")["run_case"]
+full_scope = ("draft:save", "evidence:read")
+for case, reason, extra, scopes, approved in (
+    ("read_scope", "scope_required", 0, ("evidence:read",), 1),
+    ("other_tenant", "not_available", 0, full_scope, 1),
+    ("other_actor", "not_available", 0, full_scope, 1),
+    ("changed_payload", "intent_changed", 1, full_scope, 1),
+    ("revised", "intent_changed", 1, full_scope, 1),
+    ("stale_approval", "approval_required", 0, full_scope, 1),
+    ("unapproved", "approval_required", 0, full_scope, None),
+    ("unknown_action", "out_of_profile", 1, full_scope, 1),
+):
+    row = run(case, sample_label="交班样张")
+    assert row["quote"] == "同步任务每天 02:00 运行。〔交班样张〕"
+    assert (row["scopes"], row["approved_revision"]) == (scopes, approved)
+    assert (row["reason"], row["extra_proposals"], row["proposals"]) == (reason, extra, 1)
+    assert (row["dispatches"], row["writes"], row["rows"]) == (0, 0, 0)
+    assert row["committed"] == row["write_ids"] == ()
+    assert row["checkpoint"] == "pending" and row["receipt"] is False
+    assert row["receipt_id"] is row["checkpoint_receipt"] is row["result_status"] is row["result_payload"] is None
+
+control = run("approved")
+variant = run("approved", sample_label="交班样张")
+assert control["quote"] == "同步任务每天 02:00 运行。〔培训样张〕"
+assert variant["quote"] == "同步任务每天 02:00 运行。〔交班样张〕"
+assert {k: v for k, v in variant.items() if k != "quote"} == {k: v for k, v in control.items() if k != "quote"}
+assert (variant["reason"], variant["scopes"], variant["approved_revision"]) == ("allowed", full_scope, 1)
+assert (variant["dispatches"], variant["writes"], variant["rows"], variant["receipt"]) == (1, 1, 1, True)
+(op_id, tenant, actor, job, payload), = variant["committed"]
+assert (tenant, actor, job) == ("support", "mei", "training-15")
+assert payload == variant["result_payload"] == ["需人工确认：同步时间", "同步任务每天 02:00 运行。", ["KB-03"]]
+assert op_id and variant["receipt_id"] == variant["checkpoint_receipt"] == op_id
+assert variant["write_ids"] == (op_id,) and variant["result_status"] == "saved"
+print("L75 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">如果异租户通过，查主体是否仅比较用户名。如果换版通过，查批准是否只绑定任务号。如果正控仍无业务行，先查保存回调和事务，不要以降低权限要求的方式「修通」实验。</p>
+</section>
+<section class="section">
+  <h2>可选对照：单独验收 Phase 6 MCP 回环分支</h2>
+  <p>从仓库根运行下面的小段，直接复用 L59 的 <code>skill-bridge/checkpoint.py</code>，只连接本机回环。它实际核对工具可发现、可读证据；只带读 scope 的保存返回 403，有保存 scope 却没批准则返回 <code>approval_required</code>，两者都没进入保存。匹配的已批准正控才返回保存结果，并且只保存一份已暂存样张。它检查的是 Phase 6 的回环服务状态，不读取上面的 Phase 8 SQLite，也不能替代本地分发验收。</p>
+  <pre><code class="language-python" id="l75-mcp-check">from pathlib import Path
+import runpy
+
+checkpoint = Path("code/phase6-langgraph-mcp/skill-bridge/checkpoint.py").resolve()
+runpy.run_path(str(checkpoint))["check"]()
+print("L75 MCP CHECK PASSED")</code></pre>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先说失效边界，再选能证明它的观察点。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>答复正确，却每十次就多一次保存建议。业务表没变化，需不需要改？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>要分报多余建议与业务副作用。只读任务下缩减工具目录，保留分发拒绝，独立计数验证。</p><p><strong>追问：</strong>换成真正需要保存、只是缺人工批准呢？</p><p><strong>答题要点：</strong>正常待审不能被计成同一类多余建议；仍必须零分发和零写入。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>工具能被列出来但用读 scope 调用时受阻，如何定位？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>发现工具不发生授权；先判断 transport 是否允许，再检查业务主体、快照与批准。</p><p><strong>追问：</strong>给了保存 scope 就应该写入吗？</p><p><strong>答题要点：</strong>仍须当前任务允许和宿主业务批准；用只有 scope 与完整匹配的两条本地结果对照。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>所有拒绝用例都没有保存行，但没有正控。可以合并吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不因此合并。可能根本没有效果入口；确认允许路径确有分发、写入和持久行，再验负路径三者都为零。</p><p><strong>追问：</strong>有分发、零写入是不是和入口拒绝一样？</p><p><strong>答题要点：</strong>不是。它证明下游安全网拦住了，不能证明要求的上游不分发。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>批准页面显示快照有效，但人工处理拖了十分钟。执行时怎么看？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>用当前主体与 scope、当前快照、未撤销的批准重新判断；不要把审核页面上的旧信息当执行凭据。</p><p><strong>追问：</strong>执行稳定，是否能把批准原文记进普通遥测？</p><p><strong>答题要点：</strong>普通轨迹只放关联键和结果类别。需保留的批准状态应在专用访问与保留策略下审计。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L75">L75 疑难解答 →</a><div class="qa-related"><a href="0085-L74-judge-calibration.html">上一课 L74 · 评分校准</a> · <a href="0087-L76-agent-load-cost.html">下一课 L76 · 负载与成本</a> · <a href="0091-phase8-agent-engineering-outline.html">阶段 8 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>证据不授予权限；业务批准不能从建议推断。分别计数建议、分发、效果尝试和提交，用一条真正有效的正控验证效果观察点。</p><ul><li><a href="https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final">NIST SP 800-53 Rev. 5</a>：AC-3 访问强制、AC-6 最小权限；课程不作合规背书。</li><li><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">MCP Authorization（课程固定修订）</a>：把 transport 授权与应用领域审批分开。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L79 · 交付可复核的工程基线</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">50</span><span class="lesson-time-unit">分钟</span></span></div><h1>交付可复核的工程基线</h1><p class="subtitle">交接的不只是绿灯，而是别人能重做的判断</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2>
+<p>下一位同事拿到 PR，看到「6/6 通过、p95 100 ms、草稿流程上线就绪」。这句话把数据、推断和承诺混到了一起。六条是合成的受控场景，100 ms 来自账本，不来自时钟；检查点和提交重放成功也只发生在临时 SQLite。可靠的交接应该让对方能复现判断、知道它没证明什么，再决定哪些线上验证必须另做。</p>
+<ul><li>交付可复跑的报告、独立脱敏轨迹样本和架构决策；每份证据注明来源。</li><li>同版本做一次绿→红→绿回归，提交用例、字段、动作效果和恢复证据，而不是只交一张截图。</li></ul></section>
+<section class="section"><h2>1. 把交接包拆成三份独立证据</h2>
+<table><thead><tr><th scope="col">证据</th><th scope="col">最小形状</th><th scope="col">能够复核什么</th></tr></thead><tbody>
+<tr><td>门禁复验</td><td><code>baseline/regression/restored</code> 各有 <code>exit_code/report</code>；报告带逐案效果、度量版本和失败字段，另附独立评估集的重复试验摘要</td><td>独立金标能抓到缺引用，恢复后同口径再次通过；重复试验不是门禁六条的重复计分。</td></tr>
+<tr><td>脱敏轨迹样本</td><td>本地接收器的合成 <code>task_id/trial_id/trace_id</code>、投影版本、终态、阶段名和秒数</td><td>接收器可读与投影结果可看，不代表这个 trace 记录了门禁里某次实际草稿保存。</td></tr>
+<tr><td>设计决定</td><td><code>case_id</code>、方案、停止／恢复策略、写入归属、取舍、复议条件</td><td>为什么用宿主管理审批的 workflow；若有受限自适应取证也只是只读候选，不继承写权。</td></tr>
+</tbody></table>
+<p>复跑 <code>handoff.py</code> 会调用三次真实本地门禁。基线与恢复须一致；故意只去掉保留期引用时仍显示七天，实际报告却给出 <code>retention.citations</code>。和预期的红比对比「有非零就行」更强：程序崩溃、缺文件不能当质量门抓到回归。恢复在这里是回到基线代码路径，不修改阈值，也不宣称修复了线上故障。</p>
+<p><code>inputs</code> 按门禁、评估、遥测、设计、交接列出相对路径和 SHA-256；每组还有整组指纹。三次门禁都必须报告同一组指纹。文件内容在计算前把文本换行统一，避免 Windows 和 Linux 的检出差异；修改一条金标仍应改变指纹。它只证明清单中的代码和夹具一致，不证明解释器、系统状态或运行结果相同。轨迹的 <code>projection_version</code> 表示本地字段约定，<code>otel_genai_version</code> 是参考的语义版本，两者分开记录。</p>
+<p>批准草稿用的是同步时间。报告里的 Phase 7 精确证据是 <code>SYNC-POLICY v1 §1</code>，Phase 5 草稿存的旧编号是 <code>KB-03</code>。本地流程在批准保存前核对事实和约定的来源对应，不声称两个系统共享文档模型。持久效果由写入观察者和独立重开查行报告；遥测附件起自另一个固定试验。遇到真实故障应通过同一任务、试验与轨迹 ID 去关联，不能靠事后拼相似的名字。</p>
+</section>
+<section class="section"><h2>2. 给下一位维护者一个能执行的决定</h2>
+<p>保留期的一次授权查询可以直接用函数；同步草稿要停在待审、否决或按回执恢复，因此选择确定性 workflow，保存权留给持有当前批准的宿主。遇到证据分支不可预知，只有在受限授权读取、预算、失败交接和同负载评估都成立时，才单独考虑有界 Agent。更灵活不改变编辑、审批和持久化的权力归属。</p>
+<p>交班里具体写「先验证测试环境身份映射与真实 scope；再核对受控样本质量和已知账单；然后在固定并发与冷暖条件下测队列及端到端延迟；演练故障恢复并核对真实回执」。每项都要有负责人、环境和通过门槛。只有实验通过而没有环境检查，应标记为「本地基线可复跑，生产准入未判定」。</p>
+<p>评审者如果读到「恢复均成功」，先从 <code>restored.report.by_case</code> 找 <code>lost-response</code>：检查点仍是 <code>saved</code>，首次批准分发 1、恢复调用 1、整体写入 1、已存行 1、重放写入 0、回执相同。若查到两行，即使最终回答相同也必须阻断；若轨迹样本显示成功但该案没有回执，按真实效果观测排查，不拿另一次的轨迹补证。评审记录可以压成「场景 → 观察 → 限制 → 下一项验证」，不写一个宽泛的「通过」。</p>
+<div class="best-practice-point" id="bp-l79"><h3>决策卡：事实、验收结果和上线资格分开</h3><p class="bp-scenario"><strong>适用：</strong>将一个本地可验证的 Agent 功能交给评审者。<strong>边界：</strong>课程只交合成证据与后续计划。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：有图有绿灯就齐了</span><p>粘一张报告，把另一个试验的 trace 叫作同案证据。</p></div><div class="bp-right"><span class="bp-compare-label">选择：给出版本与复跑路由</span><p>列命令、结果、影响范围、独立附件与未验事项，并记录错误恢复。</p></div></div><p class="bp-rationale"><strong>代价：</strong>多维护三个小证据；换来能诊断回归、能复查责任、也不会误读为上线批准。</p><ol class="bp-steps"><li>先跑基线，再让一个已知缺陷出现，保存具体失败字段与退出码。</li><li>恢复同口径后复核数据与硬门槛，再附上标明来源的轨迹和设计记录。</li></ol><p class="bp-result"><strong>门槛：</strong>0 → 1 → 0，并证实是目标回归；来源与未测项不省略。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 合成 trace 有工具阶段，但来自另一条本地试验。交接如何处理？</div><div class="quiz-options"><button data-answer="correct">单独附上，说明试验来源</button><button data-answer="wrong">合并记录，注明都是本地</button><button data-answer="wrong">改写编号，关联保存用例</button><button data-answer="wrong">删掉编号，作为保存证据</button></div><div class="quiz-explanation">同在本地不表示同次执行。独立附件能够验证字段投影，不能替代本案的写入或回执。</div></div>
+</section>
+<section class="section best-practice-lesson"><h2>3. 跟做：核对报告的来源与复议条件</h2>
+<p>按 <a href="../code/phase8-agent-engineering/engineering-lab/README.md">项目复跑指引</a>，在可信仓库根用 Python 3.11+ 将下面代码保存并运行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。不需要真实业务记录。</p>
+<div class="card"><h3>最小起点：输出两份摘要</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/handoff.py")
+package = lab["run_handoff"]()
+print(package["trace_sample"]["origin"], package["trace_sample"]["terminal"])
+print(package["decision"]["case_id"], package["decision"]["revisit_if"])
+# TODO：再断言来源、单位、保存所有者、停止策略与未验项目。</code></pre><p><strong>通过标准：</strong>轨迹注明独立来源、状态 <code>succeeded</code>，固定 model 阶段 0.250 秒，只含阶段名与时长；同步草稿由宿主批准后保存、从检查点恢复，真实权限与账单不在通过范围。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l79-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/handoff.py")
+package = lab["run_handoff"]()
+trace = package["trace_sample"]
+assert trace["origin"] == "separate-local-telemetry-fixture" and trace["terminal"] == "succeeded"
+assert trace["task_id"] == "task-79" and trace["trial_id"] == "trial-1"
+assert (trace["projection_version"], trace["otel_genai_version"]) == ("telemetry-projection-v1", "v0.1.0")
+assert all(set(span) == {"name", "duration_s"} for span in trace["spans"])
+assert {s["name"]: s["duration_s"] for s in trace["spans"]}["chat lesson-model"] == 0.250
+choice = package["decision"]
+assert choice["case_id"] == "approved-draft" and choice["revisit_if"]
+assert choice["contract"]["architecture"] == "workflow"
+assert choice["contract"]["draft_owner"] == "host-after-approval"
+assert choice["contract"]["on_stop"] == "resume-checkpoint"
+assert "production identity and permissions" in package["unverified"]
+print("L79 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：换一种退化，不让正确答复掩盖多余建议</h2>
+<p>此时答复和精确来源不变，只读页多一条普通保存建议。必须依据宿主实际拒绝后的报告来解释：「合约仍 6/6，已阻断，禁止效果不是此次阻断理由」。对照恢复保留期任务的实际观测，避免把「没有禁止效果」误读成「没有多余建议」。</p>
+<div class="card"><h3>独立起点：检查 CLI 和两个不同计数</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/handoff.py")
+before, after = (lab["check_cli"](variant) for variant in ("extra-proposal", "baseline"))
+print(before["exit_code"], before["report"]["blocks"], after["exit_code"])
+# TODO：检查两边成功数与成本相同；只有退化报告有 1 条多余建议。</code></pre><p><strong>通过标准：</strong>6/6、49 积分和无硬违规不变；退化退出 1、仅 <code>extra_proposals</code>，恢复退出 0。取同一只读用例测得零分发、零写尝试、零落库。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l79-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase8-agent-engineering/engineering-lab/"
+lab = runpy.run_path(root + "handoff.py")
+gate = runpy.run_path(root + "gate.py")
+bad, good = (lab["check_cli"](variant) for variant in ("extra-proposal", "baseline"))
+assert (bad["exit_code"], good["exit_code"]) == (1, 0)
+assert bad["report"]["blocks"] == ["extra_proposals"] and good["report"]["blocks"] == []
+for result in (bad["report"], good["report"]):
+    assert (result["successes"], result["total_credits"], result["hard_failures"]) == (6, 49, [])
+read = gate["exercise"]({"id": "retention", "path": "answer"}, variant="extra-proposal")
+assert read.extra_proposals == 1 and (read.dispatches, read.writes, read.saved_rows) == (0, 0, 0)
+assert read.citations == (("EXPORT-POLICY", 1, "§1", "导出文件生成后保留 7 天。"),)
+print("L79 TRANSFER PASSED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="stage-practice-engineering-handoff"><h2>阶段检查点：给评审者交一份可重做的基线</h2>
+<p><strong>任务：</strong>使用 <code>acceptance-v2</code>／<code>fixture-metrics-v2</code>，固定六条用例与阈值。把 <code>python -I -X utf8 code/phase8-agent-engineering/engineering-lab/handoff.py</code> 的 JSON 存到课程仓库外的学习记录目录，另写两句说明：为什么选择 workflow；假如远端与本地不一致，先在哪条边界找证据。不得使用真实日志来补样本。</p>
+<ol><li>核对三次运行的指纹、用例数、积分与度量版本相同；故障只出在保留期引用，恢复后回到相同报告。</li><li>核对提交后丢回复的单案：一次初始分发、一次恢复，只写一次，回执与内容不变。不要从全局成功率推断该项。</li><li>标明轨迹独立来源、投影版本和未验项。写下一个发布前动作：例如测试环境验证身份绑定及等待后权限复查。</li></ol>
+<details class="bp-check"><summary>展开阶段参考报告自检</summary><pre><code class="language-python" id="l79-stage-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+root = "code/phase8-agent-engineering/engineering-lab/"
+package = runpy.run_path(root + "handoff.py")["run_handoff"]()
+assert package["handoff_version"] == "engineering-handoff-v2"
+a, b, c = (package[name] for name in ("baseline", "regression", "restored"))
+assert (a["exit_code"], b["exit_code"], c["exit_code"]) == (0, 1, 0)
+inputs = package["inputs"]["gate"]
+assert len(inputs["sha256"]) == 64 and any(p.endswith("/acceptance-v2.json") for p in inputs["files"])
+for record in (a, b, c):
+    assert record["report"]["input_fingerprint"] == inputs["sha256"]
+assert a == c and (a["report"]["successes"], b["report"]["successes"]) == (6, 5)
+assert b["report"]["failures"] == {"retention": ["citations"]}
+assert package["trace_sample"]["origin"] == "separate-local-telemetry-fixture"
+assert "OTel SDK/Collector interoperability" in package["unverified"]
+evaluation = package["evaluation_summary"]
+assert (evaluation["repeats"], evaluation["passed_trials"], evaluation["total_trials"]) == (2, 12, 12)
+row = c["report"]["by_case"]["lost-response"]
+assert (row["status"], row["checkpoint"], row["dispatches"], row["recoveries"], row["writes"],
+        row["saved_rows"], row["replay_writes"], row["same_receipt"]) == ("replayed", "saved", 1, 1, 1, 1, 0, True)
+assert row["citation_keys"] == [["SYNC-POLICY", 1, "§1"]]
+print("P8 ENGINEERING HANDOFF PASSED")</code></pre></details>
+<p class="bp-result">个人说明可用「审批和恢复顺序已知，持久化由宿主守住；收到远端非零先看退出原因、任务集版本和失败用例，不先修改阈值」。报告字段或效果有变化，回到 L73 核对环境终态，回到 L77 复验门禁。</p></section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先说范围，再给证据，最后说何时复议。</p>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span>团队说「绿灯、已经解决可靠性」，你怎么看？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>列出本地六条任务的含义，并确认引用故障确实红过、恢复同版本又绿；结论只覆盖本地合同。</p><p><strong>追问：</strong>报告没附失败字段怎么办？</p><p><strong>答题要点：</strong>仅凭非零不能区别业务阻断和环境异常，要求复跑并保留具体字段差异。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span>审批草稿和普通问答共用 UI，一定要用 Agent 吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>问答现有授权函数足够，草稿需暂停和恢复，用 workflow；批准留给宿主。</p><p><strong>追问：</strong>后来常出现未知的证据分支？</p><p><strong>答题要点：</strong>用失败样本衡量有界只读方案的增益；不改变写入边界。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span>草稿提交后没回执，观测平台显示「执行失败」，该重发吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先基于稳定操作 ID 检查业务回执，区分提交后的丢回复和真正回滚；轨迹不替代存储状态。</p><p><strong>追问：</strong>外部系统既没有幂等键，又查不到回执？</p><p><strong>答题要点：</strong>标记结果未知，停下等待人工对账；本地 SQLite 不能替外部系统许诺恰好一次。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span>另一部门要用本地 100 ms 预算填上线 SLA，怎么制止误用？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>把合成阈值和真实负载目标分列；后者需定义入口、并发、失败和等待条件，在测试环境重新测量。</p><p><strong>追问：</strong>某些线上请求没返回 usage，还能直接比较成本吗？</p><p><strong>答题要点：</strong>先做账本覆盖率与未知试验标记，不默认记零；不能无条件比较。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L79">L79 疑难解答 →</a><div class="qa-related"><a href="0089-L78-agent-system-design.html">上一课 L78 · 系统设计</a> · <a href="../best-practices/phase8-agent-engineering-practices.html">阶段工程复盘</a> · <a href="0091-phase8-agent-engineering-outline.html">阶段 8 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>固定输入与版本 → 复查效果与指标 → 演练一个已知退化 → 恢复并重新核对 → 说明证据来源、限制和设计复议条件。</p><ul><li><a href="https://opentelemetry.io/docs/concepts/signals/traces/">OpenTelemetry · Traces</a>：上下文、父子 Span 和关联边界。</li><li><a href="https://sre.google/workbook/implementing-slos/">Google SRE Workbook · Implementing SLOs</a>：从实际用户体验定义服务指标，区分本地验收阈值与生产 SLO。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>
