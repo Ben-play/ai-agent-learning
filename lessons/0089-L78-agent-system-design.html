@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L78 · 在系统设计中说明取舍</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<section class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>在系统设计中说明取舍</h1><p class="subtitle">先定证据、权限、状态和恢复，再问模型是否需要选下一步</p>
+</div></section>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>沿用 <a href="0087-L76-agent-load-cost.html">L76 导出客服</a>：用授权证据回答，必要时转人工，另可保存带证据且已批准的本地草稿，不提交、不外发。高频保留期查询、等人批准的草稿、政策互相冲突的调查都从同一入口进来；给三种任务一套 Agent 循环既增加可变性，也可能把本应由代码控制的恢复与写入交给模型。本课按同一个业务合同选择最简单的控制流，并留下可被复核的决策记录。</p>
+  <h3>学习目标</h3><ul><li>按授权读取、审批与恢复要求，在函数、workflow 和有界单 Agent 间选择。</li><li>用案例记录验证写入归属、停止位置与何时应复议。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 一条客服主线，五个组件各守一件事</h2>
+  <p><strong>网关定作用域。</strong>故事从宿主提供的合成作用域 <code>support/mei</code> 开始；实际系统先验证身份、租户和请求权限，再分配任务 ID、截止时间和预算。请求文本里的租户名字不能覆盖经过认证的租户。网关记录路由、版本与关联 ID，不持久化原始证据或审批正文到通用日志；读取及草稿落盘各自在自己的边界重核授权。<strong>RAG 只供证据。</strong>按租户和角色过滤后才检索，精确查验版本与定位，本例常规问答在 <code>support</code> 引 <code>EXPORT-POLICY/v1 §1</code> 得七天，<code>operations</code> 的同键三十天不能用来补空。检索排名不是政策权威；旧培训样张和当前政策冲突时，先按文档版本、人员适用范围和来源负责人核对，不能只挑分数高的。</p>
+  <p><strong>人工交接有状态。</strong>例如 <code>ticket-42</code> 取到保留期，但发现区域附录缺失，答复只给可证实的事实，把缺口、已核实的证据键、版本、失败原因和后续责任人交给本租户客服队列；接手人须重新获准读取。交接不等于批准草稿，也不是把整个上下文搬到公共队列。另一路若证据齐全且用户选择留草稿，宿主保存预览与待批状态，审批须绑定任务、作用域、有效期和预览版本或摘要。禁止因有人接手就把待批改为已批准；取消、审批过期或证据版本变化时，重新核验或终止，不能悄悄换内容再沿用旧批准。</p>
+  <p><strong>长时任务靠持久状态，不靠对话记忆。</strong>以草稿为例：<code>取证 → 预览 → 等待批准 → 核验 → 写草稿 → 回执</code>；等批应释放工作进程，恢复从检查点读当前授权、批准、证据版号和操作键，而不是重放整段会话。若写入后回执丢失，以原操作键核对已提交效果；同键不同预览不能复用。没有安全查询或幂等保证就暂停交人工，不承诺天然「恰好一次」。这条客服链路还有独立的夜间回归作业：按冻结的任务集与配置拆分回放，保存每分片结果及版本；重启后只补未完成分片，不把部分报告发布为整批通过。</p>
+  <p><strong>评估系统观测这些决策，不接管业务。</strong>记录证据精确度、正确保守停止、批准绑定、恢复是否重复写入、交接原因、成功任务成本和端到端延迟；保持开发例与独立验收例分开。上线候选先按 <a href="0088-L77-offline-ci-gates.html">L77</a> 查硬门，再看按任务类型的质量、延迟、成本及人工接手负担。夜间评估任务只是读取合成样本、写独立结果，不使用客服草稿工具；其后台重试、取消和回放也用可查状态。以上是设计说明，不是本课脚本实现的网关、作业系统或权限证明。</p>
+</section>
+<section class="section">
+  <h2>2. 按谁决定下一步来选，不按节点数</h2>
+  <p><strong>薄函数</strong>适合已知问题到已知读取路径：按授权键定位当前政策，返回值与引文或明确缺口，不保留跨请求状态。<strong>确定性 workflow</strong>让代码掌管分支、状态与转移：可在节点内调用模型写预览，但模型不选择何时批准、恢复或写入。<strong>受限单 Agent</strong>用于下一条证据要靠上一条结果决定，且这种灵活性已有独立验证的读路径；例如先看本租户主政策的适用对象，再选择同租户已有授权的附录，而不是一开始总查所有资料。宿主限定来源和工具允许表，限制步数、时间与用量；缺证、不确定或耗尽就交接，不能写草稿、改变角色或延长预算。</p>
+  <p>这是组件级取舍：即便草稿前的取证以后嵌入受限 Agent，编排、审批、幂等和恢复的所有权仍归宿主。对于稳定案型，先保留固定路径作为对照，再给失败样本做盲测；判断额外一轮读取能否补齐可核验证据、是否提高人工接手量、尾延迟和维护成本。相同证据可由规则查到时，把分支收回 workflow。没有通用的步数、百分比或延迟阈值；约束来自产品、风险、现有负载及团队值班能力。</p>
+  <table>
+    <caption>把同一客服业务拆成可独立复核的架构案例</caption>
+    <thead><tr><th scope="col">决策输入</th><th scope="col">独立审阅预期</th><th scope="col">停下以后</th></tr></thead>
+    <tbody>
+      <tr><td><code>policy-lookup</code>：已知键、可授权读，无等待</td><td>薄函数；最少状态</td><td>无证据就报告缺口</td></tr>
+      <tr><td><code>approved-draft</code>：要保存草稿，必须等待批准并能恢复</td><td>workflow；显式保存审批与幂等状态</td><td>从检查点恢复，仅宿主批准后写</td></tr>
+      <tr><td><code>conflicting-evidence</code>：上条证据决定下一条；有受限读和独立评估正证</td><td>受限单 Agent；增加调用和回归维护</td><td>缺证或超额就交人工，不写</td></tr>
+      <tr><td><code>unscoped-reader</code> / <code>unvalidated-branch</code>：上例分别去掉已授权读能力 / 独立评估证据</td><td>workflow；分别停在交接 / 仅允许规定的固定检索</td><td>仍未解决就交人工，不写</td></tr>
+      <tr><td><code>nightly-eval</code>：固定案例分片，需跨进程续跑</td><td>workflow；不是自适应取证</td><td>从检查点补未完成分片，不碰业务草稿</td></tr>
+    </tbody>
+  </table>
+  <p>按一次实际选择顺序走：给 <code>conflicting-evidence</code> 的是「允许同租户读、无草稿、无恢复、自适应取证有收益的验收证据」，因此产出 <code>bounded-single-agent / adaptive-evidence-only / handoff-no-write</code>。把其中「受限读取」置为假，即便原评估正证仍在，也要转 <code>workflow / no-scoped-reader / handoff-no-write</code>，停止自动读取。记录同时包含范围版本、案例 ID、写入归属、代价和回访条件。夹具中「通过适应性评估」仅为人工预置的设计输入，不是脚本真的测出了模型收益；字符串非空也不能代替人工审阅代价和证据。</p>
+  <p>从同一个 <code>ticket-42</code> 回看取舍：如果区域附录归属可查且当前可读，选下一次读取可能免去一次转人工；如果根本没给该租户授权，增加读取步数没有用。若用户只要保留天数，拿到七天和有效引用就结束；若要求保存待审批草稿，交由可恢复流程。把缺证、等待批准和写入结果未知记成不同状态，值班时才知道该补来源、继续等待，还是查原回执。</p>
+  <div class="best-practice-point" id="bp-l78">
+    <h3>决策卡：写清控制者和停止后的去向</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一个客服合同要选择控制流，且团队能供给授权读取、交接及评估。<strong>不适用：</strong>仅凭产品命名、工具多少或演示成功直接增加自主权限。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判： Agent 会写预览，也可以自己认定获批</span><p>混淆生成、授权与持久提交，失去故障恢复和审计的清晰边界。</p></div><div class="bp-right"><span class="bp-compare-label">选择：固定宿主权限，有证据时才让模型选下一次读</span><p>取证可以灵活；交接、恢复和副作用按宿主合同执行。</p></div></div>
+    <ol class="bp-steps"><li>写下证据范围、交付、禁止动作、批准和故障终态，不先选框架。</li><li>为最简单的可用方案写独立案例标签，再列明当前放弃了什么、重评看什么。</li><li>实测固定路线不足的案例，纳入 L77 的回归，再把记录及负例交给 L79。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>查一次固定政策仍要迭代，找可收回的确定性步骤；恢复后草稿重复，查宿主的操作键和回执而非调提示；自适应不比固定路线多补证据，先降级而非加预算。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span>草稿预览由模型生成，但必须等人批准；工作进程重启也不能重复保存。谁应主导这条路径？</div><div class="quiz-options"><button data-answer="wrong">函数阻塞等待批准，再保存草稿</button><button data-answer="correct">工作流持久记录批准、操作键与回执</button><button data-answer="wrong">单 Agent 用会话记住批准与操作键</button><button data-answer="wrong">评估作业代替批准，再补写草稿</button></div><div class="quiz-explanation">生成节点可以用模型，控制流、批准和写入回执仍是可恢复的宿主责任。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：把架构选择写成可复核的记录</h2>
+  <p><a href="../code/phase8-agent-engineering/engineering-lab/README.md">工程实验说明</a>。网站不发布 Python 源文件；先获取与课文同版本的可信课程源码，在仓库根用 Python 3.11+ 把块保存为脚本后运行 <code>python -I -X utf8 文件名.py</code>（不加 <code>-O</code>）。下面的命令打印 JSON 决策记录，每一行只描述选择，不执行业务动作：</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase8-agent-engineering/engineering-lab/design/system_design.py</code></pre>
+  <div class="card" id="guided-l78"><h3>可见起点：先填薄函数和证据冲突两行</h3><pre><code class="language-python">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/system_design.py")
+for case in lab["CASES"]:
+    decision = lab["select"](case)
+    print(case.id, decision.contract.architecture, decision.contract.on_stop)
+    # TODO：用独立标签核对范围、理由、停止与写入人，另读代价和重评条件。
+# TODO：只在权限缺失案例的记录中改掉 on_stop，确认检查能拦住。</code></pre><p><strong>通过标准：</strong>六行的选择都匹配手工标签。权限缺失记录若把交接改为恢复，检查只报 <code>on_stop</code>；同架构名称不意味着同一失败合同。任选两行说明为什么承担不同维护成本。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l78-worked-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/system_design.py")
+labels = lab["LABELS"]
+decisions = {case.id: lab["select"](case) for case in lab["CASES"]}
+assert set(decisions) == set(labels) and len(decisions) == 6
+for case_id, decision in decisions.items():
+    assert decision.scope == "export-support-design/v1"
+    assert lab["check_decision"](decision, case_id, labels[case_id]) == (), case_id
+
+assert decisions["policy-lookup"].contract.architecture == "thin-function"
+assert decisions["conflicting-evidence"].contract.draft_owner == "none"
+assert decisions["approved-draft"].contract.draft_owner == "host-after-approval"
+missing = decisions["unscoped-reader"]
+wrong = replace(missing, contract=replace(missing.contract, on_stop="resume-checkpoint"))
+assert lab["check_decision"](wrong, "unscoped-reader", labels["unscoped-reader"]) == ("on_stop",)
+print("L78 ACCEPTED")</code></pre></details>
+  <p>通过后只输出 <code>L78 ACCEPTED</code>。负例只篡改内存中的记录来测试审阅条件，不模拟或执行任何违规读取或写入。</p>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立变式：调查要加一张草稿，谁拥有写入？</h2>
+  <p>沿用有授权、有独立评估的冲突调查 <code>conflicting-evidence</code>，新需求是由人确认后保存草稿，且等待批准期间进程可以重启。变更后的业务编排要登记为 <code>conflict-plus-draft</code>；在看输出前写下预期合同。模型最多仍只协助取证，写入由宿主经批准执行。再把受限读取设为不可用，验证批准需求不能覆盖证据边界。</p>
+  <div class="card"><h3>独立起点：从旧案例复制需求，不复用旧标签</h3><pre><code class="language-python">from dataclasses import replace
+import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/system_design.py")
+old = next(case for case in lab["CASES"] if case.id == "conflicting-evidence")
+new = replace(old, id="conflict-plus-draft", accepts_approved_draft=True, needs_resume=True)
+# TODO：先写独立 Contract 标签，再检查原案例与新案例，最后作写入归属负例。
+without_reader = replace(new, id="conflict-plus-draft-no-reader", scoped_reader=False)
+# TODO：为 without_reader 单独写标签；它不允许保留草稿写入合同。</code></pre><p><strong>通过标准：</strong>旧案仍是只读单 Agent；新案顶层是 workflow，停在检查点可恢复，只有宿主批准后写。把新记录的写入人错标为 Agent，应只报 <code>draft_owner</code>。缺少受限读取的变体应停止交接，无写入归属。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l78-transfer-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/design/system_design.py")
+Contract = lab["Contract"]
+old = next(case for case in lab["CASES"] if case.id == "conflicting-evidence")
+new = replace(old, id="conflict-plus-draft", accepts_approved_draft=True, needs_resume=True)
+without_reader = replace(new, id="conflict-plus-draft-no-reader", scoped_reader=False)
+expected = {
+    "conflicting-evidence": Contract("bounded-single-agent", "adaptive-evidence-only", "handoff-no-write"),
+    "conflict-plus-draft": Contract("workflow", "approval-owned-by-host", "resume-checkpoint", "host-after-approval"),
+    "conflict-plus-draft-no-reader": Contract("workflow", "no-scoped-reader", "handoff-no-write"),
+}
+for case in (old, new, without_reader):
+    assert lab["check_decision"](lab["select"](case), case.id, expected[case.id]) == ()
+decision = lab["select"](new)
+wrong_owner = replace(decision, contract=replace(decision.contract, draft_owner="agent"))
+assert lab["check_decision"](wrong_owner, new.id, expected[new.id]) == ("draft_owner",)
+print("L78 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L78 TRANSFER PASSED</code>。新案仍选单 Agent，检查是否把局部取证能力当成顶层控制者；缺授权却可写，检查作用域是否排在审批分支之前。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>保留期问答已有稳定政策键，并能返回精确引用。怎样说服团队先不上 Agent？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>薄函数可以授权直读、带引用回答或标缺口，状态和成本都更低；先留结果基线。</p><p><strong>追问：</strong>新增地区差异就必须上 Agent 吗？</p><p><strong>答题要点：</strong>已知地区映射可配置进固定流程；只有下一次取证确需看前一步，并证明有收益时，才研究受限自适应。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>客服接手后发现证据更新，而审批来自旧预览，能否继续保存？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能自动沿用。交接只是换责任人，恢复要重验权限、证据与批准绑定；旧批准不覆盖变更后的预览。</p><p><strong>追问：</strong>写入可能已发生，但回执没到呢？</p><p><strong>答题要点：</strong>同键读回已提交效果，核对作用域与参数；无可靠机制则暂停核对，绝不盲目再写。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>现有流程经常因冲突证据交人工。会直接赋予单 Agent 全库读取吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不会。先确认固定流程漏了什么，在同一独立负载上比较受限读取收益；将可读来源、预算与终态写入宿主控制。</p><p><strong>追问：</strong>证据资格无法核验但回答看起来合理怎么办？</p><p><strong>答题要点：</strong>停止并按最小交接合同转授权人员，不输出未证实结论或写草稿。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>夜间评估一千题跑到一半重启，团队想让模型判断从哪题接着跑。怎么设计？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>任务版本、分片完成记录和幂等键已知，应用 workflow 续跑并核完每个分片再聚合；模型不定状态。</p><p><strong>追问：</strong>有什么资格在设计记录上写「可上线」？</p><p><strong>答题要点：</strong>固定配置下复现完整的独立结果，证明权限、重复写入和恢复硬门，再报告质量、成功成本与延迟；本地决策检查不能替代它。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L78">L78 疑难解答 →</a><div class="qa-related"><a href="0088-L77-offline-ci-gates.html">上一课 L77 · 离线 CI 门禁</a> · <a href="0090-L79-engineering-baseline-handoff.html">下一课 L79 · 工程基线交接</a> · <a href="0091-phase8-agent-engineering-outline.html">阶段 8 纲要</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2>
+  <p><strong>知识地图：</strong>网关定租户 → RAG 供可核证据 → 最简单的控制流 → 宿主定审批与恢复 → 人工接手缺口 → 评估与决策记录可复核。</p>
+  <ul><li><a href="https://www.anthropic.com/research/building-effective-agents">Anthropic · Building effective agents</a>：区分代码预定义流程与模型决定下一步的 Agent。</li><li><a href="https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/">AWS Builders’ Library · 让重试保持幂等</a>：操作标识、不同意图与不确定回执。</li><li><a href="https://aclanthology.org/2023.emnlp-main.398/">Gao 等 · Enabling Large Language Models to Generate Text with Citations</a>：为什么引用质量与回答正确性要分别评估。</li></ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

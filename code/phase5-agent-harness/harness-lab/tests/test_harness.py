@@ -6,7 +6,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from main import Actor, LostReply, ReadCall, Review, Task, open_store, run_acceptance, run_loop
+from main import Actor, Draft, LostReply, ReadCall, Review, Task, open_store, run_acceptance, run_loop
 
 
 class ReadLoopTests(unittest.TestCase):
@@ -161,6 +161,34 @@ class DraftWorkflowTests(unittest.TestCase):
                 self.assertEqual(store.resume(self.actor, "draft", binding, Review.APPROVE).status, "rejected")
             self.assertEqual(store.saved_count(self.actor, "draft"), 0)
             self.assertEqual(store.resume(self.actor, "draft", changed.binding, Review.APPROVE).status, "saved")
+
+    def test_host_can_validate_the_actual_draft_before_the_pending_transaction(self):
+        with open_store(self.db) as store:
+            earlier = store.stage(self.actor, "replace", 1, "同步任务几点运行？")
+
+        checked = []
+
+        def check(draft):
+            # Reaching a write transaction on a second connection would fail if
+            # stage had already acquired the SQLite write lock.
+            with open_store(self.db) as other:
+                other.stage(self.actor, "separate", len(checked) + 1, "同步任务几点运行？")
+            checked.append(draft)
+            if draft.source_ids == ("KB-01", "KB-02"):
+                raise ValueError("host withheld draft")
+
+        with open_store(self.db, before_stage=check) as store:
+            for job, version in (("new", 1), ("replace", 2)):
+                with self.assertRaisesRegex(ValueError, "host withheld draft"):
+                    store.stage(self.actor, job, version, "导出文件保留多久？")
+                self.assertEqual(store.saved_count(self.actor, job), 0)
+            self.assertIsNone(store.checkpoint(self.actor, "new"))
+            self.assertEqual(store.checkpoint(self.actor, "replace"), earlier)
+            staged = store.stage(self.actor, "new", 1, "同步任务几点运行？")
+        self.assertEqual(checked, [
+            Draft("需人工确认：导出保留期", "导出文件生成后保留 7 天。 超过保留期需重新发起导出。",
+                  ("KB-01", "KB-02")),
+        ] * 2 + [staged.draft])
 
     def test_missing_evidence_does_not_create_a_checkpoint(self):
         with open_store(self.db) as store:

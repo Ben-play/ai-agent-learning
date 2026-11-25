@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L77 · 离线 CI 门禁</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div><h1>把验收标准接入离线 CI</h1><p class="subtitle">门禁既要能挡住已知退化，也要给出可复核的理由</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2>
+  <p>本地跑了几条任务，迁移后平均耗时下降，是否合并？先问哪些任务、什么结果算成功、有没有禁止效果。一次无批准写入不能被更快的九次成功抵消；同样，省掉引用而仍然返回七天并不算正确。门禁的价值是把这套判断变成同一条可复跑命令，不再依赖评审者手工浏览样本。</p>
+  <ul><li>把案例级合约、跨案例指标和零容忍项分开，理解版本、分母和退出码。</li><li>跑基线与两种失败对照，再用独立的观测记录验证延迟和禁止效果各有阻断通道。</li></ul>
+</section>
+<section class="section"><h2>1. 先定义输入与观察，不只保存一个分数</h2>
+  <p><code>fixtures/acceptance-v2.json</code> 固定六条用例、金标、阈值与合成事件价表。<code>gate.py</code> 每条重建授权证据库和临时草稿库，分别记录输出、精确引文、检查点、首次批准分发、恢复调用、业务 INSERT 尝试、提交后的全表行数和回执一致性。评分器拿 <code>Observation</code> 对独立金标；重复或缺失 ID 直接报错，不能把坏样本移出分母。</p>
+  <p>不要按用例名填一串“应该发生的阶段”。本版在真实本地入口记录检索、生成替身、暂存、否决、批准调用和重开后的恢复事件；事件发生后，才从统一价表取一对 <code>[积分, 毫秒]</code>。例如丢回复案实际进入 <code>retrieve → stage → approved_call → recover</code>，对应 19 积分、100 ms；恢复不是第二次保存，仍然必须核对零新增 INSERT。额外只读变体在同一案真实多查一次，得到 23 积分、124 ms，业务结果不变，延迟门单独变红。这里观察的是调用，赋给调用的费用和时长仍是合成值。</p>
+  <p>例如保留期答复取到 <code>EXPORT-POLICY v1 §1</code> 的七天原文。删去引文的对照不改变正文、成本或写入，仅在 <code>retention.citations</code> 失配。另一个对照在同一只读任务里多一条普通本地草稿建议；宿主挡住它，任务仍能答对，分发与写入仍是零，但多余建议必须单独拦住。两个对照用同一评分入口，不连接外部服务。</p>
+  <table><thead><tr><th scope="col">门槛</th><th scope="col">口径</th><th scope="col">v2 基线</th></tr></thead><tbody>
+  <tr><td>态、正文、证据与效果</td><td>每条独立比对；多分发、多写、重放再写等不能靠平均值覆盖</td><td>6 / 6 合约通过，零禁止效果</td></tr>
+  <tr><td>任务成功率</td><td>通过数量 / 6；正确拒答、等待、拒绝也可成功</td><td>100%，下限 100%</td></tr>
+  <tr><td>成功任务成本</td><td>全部已记账尝试（含失败）总积分 / 合约成功数；分母 0 时用空值并阻断</td><td>49 / 6 ≈ 8.17，上限 11</td></tr>
+  <tr><td>最近秩 p95</td><td>先按任务求合成尝试时间和，排序取第 ⌈0.95 × 6⌉ 项，不把真实等待混进这些输入</td><td>100 ms，上限 100 ms</td></tr>
+  <tr><td>多余建议</td><td>按 L75 宿主观测统计，不等同于工具分发</td><td>0，上限 0</td></tr>
+  </tbody></table>
+  <p>这里的毫秒、积分都是固定教学输入；六条的 p95 就是最大值，不能作为线上分位数估计。验收分母反映任务契约，不把所有拒答都算失败或成功：无资料时拒答是正确，原本可答时拒答则失败。诊断报告同时携带 <code>suite_version</code> 与 <code>metric_version</code>；调整业务期望或统计口径要留下新基线和理由，而不是被红灯逼到放宽阈值。</p>
+</section>
+<section class="section"><h2>2. 让同一命令在本地和 PR 上作出同样判断</h2>
+  <p>基线通过时命令退出 0；被阻断时返回 1，JSON 留下 <code>failures</code>（哪题哪字段）、<code>blocks</code>（哪类门槛）和 <code>by_case</code>（逐案观察）。例如 <code>by_case.lost-response</code> 可看到已保存检查点、一次业务写入、一条记录、零次重放写入及相同回执；报告不需要打印原文或草稿。若出现写尝试但无落库，先查事务；若已落库而回执变化，则停止重试并核对操作记录。运行异常同样非零，但不能冒充已识别的质量失败；演练还要解析报告核对原因。</p>
+  <p>课程工作流 <code>.github/workflows/course-engineering.yml</code> 用 <code>pull_request</code> 在受限 runner 上检出并运行课程代码，<code>contents: read</code>、检出不保留凭据；动作引用固定提交。不传 secrets，不使用真实账号，不调用模型，不部署。GitHub 检出源码本身不是离线；评分与示例阶段不需要外部服务。仓库要强制阻挡合并，还需管理员把对应状态检查设为必过。本课验证本地命令，不声称远端作业已运行或分支保护已配置。</p>
+  <div class="best-practice-point" id="bp-l77"><h3>决策卡：失败实验要能解释，不能被 CI 当成成功</h3><p class="bp-scenario"><strong>适用：</strong>需要稳定、可低成本复跑的 PR 回归。<strong>边界：</strong>真实模型质量、负载和生产身份另做受控验收。</p>
+  <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：快且便宜就放行</span><p>用一个综合分，掉引用或多写一行也能被其他指标抵消。</p></div><div class="bp-right"><span class="bp-compare-label">选择：先硬约束，再看分布</span><p>独立校验零容忍项、证据、成功率、成本、延迟、多余建议。</p></div></div>
+  <p class="bp-rationale"><strong>代价：</strong>要维护真实代表性的金标与观测字段；好处是逐项诊断，避免为一个绿灯改错地方。</p><ol class="bp-steps"><li>固定金标，分别跑基线和删除引用对照；保存返回码与具体字段差异。</li><li>再用相同评分器改一项观察，核对预期门槛单独点亮。</li></ol><p class="bp-result"><strong>验收门槛：</strong>通过退出 0；退化退出 1 且原因正确；恢复后同版本再过。</p></div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 成功数不变，失败路径多了一次有费用的尝试。成功任务成本如何计算？</div><div class="quiz-options"><button data-answer="wrong">只加成功尝试再除成功数</button><button data-answer="correct">加上全部尝试再除成功数</button><button data-answer="wrong">加上全部尝试再除尝试数</button><button data-answer="wrong">只加成功尝试再除任务数</button></div><div class="quiz-explanation">失败路径也消耗预算。统计单位是交付成功的任务，不是单次尝试。</div></div>
+</section>
+<section class="section best-practice-lesson"><h2>3. 跟做：一次基线、一次故意缺引用</h2><p>从可信仓库根用 Python 3.11+ 运行 <a href="../code/phase8-agent-engineering/engineering-lab/README.md">工程实验</a>。保存练习代码后，用 <code>python -I -X utf8 文件名.py</code>，不要加 <code>-O</code>。</p>
+<div class="card"><h3>最小起点：读取两个报告，不向外打印语料</h3><pre><code class="language-python">import json, subprocess, sys
+
+entry = "code/phase8-agent-engineering/engineering-lab/gate.py"
+for variant in ("baseline", "drop-citation"):
+    p = subprocess.run([sys.executable, "-I", "-X", "utf8", entry, "--variant", variant],
+                       capture_output=True, text=True, encoding="utf-8", timeout=15)
+    report = json.loads(p.stdout)
+    print(variant, p.returncode, report["blocks"])
+    # TODO：固定两个退出码、版本、成功数、失败字段及成本。</code></pre><p><strong>通过标准：</strong>基线 0 且 6/6；缺引用 1 且 5/6，只失配 <code>retention.citations</code>。两次都耗 49 积分，单位成本从约 8.17 升到 9.80。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l77-worked-check">import json, subprocess, sys
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+entry = "code/phase8-agent-engineering/engineering-lab/gate.py"
+for variant, code, success, blocks, failures in (
+    ("baseline", 0, 6, [], {}),
+    ("drop-citation", 1, 5, ["citation_contract", "success_rate"], {"retention": ["citations"]}),
+):
+    p = subprocess.run([sys.executable, "-I", "-X", "utf8", entry, "--variant", variant],
+                       capture_output=True, text=True, encoding="utf-8", timeout=15)
+    assert p.returncode == code and not p.stderr
+    row = json.loads(p.stdout)
+    assert (row["suite_version"], row["metric_version"]) == ("acceptance-v2", "fixture-metrics-v2")
+    assert (row["successes"], row["cases"], row["total_credits"], row["p95_ms"]) == (success, 6, 49, 100)
+    assert row["blocks"] == blocks and row["failures"] == failures
+    assert round(row["credits_per_success"], 2) == (8.17 if code == 0 else 9.80)
+print("L77 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：按独立门槛定位失败</h2>
+<p>不删引用。先运行 <code>extra-read</code>，看丢回复案多一次真实本地读取。再在内存复制价表，只把 <code>render_answer</code> 费率从 3 改到 28，观察独立成本门。最后构造异常观测记录（不触发写入），查硬门能否独立阻断。只读结果多了被拦截的建议也要拦，不该等真写才红。</p>
+<div class="card"><h3>独立起点：保留真实基线观测，修改副本</h3><pre><code class="language-python">from dataclasses import replace
+import json, runpy
+
+gate = runpy.run_path("code/phase8-agent-engineering/engineering-lab/gate.py")
+suite = json.loads(gate["DATA"].read_text(encoding="utf-8"))
+rows = [gate["exercise"](case) for case in suite["cases"]]
+read = next(row for row in rows if row.case_id == "retention")
+slow = gate["run"]("extra-read")
+print(slow["by_case"]["lost-response"]["events"], slow["blocks"])
+# TODO：分别核对额外检索、改价表和改变模拟观测，各触发哪道门。</code></pre><p><strong>通过标准：</strong>额外检索时 53 积分、p95 为 124 ms，只触发 <code>p95_ms</code>，恢复一次且不再写入；独立改价的成本为 74/6，只触发 <code>credits_per_success</code>；模拟分发只触发硬门；实际多余建议仅触发 <code>extra_proposals</code>。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l77-transfer-check">from dataclasses import replace
+import json, runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+gate = runpy.run_path("code/phase8-agent-engineering/engineering-lab/gate.py")
+suite = json.loads(gate["DATA"].read_text(encoding="utf-8"))
+rows = [gate["exercise"](case) for case in suite["cases"]]
+read = next(row for row in rows if row.case_id == "retention")
+assert gate["evaluate"](suite, rows)["passed"]
+
+def changed(row, spec):
+    return gate["evaluate"](spec, [row if obs.case_id == row.case_id else obs for obs in rows])
+
+slow = gate["run"]("extra-read")
+assert (slow["total_credits"], slow["p95_ms"], slow["blocks"], slow["successes"]) == (53, 124, ["p95_ms"], 6)
+recovered = slow["by_case"]["lost-response"]
+assert recovered["events"].count("retrieve") == 2
+assert (recovered["recoveries"], recovered["writes"], recovered["replay_writes"]) == (1, 1, 0)
+new_tariff = {**suite["event_tariff"], "render_answer": [28, 21]}
+expensive = gate["evaluate"]({**suite, "event_tariff": new_tariff}, rows)
+assert expensive["credits_per_success"] == 74 / 6 and expensive["successes"] == 6
+assert expensive["blocks"] == ["credits_per_success"]
+loose = {**suite, "thresholds": {**suite["thresholds"], "min_success_rate": 0.5}}
+forbidden = changed(replace(read, dispatches=1), loose)
+assert forbidden["hard_failures"] == ["retention"] and forbidden["blocks"] == ["forbidden_or_duplicate_effect"]
+replay = next(row for row in rows if row.case_id == "lost-response")
+wrong_receipt = changed(replace(replay, same_receipt=False), loose)
+assert wrong_receipt["hard_failures"] == ["lost-response"]
+assert wrong_receipt["blocks"] == ["forbidden_or_duplicate_effect"]
+extra = gate["run"]("extra-proposal")
+assert extra["successes"] == 6 and extra["hard_failures"] == [] and extra["blocks"] == ["extra_proposals"]
+assert extra["extra_proposals"] == 1
+print("L77 TRANSFER PASSED")</code></pre></details><p class="bp-result">异常分发和错误回执是内存里的观察记录，不是执行环境的越权证据；真实的零分发与落库对照看 L75。额外读取没有使 p95 改变时，先查事件是否在读取入口记录，再查是否按任务聚合后排序。</p></section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先说明门槛为何存在，再说如何复验。</p>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span>候选比基线便宜，但每次读题都遗漏引文，该合并吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不合并。任务合约不成立，成本不弥补引用回归；保留用例字段差异并沿当前授权来源检查。</p><p><strong>追问：</strong>正文正确、只是引文文本少一字呢？</p><p><strong>答题要点：</strong>精确引文同样不匹配，不能因正文可读就放行。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span>全部任务失败，报告的成功任务成本应写多少？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>分母是零，报告 null 并阻断；仍保留失败产生的全部费用。</p><p><strong>追问：</strong>只看厂商显示费用是零，有无不同？</p><p><strong>答题要点：</strong>真零与账本未收到用量要区分；不靠插零伪装可比较性。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span>开发者说「负例返回非零」，如何认定测试有效？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>同时查退出码、准确的阻断类别、用例 ID 和差异字段。语法错误或崩溃不是目标退化。</p><p><strong>追问：</strong>恢复后又绿，可以改金标吗？</p><p><strong>答题要点：</strong>恢复本身要沿用同金标；真正需求变更才版本化评审。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span>本地门禁全绿，是否可以说线上 p95 已达标？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。这里只有合成时长和六条固定任务；先把真实环境、样本和队列归属另写成测试计划。</p><p><strong>追问：</strong>PR 作业已经绿，合并一定会被保护吗？</p><p><strong>答题要点：</strong>作业状态和分支规则独立；该状态需要被设为必过。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L77">L77 疑难解答 →</a><div class="qa-related"><a href="0087-L76-agent-load-cost.html">上一课 L76 · 负载与成本</a> · <a href="0089-L78-agent-system-design.html">下一课 L78 · 系统设计</a> · <a href="0091-phase8-agent-engineering-outline.html">阶段 8 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>版本化输入 → 观察真实本地终态 → 对照独立金标 → 分开阻断并报告 → 在同版本上做红绿复验。</p><ul><li><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request">GitHub Actions · pull_request</a>：PR 事件与分支行为。</li><li><a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-status-checks-before-merging">GitHub · Require status checks</a>：作业存在与分支要求的区别。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

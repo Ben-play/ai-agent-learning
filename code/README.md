@@ -56,6 +56,10 @@ code/
 
 [L60–L69](../lessons/0080-phase7-data-rag-outline.html#lesson-plan) 使用[可追溯证据问答实验](phase7-data-rag/rag-lab/README.md)：先验授权与来源，再比较检索、重排、缓存和分层评估。课程核心使用合成数据与本地标准库；PostgreSQL 和向量索引的实测状态按课标注。
 
+## Phase 8 Agent 工程实验
+
+[L70–L79](../lessons/0091-phase8-agent-engineering-outline.html#lesson-plan) 使用[工程实验](phase8-agent-engineering/engineering-lab/README.md)验证合成遥测、离线评估、草稿权限、成本账本、PR 门禁与基线交接。示例不需要真实模型、账单、远程后端或生产身份。
+
 ## 使用规范
 
 - 使用第三方依赖的项目用 `pyproject.toml` 描述依赖；完成实测后提供 `uv.lock`，从项目根运行 `uv run --offline --locked ...`。纯标准库项目使用自身说明中的 Python 命令；

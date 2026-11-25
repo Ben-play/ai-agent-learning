@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L70 · 贯通任务、试验与轨迹</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>贯通任务、试验与轨迹</h1><p class="subtitle">把同一轮的检索、模型、模拟工具、审批与终态接到本地接收端</p>
+</div></div>
+<section class="section">
+  <h2>为什么把轨迹交给接收端核对？</h2>
+  <p>同一项交班任务第一次没有产出，第二次却成功了。如果按任务号拼日志，第一次的检索可能被接到第二次的草稿上。看似找到了原因，其实是把两轮拼成了一轮。先固定任务的目标与版本，再用试验号标明每轮实际运行。同一轮内部用一个追踪标识把各阶段关联起来；同一任务重跑时，不要复用上轮的试验号或追踪标识。线上请求内的重试则可以作为同一轨迹下的不同子跨度，并不必然等于重新做了一次离线试验。</p>
+  <p><strong>任务</strong>回答「测什么」，<strong>试验</strong>回答「哪一次运行」，<strong>轨迹</strong>回答「这一次的调用如何连接」。课程在每条跨度上重复放应用自己的 <code>phase8.task_id</code> 和 <code>phase8.trial_id</code>，模型等规范字段仍用 <code>gen_ai.*</code>。<code>trace_id</code> 在同一轨迹内相同；<code>span_id</code> 区分单个操作；<code>parent_span_id</code> 表达父子关系，根没有父跨度。不要用操作名代替跨度号：两次模型调用完全可能同名。真实异步流程要显式传递上下文，或按语义用链接关联新轨迹；共享任务号既不能证明父子关系，也不能授权读取轨迹。</p>
+  <p>先在接收端查根、父子关系和关联字段，再看一轮中缺哪一步。模型失败后没有预览和审批是预期短路；模型成功但没有终态记录则需要另查投递、采样或状态写入。轨迹所见不等于业务事实：检索有记录不能证明证据可用，模拟工具有记录不等于真的执行，审批标记也不能替代实际授权。业务验收还要核对独立的证据与环境终态。</p>
+  <h3>学习目标</h3>
+  <ul><li>用任务号、试验号、追踪标识和父子关系从接收端重建单次运行，不把两轮的跨度串在一起。</li><li>核对秒与毫秒、真实零与未知用量、错误码与业务状态，解释失败后的预期短路。</li><li>把本地接收和交接摘要与 SDK、OTLP 传输及业务结果区分开。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 把语义约定、埋点库和自定义字段分别锁住</h2>
+  <p>截至 2026-11-25，OpenTelemetry 原站将 GenAI 文档迁往独立仓库；课程核对该仓库的最新发布并固定在 <a href="https://github.com/open-telemetry/semantic-conventions-genai/releases/tag/v0.1.0">v0.1.0</a>。其中推理、检索、工具等约定仍处于 <strong>Development</strong>，不能把标签里的字段当作未来不变。示例另固定 Python SDK 的 <code>opentelemetry-sdk==1.42.1</code>；它是可选的埋点库版本，不是 GenAI 语义版本，不会自动生成正确的 GenAI 字段。必做实验没有安装 SDK，只实现明确列出的字段子集。升级时先在接收端对照旧版与新版的字段、类型、单位和省略规则，再切读端；不要靠同名报表猜测两版相容。</p>
+  <p>取检索的 <code>retrieval</code>、推理的 <code>chat lesson-model</code>、工具的 <code>execute_tool draft_preview</code> 为跨度名；它们分别有对应的 <code>gen_ai.operation.name</code>。推理还记录已知模型 <code>gen_ai.request.model</code> 和提供方 <code>gen_ai.provider.name</code>，合成场景使用固定自定义值 <code>synthetic_fixture</code>。进程内模拟推理可用 <code>INTERNAL</code>；真实远程推理一般用 <code>CLIENT</code>。审批和终态的名字是课内约定，业务状态用 <code>phase8.state</code>，不拼进状态描述。成功默认保留 <code>UNSET</code>，合成模型失败写 <code>ERROR</code> 与有限枚举的 <code>error.type</code>；<code>UNSET</code> 不等于「业务成功」，例如等待审批时也可为它。</p>
+  <p>固定时钟内部走整数毫秒。接收行的 <code>start_offset_ms</code> 是相对本轮起点的偏移，而 <code>duration_s</code> 是以秒表示的课内投影列，250 毫秒应收到 0.25 秒。两列都不是 OTLP 的跨度时间字段；本版本里推理时长的规范指标 <code>gen_ai.client.inference.duration</code> 用秒（<code>s</code>），实验只核对跨度投影，不发指标。墙钟适合标日历时间，不宜直接用于计算进程内的耗时。扇出并行时，子调用的时长之和也不能代替根跨度的经过时间。</p>
+  <p>模型给出可靠用量时，用整数分别记录 <code>gen_ai.usage.input_tokens</code> 和 <code>gen_ai.usage.output_tokens</code>；真的报告零就保留零，没收到可靠用量就省略对应跨度属性，不猜测，报表另记未知数。失败也可能产生已知用量，缺响应不能当作免费。不要套用旧版的单一 token 指标名：本标签将 <code>gen_ai.client.inference.usage.*</code> 用作已知正数计数器，并将每次操作用量放到 <code>gen_ai.client.inference.operation.input_tokens</code> / <code>output_tokens</code> 直方图，单位都是 <code>{token}</code>。规范对已支持的逐操作直方图规定无响应或响应无用量时记零作为占位；这不等于跨度属性已知为零，也不能把该分布当账单。若埋点根本无法有效获得用量，不应靠猜测发指标。</p>
+</section>
+<section class="section">
+  <h2>2. 阅读实际接收的交班试验</h2>
+  <p>以下行来自 <code>run_trial()</code> 的接收端实读：<code>task-70</code>、<code>trial-1</code>，完整追踪标识 <code>000000000000000000000000000002bd</code>。表里只显示跨度标识的末两位。此处编号由合成样例指定；真实运行由埋点库生成并传播追踪上下文，不拿业务主键充当追踪标识。实验先由产生端构造白名单投影，再调用同进程 <code>LocalReceiver.receive()</code> 收入一批跨度。之后由另一个调用通过角色检查读回副本，并以读到的内容验收。仅打印 JSON 不会走这条链路；此处没有 SDK 导出器、Collector 或 OTLP 传输。OTLP 即使用 HTTP JSON，也须遵循它自己的 Protobuf 消息与映射，不能把下表的字典当它的载荷发送。</p>
+  <table>
+    <caption>接收端的 7 行跨度 · 均为 INTERNAL、UNSET</caption>
+    <thead><tr><th scope="col">跨度／父跨度</th><th scope="col">操作</th><th scope="col">起始偏移（ms）</th><th scope="col">时长（s）</th><th scope="col">留存的诊断信息</th></tr></thead>
+    <tbody>
+      <tr><td>01／无</td><th scope="row"><code>agent.trial</code></th><td>0</td><td>0.82</td><td>一轮根跨度</td></tr>
+      <tr><td>02／01</td><th scope="row"><code>retrieval</code></th><td>0</td><td>0.03</td><td>匹配数 1，无原文</td></tr>
+      <tr><td>03／01</td><th scope="row"><code>chat lesson-model</code></th><td>30</td><td>0.25</td><td>输入 12、输出 4 个 token</td></tr>
+      <tr><td>04／01</td><th scope="row"><code>execute_tool draft_preview</code></th><td>280</td><td>0.02</td><td>仅模拟预览，无正文</td></tr>
+      <tr><td>05／01</td><th scope="row"><code>approval.check</code></th><td>700</td><td>0</td><td><code>granted</code>，瞬时标记</td></tr>
+      <tr><td>06／01</td><th scope="row"><code>agent.execute</code></th><td>700</td><td>0.12</td><td>模拟执行区间，无副作用</td></tr>
+      <tr><td>07／01</td><th scope="row"><code>terminal.snapshot</code></th><td>820</td><td>0</td><td><code>succeeded</code></td></tr>
+    </tbody>
+  </table>
+  <p>预览在 300 毫秒结束，审批标记在 700 毫秒出现，中间是合成的等待；执行只占 120 毫秒。看到根用了 820 毫秒，不应把它报为执行用了 820 毫秒。任务号、试验号与追踪标识可用于精确查询这些明细，不应变成每条请求一个值的指标标签；指标优先按服务、有限的操作类型和结果聚合。</p>
+  <p>交接时可用 <code>summarize_trace(receiver, trace_id, role="trace_reader")</code> 取本地合成摘要：保留关联号、末尾状态、跨度名与时长；分别标出摘要版本、课程投影版本和参考的 GenAI 语义版本。它读的是已接收的副本，不表示 SDK 或 OTLP 已接通；没有可读轨迹时不会生成成功摘要。</p>
+  <div class="best-practice-point" id="bp-l70">
+    <h3>决策卡：先对齐同一轮，再验证字段与单位</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一任务重复试验、变更埋点版本，或日志无法定位在哪一步停止。<strong>边界：</strong>本地通过只证明选定的字段投影和接收，不替代真实管道验收。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：看到相同任务号就算关联</span><p>把多轮混用，只检查终点文字和输出行数；用量未知也补成零。</p></div><div class="bp-right"><span class="bp-compare-label">选择：按轮关联，从接收端验收</span><p>检查根与父引用，用独立预期对照单位、错误码和业务终态。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>字段迁移要维护正、负两类样本；换来可复现的诊断，也减少隐私内容和指标基数。</p>
+    <ol class="bp-steps"><li>冻结语义文档、库版本、应用字段表；为每个时间字段写单位，为未知值写省略规则。</li><li>分别跑一轮成功、一次失败后重跑，读取实际收到的行；对照跨度链、秒值、缺失属性与终态。</li><li>线上变更另查采样、传输、失败反馈和最终查询结果；本地不替它们作证。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>父标识串错先修上下文；值大千倍查毫秒转换；未知被填零查投影；轨迹有终态但实际资源不符，查业务提交而不是改图表。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 同一任务第一次模型失败、第二次成功，怎样判断预览属于哪一轮？</div><div class="quiz-options"><button data-answer="wrong">按任务号和跨度名关联</button><button data-answer="correct">按试验号和父子链关联</button><button data-answer="wrong">按阶段名和短时长关联</button><button data-answer="wrong">按模型名和同日期关联</button></div><div class="quiz-explanation">任务号用于跨轮比较；父子结构和追踪标识才标出这一轮的跨度。</div></div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 一次模型调用 250 毫秒，供应方没给用量，该跨度如何投影？</div><div class="quiz-options"><button data-answer="wrong">时长 250.0 秒，省略用量属性</button><button data-answer="correct">时长 0.25 秒，省略用量属性</button><button data-answer="wrong">时长 0.25 秒，用量记为零</button><button data-answer="wrong">时长 250.0 秒，用量记为零</button></div><div class="quiz-explanation">单位要转换；未知与真实零不可互换，逐操作直方图的占位规则也不能拿来填跨度。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：从接收端重建交班试验</h2>
+  <p>使用<a href="../code/phase8-agent-engineering/engineering-lab/README.md">阶段 8 工程实验</a>里的 <code>telemetry/lab.py</code>。从可信仓库根把每个区块分别保存为独立文件，用 Python 3.11+ 执行 <code>python -I -X utf8 文件名.py</code>，不要加 <code>-O</code>。必做部分仅用标准库，不联网、不调用模型或真实工具。可用同样参数执行 <code>code/phase8-agent-engineering/engineering-lab/telemetry/test_telemetry.py</code>。</p>
+  <div class="card" id="guided-l70"><h3>可运行起点：先拿到一批实际接收的行</h3><pre><code class="language-python" id="l70-worked-starter">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+receiver = lab["LocalReceiver"](lab["FixedClock"]())
+trace = lab["run_trial"](receiver, task=70, trial=1, trace_key=701)
+rows = receiver.read_trace(trace, role="trace_reader")
+print([(row["name"], row["duration_s"]) for row in rows])
+# TODO：用上表的独立预期检查所有父标识、偏移、时长、用量与终态。</code></pre><p><strong>通过标准：</strong>核对七行，每个子跨度指向同一轮的根；模型 0.25 秒，输入 12、输出 4；终态是成功且状态码仍是 <code>UNSET</code>。一个从未接收的追踪标识不能被当作空的成功轨迹。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l70-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+receiver = lab["LocalReceiver"](lab["FixedClock"]())
+trace = lab["run_trial"](receiver, task=70, trial=1, trace_key=701)
+assert trace == "000000000000000000000000000002bd"
+rows = receiver.read_trace(trace, role="trace_reader")
+assert [(r["name"], r["start_offset_ms"], r["duration_s"]) for r in rows] == [
+    ("agent.trial", 0, .82), ("retrieval", 0, .03), ("chat lesson-model", 30, .25),
+    ("execute_tool draft_preview", 280, .02), ("approval.check", 700, 0),
+    ("agent.execute", 700, .12), ("terminal.snapshot", 820, 0),
+]
+assert rows[0]["parent_span_id"] is None
+assert len({r["span_id"] for r in rows}) == 7
+assert all(r["parent_span_id"] == rows[0]["span_id"] for r in rows[1:])
+for row in rows:
+    assert (row["trace_id"], row["status"]) == (trace, "UNSET")
+    assert row["attributes"]["phase8.task_id"] == "task-70"
+    assert row["attributes"]["phase8.trial_id"] == "trial-1"
+fields = rows[2]["attributes"]
+assert (fields["gen_ai.operation.name"], fields["gen_ai.provider.name"],
+        fields["gen_ai.request.model"]) == ("chat", "synthetic_fixture", "lesson-model")
+assert (fields["gen_ai.usage.input_tokens"], fields["gen_ai.usage.output_tokens"]) == (12, 4)
+assert rows[4]["attributes"]["phase8.approval"] == "granted"
+assert rows[-1]["attributes"]["phase8.state"] == "succeeded"
+assert receiver.read_trace("000000000000000000000000000002be", role="trace_reader") == ()
+print("L70 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：预约清单第一次失败，第二次才通过</h2>
+  <p>换成整理预约清单的任务 63。第 4 轮模型失败，没收到用量，系统不能继续预览；第 5 轮重新试验，模型报告输入确为零、输出三个 token。故意把同一任务的两轮都留在接收端：如果只搜任务号或只看最后一行，就会误以为两轮都成功。让失败轮成为独立负对照，而不是只改成功行的显示文字。</p>
+  <div class="card"><h3>独立起点：分别投递失败和成功两批</h3><pre><code class="language-python" id="l70-transfer-starter">import runpy
+
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+receiver = lab["LocalReceiver"](lab["FixedClock"]())
+first = lab["run_trial"](receiver, task=63, trial=4, trace_key=631,
+                        usage=(None, None), outcome="failed")
+second = lab["run_trial"](receiver, task=63, trial=5, trace_key=632, usage=(0, 3))
+print(first, second)
+# TODO：分别读取两批。检查失败轮短路、未报用量与成功轮的真实零。</code></pre><p><strong>通过标准：</strong>两轮追踪标识不同但任务号相同；第一轮只有根、检索、失败推理和失败终态，错误类型固定，用量属性均缺失；第二轮独立通过且输入零，两个值不能互相覆盖。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l70-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase8-agent-engineering/engineering-lab/telemetry/lab.py")
+receiver = lab["LocalReceiver"](lab["FixedClock"]())
+first = lab["run_trial"](receiver, task=63, trial=4, trace_key=631,
+                        usage=(None, None), outcome="failed")
+second = lab["run_trial"](receiver, task=63, trial=5, trace_key=632, usage=(0, 3))
+assert first != second
+bad = receiver.read_trace(first, role="trace_reader")
+good = receiver.read_trace(second, role="trace_reader")
+for spans, trace, trial in ((bad, first, "trial-4"), (good, second, "trial-5")):
+    assert all(r["trace_id"] == trace for r in spans)
+    assert all(r["parent_span_id"] == spans[0]["span_id"] for r in spans[1:])
+    assert {r["attributes"]["phase8.task_id"] for r in spans} == {"task-63"}
+    assert {r["attributes"]["phase8.trial_id"] for r in spans} == {trial}
+assert [r["name"] for r in bad] == ["agent.trial", "retrieval", "chat lesson-model", "terminal.snapshot"]
+assert (bad[0]["status"], bad[2]["status"]) == ("ERROR", "ERROR")
+unknown = bad[2]["attributes"]
+assert unknown["error.type"] == "synthetic_model_error"
+assert "gen_ai.usage.input_tokens" not in unknown and "gen_ai.usage.output_tokens" not in unknown
+assert bad[-1]["attributes"]["phase8.state"] == "failed"
+assert len(good) == 7 and good[2]["status"] == "UNSET"
+known = good[2]["attributes"]
+assert "error.type" not in known
+assert (known["gen_ai.usage.input_tokens"], known["gen_ai.usage.output_tokens"]) == (0, 3)
+assert good[-1]["attributes"]["phase8.state"] == "succeeded"
+print("L70 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">两轮都显示成功时，查是否按任务号读了同一批；失败轮的输入也显示为零时，查是否把缺失字段默认为零。</p>
+</section>
+<section class="section">
+  <h2>可选对照：真正的 SDK 进程内导出器</h2>
+  <p>下面按 OpenTelemetry Python 手动埋点示例和 SDK 自带的接收测试编写，固定 <code>opentelemetry-sdk==1.42.1</code>。仅供已有该版本依赖的独立环境选读：<strong>本地未安装、未运行，不计入通过条件</strong>。它用 SDK 的 <code>SimpleSpanProcessor</code> 把结束的跨度交给 <code>InMemorySpanExporter</code>，是真正的 SDK 导出器，但仍然没有 OTLP。这里直接给合成属性，不是上面的隐私投影实现。</p>
+  <details><summary>展开可选 SDK 对照（未运行）</summary><pre><code class="language-python" id="l70-optional-sdk">from importlib.metadata import version
+
+if version("opentelemetry-sdk") != "1.42.1":
+    raise RuntimeError("Optional example requires opentelemetry-sdk==1.42.1")
+
+from opentelemetry.trace import SpanKind, StatusCode
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+provider = TracerProvider()
+exporter = InMemorySpanExporter()
+provider.add_span_processor(SimpleSpanProcessor(exporter))
+tracer = provider.get_tracer("phase8.lesson.telemetry", "1.0.0")
+try:
+    with tracer.start_as_current_span("agent.trial", attributes={"phase8.trial_id": "trial-1"}):
+        with tracer.start_as_current_span("chat lesson-model", kind=SpanKind.INTERNAL, attributes={
+            "gen_ai.operation.name": "chat", "gen_ai.provider.name": "synthetic_fixture",
+            "gen_ai.request.model": "lesson-model", "gen_ai.usage.output_tokens": 0,
+        }):
+            pass  # No model call; input usage is unknown and omitted.
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    model, trial = spans["chat lesson-model"], spans["agent.trial"]
+    assert model.context.trace_id == trial.context.trace_id
+    assert model.parent.span_id == trial.context.span_id
+    assert model.status.status_code is StatusCode.UNSET
+    assert "gen_ai.usage.input_tokens" not in model.attributes
+    assert model.attributes["gen_ai.usage.output_tokens"] == 0
+finally:
+    provider.shutdown()</code></pre></details>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 回归试验两次跑同一任务，后来者能不能沿用轨迹？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>任务号相同，试验和追踪标识分开。否则失败处可能接到另一轮的成功上。</p><p><strong>追问：</strong>同一个请求里模型又试了一次呢？</p><p><strong>答题要点：</strong>可以留在同一轨迹中，用两个跨度区分；总调用成功不意味着第一次尝试没失败。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 输出 token 没回来，为什么图上却有个零？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先弄清是跨度属性、逐操作直方图的占位，还是报表填值；不要把零当作供应方计费事实。</p><p><strong>追问：</strong>同时还有输入用量怎么办？</p><p><strong>答题要点：</strong>两个属性独立保留，输入已知就记，输出未知就省略，并在聚合中保留未知分母。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 本地已经读出七行，可以宣称生产 OTLP 已打通吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。本地只验证投影、接收和读取；使用真 SDK 的内存导出器也不等同于网络传输。</p><p><strong>追问：</strong>网络验收还需要什么？</p><p><strong>答题要点：</strong>验证协议载荷、目标与采样、失败反馈、后端收到并能查到同一批，并重查保密边界。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 业务没结束，根跨度却是 UNSET，是不是漏报错误？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先看业务状态和时间线；等待审批不等于运行错误，UNSET 不是成功标志。</p><p><strong>追问：</strong>如果模型明确失败、流程中止呢？</p><p><strong>答题要点：</strong>在失败操作标 ERROR 和低基数错误类型，业务终态另写 failed，确认无后续执行。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L70">L70 疑难解答 →</a><div class="qa-related"><a href="0079-L69-rag-generation-evals.html">上一课 L69 · RAG 生成评测</a> · <a href="0082-L71-telemetry-privacy-alerts.html">下一课 L71 · 遥测最小化与可解释告警</a> · <a href="0091-phase8-agent-engineering-outline.html">阶段 8 纲要</a></div></div></section>
+<section class="section"><h2>知识地图与小结</h2><p>任务让试验可比 → 试验号选中一轮 → 追踪标识和父子关系串起阶段 → 接收端核对字段、单位与未知 → 用独立业务事实判断是否通过。下一课检查这些字段是否值得保存，以及何时该告警。</p><ul>
+  <li><a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/v0.1.0/docs/gen-ai/client-inference.md">OpenTelemetry GenAI v0.1.0 · 推理</a>、<a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/v0.1.0/docs/gen-ai/gen-ai-token-metrics.md">token 指标</a>、<a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/v0.1.0/docs/gen-ai/retrieval.md">检索</a>、<a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/v0.1.0/docs/gen-ai/execute-tool.md">工具调用</a>：按标签核查名字、状态、单位和数据约束。</li>
+  <li><a href="https://opentelemetry.io/docs/specs/otel/trace/api/">OpenTelemetry Trace API</a>、<a href="https://github.com/open-telemetry/semantic-conventions/blob/v1.45.0/docs/general/recording-errors.md">错误记录约定</a>与 <a href="https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding">OTLP JSON Protobuf 映射</a>：区分跨度状态及传输层。</li>
+  <li><a href="https://opentelemetry.io/docs/languages/python/instrumentation/">Python 手动埋点</a>、<a href="https://github.com/open-telemetry/opentelemetry-python/releases/tag/v1.42.1">SDK v1.42.1</a> 与 <a href="https://github.com/open-telemetry/opentelemetry-python/blob/v1.42.1/opentelemetry-sdk/tests/trace/export/test_in_memory_span_exporter.py">同版本内存导出测试</a>：可选对照的官方依据。</li>
+</ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

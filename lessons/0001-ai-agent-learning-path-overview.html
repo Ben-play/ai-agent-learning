@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>课程范围：</strong>已有 Phase 1–7 的 69 节课（L01–L69）。Phase 8–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>已有 Phase 1–8 的 79 节课（L01–L79）。Phase 9–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -312,7 +312,7 @@
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-8-body">
     <h3>Agent 工程实践：可观测性、评估、安全、成本与系统设计</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">10-12 课</span>
+      <span class="phase-meta-item">10 课 · L70–L79</span>
       <span class="phase-meta-item">3 周</span>
     </div>
     <div class="phase-toggle">▼</div>
@@ -323,20 +323,13 @@
   </div>
   <div class="phase-body" id="phase-8-body">
     <div class="card">
-      <span class="tag tag-deploy">规划 · 验收目标</span><br>
-      <strong>可观测性（Observability）：</strong>选一种追踪后端，默认仅采必要元数据；固定 OpenTelemetry GenAI 约定与埋点库版本，验证后端字段、单位、告警和脱敏，不把使用同一协议当作映射完全一致。<br><br>
-      <strong>评估体系（深化 Phase 3 小型 eval）：</strong>任务集、评分规则及运行入口保存在仓库，可离线运行，并在 CI 中复测；不依赖计划于 2026-11-30 停用的 <a href="https://developers.openai.com/api/docs/deprecations">OpenAI Evals 平台</a>。优先确定性检查环境最终状态，再用与人工标注校准的 Judge 补充。隔离开发/验收集，记录试验次数、成功率、成功任务成本、延迟与过度代理。<br><br>
-      <strong>安全基础（Security · v7 加深）：</strong>Prompt Injection（尤其<strong>间接注入</strong>：被污染的检索数据导致误调用工具）、<strong>过度代理（Excessive Agency）</strong>、工具权限模型与 <strong>MCP 权限隔离</strong>、人在环审批、数据隐私、Guardrails 框架<br><br>
-      <strong>成本工程（Cost Engineering）：</strong>原生 Prompt Caching、模型路由、Token 预算管理、成本监控<br><br>
-      <strong>LLM / Agent 系统设计：</strong>围绕业务约束说明质量、成本、权限、状态与故障取舍，练习 5 类场景题：<br>
-      · 设计一个<strong>生产级 RAG 系统</strong>（召回 / 成本 / 监控 / 容错）<br>
-      · 设计<strong>多 Agent 客服系统</strong>（协调 / 状态 / 容错）<br>
-      · 设计 <strong>LLM 网关</strong>（路由 / 缓存 / 限流 / 成本）<br>
-      · 设计<strong>长时运行 Agent</strong>（上下文跨越 / 记忆 / 中断恢复）<br>
-      · 设计 <strong>Agent 评估框架</strong>（离线 + 在线指标）<br><br>
-      <div class="interview-box">"如何评估 Agent 好坏 / Tool Correctness vs answer relevance" / "什么是间接 Prompt Injection、过度代理" / "MCP 工具权限怎么隔离" / "设计一个 RAG 系统 / LLM 网关 / 多 Agent 客服" / "如何验证降本没有损害质量或隔离" — 共 8+ 道高频题</div><br>
-      <strong>验收目标：</strong>为贯穿项目补齐追踪、安全、成本和分层评测；先让权限与结果回归通过 CI 门槛，再以同一任务集比较单 Agent / workflow 的质量、成本和延迟。<br><br>
-      <a href="0046-phase5-to-11-planned-outlines.html#phase-8">查看 Phase 8 逐课草案 →</a>
+      <span class="tag tag-agent">已编写 · 本地工程基线</span><br>
+      <strong>可观测性：</strong>用任务、试验和轨迹标识关联一轮执行。在教学接收器检查 OpenTelemetry GenAI 的版本化字段与单位；默认不收原文，区别审批等待与执行超时。真实 SDK 与 Collector 联调另验。<br><br>
+      <strong>评估与权限：</strong>在仓库维护开发与验收任务，重复试验按轮隔离。先验当前证据、环境终态和禁止效果，再用人工金标校准脚本 Judge。宿主分开检查任务、scope、主体、当前快照和业务批准，区分多余建议和实际分发。<br><br>
+      <strong>成本与 CI：</strong>同合成负载比较前缀缓存、模型路由与 Token 预算，先满足正确性和隔离，再核算全部尝试与端到端时间。PR 门禁复用离线验收；本地实验不代表线上质量、价格或延迟。<br><br>
+      <strong>系统设计与交接：</strong>围绕授权 RAG、网关、客服交接、长时任务和评估拆责任；说明何时函数或 workflow 已够用。实做一次同版本门禁通过、退化、恢复，留下可复跑报告、标明来源的轨迹和设计决定。<br><br>
+      <a href="0091-phase8-agent-engineering-outline.html">查看 Phase 8 课程与项目 →</a><br>
+      <a href="../best-practices/phase8-agent-engineering-practices.html">Phase 8 工程实践复盘 →</a> · <a href="../qa/phase8-qa.html">阶段答疑 →</a>
     </div>
   </div>
 </div>
@@ -427,7 +420,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 8–11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 9–11 对应项仍为规划。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>
@@ -455,7 +448,7 @@
 <table>
   <tr><th>版本</th><th>变化</th><th>说明</th></tr>
   <tr><td rowspan="6"><strong>v7.0</strong><br><span style="font-size:0.8rem;color:var(--muted);">历史规划</span></td><td><strong>工具工程与 Function Calling</strong></td><td>Phase 3 增加 Module 3.4：Tool Schema、完整调用循环、并行与健壮性；完成情况以对应课程和测试证据为准</td></tr>
-  <tr><td><strong>LLM / Agent 系统设计</strong></td><td>Phase 8 规划 RAG、网关、客服、长时任务与评估系统的约束分析，不代表对应课程已发布</td></tr>
+  <tr><td><strong>LLM / Agent 系统设计</strong></td><td>Phase 8 分析 RAG、网关、客服、长时任务与评估系统的约束；其记录验收不代表部署</td></tr>
   <tr><td><strong>成本工程修订</strong></td><td>撤销固定优化排序和降幅承诺，按负载、版本、成功任务成本与质量门槛选择方案</td></tr>
   <tr><td><strong>评估升级 Agentic Metrics</strong></td><td>Tool Correctness / Plan Quality / Step Efficiency + promptfoo/Braintrust + SWE-bench Verified/τ-bench/GAIA</td></tr>
   <tr><td><strong>部署 + 安全补强</strong></td><td>云托管 Agent 服务（Bedrock AgentCore/Vertex/Foundry）+ Temporal；安全补间接注入、过度代理、MCP 权限隔离</td></tr>

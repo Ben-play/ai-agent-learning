@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phase 8 · Agent 工程实践复盘</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><h1>Phase 8 · Agent 工程实践复盘</h1><p>把问题定位到数据、效果、运行或决策的一层，再用下一位维护者能跑的证据确认。先回想你会看哪个字段，再打开对应课。</p></div>
+<section class="section"><h2>1. 同一轮有共同 ID，不同轮不拼轨迹</h2><p><strong>判断：</strong>任务 ID 组织对照，试验 ID 区分重跑，追踪 ID 和父子关系只在同一次执行内关联。先最小化字段再入接收端，未知用量不当已测零；等待审批和执行分别计时。</p><p><strong>证据：</strong><a href="../lessons/0081-L70-agent-telemetry.html">L70 收到的跨度</a> · <a href="../lessons/0082-L71-telemetry-privacy-alerts.html">L71 字段投影与告警边界</a>。无记录不等于正常或超时。</p></section>
+<section class="section"><h2>2. 先按证据和效果评分，再留语义分歧</h2><p><strong>判断：</strong>开发和验收分开；同轮重放保留状态，跨轮从干净环境开始。出处真实不表示在本次包中或足以支持结论。草稿暂存前核对当前来源，保存和恢复前重验；语义评委只看通过证据硬门的开放措辞，另报错放、错拦和未决。</p><p><strong>证据：</strong><a href="../lessons/0083-L72-versioned-eval-datasets.html">L72 独立重复</a> · <a href="../lessons/0084-L73-evidence-outcome-scoring.html">L73 插入与回滚</a> · <a href="../lessons/0085-L74-judge-calibration.html#stage-practice-eval-foundations">L74 阶段检查点</a>。固定 Judge 票不是在线 Judge 质量。</p></section>
+<section class="section"><h2>3. 任务需要、权限和批准分别成立</h2><p><strong>判断：</strong>只读不要暴露保存能力；宿主验证 scope、主体、当前稿和批准。工具目录与正文不授予操作权。分发、写尝试、落库和回执分开，拒绝例必须有有效正控。</p><p><strong>证据：</strong><a href="../lessons/0086-L75-tool-authority-bounds.html">L75 拒绝矩阵</a>。当前建议配旧批准也得拒绝，不能只用旧建议证明批准过期。</p></section>
+<section class="section"><h2>4. 成本比较有前提，门禁有独立理由</h2><p><strong>判断：</strong>固定同批任务、授权与冷热条件；质量和隔离先过，失败花费不删掉。按实际事件计合成账本，按任务计算均摊成本和 p95；让缺引用、额外检索和多余建议分别触发相应门槛。</p><p><strong>证据：</strong><a href="../lessons/0087-L76-agent-load-cost.html">L76 同负载账本</a> · <a href="../lessons/0088-L77-offline-ci-gates.html">L77 离线门禁</a>。合成秒数和积分不是线上实测；作业存在不等于必过规则已配置。</p></section>
+<section class="section"><h2>5. 交接可复验，设计可复议</h2><p><strong>判断：</strong>已知单步用函数，明确审批和恢复用 workflow，只有评估证明受限自适应取证有收益才选单 Agent。交接记同版本绿→红→绿、输入指纹、故障字段、效果及回执；独立轨迹附件注明出处、投影版本和时间单位。</p><p><strong>证据：</strong><a href="../lessons/0089-L78-agent-system-design.html">L78 设计记录</a> · <a href="../lessons/0090-L79-engineering-baseline-handoff.html#stage-practice-engineering-handoff">L79 阶段交接</a>。真实权限、模型、账单、负载、OTel 联调和线上发布资格另验。</p></section>
+<nav class="card" aria-label="阶段链接"><a href="../lessons/0091-phase8-agent-engineering-outline.html">← 第八阶段大纲</a> · <a href="../code/phase8-agent-engineering/engineering-lab/README.md">工程实验</a> · <a href="../qa/phase8-qa.html">阶段答疑</a></nav>
+</main>
+<script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L73 · 证据与环境终态评分</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>证据与环境终态评分</h1><p class="subtitle">用获准原文验证答复，用写入边界和持久状态验证动作</p>
+</div></div>
+<section class="section">
+  <h2>为什么不能用一份好看的轨迹当验收结果？</h2>
+  <p>客服答对了「导出保留七天」，但引用指向不存在的段落；草稿代理说「未写入」，数据库里也确实没有新记录，但它可能尝试了写入，只是事务失败。两者的共同问题是把一个看得见的信号当成了足够的证明。</p>
+  <h3>学习目标</h3>
+  <ul><li>能分开诊断当前授权、定位、原文、入包、事实值和支持。</li><li>能解释旧草稿何时要重验来源，并区分阻止提交和不再返回已保存内容。</li><li>能对照真实插入尝试和独立落盘读回，区分拒绝和回滚。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 让引用能在指定主体与快照下复查</h2>
+  <p>沿用阶段七的合成语料，交班卡问导出保留期与同步时间。第一条金标是 <code>support</code> 租户的 <code>EXPORT-POLICY v1 §1</code>，原文「导出文件生成后保留 7 天。」；第二条是 <code>SYNC-POLICY v1 §1</code>，原文「同步任务每天 02:00 运行。」。这不是让评分器从候选答复提取数字作标准，金标在任务文件中预先标注，检索则走现有资料库的授权查询；候选是把包内合成事实转成结构化答复的脚本，不是模型。两个路径复用合成事实，但不会用候选回传的内容覆盖金标或资料库。</p>
+  <p><strong>定位：</strong>按本轮受信的租户和用户，以及文档号、版本和段落查询；不能让答复里自填的租户切换主体。<strong>引文：</strong>定位查到后，核对整段逐字相等；删除一个词也要失败。这里没有对短引文的容错规则。<strong>入包：</strong>资料库可读仍不能证明该片段送进了候选；保留实际证据包，并检查引用出现在包中。<strong>事实与支持：</strong>核对数值，再核对人工指定的事实与段落配对。拿同步原文证明保留期，定位、原文和入包都过，但不构成支持。若库中有证据而没有被包送入，也不能从库补齐后给候选打通过。留存各轴，团队才能区分授权、版本映射、组包和事实生成的问题。</p>
+  <p>缺证的正确表现不是给一个泛泛的「无法回答」，而是根据任务契约标明缺失事实。验收用例中 Lin 问过期处理，词法候选里没有获准的过期政策；猜对实际业务值也无法免责。评分同时核对回答形状、事实集合和缺口，避免空答复因为没有错误断言而通过。即使答复省略了某条引用，证据包若包含越权内容仍须失败；不能用最后一句无害的话把上游权限问题抹掉。</p>
+</section>
+<section class="section">
+  <h2>2. 从实际写入入口和数据库读取不同事实</h2>
+  <p>阶段五的本地草稿工作流把提议、检查点和保存记录分开。待审批本来就要写检查点，这是允许的状态更新；<strong>本课计数的是保存草稿的插入尝试</strong>，不是所有 SQL 写操作。使用已有的 <code>on_draft_write_attempt</code> 观察器，在草稿插入语句之前记录真实执行路径。另开连接读取所有作用域已提交的草稿行，同时校验作用域、任务键、操作编号及内容。候选自述「没写」不当证据；硬编码一串步骤也不当这次的轨迹。写入观察器有范围，本实验不涉及其他表、远程工具或生产系统，不能从零次草稿写入推断全系统没有副作用。</p>
+  <p>旧草稿由阶段五实际生成。宿主在待审批事务开启前用 <code>before_stage</code> 核对草稿标题、正文和旧来源 ID，再用阶段七资料库按当前主体核验各个映射的版本、段落与整段原文。映射不是从请求、候选或金标推断的：例如 <code>KB-02</code> 的「超过保留期需重新发起导出。」是受审的旧改写，当前要求 <code>EXPORT-OPS v1 §2</code> 的原文「导出文件过期后，需重新发起导出。」；两句不冒充逐字相等。Lin 能读保留期，但不能读过期处理，因此导出草稿不显示、不暂存。未知来源、无法核对的正文、撤权或修订均不自动换新来源。</p>
+  <p>预览返回前重验；批准保存和返回已存草稿时，也根据数据库读回的实际检查点重验。待审批后撤权或修订，批准不能触发插入；拒绝仍可结束待审批，不释放正文。提交后丢回包，来源保持有效时 <code>replayed</code> 返回同一操作编号和草稿；若之后才撤权，<code>replay_withheld</code> 不返回草稿，已提交记录保留，零次新插入。这里由离线宿主顺序执行资料变更和审批，不是跨库并发原子性的保证。</p>
+  <p>回滚对照不同：在临时库里放一个固定触发器，让已批准路径实际走到插入入口，随后事务中止，结果为一次尝试、零条记录。故障注入不发生在拒绝路径。</p>
+  <p>评分优先用可核对的结果，但不强制内部步骤除了必要契约以外都相同。例如两种实现可以用不同查询或不同中间状态生成同一草稿；只要满足审批前不触发保存、提交内容准确、重放不重复落盘等边界，就不因轨迹形状不同扣分。相反，如果关键观察缺失，报告应标记试验不能验收，而不能把没有记录视为没有发生。阶段八前两课的轨迹和关联键在这里服务于诊断，不是业务终态的替代品。</p>
+  <h3>数值轨迹：同样为零条，原因并不相同</h3>
+  <table><caption>每个步骤的草稿插入尝试，以及步骤后持久记录总数</caption><thead><tr><th scope="col">观测场景</th><th scope="col">返回 / 检查点</th><th scope="col">尝试</th><th scope="col">记录</th><th scope="col">诊断</th></tr></thead><tbody>
+    <tr><th scope="row">暂存前缺少来源授权</th><td>source_blocked / 无检查点</td><td>0</td><td>0</td><td>不展示正文，也不创建检查点。</td></tr>
+    <tr><th scope="row">没有审批</th><td>rejected / pending</td><td>0</td><td>0</td><td>尚未授权，插入未触发。</td></tr>
+    <tr><th scope="row">拒绝后再批准</th><td>denied / denied</td><td>0</td><td>0</td><td>旧检查点已否决，不能复活。</td></tr>
+    <tr><th scope="row">待审批后撤权或修订，再批准</th><td>source_blocked / pending</td><td>0</td><td>0</td><td>旧批准不足以放行旧来源。</td></tr>
+    <tr><th scope="row">匹配批准，且来源仍有效</th><td>saved / saved</td><td>1</td><td>1</td><td>在单次授权路径提交。</td></tr>
+    <tr><th scope="row">提交后丢回包，再恢复</th><td>lost_reply / saved → replayed / saved</td><td>1 → 0</td><td>1 → 1</td><td>来源仍有效，返回原操作。</td></tr>
+    <tr><th scope="row">提交后丢回包，撤权再恢复</th><td>lost_reply / saved → replay_withheld / saved</td><td>1 → 0</td><td>1 → 1</td><td>不返回旧草稿，不重写历史。</td></tr>
+    <tr><th scope="row">批准但插入被实验触发器中止</th><td>insert_blocked / pending</td><td>1</td><td>0</td><td>实际尝试过，不能用作零尝试的证明。</td></tr>
+  </tbody></table>
+  <div class="best-practice-point" id="bp-l73">
+    <h3>决策卡：证据和副作用单独验收</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一代理可答复也可保存草稿。<strong>边界：</strong>只声明观测到的存储边界，轨迹只用来定位。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：对上数字或终态就过</span><p>正确数字配错段也放行，把回滚当作从未调用。</p></div><div class="bp-right"><span class="bp-compare-label">选择：同时保存独立观察</span><p>核验获准定位、逐字原文和本轮包；另查插入入口、持久记录和回放标识。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>维护受信旧来源映射，在每个边界重读资料和存储；换来可归因的失败，不会把旧批准变成永久读权限。</p>
+    <ol class="bp-steps"><li>从受信主体出发重新读取指定版本和段落；逐项核对实际包与独立金标。</li><li>用写入口观测和独立数据库读取对照拒绝、批准、回滚与重放。</li><li>单独改变定位或引文，再用触发器制造一次无落盘尝试，验证每条规则确实能失败。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>定位对而引文错，先查文本提取或映射；零行有尝试，查审批和执行边界，不先修改答复格式。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 正确数字配给存在但无关的包内引文；另一次草稿写入回滚。哪项记录准确？</div><div class="quiz-options"><button data-answer="correct">出处通过、事实不受支持；尝试一次、记录零条</button><button data-answer="wrong">出处通过、事实受到支持；尝试一次、记录零条</button><button data-answer="wrong">出处通过、事实不受支持；尝试零次、记录零条</button><button data-answer="wrong">出处通过、事实受到支持；尝试零次、记录零条</button></div><div class="quiz-explanation">出处是关联证据的起点，不是支持结论；回滚撤销记录，不撤销已经发生的尝试。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：保留正确值，分别改坏定位、引文与配对</h2>
+  <p>从<strong>可信课程仓库根</strong>用 Python 3.11+。将以下起点或参考复制到自己的 UTF-8 脚本，运行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。实验不装依赖，不联网；见 <a href="../code/phase8-agent-engineering/engineering-lab/README.md">工程实验说明</a>。</p>
+  <div class="card"><h3>可运行起点：固定一份交班证据包</h3><pre><code class="language-python">from dataclasses import replace
+import runpy
+
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+task = next(t for t in e["load_datasets"]()["acceptance"] if t["id"] == "ACC-HANDOFF-QA")
+with e["RAG"]["open_demo"]() as db:
+    packet = e["make_packet"](db, task["request"])
+    answer = e["answer_from_packet"](task["request"], packet)
+    retention, schedule = answer.claims
+    print(e["grade_qa"](db, task["request"], packet, answer, task["expected"]))
+    # TODO：用 replace 分别改成 §9、缩短引文、换成同步引文；保持值 7 天。
+    # TODO：再试保留真实引文，却从实际包中移除它；核对各轴与总门槛。
+</code></pre><p><strong>动作与通过标准：</strong>原样通过。错定位的定位轴失败；截短引文定位仍在但逐字轴失败；用同步原文替代时定位、逐字、入包都过而事实不受支持。原引文在库但不在包仍失败；四例的保留期值都正确。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l73-worked-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+task = next(t for t in e["load_datasets"]()["acceptance"] if t["id"] == "ACC-HANDOFF-QA")
+with e["RAG"]["open_demo"]() as db:
+    packet = e["make_packet"](db, task["request"])
+    answer = e["answer_from_packet"](task["request"], packet)
+    retention, schedule = answer.claims
+    good = retention.citation
+    assert e["grade_qa"](db, task["request"], packet, answer, task["expected"])["passed"]
+    for cite, evidence, axes in (
+        (replace(good, key=("EXPORT-POLICY", 1, "§9")), packet, (False, False, False, False)),
+        (replace(good, quote="导出文件保留 7 天。"), packet, (True, False, False, False)),
+        (schedule.citation, packet, (True, True, True, False)),
+        (good, tuple(c for c in packet if c != good), (True, True, False, True)),
+    ):
+        altered = replace(answer, claims=(replace(retention, citation=cite), schedule))
+        result = e["grade_qa"](db, task["request"], evidence, altered, task["expected"])
+        row = result["claims"][0]
+        assert tuple(row[k] for k in ("authorized_locator", "quote_exact", "in_packet", "supported")) == axes
+        assert row["value_ok"] and result["packet_ok"] and not result["passed"]
+print("L73 ACCEPTED")</code></pre><p><code>supported</code> 只表示金标配对吻合；是否由本轮材料实际支持，仍须看 <code>in_packet</code> 和精确授权门。第四行故意将两者分开。</p></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：零条落盘不是零次写入</h2>
+  <p>换成审批场景：对照已拒绝草稿和插入失败的批准草稿。批准对照只在临时 SQLite 文件内安装固定触发器。用实际观测检验 <code>no_draft_write()</code>，再用正常保存的金标检查回滚结果。最后在内存构造一个仅用于校验评分器的对照期望：允许回滚状态，但要求零尝试。这样唯一应该失败的就是写入尝试数。再把导出草稿的主体换成 Lin，确认没有预览或检查点。</p>
+  <div class="card"><h3>独立起点：调用本地草稿流程，不手填观测结果</h3><pre><code class="language-python">import runpy
+
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+tasks = {t["id"]: t for t in e["load_datasets"]()["acceptance"]}
+refused = e["observe_draft"](tasks["ACC-EXPORT-DENY"]["request"])
+print(refused["steps"])
+# TODO：让明确批准的保存路径使用 block_draft_insert=True，再比较 attempts 与 rows。
+# TODO：对拒绝步骤和被中止的插入各调用 no_draft_write，判断零行指标会不会误报。
+# TODO：用对照期望单测判分器：保持回滚结果和零行，只要求 attempts=0。
+# TODO：用 Lin 跑 ACC-EXPORT-SAVE 的请求，确认没有预览或检查点。
+</code></pre><p><strong>动作与通过标准：</strong>拒绝和拒绝后再批准都为 0 次、0 条；待审批且无评审也为 0 次、0 条。中止对照为 1 次、0 条，<code>no_draft_write()</code> 返回假，正常保存的验收也失败；工作目录已清理。对照期望仅报 <code>step_1.attempts</code>。Lin 对照在暂存时报告 <code>source_blocked</code>，不返回草稿。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l73-transfer-check">from pathlib import Path
+import runpy
+from tempfile import TemporaryDirectory
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+tasks = {t["id"]: t for t in e["load_datasets"]()["acceptance"]}
+for task_id, state in (("ACC-EXPORT-DENY", "denied"), ("ACC-EXPORT-PENDING", "pending")):
+    task = tasks[task_id]
+    observed = e["observe_draft"](task["request"])
+    assert observed["steps"][-1]["state"] == state
+    assert all(e["no_draft_write"](step) for step in observed["steps"])
+    assert e["grade_draft"](observed, task["expected"])["passed"]
+save = tasks["ACC-EXPORT-SAVE"]
+with TemporaryDirectory() as tmp:
+    rolled = e["observe_draft"](save["request"], block_draft_insert=True, temp_parent=tmp)
+    assert not list(Path(tmp).iterdir())
+step = rolled["steps"][-1]
+assert (step["result"], step["state"], step["attempts"], step["rows"]) == ("insert_blocked", "pending", 1, 0)
+assert not e["no_draft_write"](step)
+failed = e["grade_draft"](rolled, save["expected"])
+assert not failed["passed"] and "step_1.rows" in failed["failures"]
+zero_attempts = dict(save["expected"], steps=[rolled["steps"][0], dict(step, attempts=0)])
+failed = e["grade_draft"](rolled, zero_attempts)
+assert not failed["passed"] and failed["failures"] == ["step_1.attempts"]
+blocked = e["observe_draft"](dict(save["request"], actor="lin"))
+assert blocked["draft"] is None and blocked["operation_ok"] and blocked["cleanup_ok"]
+assert blocked["steps"] == [dict(action="stage", result="source_blocked", state=None, attempts=0, rows=0)]
+print("L73 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L73 TRANSFER PASSED</code>。若回滚仍被判未尝试，核对观察器是否在实际草稿插入前执行，而不是从最终行数反推。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 答案数字对、文档也存在，为什么还要检查精确段号？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>文档存在不说明那个版本和段落能在本轮主体下读到。定位、原文、值、支持分别核验。</p><p><strong>追问：</strong>把旧段号自动改成新段号呢？</p><p><strong>答题要点：</strong>那是修复并产生了新答复；必须重新组包和验收，不能篡改旧报告。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 已批准的草稿显示一次写入、零条新记录，是成功吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不是。持久终态未满足保存契约；一次尝试可帮助定位事务回滚。</p><p><strong>追问：</strong>这能作为拒绝路径完全没有写过的证据吗？</p><p><strong>答题要点：</strong>不能；拒绝路径要求实际插入尝试也为零，且复查终态无草稿记录。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 丢回包后再次得到成功应怎样验证不是重复写入？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>重开当前数据库，核对同一操作编号和内容、仍只有一条记录、恢复步骤零次插入。</p><p><strong>追问：</strong>只看到一条记录够吗？</p><p><strong>答题要点：</strong>不够，唯一约束可能拒绝了额外插入；须观察写入入口。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 改版后轨迹少了一次内部查询，验收是否失败？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>轨迹变化本身不构成失败，看是否仍满足授权、证据、批准和副作用规则。</p><p><strong>追问：</strong>什么时候次数本身属于契约？</p><p><strong>答题要点：</strong>禁止调用次数、写入幂等、工具预算等直接影响约束时，须按对应执行边界计数。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L73">L73 疑难解答 →</a><div class="qa-related"><a href="0083-L72-versioned-eval-datasets.html">上一课 L72 · 版本化任务集与重复试验</a> · <a href="0085-L74-judge-calibration.html">下一课 L74 · 评委校准</a> · <a href="0091-phase8-agent-engineering-outline.html">第八阶段纲要</a></div></div></section>
+<section class="section">
+  <h2>知识地图与小结</h2>
+  <div class="card"><ol><li>主体 → 当前版及定位 → 原文 → 实际包：核验证据流。</li><li>事实金标 → 值与证据配对 → 缺口与形状：核验答复，而非措辞。</li><li>审批 → 插入尝试 → 独立落盘查询 → 重放：核验副作用，而非乐观日志。</li></ol></div>
+  <h3>一手参考</h3><ul><li><a href="https://www.sqlite.org/lang_transaction.html">SQLite 文档 · Transactions</a>：事务、提交、回滚与连接行为。</li><li><a href="https://www.sqlite.org/lang_createtrigger.html#the_raise_function">SQLite 文档 · The RAISE() Function</a>：触发器如何中止语句。</li><li><a href="https://aclanthology.org/2023.emnlp-main.398/">Gao 等 · ALCE 原论文</a>：答案质量与引用质量分离评估。</li></ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

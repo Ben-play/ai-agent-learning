@@ -4,8 +4,8 @@
 Uses only the standard library to run explicit allowlists. The default suite needs
 Pydantic v2 for L36 and uses loopback HTTP for L58/L59; it never calls external
 services. The separate LangGraph suite needs the graph-lab dependencies. The
-Phase 7 RAG suite uses just the standard library and local synthetic data.
-No dependencies are installed by this script.
+Phase 7 RAG and Phase 8 engineering use the standard library and local synthetic
+inputs; L75 reuses the loopback MCP checkpoint. This script installs nothing.
 """
 
 from __future__ import annotations
@@ -102,7 +102,29 @@ RAG_CASES = tuple(
     ("0076-L66-rag-cache-invalidation.html", ("l66-stage-check",), "P7 RETRIEVAL LIFECYCLE PASSED"),
     ("0079-L69-rag-generation-evals.html", ("l69-stage-check",), "P7 RAG HANDOFF PASSED"),
 )
-ALL_CASES = CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES + PHASE6_LOCAL_CASES + RAG_CASES
+ENGINEERING_LESSONS = (
+    (70, "0081-L70-agent-telemetry.html"),
+    (71, "0082-L71-telemetry-privacy-alerts.html"),
+    (72, "0083-L72-versioned-eval-datasets.html"),
+    (73, "0084-L73-evidence-outcome-scoring.html"),
+    (74, "0085-L74-judge-calibration.html"),
+    (75, "0086-L75-tool-authority-bounds.html"),
+    (76, "0087-L76-agent-load-cost.html"),
+    (77, "0088-L77-offline-ci-gates.html"),
+    (78, "0089-L78-agent-system-design.html"),
+    (79, "0090-L79-engineering-baseline-handoff.html"),
+)
+ENGINEERING_CASES = tuple(
+    (filename, (f"l{number}-{kind}-check",), f"L{number} {expected}")
+    for number, filename in ENGINEERING_LESSONS
+    for kind, expected in (("worked", "ACCEPTED"), ("transfer", "TRANSFER PASSED"))
+) + (
+    ("0085-L74-judge-calibration.html", ("l74-stage-check",), "P8 EVAL FOUNDATIONS PASSED"),
+    ("0086-L75-tool-authority-bounds.html", ("l75-mcp-check",), "L75 MCP CHECK PASSED"),
+    ("0090-L79-engineering-baseline-handoff.html", ("l79-stage-check",), "P8 ENGINEERING HANDOFF PASSED"),
+)
+ALL_CASES = (CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
+             + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES)
 
 
 class CodeBlocks(HTMLParser):
@@ -130,7 +152,8 @@ class CodeBlocks(HTMLParser):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    suites = {"local": ALL_CASES, "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES}
+    suites = {"local": ALL_CASES, "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES,
+              "engineering": ENGINEERING_CASES}
     parser.add_argument("--suite", choices=tuple(suites), default="local")
     suite = parser.parse_args().suite
     cases = suites[suite]

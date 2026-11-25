@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>阶段 8 · Agent 工程实践</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>阶段 8 · Agent 工程实践</h1>
+<p>上一阶段的客服证据问答和早先的草稿审批已经能本地验收。本阶段把它们作为工程基线：先知道每轮发生了什么，再按独立证据评分；对批准、成本和交付设可复跑的边界，让下一位维护者能重做判断，而不是相信截图。</p>
+<div class="total-bar"><span>10 节课 · L70–L79 · 375 分钟</span><span>标准库主线 · 合成数据 · 两个必做检查点</span></div>
+<aside class="toc" id="toc" aria-label="本阶段目录"></aside>
+<nav aria-label="阶段导航"><a href="0079-L69-rag-generation-evals.html">← L69 生成评估</a> · <a href="../qa/phase8-qa.html">阶段答疑</a> · <a href="0001-ai-agent-learning-path-overview.html#phase-8-body">课程总纲</a></nav>
+<section class="section"><h2 id="lesson-plan">逐课练习与验收</h2>
+<table><thead><tr><th scope="col">课程</th><th scope="col">主题</th><th scope="col">要留下的验收证据</th></tr></thead><tbody>
+<tr><td>L70 <span class="lesson-num-time">45min</span></td><td><a href="0081-L70-agent-telemetry.html">贯通任务、试验与轨迹</a></td><td>按试验读真实本地接收行；核对父子跨度、秒、未知用量与终态，不混入相邻试验。</td></tr>
+<tr><td>L71 <span class="lesson-num-time">40min</span></td><td><a href="0082-L71-telemetry-privacy-alerts.html">遥测最小化与可解释告警</a></td><td>核对产生端投影、拒绝读、保存期限；待审批只适用审批时限。</td></tr>
+<tr><td>L72 <span class="lesson-num-time">30min</span></td><td><a href="0083-L72-versioned-eval-datasets.html">版本化任务集与重复试验</a></td><td>独立切分、固定版本、每轮干净初态；重放在同一轮保留数据库。</td></tr>
+<tr><td>L73 <span class="lesson-num-time">35min</span></td><td><a href="0084-L73-evidence-outcome-scoring.html">按证据和环境终态判分</a></td><td>证明定位、原文、实际证据包和事实配对；区分零次尝试与回滚后的零行。</td></tr>
+<tr><td>L74 <span class="lesson-num-time">45min</span></td><td><a href="0085-L74-judge-calibration.html">校准开放式质量评分</a></td><td>基于人工金标算误判、覆盖与弃权；软评分不能覆盖硬门。</td></tr>
+<tr><td>L75 <span class="lesson-num-time">30min</span></td><td><a href="0086-L75-tool-authority-bounds.html">限制过度代理与工具权限</a></td><td>比较任务、scope、主体、当前快照和批准；观察建议、分发、写入尝试及落库。</td></tr>
+<tr><td>L76 <span class="lesson-num-time">35min</span></td><td><a href="0087-L76-agent-load-cost.html">按负载比较降本方案</a></td><td>固定负载，先保正确与隔离，再核算失败开销、成功任务成本与 p95。</td></tr>
+<tr><td>L77 <span class="lesson-num-time">30min</span></td><td><a href="0088-L77-offline-ci-gates.html">把验收标准接入离线 CI</a></td><td>基线退出 0，退化退出 1 且原因可定位；效果硬门不靠均值。</td></tr>
+<tr><td>L78 <span class="lesson-num-time">35min</span></td><td><a href="0089-L78-agent-system-design.html">在系统设计中说明取舍</a></td><td>用场景约束选函数、workflow 或有界单 Agent，写下谁能写、怎样停、何时再议。</td></tr>
+<tr><td>L79 <span class="lesson-num-time">50min</span></td><td><a href="0090-L79-engineering-baseline-handoff.html">交付可复核的工程基线</a></td><td>同版本通过、退化、恢复；附有来源标记的轨迹与架构决策。</td></tr>
+</tbody></table></section>
+<section class="section"><h2 id="practice">阶段检查点与交接</h2>
+<p><a href="0085-L74-judge-calibration.html#stage-practice-eval-foundations">L74 · 评估基础</a>（加约 10 分钟）：保留重复试验分母、错误来源、写入回滚与语义分歧。<a href="0090-L79-engineering-baseline-handoff.html#stage-practice-engineering-handoff">L79 · 工程交接</a>（加约 10 分钟）：交报告、说明变更与恢复，并明确生产仍须验证什么。</p>
+<p>先看<a href="../code/phase8-agent-engineering/engineering-lab/README.md">项目与复跑命令</a>，做完后用<a href="../best-practices/phase8-agent-engineering-practices.html">阶段工程复盘</a>核对。主线实测本地代码；OTel SDK 对照未实跑，模型、真实账单与负载、真实 scope/身份、远端 PR 检查不在本地验证范围。</p>
+<p>后续可按需查<a href="0046-phase5-to-11-planned-outlines.html#phase-9">阶段 9 选修规划</a>；选修不阻塞阶段 10 的必修检查点兼容性训练。</p>
+</section>
+</main>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

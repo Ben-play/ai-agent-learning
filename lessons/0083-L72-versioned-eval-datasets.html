@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L72 · 版本化任务集与重复试验</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>版本化任务集与重复试验</h1><p class="subtitle">固定问题、状态和期望，再让每轮从干净环境出发</p>
+</div></div>
+<section class="section">
+  <h2>为什么不能只拿昨天的对话做回归？</h2>
+  <p>同样一句「请准备交班草稿」，昨天看到的是待审批，今天重试却显示已保存。两次可能都对：昨天的试验留下了本地记录，今天没有从空环境开始。另一个常见错觉是把开发时看过的题目改写成验收题；通过率提高，也可能只是因为答案或案例模板早已被用来调参。对能检索、写入和恢复的系统，回归的单位不只是提示与答复，而是<strong>任务契约、初始状态、可观察结果与清理</strong>。</p>
+  <p>这一课让四种行为在同一个离线入口相遇：根据有权读取的证据回答，没材料时拒答，批准后保存本地草稿，以及从已提交但回包丢失的状态恢复。另保留拒绝与等待审批用例，避免套件只测成功路径。</p>
+  <h3>学习目标</h3>
+  <ul><li>能区分候选输入、独立金标和试验初态。</li><li>能用四个独立负例检查重复编号、同族、带填充的族标签和规范化后重题。</li><li>能从逐轮报告证明同轮恢复保留状态、跨轮重复重新建库。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 把题目、试验和预期分别固定下来</h2>
+  <p>仓库的 <code>evaluation/fixtures/v1/</code> 存放真实的版本化文件：<code>dev.json</code> 与 <code>acceptance.json</code> 各自声明 <code>dataset_version</code> 和 <code>split</code>，每条任务有稳定的 <code>id</code>、人工指定的语义族 <code>family</code> 和任务类型 <code>kind</code>。<code>request</code> 是本轮允许进入候选路径的输入；<code>expected</code> 是评分器的标签，不回流进候选。若让脚本按题号查出金标或把批准结果塞进候选提示，套件就只证明了读文件成功。候选可以知道本次问哪些事实或收到什么审批，但不知道哪些答案能拿分。</p>
+  <p>初态是运行契约的一部分，不是用户自然语言。本课问答每轮重建阶段七的内存资料库；租户和用户由可信试验入口绑定，脚本从有权限的词法命中中读取原文。交班卡用 Mei，可看「导出文件生成后保留 7 天。」与「同步任务每天 02:00 运行。」；另一题用 Lin 查导出过期处理，当前主体没有权读对应政策，因此与猜中答案相比，标注缺口并拒答才合格。草稿每轮创建新的临时 SQLite 文件，从空检查点和零条保存记录开始；同一轮内用请求指定的任务键和版本暂存草稿，再按审批动作推进。清理时先关闭连接，再删除整个临时目录；不擦除仓库任何已有记录。</p>
+  <p>题集版本、代码修订以及重复次数要一起报告。同一事实的引用位置变了、草稿终态的产品要求变了、验收任务移出了开发集，都可能改变指标口径。保留旧版，发布新版并说明变更原因；比较两份报告时先找共同任务及相同预期，不能把新旧分母直接拼起来。如果线上问题需要复现，先用合成数据表达触发条件，把新任务交给未负责调参的人复核，再定义何时纳入正式验收。这个公开教程不存在保密验收；真实发布需要在流程上隔离访问、审阅和调参权限。</p>
+</section>
+<section class="section">
+  <h2>2. 分组隔离与重复隔离，解决的是两件事</h2>
+  <p>开发集给日常定位和改动用；验收集用来回答改动是否达到预先约定的门槛。按 <code>DEV-</code> 与 <code>ACC-</code> 编号很容易审查，但改一个前缀不能消除见过题目的影响。先按原始工作流或语义族分组，再切分；同一导出草稿的保存、拒绝、丢回包用例都在验收侧。入口同时拒绝重复编号、跨分区复用的语义族与规范化后重复的问题。族标签必须是非空、首尾无空白的规范字符串；例如 <code>sync-lookup</code> 可用，带首尾空格的 <code> sync-lookup </code> 直接拒绝，不把它当成新族，也不悄悄改写。问题规范化折叠宽窄字符、空格和标点，可以抓到「同步任务几点开始？」与只改问号的抄题；它不会理解同义改写，必须靠维护者把「每天什么时候同步」标为相同语义族。共同事实并不自动构成污染：开发的单事实查询与验收的两事实交班是不同任务，但这种拆分只能说没有重用已知任务族，不能声称证据、事实或近似措辞从未见过。</p>
+  <p>任务编号跨轮不变，试验序号从一开始单独递增。每次试验重建数据、运行操作、按终态评分，再清理；不要先把所有任务写进一个数据库再清空一张表，因为旧检查点、授权或缓存仍可污染下一次。相反，<strong>恢复测试内部</strong>必须保留同一轮数据库，并重新打开连接验证结果可恢复；若把重放当作下一轮并清空，测试已经失去了恢复所需的前提。固定脚本的两次一致只说明在本地有可重复的工程基线，不代表大模型概率、生产并发或远程服务稳定性。遇到偶发变化，保留逐行报告与预算条件，不挑成功的一次，也不把同一任务重复十遍当成十道独立题。</p>
+  <h3>数值轨迹：两个分区，各跑两次</h3>
+  <table><caption>固定版本 p8-eval-v1 的离线试验分母</caption><thead><tr><th scope="col">分区</th><th scope="col">任务数</th><th scope="col">每任务试验数</th><th scope="col">合格试验</th><th scope="col">一个可定位的观察</th></tr></thead><tbody>
+    <tr><th scope="row">dev</th><td>2</td><td>2</td><td>4 / 4</td><td>同步草稿每轮由 <code>pending</code> 到 <code>saved</code>，各写一条。</td></tr>
+    <tr><th scope="row">acceptance</th><td>6</td><td>2</td><td>12 / 12</td><td>重放每轮先丢回包，已保存一条；恢复后仍是一条，且没有再尝试写入。</td></tr>
+  </tbody></table>
+  <p>每行报告的 <code>id</code> 与 <code>trial</code> 只用于关联结果。保存失败时，先确认读到哪份数据，再查是否真的从待审批开始；不要拿第二轮的状态替第一轮补成绩。</p>
+  <div class="best-practice-point" id="bp-l72">
+    <h3>决策卡：先隔离语义族，再隔离试验状态</h3>
+    <p class="bp-scenario"><strong>适用：</strong>一个工作流要支持审批及恢复，但验收只有两条聊天记录。<strong>边界：</strong>可以共用合成资料快照，不能共用上轮的落盘状态。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：只改编号和库路径</span><p>把开发题换一种问法塞进验收，用上轮留下的任务行演示第二次成功。</p></div><div class="bp-right"><span class="bp-compare-label">选择：固定版本和初态</span><p>同族不跨分区，候选与金标隔开；同轮恢复保留状态，新轮必重建。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>人工维护语义族、分别跑隔离库，会增加标注和运行时间；换来可比较的分母与可复现的恢复试验。</p>
+    <ol class="bp-steps"><li>审查任务族、题号、授权主体、起始状态、预期与清理。</li><li>先在开发侧调试，验收时固定数据版本与次数，保存每行结果。</li><li>分别复制编号、改写题目和重复跑保存用例，检查分区校验与状态隔离各自能否暴露错误。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>分母不对先查分区或重复次数；第二轮没从 <code>pending</code> 出发先查库生命周期；试验稳定但仍失败，再查引用或审批语义。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 改写同一道开发题，同时想验证验收中的恢复，哪种安排正确？</div><div class="quiz-options"><button data-answer="correct">改写留在开发；恢复在验收单轮内复用该轮状态</button><button data-answer="wrong">改写移到验收；恢复在验收单轮内复用该轮状态</button><button data-answer="wrong">改写留在开发；恢复复用上一轮试验的状态</button><button data-answer="wrong">改写移到验收；恢复复用上一轮试验的状态</button></div><div class="quiz-explanation">相同任务族和相同试验状态分别在两个层面隔离。恢复不是新试验。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：验收重复两次，逐轮核对初态与重放</h2>
+  <p>从<strong>可信课程仓库根</strong>使用 Python 3.11+；见 <a href="../code/phase8-agent-engineering/engineering-lab/README.md">工程实验说明</a>。将起点或自检复制到自己的 UTF-8 脚本，以 <code>python -I -X utf8 文件名.py</code> 运行，不加 <code>-O</code>。也可直接看版本和逐行报告：</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase8-agent-engineering/engineering-lab/evaluation/main.py --split acceptance --repeats 2</code></pre>
+  <div class="card"><h3>可运行起点：先取结果，再找两次重放</h3><pre><code class="language-python">import runpy
+
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+result = e["run_acceptance"](repeats=2)
+print(result["dataset_version"], result["total_trials"])
+# TODO：按任务 ID 找两轮重放，核对试验号、起点与最后一个步骤。
+# TODO：仅把重复次数改为 3，确认分母和试验号也随之改变。
+</code></pre><p><strong>动作与通过标准：</strong>两轮共 12 条都过；重放各自从 <code>pending</code>、零条记录开始，提交丢回包后有一条，再打开后读到 <code>replayed</code>，没有第二次写入。三轮时分母为 18，重放试验号为 1、2、3。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l72-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+for repeats in (2, 3):
+    result = e["run_acceptance"](repeats=repeats)
+    assert result["dataset_version"] == "p8-eval-v1" and result["split"] == "acceptance"
+    assert result["tasks"] == 6 and result["total_trials"] == 6 * repeats
+    assert result["passed"] and result["passed_trials"] == result["total_trials"]
+    replay = [r for r in result["trials"] if r["id"] == "ACC-EXPORT-REPLAY"]
+    assert [r["trial"] for r in replay] == list(range(1, repeats + 1))
+    for trial in replay:
+        assert [(s["result"], s["state"], s["attempts"], s["rows"]) for s in trial["steps"]] == [
+            ("pending", "pending", 0, 0), ("lost_reply", "saved", 1, 1), ("replayed", "saved", 0, 1)]
+print("L72 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：同义题换了名字，仍不是新题</h2>
+  <p>模拟维护者导入交班任务时，把开发侧的同步查询当成新题。只在内存复制任务，不修改仓库标签。把「每天同步何时开始？」标回 <code>sync-lookup</code>，再对照改族但仅换空格和问号的版本；另复制原编号，证明三类污染分别可被检出。</p>
+  <div class="card"><h3>独立起点：在内存建立待校验的导入包</h3><pre><code class="language-python">from copy import deepcopy
+import runpy
+
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+splits = e["load_datasets"]()
+dev = dict(dataset_version="p8-eval-v1", split="dev", tasks=splits["dev"])
+acceptance = dict(dataset_version="p8-eval-v1", split="acceptance", tasks=splits["acceptance"])
+trial = deepcopy(dev["tasks"][0])
+trial["id"] = "ACC-IMPORT"
+trial["request"]["question"] = "每天同步何时开始？"
+print(trial["id"], trial["family"])
+# TODO：把 trial 追加到新的 acceptance tasks 列表，调用 validate_splits。
+# TODO：做独立的前后空白族标签、规范化重题、重复编号对照，记录各自的 ValueError。
+</code></pre><p><strong>动作与通过标准：</strong>原始两包通过；同义题的人工族标签触发 <code>family overlap</code>，带首尾空白的族标签触发 <code>invalid family</code>，异族但规范化后相同触发 <code>question overlap</code>，重复编号触发 <code>duplicate ID</code>。不要用同一失败原因替代四项。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l72-transfer-check">from copy import deepcopy
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+splits = e["load_datasets"]()
+dev = dict(dataset_version="p8-eval-v1", split="dev", tasks=splits["dev"])
+acceptance = dict(dataset_version="p8-eval-v1", split="acceptance", tasks=splits["acceptance"])
+e["validate_splits"](dev, acceptance)
+for task_id, family, question, reason in (
+    ("ACC-IMPORT", "sync-lookup", "每天同步何时开始？", "family overlap"),
+    ("ACC-IMPORT", " sync-lookup　", "每天同步何时开始？", "invalid family"),
+    ("ACC-IMPORT", "imported-lookup", "同步任务几点开始 ?", "question overlap"),
+    ("DEV-SYNC-QA", "imported-lookup", "什么时候处理交班卡？", "duplicate ID"),
+):
+    trial = deepcopy(dev["tasks"][0])
+    trial["id"], trial["family"], trial["request"]["question"] = task_id, family, question
+    contaminated = dict(acceptance, tasks=[*acceptance["tasks"], trial])
+    try:
+        e["validate_splits"](dev, contaminated)
+    except ValueError as exc:
+        assert reason in str(exc), str(exc)
+    else:
+        raise AssertionError(f"missed {reason}")
+print("L72 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L72 TRANSFER PASSED</code>。若只拦重复编号，检查是否忘了分族和规范化；若仅靠规范化识别同义关系，重新检查样本的人工标注。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 改写一条调参题，再把它放进验收，为什么不算独立？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>同一语义族和工作流仍被用来调参；题号改变不等于能力被独立测试。</p><p><strong>追问：</strong>题目规范化后不同，还能怎么拦？</p><p><strong>答题要点：</strong>维护族标签，由独立审阅确认语义改写和业务来源；规范化只是最便宜的一层。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 重放用例第二轮读到第一次写的草稿，报告显示通过，怎么排查？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>把试验边界和任务内动作边界分开。每试验新开空库；只在当前试验的提交和恢复之间保留同一个库。</p><p><strong>追问：</strong>只在每次结尾删掉一条草稿足够吗？</p><p><strong>答题要点：</strong>不够，检查点或同一作用域的其他数据仍可能残留；隔离整个临时存储更清楚。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 两轮里所有样本都过，能说通过率是生产成功率吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>只能说在固定版本、脚本和合成场景中 12 次都过。重复同一任务并没有扩大任务分布。</p><p><strong>追问：</strong>验收分母从十二变成十八时应怎样报告？</p><p><strong>答题要点：</strong>任务数仍为六，重复次数改变；保留版本、每任务结果和新的试验分母。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 审批产品契约改变，旧预期不再有效，该如何更新？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先由业务确认新的结果和允许的副作用，再发布新数据版本并保留历史。</p><p><strong>追问：</strong>怎样向评审解释通过率发生变化？</p><p><strong>答题要点：</strong>固定代码或数据作对照；按共同题与新题拆分并指出哪些变更来自口径而不是能力。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L72">L72 疑难解答 →</a><div class="qa-related"><a href="0082-L71-telemetry-privacy-alerts.html">上一课 L71 · 遥测最小化与告警</a> · <a href="0084-L73-evidence-outcome-scoring.html">下一课 L73 · 证据与终态评分</a> · <a href="0091-phase8-agent-engineering-outline.html">第八阶段纲要</a></div></div></section>
+<section class="section">
+  <h2>知识地图与小结</h2>
+  <div class="card"><ol><li>题集版本 → 分区 → 任务 ID 与语义族：知道谁参与了开发。</li><li>初态 → 请求与批准 → 终态 → 清理：知道每一次从哪里开始、留下了什么。</li><li>独立标签 → 逐轮报告 → 固定分母：知道为何通过以及如何复现失败。</li></ol></div>
+  <h3>一手参考</h3><ul><li><a href="https://docs.python.org/3.11/library/tempfile.html#tempfile.TemporaryDirectory">Python 文档 · TemporaryDirectory</a>：上下文退出时清理临时目录。</li><li><a href="https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data">scikit-learn 文档 · 分组划分</a>：解释相关样本应按组而非逐行随机切分；实验不依赖该库。</li><li><a href="https://git-scm.com/book/en/v2/Git-Basics-Tagging">Pro Git · Tagging</a>：为可复现实验标记特定仓库修订。</li></ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

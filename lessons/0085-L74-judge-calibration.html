@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L74 · 评委校准与人工金标</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第八阶段 · Agent 工程化</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>评委校准与人工金标</h1><p class="subtitle">先测评委会在哪里判错，再决定它能辅助哪些判断</p>
+</div></div>
+<section class="section">
+  <h2>评委给了高分，为什么还不能发布？</h2>
+  <p>一句「同步每日凌晨两点」与「同步任务每天 02:00 运行」在本题口径下等价，简单字符串比较会错杀；一句「导出留存一周」则虽然忠实，却没有回答同步问题。开放文本值得另外评分，但评委不能给错定位、越权引用或未授权写入开绿灯。</p>
+  <h3>学习目标</h3>
+  <ul><li>能说清哪些确定性核验必须阻断、哪些语义差异应交给评委。</li><li>能分轴重算混淆表、覆盖率和未决率，并解释一次错放。</li><li>能用调用计数证明等价改写进入评委，而错误引用不会触发调用。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 先定口径，再各自标注</h2>
+  <p>把问题与实际材料一起冻结：在交班卡中，导出文件生成后保留七天，同步任务每天凌晨两点运行。<strong>忠实度（support）</strong>问「候选写出的事实是否都能由本轮材料支持」；<strong>完整性（completeness）</strong>问「本题两处需要回答的槽位是否都给出了明确值」。本课的完整性只看有没有覆盖，不替数字纠错，因此可出现「填齐但有错」；反过来只正确答第一问，忠实度通过但完整性失败。这个区别使错字、漏项、语义改写和无依据新增能分别诊断，而不是靠一个总分猜测模型该怎么改。</p>
+  <p>课程作者逐行标注合成答复，把标签和理由写进 <code>evaluation/fixtures/v1/judge-gold.json</code>；另有手写的模拟评委输出 <code>judge-mock.json</code>，故意含误判与弃权，不是模型实测。真实评委的校准应让两位标注人独立读同一问题和证据，先不看评委、另一位标注人或候选版本；记录分歧，由指定复核人按冻结口径裁决，无法裁决则保留理由并标为 <code>uncertain</code>。不要删除难行，也不要为了让评委更一致而静默重写金标。本实验没有第二位标注人或生产抽样，不从演示数字推断人评一致性。</p>
+  <p><code>judge_qa</code> 与 L73 的结构化评分共用确定性出处门：实际包及每条引用都必须属于当前可读、版本和段落精确、整段原文一致的材料，每个引用还必须在本轮包内。硬门不比较候选值与人工金标，也不把金标的答复形状当成硬门。通过后才把问题、请求槽位、证据包和候选答复交给确定性评委桩，不传标签、题号、数据分区或数据库。这个桩只识别少量本课词形，例如把「一周」和「每天凌晨两点」对照包内原文；它既不是通用语义判断，也不同于下面用于校准统计的固定模拟票。</p>
+  <p>两份表按稳定编号连接，禁止靠行顺序配对；编号缺失、重复、口径版本不一致或标签表外值都应尽早暴露。候选评委不读人工金标。若未来选用真实模型，另行冻结模型标识、提示或评分表版本及推理设置；只给最小可用证据。记录模型拒答、格式错误及无把握时的处理，避免它们被当作默认通过。用未参与提示调整的样本再验一次；还可以打乱结果展示顺序、控制答复长短并比较不同候选来源，查长度与自偏好。这一课完全离线，不调用任何真实评委。小样本最多揭示故障类型；自动放行阈值应在足够覆盖错误代价的样本上另订，而不是从这八条推算。</p>
+</section>
+<section class="section">
+  <h2>2. 一张逐行表，两张二元混淆表</h2>
+  <table><caption>同一问题与证据：作者金标 / 手写评委票</caption><thead><tr><th scope="col">ID</th><th scope="col">候选原句</th><th scope="col">忠实度</th><th scope="col">完整性</th></tr></thead><tbody>
+    <tr><th scope="row">CAL-01</th><td>导出文件保留 7 天，同步每天 02:00。</td><td>pass / pass</td><td>pass / pass</td></tr>
+    <tr><th scope="row">CAL-02</th><td>导出文件保留 7 天。</td><td>pass / fail</td><td>fail / pass</td></tr>
+    <tr><th scope="row">CAL-03</th><td>导出文件保留 30 天，同步每天 02:00。</td><td>fail / pass</td><td>pass / pass</td></tr>
+    <tr><th scope="row">CAL-04</th><td>同步任务每天 03:00 运行。</td><td>fail / fail</td><td>fail / fail</td></tr>
+    <tr><th scope="row">CAL-05</th><td>同步在每天凌晨两点运行。</td><td>pass / abstain</td><td>fail / fail</td></tr>
+    <tr><th scope="row">CAL-06</th><td>导出保留 7 天，同步每天 02:00（按交接班时区）。</td><td>uncertain / pass</td><td>pass / pass</td></tr>
+    <tr><th scope="row">CAL-07</th><td>导出生成后第七天结束保留周期；同步在一天开始后两小时运行，每天一次。</td><td>pass / pass</td><td>pass / abstain</td></tr>
+    <tr><th scope="row">CAL-08</th><td>导出留存一周；同步每日凌晨两点。</td><td>pass / pass</td><td>pass / fail</td></tr>
+  </tbody></table>
+  <p>把 <code>pass</code> 当正类，只把<strong>人工已裁决且评委已投二元票</strong>的行放进混淆表：真通过是 TP，真失败是 TN；错放不合格为 FP，错拦合格为 FN。CAL-02 在忠实度是 FN、在完整性是 FP，正因它没编造但漏答。CAL-03 的忠实度 FP 尤其值得复核，因为它会把不实业务事实放行。金标 <code>uncertain</code> 与评委 <code>abstain</code> 是不同来源：两者可落在同一行，弃权的行也不能默认记成失败、成功或分歧。公布各自样本编号和分母，能防止评委靠对难题全弃权来美化一致率。</p>
+  <ul><li>设总行数为 <code>N</code>，金标已决数 <code>K = N − 人工不确定数</code>，可比较数 <code>D = TP + TN + FP + FN</code>。</li><li>覆盖率 <code>D / K</code>；条件一致率 <code>(TP + TN) / D</code>；条件分歧率 <code>(FP + FN) / D</code>。分母为零时报告未定义，不报零或百分之百。</li><li>人工不确定率 <code>人工不确定数 / N</code>；评委弃权率 <code>全部评委弃权数 / N</code>，另列已决行内哪些被弃权。</li></ul>
+  <table><caption>限定在这八行，按维度重算的确切计数与分母</caption><thead><tr><th scope="col">维度</th><th scope="col">TP / TN / FP / FN</th><th scope="col">覆盖</th><th scope="col">一致 / 分歧</th><th scope="col">人工不确定 / 评委弃权</th></tr></thead><tbody>
+    <tr><th scope="row">忠实度</th><td>3 / 1 / 1 / 1</td><td>6/7</td><td>4/6 · CAL-02、03 两处不一致（2/6）</td><td>1/8（CAL-06） / 1/8（CAL-05）</td></tr>
+    <tr><th scope="row">完整性</th><td>3 / 2 / 1 / 1</td><td>7/8</td><td>5/7 · CAL-02、08 两处不一致（2/7）</td><td>0/8 / 1/8（CAL-07）</td></tr>
+  </tbody></table>
+  <div class="best-practice-point" id="bp-l74">
+    <h3>决策卡：硬门槛优先，软分只补空白</h3>
+    <p class="bp-scenario"><strong>适用：</strong>开放措辞有合理改写，精确引用与权限仍可用代码判定。<strong>边界：</strong>没有生产质量证明，不用模拟票决定上线。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：均分高就放行</span><p>在总分里藏掉错放、漏项、弃权；用模型票覆盖硬规则。</p></div><div class="bp-right"><span class="bp-compare-label">选择：逐轴校准与人工复核</span><p>金标和预测分别冻结；硬失败直接阻断，语义不确定转人工。</p></div></div>
+    <p class="bp-rationale"><strong>代价：</strong>分轴标注、复核错放和接手弃权都耗费人力；只在硬门过后调用，避免在注定失败的样本上花费评分预算。</p>
+    <ol class="bp-steps"><li>先核对授权、引用和允许的终态；硬失败不调用评委。</li><li>对已通过硬门的候选分别看忠实和完整，按编号联接校准表。</li><li>派人复核错放与弃权，修改评分表后用未调参的样本重新校准。</li></ol>
+    <p class="bp-result"><strong>诊断：</strong>一致率升高而覆盖下降，先复查弃权是否偏向难例；两轴在同一行相反，先看判据是否被合并，而不是先改阈值。</p>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 金标对忠实度不确定，评委给通过；若该候选的引用定位也未过硬检查，应如何记账？</div><div class="quiz-options"><button data-answer="correct">记为人工不确定，不进二元混淆表；阻断候选</button><button data-answer="wrong">记为人工不确定，不进二元混淆表；放行候选</button><button data-answer="wrong">记为金标通过，计入 TP；阻断候选</button><button data-answer="wrong">记为金标通过，计入 TP；放行候选</button></div><div class="quiz-explanation">人工不确定不是二元标签；确定性失败不允许被投票覆盖。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：按两条轴核对评委的错放与错拦</h2>
+  <p>从<strong>可信课程仓库根</strong>用 Python 3.11+。将起点或自检复制到自己的 UTF-8 脚本，执行 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。见 <a href="../code/phase8-agent-engineering/engineering-lab/README.md">工程实验说明</a>；以下命令只读本地作者金标和手写预测：</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase8-agent-engineering/engineering-lab/evaluation/main.py --calibration</code></pre>
+  <div class="card"><h3>可运行起点：把打印的两个维度与手算对照</h3><pre><code class="language-python">import runpy
+
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+report = e["run_calibration"]()
+for axis in ("support", "completeness"):
+    print(axis, report[axis]["coverage"], report[axis]["disagreements"])
+# TODO：断言两轴的四个格子、覆盖率、分歧率和弃权编号。
+# TODO：说明 CAL-06 和 CAL-07 分别为什么不进入对应维度的混淆表。
+</code></pre><p><strong>动作与通过标准：</strong>逐一复算两轴；忠实度的分歧是 CAL-02、CAL-03，完整性的是 CAL-02、CAL-08；人工不确定与评委弃权分别记录，报告的四格和分母与上表完全相同。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l74-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+report = e["run_calibration"]()
+assert report["rubric_version"] == "p8-judge-v1"
+assert report["judge_version"] == "hand-scripted-mock-v1"
+for axis, matrix, counts, disagreements, uncertain, abstained in (
+    ("support", (3, 1, 1, 1), (8, 7, 6), ["CAL-02", "CAL-03"], ["CAL-06"], ["CAL-05"]),
+    ("completeness", (3, 2, 1, 1), (8, 8, 7), ["CAL-02", "CAL-08"], [], ["CAL-07"]),
+):
+    row = report[axis]
+    assert tuple(row[k] for k in ("TP", "TN", "FP", "FN")) == matrix
+    assert tuple(row[k] for k in ("total", "known", "decided_known")) == counts
+    assert [row[k] for k in ("disagreements", "uncertain", "known_abstained", "abstained")] == [
+        disagreements, uncertain, abstained, abstained]
+    n, k, d = counts
+    assert row["coverage"] == d / k and row["agreement"] == (matrix[0] + matrix[1]) / d
+    assert row["disagreement_rate"] == 2 / d
+    assert row["uncertain_rate"] == len(uncertain) / n and row["abstention_rate"] == len(abstained) / n
+print("L74 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：门店公告也会出现两类未决</h2>
+  <p>换成合成交接公告：「周五 18:00 关闭展台」。只校准忠实度：NOTE-01 按原时刻说；NOTE-02 错写 19:00，被评委错放；NOTE-03 将 18:00 改写成傍晚六点，金标同意而评委弃权；NOTE-04 加上尚无定义的「展会时区」，两边都不裁决；NOTE-05 错写提前一天，双方判失败。模拟票以反序输入；另丢一张票检验校准会报错，而不会悄悄换分母。</p>
+  <div class="card"><h3>独立起点：建立五行金标</h3><pre><code class="language-python">import runpy
+
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+def rows(labels):
+    return [dict(id=f"NOTE-{i:02}", support=label) for i, label in enumerate(labels, 1)]
+
+gold = rows(["pass", "fail", "pass", "uncertain", "fail"])
+print(gold)
+# TODO：为五行写模拟票，反序后按编号校准；单独核对重叠的未决行和错放。
+# TODO：移除一票，验证编号集合不一致时校准中止。
+</code></pre><p><strong>动作与通过标准：</strong>TP、TN、FP 各 1，FN 为 0；覆盖 3/4，一致 2/3，分歧 1/3。NOTE-04 同时是人工不确定和评委弃权，但不是「已决后弃权」；丢票直接报错，不计算指标。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l74-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+def rows(labels):
+    return [dict(id=f"NOTE-{i:02}", support=label) for i, label in enumerate(labels, 1)]
+
+gold = rows(["pass", "fail", "pass", "uncertain", "fail"])
+votes = rows(["pass", "pass", "abstain", "abstain", "fail"])[::-1]
+result = e["calibrate"](gold, votes, "support")
+assert tuple(result[k] for k in ("TP", "TN", "FP", "FN")) == (1, 1, 1, 0)
+assert (result["coverage"], result["agreement"], result["disagreement_rate"]) == (3/4, 2/3, 1/3)
+assert result["disagreements"] == ["NOTE-02"]
+assert result["uncertain"] == ["NOTE-04"] and result["uncertain_rate"] == 1/5
+assert result["abstained"] == ["NOTE-03", "NOTE-04"] and result["abstention_rate"] == 2/5
+assert result["known_abstained"] == ["NOTE-03"]
+try:
+    e["calibrate"](gold, votes[:-1], "support")
+except ValueError as exc:
+    assert "ID sets differ" in str(exc)
+else:
+    raise AssertionError("missing judge row was accepted")
+print("L74 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>L74 TRANSFER PASSED</code>。若反序后计数变了，检查是否按位置联接；若覆盖不是 3/4，检查是否把人工不确定行当成已决样本。</p>
+</section>
+<section class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-eval-foundations" data-phase-practice="eval-foundations">
+  <h2>阶段检查点：从任务集到硬门，再到语义复核</h2>
+  <p>从可信课程仓库根把起点复制到 UTF-8 脚本，用 <code>python -I -X utf8 文件名.py</code> 执行，不加 <code>-O</code>。基线六个任务各跑两次，撤权、修订和坏引用作为独立的边界对照，不混进验收分母。</p>
+  <div class="card"><h3>可运行起点：固定基线，准备两个独立对照</h3><pre><code class="language-python">from dataclasses import replace
+import runpy
+
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+baseline = e["run_acceptance"](repeats=2)
+print(baseline["passed_trials"], baseline["total_trials"])
+tasks = {t["id"]: t["request"] for t in e["load_datasets"]()["acceptance"]}
+qa = tasks["ACC-HANDOFF-QA"]
+with e["RAG"]["open_demo"]() as db:
+    packet = e["make_packet"](db, qa)
+    answer = e["answer_from_packet"](qa, packet)
+    print(e["judge_qa"](db, qa, packet, answer)["decision"])
+    # TODO：用 replace 分别做坏定位、等价改写；用 judge= 回调计数。
+replay = e["observe_draft"](tasks["ACC-EXPORT-REPLAY"])
+print(replay["steps"][-1])
+# TODO：用 before_review(step, db) 加入撤权/修订，与回滚对照独立核对。
+</code></pre></div>
+  <ol><li>对账：基线 12/12；撤权或修订发生在提交前，仍待审批且零插入；提交后撤权，既有一条但内容不可重放。</li><li>诊断：错定位的评委调用为零；等价改写由评委评一次并通过。回滚仍显示一次尝试、零条记录。</li><li>复核：忠实度两处分歧、完整性一行已决后弃权；未运行生产评委。</li></ol>
+  <details class="bp-check"><summary>展开跨课验收</summary><pre><code class="language-python" id="l74-stage-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+e = runpy.run_path("code/phase8-agent-engineering/engineering-lab/evaluation/main.py")
+stage = e["run_stage_check"]()
+assert stage["acceptance"]["passed_trials"] == stage["acceptance"]["total_trials"] == 12
+assert not stage["guarded"]["passed"] and stage["guarded"]["claims"][0]["value_ok"]
+judge = stage["judge"]
+assert judge["bad_citation"]["decision"] == "blocked" and judge["bad_citation"]["votes"] is None
+assert judge["equivalent"]["provenance"]["passed"] and judge["equivalent"]["decision"] == "pass"
+assert judge["calls"] == 1
+for name, expected in (
+    ("blocked_stage", ("source_blocked", None, 0, 0)),
+    ("revoke_before_save", ("source_blocked", "pending", 0, 0)),
+    ("revise_before_save", ("source_blocked", "pending", 0, 0)),
+    ("revoke_before_replay", ("replay_withheld", "saved", 0, 1)),
+):
+    observed = stage["draft_boundaries"][name]
+    step = observed["steps"][-1]
+    assert tuple(step[k] for k in ("result", "state", "attempts", "rows")) == expected
+    assert observed["draft"] is None and observed["operation_ok"] and observed["cleanup_ok"]
+assert (stage["rolled_back"]["steps"][1]["attempts"], stage["rolled_back"]["steps"][1]["rows"]) == (1, 0)
+assert stage["calibration"]["support"]["disagreements"] == ["CAL-02", "CAL-03"]
+assert stage["calibration"]["completeness"]["known_abstained"] == ["CAL-07"]
+print("P8 EVAL FOUNDATIONS PASSED")</code></pre></details>
+  <p class="bp-result">应得到 <code>P8 EVAL FOUNDATIONS PASSED</code>。若只有校准数字通过，仍不能跳过分区隔离、精确定位和持久状态检查。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 客服答「导出留七天」却没说同步时间，两轴怎么判？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>本题忠实度通过，完整性失败，因为仅覆盖一问，但写出的事实受证据支持。</p><p><strong>追问：</strong>若填齐问题，却把七天改成三十天？</p><p><strong>答题要点：</strong>本题槽位覆盖仍通过，忠实度失败；业务发布不能把两者平均后放行。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 评委一致率提高，但弃权从一成变成一半，怎么汇报？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>同时汇报已决覆盖和总弃权率、混淆格及变化的样本类别。挑容易的行回答可以抬高条件一致率。</p><p><strong>追问：</strong>是否把所有弃权记为错判就行？</p><p><strong>答题要点：</strong>不应混淆投错票和没有票。可以另外统计含弃权的流程成本，但保留原始状态和分母。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 人工标注争论「按交接班时区」是否受支持，应该移除该行吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>保留该行和争议理由，按口径复核。无法裁决就记 <code>uncertain</code>，不纳入二元混淆格。</p><p><strong>追问：</strong>补充时区政策后怎么办？</p><p><strong>答题要点：</strong>更新并冻结证据与金标版本，再重新标注和评估，不与旧分母直接合并。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 两个评委都认为答案有理，但机器发现错引或未授权写入，能投票通过吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。确定性失败直接阻断，不是和开放评分相加的扣分项。</p><p><strong>追问：</strong>如果硬门通过、评委却弃权？</p><p><strong>答题要点：</strong>标为待人工复核，记录题号和原因；不要把弃权当通过。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase8-qa.html#L74">L74 疑难解答 →</a><div class="qa-related"><a href="0084-L73-evidence-outcome-scoring.html">上一课 L73 · 证据与终态评分</a> · <a href="0086-L75-tool-authority-bounds.html">下一课 L75 · 工具权限边界</a> · <a href="0091-phase8-agent-engineering-outline.html">第八阶段纲要</a></div></div></section>
+<section class="section">
+  <h2>知识地图与小结</h2>
+  <div class="card"><ol><li>冻结题目与证据 → 独立人工标注 → 保留难例与不确定。</li><li>按编号联接 → 分轴混淆计数 → 同时报覆盖、一致与弃权。</li><li>确定性结果管阻断；语义评分只补开放问题；未决交给人工。</li></ol></div>
+  <h3>一手参考</h3><ul><li><a href="https://scikit-learn.org/stable/modules/generated/sklearn.metrics.confusion_matrix.html">scikit-learn 文档 · confusion_matrix</a>：混淆矩阵的真实标签与预测标签方向；本课不安装此包。</li><li><a href="https://arxiv.org/abs/2306.05685">Zheng 等 · Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena</a>：原研究比较人评与模型评委，并分析偏差。</li><li><a href="https://arxiv.org/abs/2311.09476">Saad-Falcon 等 · ARES</a>：原论文按不同维度拆分自动 RAG 评分并使用人工标注辅助评估。</li></ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

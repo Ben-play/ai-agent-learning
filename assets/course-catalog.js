@@ -84,7 +84,18 @@
     { file: '0076-L66-rag-cache-invalidation.html', title: '热缓存中的撤权、改版与删除', phase: '第七阶段' },
     { file: '0077-L67-rag-trust-boundary.html', title: '证据数据与执行权限', phase: '第七阶段' },
     { file: '0078-L68-rag-retrieval-evals.html', title: '检索评估：权限、召回与覆盖', phase: '第七阶段' },
-    { file: '0079-L69-rag-generation-evals.html', title: '生成评估：引用、忠实度与拒答', phase: '第七阶段' }
+    { file: '0079-L69-rag-generation-evals.html', title: '生成评估：引用、忠实度与拒答', phase: '第七阶段' },
+    { file: '0091-phase8-agent-engineering-outline.html', title: '第八阶段大纲', phase: '', outlineFor: '第八阶段' },
+    { file: '0081-L70-agent-telemetry.html', title: '贯通任务、试验与轨迹', phase: '第八阶段' },
+    { file: '0082-L71-telemetry-privacy-alerts.html', title: '遥测最小化与可解释告警', phase: '第八阶段' },
+    { file: '0083-L72-versioned-eval-datasets.html', title: '版本化任务集与重复试验', phase: '第八阶段' },
+    { file: '0084-L73-evidence-outcome-scoring.html', title: '按证据和环境终态判分', phase: '第八阶段' },
+    { file: '0085-L74-judge-calibration.html', title: '校准开放式质量评分', phase: '第八阶段' },
+    { file: '0086-L75-tool-authority-bounds.html', title: '限制过度代理与工具权限', phase: '第八阶段' },
+    { file: '0087-L76-agent-load-cost.html', title: '按负载比较降本方案', phase: '第八阶段' },
+    { file: '0088-L77-offline-ci-gates.html', title: '把验收标准接入离线 CI', phase: '第八阶段' },
+    { file: '0089-L78-agent-system-design.html', title: '在系统设计中说明取舍', phase: '第八阶段' },
+    { file: '0090-L79-engineering-baseline-handoff.html', title: '交付可复核的工程基线', phase: '第八阶段' }
   ];
 
   var PHASE_NUMBERS = {
