@@ -155,8 +155,24 @@ EVOLUTION_CASES = tuple(
 ) + (
     ("0100-L87-migration-fallback.html", ("l87-stage-check",), "P10 LOCAL CHECKPOINT CONTRACT PASSED"),
 )
+DEPLOYMENT_LESSONS = (
+    (93, "0107-L93-fastapi-persistent-state.html"),
+    (94, "0108-L94-deployment-promotion-gate.html"),
+    (95, "0109-L95-deployment-authority-audit.html"),
+    (96, "0110-L96-canary-stop-conditions.html"),
+    (97, "0111-L97-rollback-pending-approvals.html"),
+    (98, "0112-L98-incident-evaluation-iteration.html"),
+)
+DEPLOYMENT_CASES = tuple(
+    (filename, (f"l{number}-{kind}-check",), f"L{number} {expected}")
+    for number, filename in DEPLOYMENT_LESSONS
+    for kind, expected in (("worked", "ACCEPTED"), ("transfer", "TRANSFER PASSED"))
+) + (
+    ("0111-L97-rollback-pending-approvals.html", ("l97-stage-check",), "P11 LOCAL ROLLBACK PASSED"),
+    ("0112-L98-incident-evaluation-iteration.html", ("l98-stage-check",), "P11 LOCAL HANDOFF PASSED"),
+)
 ALL_CASES = (CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
-             + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES + ADVANCED_CASES + EVOLUTION_CASES)
+             + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES + ADVANCED_CASES + EVOLUTION_CASES + DEPLOYMENT_CASES)
 
 
 class CodeBlocks(HTMLParser):
@@ -186,7 +202,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     suites = {"local": ALL_CASES, "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES,
               "engineering": ENGINEERING_CASES, "advanced": ADVANCED_CASES,
-              "evolution": EVOLUTION_CASES}
+              "evolution": EVOLUTION_CASES, "deployment": DEPLOYMENT_CASES}
     parser.add_argument("--suite", choices=tuple(suites), default="local")
     suite = parser.parse_args().suite
     cases = suites[suite]

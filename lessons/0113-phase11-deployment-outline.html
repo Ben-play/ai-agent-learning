@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>阶段 11 · 生产部署与持续迭代</title><link rel="stylesheet" href="../assets/style.css"></head><body><main>
+<h1>阶段 11 · 生产部署与持续迭代</h1>
+<p>沿用客服取证与审批项目。先让进程替换保住原状态，再验准入、灰度停止和回滚；最终把一个故障转成可推翻的改进判断。</p>
+<div class="total-bar"><span>6 节必修 · L93–L98 · 230 分钟</span><span>L97 回滚与 L98 交接检查点各约 10 分钟，已计入</span></div>
+<aside class="toc" id="toc" aria-label="本阶段目录"></aside>
+<nav class="card" aria-label="阶段导航"><a href="0001-ai-agent-learning-path-overview.html#phase-11-body">课程总纲</a> · <a href="../qa/phase11-qa.html">本阶段答疑</a> · <a href="../best-practices/phase11-deployment-practices.html">阶段复盘</a> · <a href="../code/phase11-deployment/deployment-lab/README.md">部署实验</a></nav>
+<section class="section" id="prerequisites"><h2>先修、实测和部署前置</h2>
+<p><a href="0091-phase8-agent-engineering-outline.html">Phase 8 工程基线</a>及 <a href="0100-L87-migration-fallback.html#stage-practice-checkpoint-compatibility">L87 真实旧检查点兼容性</a>是实际部署前置。可先读本阶段并做标准库练习；L87 固定 SDK 的两组真实验收未实跑，不能生产晋级。Phase 9 及 L89–L92 的选修不阻塞。</p>
+<p>课堂验证合成任务、单写进程和本地 SQLite；可选 FastAPI、Docker 和真实容器替换另行验收（本环境未跑）。模拟 p95、假时钟和权限夹具不证明生产容量、认证或跨机恢复。</p></section>
+<section class="section" id="lesson-plan"><h2>必修课程</h2>
+<table><thead><tr><th scope="col">课号</th><th scope="col">主题</th><th scope="col">交付</th></tr></thead><tbody>
+<tr><td>L93 <span class="lesson-num-time">30min</span></td><td><a href="0107-L93-fastapi-persistent-state.html">封装 FastAPI、Docker 与持久状态</a></td><td>替换进程或依赖故障后，原批准对象仍可查并安全恢复。</td></tr>
+<tr><td>L94 <span class="lesson-num-time">35min</span></td><td><a href="0108-L94-deployment-promotion-gate.html">CI/CD：为部署设置晋级门禁</a></td><td>以构建、配置、状态格式和证据身份作晋级门，不以本地标记放行。</td></tr>
+<tr><td>L95 <span class="lesson-num-time">35min</span></td><td><a href="0109-L95-deployment-authority-audit.html">限流、权限与最小化审计</a></td><td>分开验证租户额度、单次操作读取上限、权限、持久拒绝与最小审计。</td></tr>
+<tr><td>L96 <span class="lesson-num-time">35min</span></td><td><a href="0110-L96-canary-stop-conditions.html">灰度指标与停止条件</a></td><td>同批对照控制组，检测尾时退化，并对权限或恢复失败立即停止。</td></tr>
+<tr><td>L97 <span class="lesson-num-time">45min</span></td><td><a href="0111-L97-rollback-pending-approvals.html">回滚必须接住已存在的审批</a></td><td>同一候选停发、退出，核两库后切回旧写者；已记录的两组决定无需重审。</td></tr>
+<tr><td>L98 <span class="lesson-num-time">50min</span></td><td><a href="0112-L98-incident-evaluation-iteration.html">事故响应与评估驱动迭代</a></td><td>版本化事故回归，检查留出集与退回条件，汇总最终交接。</td></tr>
+</tbody></table></section>
+<section class="section" id="checkpoints"><h2>交付检查点</h2><ol><li><a href="0111-L97-rollback-pending-approvals.html#stage-practice-deployment-rollback">L97 · 回滚检查点</a>：保存原绑定、写者切换顺序、独立业务效果和不可回退的理由。</li><li><a href="0112-L98-incident-evaluation-iteration.html#stage-practice-deployment-handoff">L98 · 最终交接</a>：提交本地晋级门禁、灰度、回滚和脱敏回归证据，并保留所有未测项。</li></ol></section>
+</main><script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script></body></html>

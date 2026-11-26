@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>L95 · 限流、权限与最小化审计</title><link rel="stylesheet" href="../assets/style.css"></head><body><main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十一阶段 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div><h1>限流、权限与最小化审计</h1><p class="subtitle">区分能否受理、能读什么、能否产生效果，以及事后能看见什么</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2><p>导出取证的请求突然增多，团队想「统一限制每分钟两次」。这可暂缓排队，却不会阻止无权审批，也不能保证某次已受理的操作不会读得过多。若为了诊断把工单全文和批准请求都记到审计，限制了服务反而扩大了数据访问面。本课沿用 L93 的合成宿主，不发真实流量，分别观测这四条边界。</p><h3>学习目标</h3><ul><li>分别定义租户受理额度、单次操作的证据读取上限、当前对象权限与完整审批绑定。</li><li>用可重复的时钟、真实业务方法观察和全表读回区分拦截、读取和持久效果。</li><li>设计可关联决定与恢复结果、却不复制批准内容或证据的审计事件。</li></ul></section>
+<section class="section"><h2>1. 一条合法请求还要过哪些门？</h2><table><caption>同批固定输入，四条独立规则</caption><thead><tr><th scope="col">边界</th><th scope="col">数据形状</th><th scope="col">拒绝或通过的含义</th></tr></thead><tbody>
+<tr><td>路由与角色</td><td>可信进程配置选定 <code>support</code>（客服）或 <code>reviewer</code>（固定合成审核权限）；JSON 只放动作规定的字段。</td><td>未列的动作或缺审核角色在查业务前 <code>forbidden</code>。两种角色指向同一合成任务主体，不代表生产允许自审；真实系统另有身份、职责分离与审批服务。</td></tr>
+<tr><td>租户额度</td><td><code>{tenant: (window_index, accepted)}</code>；示例固定窗 10 秒，每租户共用 2 次。</td><td>两位客服消耗同一个租户桶，第三次 <code>rate_limited</code>；运维租户有自己的桶。HTTP 适配器映射 429；规范允许但不强制 <code>Retry-After</code>，此适配器不发它。</td></tr>
+<tr><td>单次操作的证据读取上限与对象权限</td><td>导出草稿要求两条授权读，同步草稿只要一条。作用域是 <code>(tenant, actor)</code>，每条精确校验 <code>(doc_id, version, locator, quote)</code>。</td><td>上限为 1 时，导出整组预留失败，零证据读且不暂存；上限够用也不赋予主体授权。撤权后重新查权限，能发生一次真实读尝试但不返回原文。</td></tr>
+<tr><td>可信决定和持久结果</td><td>批准绑定六项：租户、主体、任务、动作、修订、摘要。把 <code>deny</code> 当成可信决定，和无批准或禁止调用区分。</td><td>先写可信的 <code>review_recorded</code>，恢复按决定改终态或保存。拒绝仍可写一条终态记录，但不应读证据或尝试插入草稿。</td></tr>
+</tbody></table>
+<p>这个实现先验证动作、角色与请求字段集合，再为通过外形检查的请求计一次租户受理；随后才核内容、对象与本次操作的读取上限，所以一次已受理的失败不会返还本窗额度。固定窗在边界前后可快速承接两批，它不是滚动窗口；进程换代会重置课堂计数。真实多实例需要独立可信的计量与保护策略，不能把本机字典当全局限流。额度复位也永远不解除资源授权。</p>
+<p><code>read_cap</code> 只约束一次宿主操作的证据读取，不在一个任务的暂存与恢复之间累计，也不是租户窗口额度。固定为 1 时，同一同步任务先暂存、获批后再恢复，两次各读 1 条，累计 2 条仍合法；一次导出操作需要两条，不能读了第一条再停。</p>
+<table><caption>固定时钟与读取上限的本地实测</caption><thead><tr><th scope="col">输入</th><th scope="col">结果</th><th scope="col">实际证据读／持久结果</th></tr></thead><tbody>
+<tr><td>同窗两位客服请求导出问答，随后客服第三次请求</td><td><code>answered</code>、<code>answered</code>、<code>rate_limited</code></td><td>逐笔 1、1、0 次；无保存。</td></tr>
+<tr><td>同窗独立运维主体；下一个窗口再问客服</td><td>运维只见自己 30 天，客服又可见自己的 7 天</td><td>各 1 次；同名用户不是同授权视图。</td></tr>
+<tr><td>上限为 1 时暂存导出</td><td><code>budget_exhausted</code></td><td>零读、无暂存。</td></tr>
+<tr><td>独立正控：同一同步任务暂存、批准、恢复，上限仍为 1</td><td><code>pending</code>、<code>review_recorded</code>、<code>saved</code></td><td>逐笔 1、0、1 次，恢复恰好插入一份草稿。</td></tr>
+<tr><td>客服尝试批准；受托角色对原同步任务记录拒绝并恢复</td><td><code>forbidden</code>、<code>review_recorded</code>、<code>denied</code></td><td>三步均零证据读、零草稿 INSERT；只记录精确的拒绝决定，恢复只将原 checkpoint 从 <code>pending</code> 改为 <code>denied</code>。</td></tr>
+</tbody></table>
+<div class="quiz" data-quiz="q1"><div class="quiz-question">本窗还有额度，但这次导出暂存需要两条证据，单次操作的读取上限为 1。怎么办？</div><div class="quiz-options"><button data-answer="wrong">先读一条再向调用方索权</button><button data-answer="wrong">扣另一租户的额度完成读</button><button data-answer="correct">读前拒绝，不暂存半份草稿</button><button data-answer="wrong">用上次的正文填补缺失项</button></div><div class="quiz-explanation">这次操作的完整证据计划无法在上限内完成；有受理额度不代表可访问或可扩大预算。</div></div></section>
+<section class="section"><h2>2. 审计用关联 ID 串联，不复制业务载荷</h2><p><code>{event: "review", trace_id: "宿主生成的24位十六进制ID", result: "review_recorded"}</code>。审计只存这三个字段，动作与结果来自固定枚举，不采信用户给的日志内容。宿主记录可信决定时把关联 ID 与决定一起持久化；另一次恢复读取原决定和关联 ID，写出 <code>recover</code> 的最终结果。内存审计队列最多 64 条，重启不保留历史事件；变式证明新会话仍能对同一个决定发出同 ID 的结果事件，而不是声称本课程具备持久审计平台。实际审批库仍需另设权限；审计流不包含租户、请求、凭证、引用或正文。</p>
+<p>已提交以后来源撤权，恢复仍能找到原记录，但不能再给调用方原回执或草稿；读回工具作为本地验收面可以观察全表，不能接到 HTTP 响应里。这个故障不属于限流：确实进入了授权取证方法，但返回 <code>replay_withheld</code>，持久行保持原样。</p>
+<div class="best-practice-point"><h3>决策卡：让每条拒绝有独立可复核的后果</h3><p><strong>适用：</strong>Agent 服务同时接受多个主体、处理只读证据和受控本地效果。<strong>不适用：</strong>没有多个租户时不添加没有用途的分布式额度层。</p><div class="bp-compare"><div class="bp-wrong"><strong>误判：</strong>只把 HTTP 拒绝加进报表，故障时把请求整包写进日志。</div><div class="bp-right"><strong>选择：</strong>固定错误码和最小关联，分别核真实调用、对外字段及库内效果。</div></div><ol><li>用同一形状替换时窗、预算或角色，预先写下每条该停在哪。</li><li>保存正控；用授权变更检查是否仍返回旧内容，并核整套审计键集合。</li></ol><p><strong>代价：</strong>要维护额度与诊断策略、关联 ID 留存，且牺牲从日志直接读工单的便利。<strong>诊断：</strong>若零新增而仍泄漏旧稿，检查恢复出口当前授权，不必先放大日志。</p></div></section>
+<section class="section best-practice-lesson"><h2>3. 跟做：查清每一笔被哪条规则拦下</h2><p>使用与课文同版的可信课程源码（<a href="../code/phase11-deployment/deployment-lab/README.md">部署实验</a>）。把所选代码块另存为临时脚本，从仓库根用 Python 3.11+ 运行 <code>python -I -B -X utf8 文件名.py</code>（不加 <code>-O</code>）。实验只写临时目录。</p>
+<pre><code class="language-python" id="l95-worked-starter">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from authority_rehearsal import worked
+
+row = worked()
+print("quota (status, reads):", [(r["status"], r["read_calls"]) for r in row["limited"]])
+print("cap=1 (status, reads, draft INSERT attempts):")
+sync = row["cap_one_sync"]
+for step, reply in (("export stage", row["over"]), ("sync stage", sync["stage"]),
+                    ("sync approval", sync["approval"]), ("approved sync recover", sync["recovery"])):
+    print(step, reply["status"], reply["read_calls"], len(reply["inserts"]))
+print("denial store (decisions, checkpoint statuses, saved rows):")
+for step, snapshot in (("before wrong role", row["before_wrong_role"]),
+                       ("after wrong role", row["after_wrong_role"]),
+                       ("after deny decision", row["after_decision"]),
+                       ("after recovery", row["state"])):
+    print(step, [r[-1] for r in snapshot["reviews"]],
+          [r[5] for r in snapshot["checkpoints"]], len(snapshot["saved"]))
+print("audit:", row["events"][-3:])
+# TODO：比对完整绑定、四份全表和真实调用次数；不能只看 denied。</code></pre>
+<p><strong>报告线索：</strong><code>read_calls</code> 统计真实证据读尝试，<code>inserts</code> 记录草稿 INSERT 尝试；两者都不代替另开只读连接的 <code>audit()</code> 全表读回。快照依次应为「待批／无决定」、「待批／无决定」、「待批／仅 deny」、「已拒绝／仍同一 deny」。错角色不改变任何表；合法决定只增加一条绑定租户、主体、任务、动作、修订及摘要的拒绝；恢复只改原 checkpoint 的状态。三步均零证据读、零草稿 INSERT，响应不含正文和回执。</p>
+<p><strong>通过标准：</strong>第三笔客服零读，运维仍只看到自己的证据；上限为 1 时导出零读，同步暂存和获批恢复各读 1 次，只在单独的正控库中保存。拒绝路径的决定与恢复使用同一 <code>trace_id</code>，错角色事件使用不同 ID。</p>
+<p><strong>反例：</strong>合成夹具的负测只在内存中替换拒绝恢复步骤，使它照常返回 <code>denied</code> 并发出对应审计事件，却没有更新库。独立读回仍是 <code>pending</code>，因此自检不通过。</p>
+<details><summary>跟做参考与自检</summary><pre><code class="language-python" id="l95-worked-check">from pathlib import Path
+import sys
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from authority_rehearsal import assert_denial, worked
+
+row = worked()
+assert [(r["status"], r["read_calls"]) for r in row["limited"]] == [
+    ("answered", 1), ("answered", 1), ("rate_limited", 0), ("answered", 1)]
+assert row["limited"][3]["evidence"] == [
+    {"tenant": "operations", "key": ("EXPORT-POLICY", 1, "§1"), "quote": "运维导出文件保留 30 天。"}]
+reopened = row["reopened"]
+assert (reopened["status"], reopened["read_calls"]) == ("answered", 1)
+assert reopened["evidence"][0]["quote"] == "导出文件生成后保留 7 天。"
+for key, status in (("over", "budget_exhausted"), ("forbidden", "forbidden"), ("bait", "invalid_request")):
+    assert row[key] == {"status": status, "receipt": None, "draft": None, "read_calls": 0, "inserts": []}
+sync = row["cap_one_sync"]
+stage, recovery = sync["stage"], sync["recovery"]
+assert (stage["status"], stage["read_calls"], stage["inserts"]) == ("pending", 1, [])
+assert sync["approval"] == {"status": "review_recorded", "receipt": None,
+                            "draft": None, "read_calls": 0, "inserts": []}
+receipt = recovery["receipt"]
+assert receipt and recovery == {"status": "saved", "receipt": receipt, "draft": stage["draft"],
+                                "read_calls": 1, "inserts": [receipt]}
+assert sync["state"]["saved"] == [[receipt, "support", "mei", "sync", stage["draft"]]]
+# 比对固定夹具与独立全表，校验精确的决定、状态转换及最小审计关联。
+assert_denial(row)
+print("L95 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>独立变式：成功后撤权，不再释放原回执</h2><p>在新临时目录单独运行，不依赖跟做。换成新的同步工单，先让另一个租户的同名主体查询，再正确批准并提交。现在只撤同步政策的授权，重开宿主后恢复，另用导出问答做不被误拦的正控。请区分「保留持久行」和「仍可响应旧记录」，核对重启前后关联 ID。</p>
+<pre><code class="language-python" id="l95-transfer-starter">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from authority_rehearsal import transfer
+
+row = transfer()
+for step in ("hidden", "saved", "withheld", "intake", "other"):
+    reply = row[step]
+    print(step, reply["status"], reply["read_calls"], len(reply["inserts"]))
+print("saved rows unchanged:", row["before"]["saved"] == row["after"]["saved"])
+print("audit:", row["before_events"][2], row["after_events"][0])
+# TODO：核对全表变化；同名主体应无正文、绑定或回执。</code></pre>
+<p><strong>通过标准：</strong>错租户不可查；撤权复访有一次读尝试，零 INSERT，不返回回执和稿件；全表只新增撤权记录，已保存行以及无关读权限不变。原批准事件与重开后的恢复事件使用同一关联 ID。</p>
+<details class="bp-check"><summary>独立参考与自检</summary><pre><code class="language-python" id="l95-transfer-check">from pathlib import Path
+import sys
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from authority_rehearsal import transfer
+
+row = transfer()
+for key, status, calls in (("hidden", "not_available", 0), ("withheld", "replay_withheld", 1),
+                           ("intake", "source_blocked", 1)):
+    assert row[key] == {"status": status, "receipt": None, "draft": None, "read_calls": calls, "inserts": []}
+assert row["after"] == {**row["before"], "revocations": [["support", "mei", "SYNC-POLICY"]]}
+saved = row["saved"]
+receipt = saved["receipt"]
+assert saved["status"] == "saved" and receipt and saved["inserts"] == [receipt]
+assert row["after"]["saved"] == [[receipt, "support", "mei", "sync", saved["draft"]]]
+other = row["other"]
+assert (other["status"], other["read_calls"], other["inserts"]) == ("answered", 1, [])
+assert other["evidence"][0]["quote"] == "导出文件生成后保留 7 天。"
+review, result = row["before_events"][2], row["after_events"][0]
+assert review == {"event": "review", "trace_id": result["trace_id"], "result": "review_recorded"}
+assert result == {"event": "recover", "trace_id": review["trace_id"], "result": "replay_withheld"}
+print("L95 TRANSFER PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 看板上都是 429，可以证明租户隔离正确吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不行。限流只约束请求量；查身份、对象权限和对外返回。</p><p><strong>追问：</strong>两个同名用户跨租户，只有一个触顶呢？</p><p><strong>答题要点：</strong>应允许另一桶的合法请求，只返回其授权证据并证明读次数。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 后台改成四个 worker，原计数能保持同一租户总上限吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能；每份本地字典各自计数，要有跨实例认可的约束机制。</p><p><strong>追问：</strong>只换了一台实例，不并发呢？</p><p><strong>答题要点：</strong>旧本地计数也会重置；独立于持久审批。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 受托审核人拒绝，报告中多一条持久状态变化，该判故障吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先区分拒绝终态与草稿 INSERT；正当拒绝可持久化，但不读正文或保存草稿。</p><p><strong>追问：</strong>没有权限的人请求拒绝呢？</p><p><strong>答题要点：</strong>不写决定或终态，查角色边界是否放在业务动作前。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 某次恢复需要和两天前的批准关联，能否复制整个请求到审计？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>用不暴露内容的关联键和事件码；独立审批库存必要业务绑定并限制访问。</p><p><strong>追问：</strong>重启后发现队列里没有旧审计事件？</p><p><strong>答题要点：</strong>课堂只证实关联一致，不证明日志完整性或保留，实际系统另验可靠送达与访问。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase11-qa.html#L95">L95 疑难解答 →</a><div class="qa-related"><a href="0108-L94-deployment-promotion-gate.html">上一课 L94 · 晋级门禁</a> · <a href="0110-L96-canary-stop-conditions.html">下一课 L96 · 灰度停止</a> · <a href="0113-phase11-deployment-outline.html">阶段大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>用受理额度保护资源，用宿主策略限定权限，用真实效果验证停止，用最少字段关联决定与结果。</p><ul><li><a href="https://www.rfc-editor.org/rfc/rfc6585#section-4">RFC 6585 · 429</a>：响应的含义和可选重试头。</li><li><a href="0077-L67-rag-trust-boundary.html">L67 证据可信边界</a>与<a href="0082-L71-telemetry-privacy-alerts.html">L71 遥测脱敏</a>：当前授权与接收端投影的前置课程。</li></ul></section>
+</main><aside class="toc" id="toc" aria-label="本课目录"></aside><script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script></body></html>
