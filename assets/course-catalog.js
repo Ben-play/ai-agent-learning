@@ -110,7 +110,14 @@
     { file: '0102-L89-bounded-worker-delegation.html', title: '单 Agent 与 Orchestrator–Worker 对照', phase: '第十阶段' },
     { file: '0103-L90-a2a-task-boundaries.html', title: 'A2A 的任务边界', phase: '第十阶段' },
     { file: '0104-L91-mcp-server-boundaries.html', title: 'MCP 服务端的只读权限边界', phase: '第十阶段' },
-    { file: '0105-L92-hermes-source-comparison.html', title: '只读对照 Hermes 的状态与恢复边界', phase: '第十阶段' }
+    { file: '0105-L92-hermes-source-comparison.html', title: '只读对照 Hermes 的状态与恢复边界', phase: '第十阶段' },
+    { file: '0113-phase11-deployment-outline.html', title: '第十一阶段大纲', phase: '', outlineFor: '第十一阶段' },
+    { file: '0107-L93-fastapi-persistent-state.html', title: '封装 FastAPI、Docker 与持久状态', phase: '第十一阶段' },
+    { file: '0108-L94-deployment-promotion-gate.html', title: 'CI/CD：为部署设置晋级门禁', phase: '第十一阶段' },
+    { file: '0109-L95-deployment-authority-audit.html', title: '限流、权限与最小化审计', phase: '第十一阶段' },
+    { file: '0110-L96-canary-stop-conditions.html', title: '灰度指标与停止条件', phase: '第十一阶段' },
+    { file: '0111-L97-rollback-pending-approvals.html', title: '回滚必须接住已存在的审批', phase: '第十一阶段' },
+    { file: '0112-L98-incident-evaluation-iteration.html', title: '事故响应与评估驱动迭代', phase: '第十一阶段' }
   ];
 
   var PHASE_NUMBERS = {

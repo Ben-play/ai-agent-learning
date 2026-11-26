@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L94 · CI/CD：为部署设置晋级门禁</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十一阶段 · 生产部署与持续迭代 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div><h1>CI/CD：为部署设置晋级门禁</h1><p class="subtitle">同一制品逐关核验；本地绿灯不等于生产批准</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2>
+<p><a href="0107-L93-fastapi-persistent-state.html">L93</a> 把问答和草稿审批接到持久状态上。现在这个客服 Agent 的候选包构建成功，保留期答复仍然是「7 天」，但如果引用突然消失，值班人员还能核对来源吗？如果新版本写入不同形状的审批检查点，切回旧版本还能接住待审批任务吗？构建成功不回答这两个问题。</p>
+<h3>学习目标</h3><ul><li>区分构建、晋级与部署，并用构建摘要、写入 schema、配置指纹和精确回退目标描述候选。</li><li>在同一 Phase 8 输入上复验绿、红、绿；再用独立合同否决缺失、过期或绑错的证据，准确报告生产仍被阻断。</li></ul></section>
+<section class="section"><h2>1. 先固定制品，再决定能否晋级</h2>
+<p><strong>构建</strong>把源码打成可交接的制品，例如镜像。本课用固定字节串替身，不构建真实镜像。<strong>晋级</strong>是依据证据允许同一制品进入下一环境，不是在下一环境重新构建一个同标签包。<strong>部署</strong>才改变目标环境正在运行的版本。CI 可反复复验构建与回归；CD 可以把通过检查的制品交给下一道环境门，也可以停在批准之前。这里不配置或运行远程工作流。</p>
+<p>清单（manifest）是一个 <code>dict</code>，可序列化为 JSON。外层是 <code>contract_version</code>、<code>environment</code>、<code>candidate</code> 和 <code>rollback_target</code>。后两项各是有四个字段的对象；下表给出 <code>environment="classroom"</code> 的输入形状（摘要为便于阅读仅显示前缀，校验用完整 64 位十六进制串）。</p>
+<table><caption>同一个清单里的两个精确身份</caption><thead><tr><th scope="col">字段</th><th scope="col"><code>candidate</code></th><th scope="col"><code>rollback_target</code></th></tr></thead><tbody>
+<tr><td><code>build_version</code>：构建名</td><td><code>support-agent-1.4.2</code></td><td><code>support-agent-1.4.1</code></td></tr>
+<tr><td><code>artifact_sha256</code>：制品字节的摘要</td><td><code>0223f007…</code></td><td><code>b4d31f46…</code></td></tr>
+<tr><td><code>writer_schema</code>：该版实际写出的状态格式编号</td><td><code>2</code></td><td><code>1</code></td></tr>
+<tr><td><code>config_fingerprint</code>：非秘密配置的摘要</td><td><code>03d2ad2b…</code></td><td><code>07e10d14…</code></td></tr>
+</tbody></table>
+<p>构建名便于人读，不证明字节相同。<code>sha256(bundle).hexdigest()</code> 对字节串 <code>bundle</code> 计算摘要；配置则先用固定键序、无多余空格的 JSON 序列化，再算 SHA-256。例如候选用 <code>{"approval":"host-only","store":"sqlite-v2"}</code>，所以只变键顺序不改变指纹，变存储模式则会改变。验证器独立重算已知制品、核对提交字节，并从固定运行元数据生成写入 schema 和配置指纹；清单和证据把同一错值互抄也不能通过。摘要标识内容，不证明发布者身份；配置输入只含允许公开的设置，不放密钥。</p>
+<p>写入 schema 不是 API 返回结构，也不是「读得出来」的承诺。旧版本能读取自己的 v1，不代表它能读取候选新写的 v2。将回退地址写成 <code>latest</code> 既无法固定回退制品，也没有说明恢复哪个写入器配置；精确绑定这些身份只是演练前提，不等于已证明可以覆盖或降级数据库。若灰度已写入新格式，应先查在途批准与真实副作用，再验证兼容回退或单独设计补偿（L97）。</p></section>
+<section class="section"><h2>2. 一份回归事实，两种兼容结论</h2>
+<p><strong>真实执行的本地回归：</strong>复用 <a href="0090-L79-engineering-baseline-handoff.html">L79</a> 的 Phase 8 CLI 收集器及 provenance 输入清单；在三个独立进程执行基线、<code>drop-citation</code>、恢复基线路径。故障开关不改用例、阈值或源文件；前后核对同一个输入指纹。该指纹是 Phase 8 的源码和夹具清单摘要，不是上表的制品摘要，不证明阶段 8 测过真实镜像。</p>
+<table><caption>固定清单与有效课堂证据下的实际回归及晋级判断</caption><thead><tr><th scope="col">运行</th><th scope="col">门禁退出码／通过用例</th><th scope="col">依据及结果</th></tr></thead><tbody>
+<tr><td>基线</td><td><code>0</code>／6 of 6</td><td>保留期有引文，课堂 <code>eligible</code></td></tr>
+<tr><td>移除引用</td><td><code>1</code>／5 of 6</td><td><code>retention.citations</code> 不符；命中 <code>citation_contract</code> 和 <code>success_rate</code>，课堂 <code>blocked</code></td></tr>
+<tr><td>恢复</td><td><code>0</code>／6 of 6</td><td>整份门禁报告回到基线；输入指纹不变，课堂 <code>eligible</code></td></tr>
+</tbody></table>
+<p><strong>实际校验的离线合同，输入是假设标签：</strong><code>evidence</code> 是另一份对象，包含 <code>kind="synthetic-compatibility-v1"</code>、环境、候选与回退身份、<code>observed_at</code> 和 <code>observations</code>。其中 <code>observations</code> 是计数字典，例如 <code>{"legacy_shape_refusals":2,"candidate_dispatches":0,"candidate_writes":0,"rollback_saves":1,"rollback_replay_writes":0}</code>。意思是候选两次拒绝旧形状、零分发且零写；旧路径在匹配批准时保存一次，重放零新增写。这些是课堂假设，不是 L94 读取的真实兼容运行。</p>
+<p>独立规则核对精确字段与计数，先区分没有证据、格式错误和内容不符，再核对时间：用固定评审时刻 <code>1800000000</code>（Unix 秒）减去采集时刻，允许 0 到 900 秒；未来时间也拒绝。基准标签是 300 秒前；证据整份缺失会得到 <code>evidence:missing</code>。<code>true</code>、<code>{"passed":true}</code> 或一条成功日志都不能替代结构化证据。任何离线合同失败，即使回归绿灯，课堂仍阻断。</p>
+<p><strong>真实 L87 证据仍未核验：</strong><a href="0100-L87-migration-fallback.html#stage-practice-checkpoint-compatibility">L87 的部署前置条件</a>是先在获准的固定环境完成 Phase 6 真实图验收，再运行完整的真实 LangGraph 兼容演练（Python 3.11–3.13、LangGraph <code>1.2.24</code>、SQLite saver <code>3.1.3</code>）。报告必须同时核对 <code>phase6_original_snapshots</code> 与 <code>phase10_application_fixtures</code>，不能用 <code>--native-only</code>、标准库替身、静态检查或成功字符串顶替。课堂工具不接收真实 L87 证明，不具备生产批准或部署能力：<code>l87_evidence.status</code> 始终为 <code>not_verified</code>，<code>production</code> 永远为 <code>blocked</code>。没有 SDK 安装、云端调用或生产环境变更。</p>
+<div class="best-practice-point" id="bp-l94"><h3>决策卡：门禁绑定证据，不认单个绿灯</h3>
+<p class="bp-scenario"><strong>适用：</strong>同一客服 Agent 的固定制品进入下一环境前，要同时核验行为和旧状态兼容性。<strong>不适用：</strong>不能据此证明真实模型质量、生产身份权限或在线状态可回退。</p>
+<div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：构建过了，就按最新标签发布</span><p>标签可漂移，旧报告可能对的是另一份制品、配置或回退目标。</p></div><div class="bp-right"><span class="bp-compare-label">选择：固定身份，分别核两份证据</span><p>回归看实测退出码与失败字段；兼容看环境、状态、目标与证据新鲜度。</p></div></div>
+<p class="bp-rationale"><strong>代价：</strong>保留旧制品、配置和可复验样本；过期需重测。没有可验证回退路径时，替代方案是暂停晋级并先验证向后兼容迁移，或安排停收后排空，而非放宽门槛。</p>
+<ol class="bp-steps"><li>用同一 Phase 8 指纹复跑绿、红、绿；红灯必须指向丢引用，进程崩溃不算成功抓到故障。</li><li>另换兼容证据中的一个绑定，复跑课堂晋级；确认回归可绿而晋级仍被阻断。</li></ol>
+<p class="bp-result"><strong>诊断：</strong>先看 <code>phase8_replay.reasons</code> 是否表明本地回归不可复现，再读 <code>offline_contract.reasons</code> 找证据缺失、时间或身份路径；不要因报告整体打印成功而解锁生产。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 同一构建名、回归仍绿，候选制品字节已经不同。怎么办？</div><div class="quiz-options"><button data-answer="wrong">沿用报告，因为构建名未变</button><button data-answer="wrong">沿用报告，因为回归仍绿</button><button data-answer="correct">暂停晋级，按新摘要重验</button><button data-answer="wrong">沿用报告，只刷新时间戳</button></div><div class="quiz-explanation">构建名不等于制品身份。换制品后须按新的完整绑定重跑证据，不可重标旧报告。</div></div></section>
+<section class="section best-practice-lesson"><h2>3. 跟做：同一指纹下证明门禁会红，也会恢复</h2>
+<p>使用与课文同版的可信课程源码（<a href="../code/phase11-deployment/deployment-lab/README.md">实验说明</a>）；Pages 课页不能单独运行 Python。把下面所选代码块保存为临时脚本，从仓库根执行 <code>python -I -B -X utf8 文件名.py</code>（Python 3.11+，不加 <code>-O</code>）。<code>runpy.run_path()</code> 从已知本地路径加载脚本，返回包含函数的字典；本例不运行脚本的命令行入口。也可从根目录以相同选项直接运行 <code>code/phase11-deployment/deployment-lab/release_gate.py</code> 看完整 JSON；其退出 0 只表示课堂复验通过。</p>
+<div class="card"><h3>可运行起点：读三条真实门禁返回</h3><pre><code class="language-python" id="l94-worked-starter">import runpy
+
+lab = runpy.run_path("code/phase11-deployment/deployment-lab/release_gate.py")
+report = lab["rehearse"]()
+for name in ("baseline", "drop_citation", "restored"):
+    arm = report[name]
+    print(name, arm["exit_code"], arm["fingerprint"], arm.get("blocks"))
+print("production:", report["production"])
+# TODO：断言指纹相等、索引到具体用例的失败字段，再比较课堂与生产结论。</code></pre>
+<p><strong>通过标准：</strong>三份指纹相同，退出码为 0、1、0；红灯只丢保留期引用且触发两道门。基线与恢复一致，课堂晋级分别是允许、拒绝、允许，生产始终被阻断。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l94-worked-check">from hashlib import sha256
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase11-deployment/deployment-lab/release_gate.py")
+report = lab["rehearse"]()
+good, red, restored = (report[name] for name in ("baseline", "drop_citation", "restored"))
+assert [arm["exit_code"] for arm in (good, red, restored)] == [0, 1, 0]
+assert [arm["successes"] for arm in (good, red, restored)] == [6, 5, 6]
+assert good["fingerprint"] == red["fingerprint"] == restored["fingerprint"]
+assert len(good["fingerprint"]) == 64 and good == restored
+assert red["blocks"] == ["citation_contract", "success_rate"]
+assert red["failures"] == {"retention": ["citations"]}
+manifest = report["reviewed_manifest"]
+assert manifest["candidate"]["artifact_sha256"] == sha256(b"support-agent-1.4.2\nfixture bundle\n").hexdigest()
+assert manifest["rollback_target"]["writer_schema"] == 1
+assert report["phase8_replay"] == report["offline_contract"] == {"passed": True, "reasons": []}
+assert report["classroom_promotion"] == {"baseline": "eligible", "drop_citation": "blocked", "restored": "eligible"}
+assert report["l87_evidence"]["status"] == "not_verified" and report["production"] == "blocked"
+print("L94 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：给绿灯配一份绑错的回退证据</h2>
+<p>从有效课堂证据复制三份变式：第一份不提交证据；第二份把采集时刻改成评审时刻前 901 秒；第三份保留回退构建名，只在证据的回退身份中用候选摘要替换回退摘要。第三份需跑完整 <code>promote_offline()</code>，证明 Phase 8 基线仍绿，并且所有课堂晋级都被阻断。用新取的原样输入做正控，避免误改清单或让故障影响对照。</p>
+<div class="card"><h3>独立起点：构造过期和缺失证据</h3><pre><code class="language-python" id="l94-transfer-starter">from copy import deepcopy
+import runpy
+
+lab = runpy.run_path("code/phase11-deployment/deployment-lab/release_gate.py")
+manifest, fresh = lab["sample_contract"]()
+stale = deepcopy(fresh)
+stale["observed_at"] = 1_800_000_000 - 901
+for label, evidence in (("missing", None), ("stale", stale), ("fresh", fresh)):
+    print(label, lab["validate_contract"](manifest, evidence))
+# TODO：深拷贝 fresh，只换证据的回退摘要，再交给 promote_offline 并核对原因。</code></pre>
+<p><strong>通过标准：</strong>缺失、过期和错目标可分别定位到不同字段；错目标不能被 Phase 8 绿灯覆盖，恢复原始绑定后只恢复课堂资格，生产仍被阻断。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l94-transfer-check">from copy import deepcopy
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase11-deployment/deployment-lab/release_gate.py")
+manifest, fresh = lab["sample_contract"]()
+assert lab["validate_contract"](manifest, None) == {"passed": False, "reasons": ["evidence:missing"]}
+stale = dict(fresh, observed_at=1_800_000_000 - 901)
+assert lab["validate_contract"](manifest, stale) == {
+    "passed": False, "reasons": ["evidence.observed_at:stale"]}
+assert not lab["validate_contract"](manifest, {"passed": True})["passed"]
+wrong = deepcopy(fresh)
+wrong["rollback_target"]["artifact_sha256"] = manifest["candidate"]["artifact_sha256"]
+assert wrong["rollback_target"]["build_version"] == manifest["rollback_target"]["build_version"]
+assert wrong["rollback_target"]["artifact_sha256"] != manifest["rollback_target"]["artifact_sha256"]
+blocked = lab["promote_offline"](manifest, wrong)
+assert blocked["baseline"]["passed"] and blocked["phase8_replay"]["passed"]
+assert blocked["offline_contract"] == {
+    "passed": False, "reasons": ["evidence.rollback_target.artifact_sha256:mismatched"]}
+assert set(blocked["classroom_promotion"].values()) == {"blocked"}
+control = lab["promote_offline"](manifest, fresh)
+assert blocked["baseline"] == control["baseline"]
+assert control["classroom_promotion"]["restored"] == "eligible"
+assert blocked["production"] == control["production"] == "blocked"
+print("L94 TRANSFER PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先给决定，再说明什么证据能改变决定。</p>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 同名制品换了字节，保留期样本仍通过，可以沿用昨天的兼容报告吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能；先比制品摘要、写入 schema、配置及回退目标，旧证据必须绑定本次候选。</p><p><strong>追问：</strong>制品没变，但存储配置改了呢？</p><p><strong>答题要点：</strong>新的配置指纹也会打破绑定；用新配置复验写入形状和旧路径。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 回归脚本非零退出，就证明抓到了丢引用吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不一定。要看到同指纹、精确失败字段、两道预期门槛和恢复对照。</p><p><strong>追问：</strong>夹具找不到，脚本也退出 1，怎么交接？</p><p><strong>答题要点：</strong>记为复验不可用而非引用回归，保持阻断，修输入后重跑三臂。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 旧包和配置都能精确定位，灰度写过 v2 后能直接切回 v1 吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能由身份推断兼容。先停止扩量，检查已写状态、待审批任务及副作用。</p><p><strong>追问：</strong>候选根本没有写入过呢？</p><p><strong>答题要点：</strong>情况更接近 L87 的旧路径接续；仍须核对未改输入、当前批准和已提交回执，不覆盖数据库。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 有人把真实 LangGraph 的成功字符串贴进环境批准备注，能解锁生产吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。要在获准的固定环境独立核对完整 L87 两部分及候选绑定，再由真实部署系统按权限审批；课堂没有该能力。</p><p><strong>追问：</strong>已经独立验证了两部分，还要环境保护规则吗？</p><p><strong>答题要点：</strong>技术证据验证兼容，环境规则验证谁能进入哪一环境；不能相互替代。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase11-qa.html#L94">L94 疑难解答 →</a><div class="qa-related"><a href="0107-L93-fastapi-persistent-state.html">上一课 L93 · 持久状态</a> · <a href="0109-L95-deployment-authority-audit.html">下一课 L95 · 权限与审计</a> · <a href="0113-phase11-deployment-outline.html">阶段 11 大纲</a> · <a href="../code/phase11-deployment/deployment-lab/README.md">实验说明</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>构建产出制品；晋级验证指定制品、状态与证据；部署另需环境授权。本课实跑本地回归与课堂合同，不代表真实旧检查点兼容或生产准入。</p><ul><li><a href="https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments">GitHub Actions · Managing environments for deployment</a>：环境可以设置保护规则，如限制来源分支／标签、审批后才让作业执行或访问环境密钥；可用功能视方案和仓库可见性而定。平台环境保护不替你核验应用兼容性，本课只阅读参考、不创建环境。</li><li><a href="https://docs.python.org/3.11/library/hashlib.html">Python 3.11 · hashlib</a>：用 SHA-256 标识确定的字节，摘要本身不是签名。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

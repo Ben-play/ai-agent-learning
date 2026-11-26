@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L98 · 事故响应与评估驱动迭代</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十一阶段 · 部署与迭代 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">50</span><span class="lesson-time-unit">分钟</span></span></div><h1>事故响应与评估驱动迭代</h1><p class="subtitle">保留可复现的因果，不保留证据正文；只凭独立回归保留规则</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2>
+<p><a href="0111-L97-rollback-pending-approvals.html">L97</a> 负责停下之后接住审批。恢复服务不是事故的终点：如果不把失效条件写成回归，下次可能仍会引用已经撤权的缓存；如果一律转人工，又会拦住本可回答的问题。本课只用本地合成案例，记录系统行为，不记录人员评分或原始材料。</p>
+<h3>学习目标</h3><ul><li>把一次受控的引文误选缩成结构化事故记录，分开观察、期望、处置和复核条件。</li><li>在版本化开发集与保留集上执行旧规则和一个变更；用独立金标决定是本地保留还是撤回复核。</li><li>独立汇总门禁、灰度、回滚与评估证据，明确哪些生产条件仍未满足。</li></ul></section>
+<section class="section"><h2>1. 先限制影响，再保留最小复现</h2>
+<p>选中引文不等于已经发给用户。本课事故观察点是在输出前：在训练证据库读到一段此前可见的导出政策作为缓存，随后本地 SQLite 的授权记录被撤销；旧规则仍选中缓存。独立枚举当前授权集合显示它已不可见。演练不生成对外答复，更不发送；只记 <code>selected = true</code>、<code>selection_current = false</code>，不把该结果延伸成「已经泄露」。</p>
+<ol><li><strong>处置：</strong>阻止候选晋级、停止扩大作用，不让缓存接管宿主权限；如涉及实际服务，先按授权流程控制影响，再由负责人核对接触范围。</li><li><strong>脱敏复现：</strong><code>local-incident-01</code> 仅允许固定字段：本地编号、夹具版本、案例 ID、结构化观察和预期、处置、规则范围与复核条件。删原引文、请求正文、用户标识、令牌及连接串；不要用散列真人身份替代删除。</li><li><strong>区分两列：</strong>观察是撤权后旧缓存仍被选中；期望是交接人工且不选引文。回归根据预期验收，事故事实仍保留一次失败记录，不能把两者写成同一个 <code>passed</code>。</li></ol>
+<p><code>minimize()</code> 只投影这一个已知合成观察；未实际看见缓存命中、当前不可见、仍错误选中时不产出该事故。它不是通用清洗器，不接收真实工单做自动脱敏。若真实审计另需保存原始事实，应在授权范围内隔离保管，不进入本地测试或返回报告。</p>
+</section>
+<section class="section"><h2>2. 变更只动一个规则，独立读回再判定</h2>
+<p>固定同一组 <code>Case</code>（案例 ID、宿主作用域、精确证据键和读取后的状态转换），每案每臂重新开启同一份 Phase 7 内存库。基线 <code>cached-citation-v1</code> 按首次读到的缓存选引文；候选 <code>exact-current-citation-v2</code> 只改一件事：缓存命中后，按同一租户、主体和精确键重读，当前结果不同就不选引文并交人工。未命中仍返回 <code>needs_evidence</code>，不追加读取；不扩大作用域、不自动换新版、不做保存。</p>
+<p>例如保留集的「政策升版」不是把标签从可见改为不可见：真正写入合成 v2 后，按旧 v1 键重读找不到它，基线却仍选 v1，候选交接。另一条正控使用同一证据键：运维租户看到 30 天，客服租户看到 7 天。若把运维案错送客服，即使查到当前有效的 7 天也必须失败。内部金标独立写下原案的批次、主体、证据键、全文和状态转换；用原作用域另做 <code>authorized()</code> 读回，核实际查找参数、初次证据和选中内容。报告只给固定编号、状态、布尔值、次数和差异码，不输出主体或原文。</p>
+<table><caption>独立版本的全案组；分数是符合预写标签的案例数</caption><thead><tr><th scope="col">夹具版本与任务</th><th scope="col">基线</th><th scope="col">候选</th></tr></thead><tbody>
+<tr><td><code>citation-dev-v1</code>：撤权复现、合法引文、原本就缺证据</td><td>2/3</td><td>3/3</td></tr>
+<tr><td><code>citation-held-out-v1</code>：政策升版、附录撤权、另一租户同键正控、仍获授权的附录正控</td><td>2/4</td><td>4/4</td></tr>
+</tbody></table>
+<p><code>expected</code> 是另外写的 ID 到（终态、是否选中、所选内容是否现行）的映射；<code>observations</code> 保留两个版本实际行为；<code>verdict</code> 对齐 ID 后逐项给出差异。缺项、额外样本与重复 ID 拒绝比较。候选在开发集只增加两次重读，在保留集增加四次；这是本地操作数，不是生产耗时。两个集都提升并达到全通过，选择 <code>retain_local_rule</code>；若只修复开发复现，却把另一租户的授权文档也扣下，选择 <code>revert_and_review</code>。不能根据保留集边看边改再把同一分数称为独立证据；用于调试的保留样本应转入开发集，冻结新的独立保留集。</p>
+<div class="best-practice-point" id="bp-l98"><h3>决策卡：用负例和正控决定是否留下单一变更</h3><p class="bp-scenario"><strong>适用：</strong>已有能脱敏重放的误选条件，且当前宿主视图有可比较的读取边界。<strong>不适用：</strong>不能用一次精确复查宣称不存在检查后再撤权的竞态，也不能代替草稿保存授权。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">只修发生过的一案</span><p>条件写成案例特判，或把所有结果交人工，都会让那一案看似通过。</p></div><div class="bp-right"><span class="bp-compare-label">一项规则，两套独立夹具</span><p>较新版本和不同来源撤权均被识别，同时合法的同键引文和附录还能用。</p></div></div><p class="bp-rationale"><strong>代价：</strong>缓存命中多一次读取，失败转人工会增加排队；替代方案是缓存失效通知或与交付同一授权快照，仍需验证延迟、失效与竞态。</p><ol class="bp-steps"><li>记录为何只改选引文规则，核对两臂独立运行和读回。</li><li>更换租户与证据变化，用正控主动反证「全阻断也算修复」。</li></ol><p class="bp-result"><strong>复核：</strong>授权或文档版本语义变化、合法引文被扣下时重跑；候选不达标就撤回复核，不将旧基线视为可对外放行。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 候选挡住两条例外，但也拦住仍被授权的附录。下一步？</div><div class="quiz-options"><button data-answer="wrong">保留规则，再把正控从保留集移走</button><button data-answer="wrong">保留规则，再把授权定义改成拒绝</button><button data-answer="correct">撤回规则，保留反例并追查阻断范围</button><button data-answer="wrong">撤回规则，直接把旧候选恢复上线</button></div><div class="quiz-explanation">正确拒绝不抵消合法任务的退化。撤回本地变更也没有给旧规则生产许可。</div></div>
+</section>
+<section class="section best-practice-lesson"><h2>3. 跟做：把撤权误选写成脱敏回归</h2>
+<p>在可信仓库根保存代码块为临时脚本，用 Python 3.11+ 运行 <code>python -B -X utf8 文件名.py</code>（不加 <code>-O</code>）。也可运行 <code>code/phase11-deployment/deployment-lab/iteration.py</code> 看报告。本地 Python 与 SQLite 足够，不用网络或凭据。</p>
+<div class="card"><h3>起点：打印观察与预期，而不是复制事故正文</h3><pre><code class="language-python" id="l98-worked-starter">from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from iteration import compare, minimize
+
+report = compare("dev")
+actual = report["baseline"]["observations"][0]
+print(actual, report["expected"][actual["case_id"]], minimize(actual))
+# TODO: 核对基线和候选的分数、未命中不多查、脱敏字段可复现但无正文。</code></pre><p><strong>通过标准：</strong>基线确实选了撤权缓存；候选才返回交接，并未改变缺证据对照。开发集从 2/3 到 3/3，事故记录不包含原正文/凭证。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l98-worked-check">from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from iteration import compare, minimize
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+report = compare("dev")
+assert report["fixture_version"] == "citation-dev-v1"
+assert report["case_ids"] == ["dev-retention-revoked", "dev-retention-current", "dev-miss"]
+a, b = report["baseline"], report["candidate"]
+old, new = a["observations"][0], b["observations"][0]
+assert old["cache_hit"] and old["selected"] and not old["selection_current"]
+assert old["visible_exact"] is False and new["visible_exact"] is False
+assert (new["status"], new["selected"], new["rechecks"]) == ("handoff", False, 1)
+assert report["expected"][old["case_id"]]["status"] == "handoff"
+assert (a["verdict"]["passes"], b["verdict"]["passes"]) == (2, 3)
+assert a["observations"][2] == b["observations"][2]
+assert b["observations"][2]["rechecks"] == 0
+incident = minimize(dict(old, raw_evidence="sample-only", credential="sample-only"))
+assert incident == minimize(old) and "sample-only" not in str(incident)
+assert set(incident) == {"id", "fixture_version", "case_id", "observed", "expected",
+                         "containment", "scope", "review_when"}
+assert incident["observed"] != incident["expected"] and minimize(new) is None
+print("L98 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：保留集拒绝「一律转人工」</h2>
+<p>先看完整保留集，再克隆运维案例，仅替换其租户；保留案型 ID、证据键和金标。另用原案组的报告模拟「全转人工」，检查评分器能否发现合法任务被拦。两种反例都不修改实际规则或金标，也不再跑开发集当作验证。</p>
+<div class="card"><h3>独立起点：只换租户，不换案例 ID</h3><pre><code class="language-python" id="l98-transfer-starter">from dataclasses import replace
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+import iteration as lab
+
+case = next(c for c in lab.HELD_OUT if c.case_id == "hold-operations-current")
+for sample in (case, replace(case, tenant="support")):
+    row = lab.observe(sample, lab.CANDIDATE)
+    print(row["case_id"], row["status"], row["input_matches"], row["lookup_matches"])
+# TODO：用同一金标评分两条观察，再给原案组的全转人工变式评分。</code></pre><p><strong>通过标准：</strong>原保留集基线 2/4、候选 4/4；换错租户仍选中一条引文，但作用域和原文检查失败。全转人工退回 2/4，失败恰好是两个合法正控。报告不显示私有金标。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l98-transfer-check">from dataclasses import replace
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from iteration import CANDIDATE, HELD_OUT, compare, observe, verdict
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+report = compare("held_out")
+ids = ["hold-retention-new-version", "hold-appendix-revoked",
+       "hold-operations-current", "hold-appendix-current"]
+assert report["fixture_version"] == "citation-held-out-v1" and report["case_ids"] == ids
+baseline, candidate = report["baseline"], report["candidate"]
+assert baseline["verdict"]["passes"] == 2
+assert set(baseline["verdict"]["mismatches"]) == set(ids[:2])
+rows = candidate["observations"]
+assert [r["visible_exact"] for r in rows] == [False, False, True, True]
+assert [r["selection_current"] for r in rows] == [None, None, True, True]
+assert [r["rechecks"] for r in rows] == [1, 1, 1, 1]
+assert candidate["verdict"] == {"n": 4, "passes": 4, "mismatches": {}}
+original = HELD_OUT[2]
+for wrong_case in (replace(original, tenant="support"), replace(original, actor="lin")):
+    assert wrong_case.case_id == original.case_id and wrong_case.key == original.key
+    wrong = observe(wrong_case, CANDIDATE)
+    assert verdict([original.case_id], [wrong])["passes"] == 0
+    assert wrong["input_matches"] is wrong["lookup_matches"] is False
+assert "运维导出文件保留 30 天。" not in str(report)
+all_handoff = [dict(r, status="handoff", selected=False, selection_current=None) for r in rows]
+invalid = verdict(ids, all_handoff)
+assert invalid["passes"] == 2 and set(invalid["mismatches"]) == set(ids[2:])
+print("L98 TRANSFER PASSED")</code></pre></details></section>
+<section class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-deployment-handoff"><h2>必做阶段检查点：本地部署交接</h2>
+<p>本检查点约 10 分钟，已计入本课。<code>handoff()</code> 重跑门禁、灰度对照、进程切换和事故回归。L94 与 L96 有相同的 Phase 8 依赖指纹，L96 另验自己的有序案组。实际闭环来自 L97：正在运行的 v2 得到未确认结果→当场停发→等同一进程退出→核两库→旧版打开原目录，接住已记录的决定。纯信号和假设制品不冒充同一次实测。先从实验目录执行 <code>python -B -X utf8 -m unittest -v test_canary test_iteration</code>，再写交接。</p>
+<div class="card"><h3>可见起点：把实证与待验写成两栏</h3><pre><code class="language-python" id="l98-stage-starter">from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from iteration import handoff
+
+report = handoff()
+print(report["checks"])
+rollback = report["rollback"]
+print(rollback["stop"], rollback["schemas"])
+print([(row["event"], row["pid"]) for row in rollback["transition"]])
+# TODO：连起同一候选的最后一步、停发和退出；说明原决定与回执如何保留。</code></pre><p><strong>交接通过：</strong>门禁转红后恢复；有序案组独立匹配；同一候选因结果未确认停发并先退出，随后旧版无需重审，重放两次零写；保留集通过。生产仍阻塞：缺真实 L87 兼容、真实制品和运行环境、生产身份与审批恢复、上线授权和实时 SLO。</p></div>
+<details class="bp-check"><summary>展开本地阶段自检</summary><pre><code class="language-python" id="l98-stage-check">from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from iteration import handoff
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+r = handoff()
+assert r["passed"] and all(r["checks"].values())
+gate, canary, rollback, iteration = (r[k] for k in ("release_gate", "canary", "rollback", "iteration"))
+assert [gate[a]["passed"] for a in ("baseline", "drop_citation", "restored")] == [True, False, True]
+assert gate["drop_citation"]["failures"] == {"retention": ["citations"]}
+normal = canary["normal"]
+assert gate["baseline"]["fingerprint"] == normal["phase8_fingerprint"]
+assert normal["cohort_digest_valid"] and normal["cohort_digest"] == normal["expected_cohort_digest"]
+stop = rollback["stop"]
+assert stop["observed_status"] == "reply_lost" and stop["reasons"] == ["uncertain_outcome"]
+assert stop["decision"] == "STOP_AND_ROLLBACK"
+changes = [row for row in rollback["transition"] if row["role"] in ("candidate", "restored")]
+assert [row["event"] for row in changes] == ["started", "pre_stop_audited", "stop", "exited",
+                                             "preflight_passed", "started", "exited"]
+assert changes[2]["pid"] == changes[3]["pid"] == stop["pid"] != changes[5]["pid"]
+assert len({row["store"] for row in changes}) == 1
+assert rollback["schemas"] == {"business.sqlite": 1, "review.sqlite": 1}
+assert rollback["task_outcomes"] == {"pre-approve": "saved", "pre-deny": "denied",
+                                     "canary-approve": "saved", "canary-deny": "denied"}
+assert rollback["replay_status"] == "replayed" and rollback["same_receipt"] and rollback["replay_inserts"] == 0
+assert iteration["decision"] == "retain_local_rule"
+assert iteration["held_out"]["candidate"]["verdict"]["passes"] == 4
+assert r["production"] == "blocked" and "real_l87_checkpoint_compatibility" in r["outstanding"]
+print("P11 LOCAL HANDOFF PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先给结论、再解释证据与决策边界。</p>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 审计显示选了撤权引文，能说用户一定看到了吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。选中发生在交付前；先限制影响，再单独核对交付链路。</p><p><strong>追问：</strong>如何不复制正文仍能重现？</p><p><strong>答题要点：</strong>留下版本、合成案型、先命中后撤权这一个状态转换、观察与预期。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 规则把撤权案转了人工，开发集通过，能留下吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>仍要用未参与修订的保留集核查同类错误与合法正控。</p><p><strong>追问：</strong>已用保留集调过规则怎么办？</p><p><strong>答题要点：</strong>记录它已成为开发输入；另冻结含独立正反例的新保留集。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 精确重查都通过了，授权还能在交付前撤销吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>能；本地示例只验证一次重查前已发生的变化。</p><p><strong>追问：</strong>需要什么新增证据？</p><p><strong>答题要点：</strong>在真实宿主核对交付与授权快照的时间边界，测试重查后撤权的并发情况。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 本地交接全绿，但真实旧检查点环境仍缺。可以启用灰度吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。全绿只证明这些本地合同和演练，生产准入仍阻塞。</p><p><strong>追问：</strong>应该交付什么，而不再重跑相同脚本？</p><p><strong>答题要点：</strong>列明缺失的旧状态验证、产物和环境身份、负责授权的人与预先约定的线上停止条件。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase11-qa.html#L98">L98 疑难解答 →</a><div class="qa-related"><a href="0111-L97-rollback-pending-approvals.html">上一课 L97 · 回滚接住审批</a> · <a href="0113-phase11-deployment-outline.html">阶段 11 大纲与复盘 →</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>先止损，再保存最少的可复现事实；改一条规则，基线和候选在独立案例上对照。最后把本地证据和生产前置分开交接。</p><ul><li><a href="https://sre.google/workbook/postmortem-culture/">Google SRE Workbook · Postmortem Culture</a>：以影响、原因和后续行动为中心，不责备个人。</li><li><a href="https://docs.python.org/3.11/library/sqlite3.html">Python 3.11 · sqlite3</a>：本地事务和内存库。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

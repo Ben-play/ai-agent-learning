@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>L93 · FastAPI、Docker 与持久状态</title><link rel="stylesheet" href="../assets/style.css"></head><body><main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十一阶段 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div><h1>封装 FastAPI、Docker 与持久状态</h1><p class="subtitle">换掉请求进程，不换掉批准对象和已经提交的事实</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2><p>客服先起草一份导出保留期答复，同事第二天才审批。更新服务期间，原进程已经退出。若草稿和批准都只放在 Python 字典，控制台可以显示「启动成功」，业务却找不到原工单。反过来，拿到 SQLite 文件也不代表能继续：还要知道它承载哪一种状态、哪个任务和哪份证据。先让旧进程和新进程对接同一份合成业务状态，再考虑把同一宿主挂到 HTTP 与容器上。</p><h3>学习目标</h3><ul><li>分开 HTTP 入口、宿主、进程和持久库，分别定位「服务在跑」「依赖就绪」「批准对象还在」。</li><li>验证替换进程和依赖故障时的完整绑定、独立回执和零新增写入。</li><li>读懂课堂 Dockerfile、专用构建上下文和命名卷；明白本机测试与实际部署的不同门槛。</li></ul></section>
+<section class="section"><h2>1. 入口可以换，业务合同不变</h2><p><strong>FastAPI</strong> 是 Python 的 HTTP 应用框架，负责路由和组装响应；<strong>Uvicorn</strong> 运行这个 ASGI 应用，接收连接并把请求交给它。<strong>宿主</strong> 是课程代码，实施身份、证据、审批和效果边界。<code>lifespan</code> 在接请求前初始化应用，在停止服务后可清理资源；它不是持久化。「服务已启动」只说明初始化完成，不表示以后每次依赖调用都成功。HTTP 状态码描述这次交互，<code>pending</code>、<code>denied</code>、<code>saved</code> 才是本项目的业务状态。</p>
+<table><caption>合成客服任务的五个入口（课堂 JSON 形状）</caption><thead><tr><th scope="col">入口</th><th scope="col">示例输入</th><th scope="col">边界与结果</th></tr></thead><tbody>
+<tr><td><code>ask</code></td><td><code>{"topic":"export"}</code></td><td>只读授权引文，例如 <code>EXPORT-POLICY v1 §1</code>「导出文件生成后保留 7 天。」；不是草稿或批准。</td></tr>
+<tr><td><code>stage</code></td><td><code>{"job":"export","topic":"export","revision":1}</code></td><td>用 Phase 5 原业务接口暂存草稿，返回 <code>pending</code> 和完整绑定；此刻未尝试插入已保存草稿。</td></tr>
+<tr><td><code>inspect</code></td><td><code>{"job":"export"}</code></td><td>按宿主主体查看状态和绑定，不返回草稿正文；另一个租户的同名客服查不到。</td></tr>
+<tr><td><code>review</code></td><td><code>{"binding": {...}, "decision":"approve"}</code></td><td>固定课堂审核角色写可信决定，绑定租户、主体、任务、动作、修订、摘要；<code>review_recorded</code> 不等于草稿已保存。</td></tr>
+<tr><td><code>recover</code></td><td><code>{"binding": {...}}</code></td><td>仅受托角色恢复，重读已记录的决定，检查当前证据与业务状态后才提交或重放。恢复请求不携带新的「批准」。</td></tr>
+</tbody></table>
+<p>课堂 HTTP 适配器启动时固定单一合成角色，不接真实认证，不把 JSON 或头部字段当身份，不把测试故障入口暴露为 HTTP。对外只投影状态、绑定、证据、回执和稿件；具体读次数和 INSERT 尝试仅供本地验收。可选说明在<a href="../code/phase11-deployment/deployment-lab/README.md">部署实验</a>，仅用于隔离机器的回环端口，不能用于共享环境。Phase 7 的当前证据在内存 SQLite 重建；持久库中保存的撤权会先应用。旧草稿的 KB-02 文本是历史释义，宿主校验它与新版证据的固定映射，不把它当逐字引文。</p>
+<div class="quiz" data-quiz="q1"><div class="quiz-question">中间进程已写入 <code>review_recorded</code>，随后依赖中断。哪一项可确认草稿是否保存？</div><div class="quiz-options"><button data-answer="wrong">查进程启动是否成功</button><button data-answer="correct">查持久回执与草稿行</button><button data-answer="wrong">查批准响应是否成功</button><button data-answer="wrong">查容器是否仍在服务</button></div><div class="quiz-explanation">批准和草稿提交分别在不同边界；查看独立持久状态才知道业务效果。</div></div></section>
+<section class="section"><h2>2. 从进程替换推导容器要保护什么</h2><p><strong>镜像</strong> 是启动模板，<strong>容器</strong> 是它的运行实例。删掉实例会丢实例的可写层，<strong>命名卷</strong> 仍在。这里把 <code>/state</code> 挂到同一个专用卷，卷里两份 SQLite：<code>business.sqlite</code> 存原版 checkpoint 与已保存行，<code>review.sqlite</code> 记录可信决定和课堂撤权。真实环境不要把带写流量的 SQLite 主文件当完整快照：例如 WAL 下已提交数据可能尚在附属文件。</p>
+<p>课堂镜像只复制明确列出的课程源码，不把配置或数据混进构建上下文。Dockerfile 使用直接执行的启动参数、一个进程和非 root 用户；容器内监听与宿主地址是两层，手册仅发布到 <code>127.0.0.1</code>。每轮先分配新卷，再让本轮替换实例沿用它；重开上一轮卷不是从干净状态起跑。基础镜像标签可改变，依赖范围也不是锁，课堂示例不提供生产构建物的可复现保证。</p>
+<table><caption>本地实际观察：三个顺序子进程、同一个目录（不是 Docker）</caption><thead><tr><th scope="col">阶段</th><th scope="col">宿主结果</th><th scope="col">另开连接的业务证据</th></tr></thead><tbody>
+<tr><td>初始服务：先问答再暂存</td><td>读取 7 天原文；导出草稿绑定为第 1 稿</td><td>一条待批 checkpoint，零审批、零已保存行。</td></tr>
+<tr><td>新进程：依赖不可用</td><td>找回绑定、记录批准；<code>recover</code> 返回 <code>dependency_unavailable</code>（可选 HTTP 映射为 503）</td><td>保留批准和待批记录，零新增 INSERT 或回执；不需要重录。</td></tr>
+<tr><td>再次替换：依赖可用</td><td>同一绑定重新读取两条当前证据并保存</td><td>恰好一次草稿 INSERT，一个与原任务、正文相符的业务回执。</td></tr>
+</tbody></table>
+<p>父进程关闭旧管道并等待退出以后，才启动下一个进程。PID 可帮助排查观察来自哪个进程，但不能代替退出和绑定证据。本实验只在每个进程处理完请求后切换，不声称验证强杀、并发审批、自动重试或跨库原子性。不同持久编排平台可以提供任务续跑或重试，不能代替本地或外部服务的业务去重凭据。</p>
+<div class="best-practice-point"><h3>决策卡：先明确哪个状态必须跨进程保留</h3><p><strong>适用：</strong>有人工等待或业务回执的系统。<strong>不适用：</strong>无状态只读计算不必为每个请求引入持久工作流。</p><div class="bp-compare"><div class="bp-wrong"><strong>误判：</strong>容器重启后入口恢复，于是替已经审批的任务再起一个草稿。</div><div class="bp-right"><strong>选择：</strong>保留业务目录，关旧开新，用原任务绑定对账；依赖不可用先停。</div></div><ol><li>在旧实例留下待批或已批任务，独立读回库。</li><li>换实例后比绑定、审批、INSERT 与持久行；再用空目录做能被识别的反例。</li></ol><p><strong>代价：</strong>额外维护存储路径、状态 schema 和恢复验收；已知只读流程能更简单就保留。<strong>诊断：</strong>启动成功但任务消失，先查挂载和实际数据库路径，不要重新审批一份替代物。</p></div></section>
+<section class="section best-practice-lesson"><h2>3. 跟做：允许批准，但依赖恢复前不允许保存</h2><p>使用同版本可信仓库，从根目录把可见代码块另存为临时 <code>.py</code>，用 Python 3.11+ 执行 <code>python -I -B -X utf8 文件名.py</code>（不用 <code>-O</code>）。标准库子进程不监听端口。真实 FastAPI 和 Docker 操作另见手册，本环境只核对源码，未实跑。</p>
+<pre><code class="language-python" id="l93-worked-starter">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from service_rehearsal import worked
+
+row = worked()
+for step in ("staged", "approval", "blocked", "resumed"):
+    print(step, row[step]["status"], row[step]["inserts"])
+# TODO：核对原绑定、故障窗口的持久批准和全表读回。</code></pre>
+<p><strong>通过标准：</strong>故障窗口保留原批准且没有新增草稿；替换后的原任务仅写一次，回执与全表中的同一行匹配。</p>
+<details><summary>跟做参考与自检</summary><pre><code class="language-python" id="l93-worked-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from service_rehearsal import worked
+
+row = worked()
+binding = row["staged"]["binding"]
+assert row["pending"]["binding"] == binding
+assert row["approval"]["status"] == "review_recorded"
+assert row["blocked"] == {"status": "dependency_unavailable", "receipt": None,
+                          "draft": None, "read_calls": 0, "inserts": []}
+assert row["during"]["checkpoints"] == row["before"]["checkpoints"]
+assert row["during"]["saved"] == row["before"]["saved"] == []
+assert row["during"]["reviews"] == [["support", "mei", "export", "save_local_draft",
+                                     1, binding["digest"], "approve"]]
+reply = row["resumed"]
+assert reply["status"] == "saved" and reply["inserts"] == [reply["receipt"]]
+assert row["after"]["saved"] == [[reply["receipt"], "support", "mei", "export", row["staged"]["draft"]]]
+print("L93 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>独立变式：目录不同与修订不同不应给相同恢复结果</h2><p>新建同步工单，连续暂存两稿（正文不变）。在另一个空目录启动，先判断是服务坏了还是没有历史状态；再回到原目录，用旧稿批准做负对照，最后给第 2 稿记录拒绝。在依赖不可用的新进程里读回拒绝。这个变式不运行导出审批成功案例。</p>
+<pre><code class="language-python" id="l93-transfer-starter">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from service_rehearsal import transfer
+
+row = transfer()
+print(row["missing"]["status"], row["wrong"]["status"], row["denied"]["status"])
+# TODO：读回三次观察各自的绑定；检查没有授权第 1 稿，也没保存第 2 稿。</code></pre>
+<p><strong>通过标准：</strong>空目录仅为找不到原任务；错修订批准不入库；正确拒绝持久化且无正文、回执或 INSERT。</p>
+<details class="bp-check"><summary>独立参考与自检</summary><pre><code class="language-python" id="l93-transfer-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from service_rehearsal import transfer
+
+row = transfer()
+assert row["empty"]["checkpoints"] == []
+assert row["original"]["draft"] == row["revised"]["draft"]
+assert row["original"]["binding"]["digest"] == row["revised"]["binding"]["digest"]
+for key, status in (("missing", "not_available"), ("wrong", "rejected"), ("denied", "denied")):
+    assert row[key] == {"status": status, "receipt": None, "draft": None, "read_calls": 0, "inserts": []}
+review, = row["after"]["reviews"]
+assert review[4:] == [2, row["revised"]["binding"]["digest"], "deny"]
+assert row["after"]["checkpoints"][0][5:] == ["denied", None]
+assert row["after"]["saved"] == []
+print("L93 TRANSFER PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 升级后健康页正常，但原批准找不到，先查什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>查实际挂载及两个库的状态，再比旧绑定；不直接重建任务。</p><p><strong>追问：</strong>绑定在，批准行不在呢？</p><p><strong>答题要点：</strong>批准缺失保持等待；检查两份状态是否同一逻辑时间点。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 把 <code>approved=true</code> 放在恢复请求里能简化接口吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>公开请求的主张不是真实决定；恢复应重读受托角色存下的绑定。</p><p><strong>追问：</strong>正文一样，但草稿修订不同呢？</p><p><strong>答题要点：</strong>决定跟完整绑定走，摘要相同也不能跨修订放行。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 容器使用命名卷，是不是能开两个写副本提高吞吐？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>挂载说明文件可见，不证明单写假设、多库一致性或并发锁纪律。</p><p><strong>追问：</strong>其中一个副本是只读诊断页呢？</p><p><strong>答题要点：</strong>额外验数据库读快照和对外权限，不把副本当独立备份。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 依赖报 503，能按「一定没写」立即重试吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能从客户端码推断业务效果；本练习只能用已知故障点的零 INSERT 与全表证明。</p><p><strong>追问：</strong>如果实际是提交后连接断了？</p><p><strong>答题要点：</strong>核原回执并幂等恢复，不盲目新建操作。闭库文件也不是跨机运行证明。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase11-qa.html#L93">L93 疑难解答 →</a><div class="qa-related"><a href="0100-L87-migration-fallback.html#stage-practice-checkpoint-compatibility">Phase 10 兼容性前置</a> · <a href="0108-L94-deployment-promotion-gate.html">下一课 L94 · 晋级门禁</a> · <a href="0113-phase11-deployment-outline.html">阶段大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>HTTP 接口可替换，批准绑定和持久结果不能被重写。离线进程验收和可选容器演练都不解除 L87 真实兼容性前置。</p><ul><li><a href="https://fastapi.tiangolo.com/advanced/events/">FastAPI Lifespan</a>与<a href="https://fastapi.tiangolo.com/deployment/docker/">容器部署指南</a>：生命周期与启动。</li><li><a href="https://docs.docker.com/engine/storage/volumes/">Docker Volumes</a>与<a href="https://docs.docker.com/build/building/context/#dockerignore-files">构建上下文</a>：数据与构建物分离。</li><li><a href="https://www.sqlite.org/wal.html">SQLite WAL</a>：附属文件与一致性边界。</li></ul></section>
+</main><aside class="toc" id="toc" aria-label="本课目录"></aside><script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script></body></html>

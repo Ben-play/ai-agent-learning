@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>课程范围：</strong>已有 Phase 1–10 的 92 节课（L01–L92，含选修）。Phase 11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>Phase 1–11 共 98 节课（L01–L98，含选修）。起始项目、大纲和参考页不另计课号。课程编写与个人学习进度独立；离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -391,7 +391,7 @@
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-11-body">
     <h3>生产部署与持续迭代</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">6-8 课</span>
+      <span class="phase-meta-item">6 必修 · L93–L98</span>
       <span class="phase-meta-item">2 周</span>
     </div>
     <div class="phase-toggle">▼</div>
@@ -402,15 +402,11 @@
   </div>
   <div class="phase-body" id="phase-11-body">
     <div class="card">
-      <span class="tag tag-deploy">规划 · 验收目标</span><br>
-      <strong>部署：</strong>FastAPI、Docker、CI/CD、限流、灰度与回滚；在 Phase 5/6 持久执行基线上按需求比较 Temporal 或托管服务，不把编排平台自动重试等同外部副作用 exactly-once。托管平台只做地域、权限、恢复与成本对照，不要求全部部署。<br><br>
-      <strong>生产安全加固：</strong>越狱攻击检测、间接注入防御、过度代理限制、合规性、审计日志<br><br>
-      <strong>Agent 迭代方法论（2026 核心循环）：</strong><br>
-      · 评估驱动开发 — 先定义"好"的标准，再优化 Agent<br>
-      · 证据驱动迭代 — 故障转成回归用例；规则记录来源、适用范围与复核条件，经回归验证后可新增、纠正、合并或删除<br>
-      · A/B 测试、数据飞轮、生产事故响应<br><br>
-      <strong>验收目标：</strong>完成 Phase 8 与检查点兼容性必做练习后即可开始，不必学完选修。用带历史待审批工单的数据部署到测试环境，演练灰度失败、回滚与旧任务继续，确认没有重复业务副作用；满足环境门槛后再决定是否生产上线。<br><br>
-      <a href="0046-phase5-to-11-planned-outlines.html#phase-11">查看 Phase 11 逐课草案 →</a>
+      <span class="tag tag-deploy">已编写 · 6 节必修</span><br>
+      <strong>本地项目：</strong>同一合成客服任务练进程替换、晋级门禁、限流与最小审计、灰度停止、回滚审批及事故回归。以权限、原绑定、持久行和回执验收，不把自动重试当作任何外部操作恰好一次。<br><br>
+      <strong>验证边界：</strong>离线案例不依赖真实模型或容器。FastAPI 与 Docker 另有可选同机演练，本环境未实跑。实际部署须通过 Phase 8 工程基线与 L87 真实兼容性，仍待验证；不要求先完成选修。<br><br>
+      <a href="0113-phase11-deployment-outline.html">查看 Phase 11 必修课程 →</a><br>
+      <a href="../best-practices/phase11-deployment-practices.html">阶段实践复盘 →</a> · <a href="../qa/phase11-qa.html">阶段答疑 →</a>
     </div>
   </div>
 </div>
@@ -418,7 +414,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；工具是否实跑以各实验说明为准。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>

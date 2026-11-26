@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L96 · 灰度指标与停止条件</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十一阶段 · 部署与迭代 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div><h1>灰度指标与停止条件</h1><p class="subtitle">完整样本用来比较，硬门失败不等下一条</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2>
+<p><a href="0109-L95-deployment-authority-audit.html">L95</a> 把动作约束在宿主权限和最小审计之内。现在假设新版看起来仍能答对问题，但一条拒绝的草稿开始保存，或者已批任务在丢回复后找不到原回执。平均延迟再漂亮，也不能再送下一项工作。灰度的价值不在于先投少量请求，而在于事先约定<strong>看什么、何时停、停后交给谁</strong>。</p>
+<h3>学习目标</h3><ul><li>用同一冻结案组和独立金标逐项对照两个版本，分清任务成功、状态错误、尾延迟与审批恢复。</li><li>在权限或恢复探针失败时立即给出停灰度信号；样本不足但没有硬信号时只等，不作晋级结论。</li></ul></section>
+<section class="section"><h2>1. 同一案组，不拿旧版输出充当正确答案</h2>
+<p>在 <code>canary.py</code>，<code>Prepared(case_id, path)</code> 是固定只读请求形状；排成两个窗口，每窗口三个请求，按请求将同一个输入分别交给 v1 和候选。两个版本各自调用 Phase 8 的 <code>gate.exercise()</code>，每次从同一受控证据和空的本地草稿库起跑，而不是共享已经写过的库。版本是教学替身的标签；没有两套部署、没有真实流量。正常候选复用原路径；可单独替换一个投影行为或一个度量。</p>
+<p>分发前，对版本和双层窗口清单计算 SHA-256：JSON 对象的键固定排序，窗口和案型数组保留顺序与边界。把实算的 <code>cohort_digest</code> 和预先钉住的 <code>expected_cohort_digest</code> 比较，不从待验证清单重算期望值。即使两臂拿到相同的案组，换路径、调顺序或搬窗口也会 <code>HOLD</code>，两臂都不开始。<code>phase8_fingerprint</code> 记录共享依赖，不包含这份 L96 的运行顺序，不能拿它当作本课验收。</p>
+<table><caption>冻结运行顺序与手写业务标签摘要；两臂均须逐条满足</caption><thead><tr><th scope="col">窗口／案例 ID</th><th scope="col">应见终态／独立回读</th><th scope="col">模拟毫秒</th></tr></thead><tbody>
+<tr><td>1 · <code>review-denied</code></td><td><code>denied</code>，拒绝检查点、无保存行；附带未批准调度探针</td><td>30</td></tr>
+<tr><td>1 · <code>policy-retention</code></td><td><code>answered</code>，7 天及精确来源键、版号、定位和原文</td><td>45</td></tr>
+<tr><td>1 · <code>no-evidence</code></td><td><code>needs_evidence</code>，无引文或草稿</td><td>24</td></tr>
+<tr><td>2 · <code>lost-reply</code></td><td><code>replayed</code>，先前有一条保存行；恢复返回原回执且零新增写入</td><td>100</td></tr>
+<tr><td>2 · <code>review-pending</code></td><td><code>pending</code>，有待批检查点、没有保存行</td><td>12</td></tr>
+<tr><td>2 · <code>draft-committed</code></td><td><code>saved</code>，一次批准分发、一次写尝试、一条保存行</td><td>60</td></tr>
+</tbody></table>
+<p>标签按 ID 单独写，比较返回、位置、证据原文、检查点以及分发／恢复／写尝试／保存行／重放写入。对丢回复案，先真的提交，再在重开数据库后恢复；检查点回执、重放结果和独立只读查询得到的全表记录须一致。对拒绝案，除正常拒绝流程外，在另一个临时库用宿主接收未获批准的普通草稿建议，验证 <code>approval_required</code>、检查点仍待批、零分发、零写、零行、无回执。探针不计作额外流量，也不计进请求的模拟时长。返回没有报错不能证明无写入；两臂犯同一种错误也不会通过金标。</p>
+</section>
+<section class="section"><h2>2. 固定停止顺序，再读面板</h2>
+<ol><li><strong>硬停止：</strong>任一臂的权限、待批检查点或恢复探针缺字段、不一致或不可读，就输出 <code>STOP_AND_ROLLBACK</code>，不开始下一试次，即使另一臂尚未开始该请求。多出的保存效果、应在的待批检查点不见了，或重放结果对不上，都是硬信号。缺少时长不能盖掉它们。</li><li><strong>无硬信号但记录不全：</strong>两臂都须完成六案并取得每案计时。只完成第一窗口，或六案已跑但仍有一案未计时，都保持 <code>HOLD</code>，不扩大。不拿坏掉的对照组为候选背书。</li><li><strong>够样本再判指标：</strong>候选不得降低合同成功率或增加状态错误；p95 不得超过 110 模拟毫秒，也不能比 v1 多于 10 毫秒。超过阈值标记停止与回滚交接；否则只返回 <code>CONTINUE_LOCAL</code>。这里不执行回滚，由 <a href="0111-L97-rollback-pending-approvals.html">L97</a> 单独验证接续。</li></ol>
+<p>成功率的分母是全案组：正确地返回缺证据或拒绝也是一次合同成功，不是正确回答的数量。状态错误指返回终态不符或试次异常；答复状态正确但漏引文仍使合同失败，即使错误数是 0。对每个实际进入的事件按固定表记时，例如丢回复路径的读取、起草、批准和恢复分别计 24、12、24 和 40，合计 100。排序取从 1 起的第 <code>ceil(0.95 × n)</code> 项，不插值；六案取最大值。失败案仍进分母，已记录时间的失败案也不能被丢掉。事件列表为空或包含未知事件时，整案时长记为 <code>None</code>，不当作 0 毫秒，也不产生部分样本的 p95。仍可独立核对业务效果及硬探针。</p>
+<table><caption>本地运行摘录；提前停止时只显示已运行部分，不能用于全量比较</caption><thead><tr><th scope="col">候选</th><th scope="col">合同成功／状态错误／p95</th><th scope="col">结果</th></tr></thead><tbody>
+<tr><td><code>v2</code>（v1 完整对照亦同）</td><td>6/6 · 0 · 100 ms</td><td>继续本地演练</td></tr>
+<tr><td><code>v2-slow</code></td><td>6/6 · 0 · 124 ms</td><td>缺证据案加 100 模拟毫秒，超过两条线</td></tr>
+<tr><td><code>v2-uncited</code></td><td>5/6 · 0 · 100 ms</td><td>真实本地答复仍为 <code>answered</code>，但候选投影丢引文，成功率下降</td></tr>
+<tr><td>纯权限失败／恢复失败信号</td><td>1/1 · 0 · 30 ms／4/4 · 0 · 100 ms</td><td>各在第一个／第四个请求后立即停</td></tr>
+<tr><td>缺失待批检查点（见变式）</td><td>4/4 · 0 · 100 ms</td><td>对照读回第 5 案即停，候选没有收到它</td></tr>
+<tr><td>计时缺测（见变式）</td><td>6/6 · 0 · 不可用</td><td>六案均跑完但只计时五案，保持等待</td></tr>
+</tbody></table>
+<p><code>fault_fixture</code> 是单独刺激决策层的标记，<code>rows[*].hard_signals</code> 才是真实本地探针的观测。注入时底层仍正常且逐条回读，不能把这两次标记当成真实绕过权限或真实丢失回执。真实 p95 还受队列、并发和依赖影响，合成结果不能证明线上 SLO。</p>
+<div class="best-practice-point" id="bp-l96"><h3>决策卡：硬信号抢占，指标等完整案组</h3><p class="bp-scenario"><strong>适用：</strong>副作用可核对，有代表性固定请求且能停止下一批。<strong>不适用：</strong>无法确认在途动作或没有可验证回退路径时，不能靠低比例继续扩大。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">等总体成功率再停</span><p>一笔未批准的保存可能被大量成功问答掩盖。</p></div><div class="bp-right"><span class="bp-compare-label">先查授权与恢复，再算全样本</span><p>收到硬信号就停止送入；纯性能差则用同批对照解释。</p></div></div><p class="bp-rationale"><strong>代价：</strong>硬门误报也会中断演练，需要对账；替代做法是先只读影子比对或停收排空，但只读不能证明写入恢复。</p><ol class="bp-steps"><li>复跑正常臂与慢臂，数齐六件并重新排序。</li><li>在没有完整案组时注入硬信号，查下一请求确实未运行。</li></ol><p class="bp-result"><strong>诊断：</strong>状态全绿但金标失败，查缺项；硬停后还有下一试次，查探针检查点是否放在整批之后。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 恢复探针失败时，两臂只有四条观测且 p95 相同。如何处理？</div><div class="quiz-options"><button data-answer="wrong">先等两臂样本满额，再核恢复结果</button><button data-answer="correct">先停下一项试次，再按原回执对账</button><button data-answer="wrong">先把样本排除掉，再计算错误占比</button><button data-answer="wrong">先以尾延迟放行，再补查审批状态</button></div><div class="quiz-explanation">恢复不一致触发硬停止，不是可以被样本量或延迟抵消的统计波动。</div></div>
+</section>
+<section class="section best-practice-lesson"><h2>3. 跟做：在两臂分别复核读回结果</h2>
+<p>在可信课程仓库根，用 Python 3.11+ 把起始代码保存到临时脚本并运行 <code>python -B -X utf8 文件名.py</code>（不加 <code>-O</code>）；也可运行 <code>code/phase11-deployment/deployment-lab/canary.py</code> 看完整对照。无需依赖包、服务或凭据。</p>
+<div class="card"><h3>起点：找出审批与恢复读回</h3><pre><code class="language-python" id="l96-worked-starter">from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from canary import run
+
+report = run()
+for arm in ("control", "candidate"):
+    rows = report[arm]["rows"]
+    print(arm, [(r["case_id"], r["checkpoint"], r["saved_rows"], r["simulated_ms"]) for r in rows])
+print(report["cohort_digest_valid"], report["cohort_digest"], report["expected_cohort_digest"])
+slow = run("v2-slow")
+print(slow["decision"], slow["reasons"], slow["candidate"]["p95_ms"])
+# TODO: 按表核对案组顺序、排序后的时长以及权限和恢复读回。</code></pre><p><strong>通过标准：</strong>清单指纹相符，两臂独立取得全部六条。拒绝案无保存，待批案检查点仍在，丢回复仅保留原行，尾时都是 100；慢臂仍六次通过，却必须因 124 毫秒超线而停。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l96-worked-check">from pathlib import Path
+import sys
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from canary import run
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+normal, slow = run(), run("v2-slow")
+assert normal["decision"] == "CONTINUE_LOCAL" and normal["complete"]
+for report in (normal, slow):
+    assert report["production"] == "blocked" and report["cohort_digest_valid"]
+    assert report["cohort_digest"] == report["expected_cohort_digest"]
+assert normal["cohort_digest"] == "5b3d7409f65c60fea1a79e7da62d259a1f6396f34ae71c682c3e215538062076"
+for arm in ("control", "candidate"):
+    summary = normal[arm]
+    rows = summary["rows"]
+    assert [row["case_id"] for row in rows] == ["review-denied", "policy-retention",
+        "no-evidence", "lost-reply", "review-pending", "draft-committed"]
+    assert (summary["successes"], summary["errors"], summary["n"]) == (6, 0, 6)
+    assert sorted(row["simulated_ms"] for row in rows) == [12, 24, 30, 45, 60, 100]
+    assert summary["p95_ms"] == 100
+    probe = rows[0]["approval_probe"]
+    assert probe == {"reason": "approval_required", "checkpoint": "pending",
+                     "dispatches": 0, "writes": 0, "rows": 0, "receipt": False}
+    assert (rows[0]["checkpoint"], rows[0]["saved_rows"]) == ("denied", 0)
+    replay = rows[3]
+    assert (replay["status"], replay["saved_rows"], replay["replay_writes"],
+            replay["same_receipt"]) == ("replayed", 1, 0, True)
+    assert (rows[4]["checkpoint"], rows[4]["saved_rows"]) == ("pending", 0)
+assert slow["decision"] == "STOP_AND_ROLLBACK" and slow["complete"]
+candidate = slow["candidate"]
+assert (candidate["successes"], candidate["errors"], candidate["p95_ms"]) == (6, 0, 124)
+assert slow["reasons"] == ["p95_absolute", "p95_regression"]
+print("L96 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：区分缺测、探针失败与纯信号</h2>
+<p>分别在真实本地试次之后改一项观测：抹去缺证据案的事件记录，或把待批案的检查点投影为 <code>None</code>。这是观测边界的故障注入，不是删除实际数据库行。再比较纯恢复信号：这次不改任何观测，只刺激决策函数。先预判两臂最后能走到哪个案型，再核对合同和计时分母。</p>
+<div class="card"><h3>独立起点：逐组列出停点</h3><pre><code class="language-python" id="l96-transfer-starter">from dataclasses import replace
+from pathlib import Path
+import sys
+from unittest.mock import patch
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+import canary
+
+exercise = canary.GATE["exercise"]
+for case_id, change in (("no-evidence", {"events": ()}),
+                        ("review-pending", {"checkpoint": None})):
+    def changed(case, **kwargs):
+        row = exercise(case, **kwargs)
+        return replace(row, **change) if case["id"] == case_id else row
+
+    with patch.dict(canary.GATE, {"exercise": changed}):
+        report = canary.run()
+    print(case_id, report["decision"], report["reasons"])
+    for arm in ("control", "candidate"):
+        side = report[arm]
+        print(arm, side["rows"][-1]["case_id"], side["timed"], side["n"])
+print(canary.decide(None, None, complete=False, hard_signals=("recovery_probe_failed",)))
+# TODO: 写断言区分两种运行时变式与不执行试次的纯信号。</code></pre><p><strong>通过标准：</strong>缺测时两臂跑满但各仅有五条计时，因此等待；缺检查点时对照停在第 5 案，候选仍在第 4 案。纯信号即使没有指标也判停，但不证明底层探针失败。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l96-transfer-check">from dataclasses import replace
+from pathlib import Path
+import sys
+from unittest.mock import patch
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+import canary
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+exercise = canary.GATE["exercise"]
+def replay_with(case_id, **change):
+    def changed(case, **kwargs):
+        row = exercise(case, **kwargs)
+        return replace(row, **change) if case["id"] == case_id else row
+    with patch.dict(canary.GATE, {"exercise": changed}):
+        return canary.run()
+
+untimed = replay_with("no-evidence", events=())
+assert untimed["cohort_digest_valid"] and not untimed["complete"]
+assert (untimed["decision"], untimed["reasons"]) == ("HOLD", ["incomplete_cohort"])
+for arm in ("control", "candidate"):
+    side = untimed[arm]
+    assert (side["successes"], side["n"], side["timed"], side["p95_ms"]) == (6, 6, 5, None)
+    row = side["rows"][2]
+    assert row["case_id"] == "no-evidence" and row["simulated_ms"] is None
+    assert not row["hard_signals"]
+
+pending = replay_with("review-pending", checkpoint=None)
+reason = "pending_probe_failed"
+assert pending["decision"] == "STOP_AND_ROLLBACK" and pending["fault_fixture"] == []
+assert pending["reasons"] == [reason]
+assert (pending["control"]["n"], pending["candidate"]["n"]) == (5, 4)
+row = pending["control"]["rows"][-1]
+assert (row["case_id"], row["status"], row["checkpoint"]) == ("review-pending", "pending", None)
+assert row["hard_signals"] == [reason]
+assert pending["candidate"]["rows"][-1]["case_id"] == "lost-reply"
+
+signal = "recovery_probe_failed"
+assert canary.decide(None, None, complete=False, hard_signals=(signal,)) == ("STOP_AND_ROLLBACK", [signal])
+assert canary.nearest_rank_p95([1000, *range(1, 20)]) == 19
+print("L96 TRANSFER PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先给结论，再说明什么观测会推翻它。</p>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> v1 和 v2 都漏了同一条引文，两个版本还可晋级吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。两臂相等不表示都正确；对照不达标应暂停。</p><p><strong>追问：</strong>怎么证明不是两个版本碰巧收到不同输入？</p><p><strong>答题要点：</strong>核对双臂案组顺序、相同的准备输入指纹以及独立金标。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 缺证据案没查到内容，还应计入 p95 吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>是。一次完成的请求耗时，和它有没有可答内容是两个维度。</p><p><strong>追问：</strong>回读失败导致时长未知，可以填零吗？</p><p><strong>答题要点：</strong>不能，保留试次并报告尾时不可用，硬门也不能被它覆盖。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 批准恢复显示成功，为什么还要看全表？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>成功状态不能证明原回执与原行一致，也看不出是否多写。</p><p><strong>追问：</strong>同一回执串是否就够？</p><p><strong>答题要点：</strong>还要匹配归属、稿件、检查点与保存行，并核对重放零写尝试。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 纯故障信号让灰度立即停，能说权限缺陷已实测复现吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。实测的是开关收到信号后的行为，底层仍走正常训练场景。</p><p><strong>追问：</strong>上线前还缺什么？</p><p><strong>答题要点：</strong>验证宿主实际授权、回读和监测链路，再由有权人员确认线上停发与回滚目标。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase11-qa.html#L96">L96 疑难解答 →</a><div class="qa-related"><a href="0109-L95-deployment-authority-audit.html">上一课 L95 · 权限与最小化审计</a> · <a href="0111-L97-rollback-pending-approvals.html">下一课 L97 · 回滚接住审批</a> · <a href="0113-phase11-deployment-outline.html">阶段 11 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>两臂使用同一批输入而各自留痕，合同和硬探针各自判定。样本不够先等；权限或恢复出问题立即停；本地结论不等于生产流量许可。</p><ul><li><a href="https://sre.google/workbook/canarying-releases/">Google SRE Workbook · Canarying Releases</a>：灰度前约定信号、对照和影响范围。</li><li><a href="https://www.sqlite.org/uri.html">SQLite · URI Filenames</a>：只读连接用于独立核验持久状态。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

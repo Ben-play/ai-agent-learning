@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L97 · 回滚必须接住已存在的审批</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十一阶段 · 部署与迭代 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div><h1>回滚必须接住已存在的审批</h1><p class="subtitle">换回旧进程，不换回旧数据；先核实已提交的事实，再决定是否返回结果。</p></div></div>
+
+<section class="section"><h2>为什么这课重要？</h2>
+<p>灰度停发时，已经受理的任务还在。发布前与灰度期间各留下一张已批准、一张已拒绝但尚未执行的草稿；另有一张还没人评审，一张已提交却没收到回执。恢复发布前的备份会丢掉灰度期间已经落库的事实。</p>
+<p>上一课的纯信号样本演示判停规则，但不证明实际交接。本课让仍在运行的 v2 提交草稿、故意丢掉结果；用同一条响应触发本地停发，再验证旧程序能否接手当前两库。</p>
+<h3>学习目标</h3><ul><li>按 <code>v1 → v2 → v1</code> 实际更换进程，继续使用同一对业务与审批 SQLite 文件。</li><li>按原绑定处理发布前及灰度期间的待审批，区分未批、批准和拒绝。</li><li>拿独立查到的原回执对比重放；撤权、坏回执和未知 schema 都不能靠重试解决。</li></ul>
+</section>
+
+<section class="section"><h2>1. 接手前先核对状态和写入者</h2>
+<ol><li><strong>停止灰度并交接写入：</strong>控制端收到 <code>reply_lost</code> 时不知道是否提交。它把 <code>uncertain_outcome</code> 交给 <code>canary.decide()</code>，判为 <code>STOP_AND_ROLLBACK</code>，不再向该 PID 分发。关管道并等待正常退出，通过预检才在同目录启动 v1。线上还要停分流、处置在途请求；本地不验证切流与并发。</li><li><strong>保留已提交事实：</strong>两个版本都认 <code>business.sqlite</code> 和 <code>review.sqlite</code> 的 <code>PRAGMA user_version=1</code>。v2 只增加非必需的 <code>candidate_meta</code> 表，v1 不依赖也不删除它。应用版本号不是状态版本号；版本相同也不替代兼容测试。</li><li><strong>沿用原决定：</strong>审批绑定暂存时的租户、主体、任务、动作、修订、摘要。可信评审夹具为 <code>support/mei</code> 落库批准或拒绝；记录决定不等于执行草稿，检查点仍是 <code>pending</code>。v1 不再评审，只按原绑定恢复；批准仍须核对当前来源。</li><li><strong>独立观察：</strong>触发丢回复前、v2 退出后和恢复结束后，用 <code>audit()</code> 独立读回所有主体的检查点、审批、保存行、撤权及附加记录，并实读两个 schema 版本。<code>inserts</code> 计草稿 INSERT 尝试，不计审批或检查点更新；<code>read_calls</code> 只计取证，不计 SQLite 查表。</li></ol>
+<table><caption>同一份存储上，旧进程必须分清这四种结果</caption><thead><tr><th scope="col">原绑定与事实</th><th scope="col">恢复结果</th><th scope="col">草稿 INSERT 尝试</th></tr></thead><tbody>
+<tr><th scope="row">没有匹配的决定</th><td><code>pending</code>，不返回稿件</td><td>0</td></tr>
+<tr><th scope="row">匹配批准，来源仍可读</th><td><code>saved</code>，返回原稿和回执</td><td>1</td></tr>
+<tr><th scope="row">匹配拒绝</th><td><code>denied</code>，无稿件、无回执</td><td>0</td></tr>
+<tr><th scope="row">已提交但丢回复，原回执与权限有效</th><td><code>replayed</code>，只返回已有回执和原稿</td><td>0</td></tr>
+</tbody></table>
+<div class="best-practice-point" id="bp-l97"><h3>决策卡：切回旧程序，还是停写对账？</h3>
+<p class="bp-scenario"><strong>可以切回：</strong>同一候选已停发并正常退出；预检读到两库均兼容，原绑定、审批和回执相符。<strong>不得接手：</strong>没有判停、退出失败、版本不匹配，或已保存标记与回执矛盾。保留当前状态，必要时交给值班与数据负责人对账。</p>
+<div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">用旧快照覆盖当前库</span><p>会抹去灰度期间接单和已提交的草稿；随后重试还可能重复产生效果。</p></div><div class="bp-right"><span class="bp-compare-label">保留当前持久记录，替换写入者</span><p>在已验证兼容时继续未完任务；对已提交动作核对原回执，不再插入。</p></div></div>
+<p class="bp-rationale"><strong>代价：</strong>要保留可启动的旧构建、兼容状态与对账能力。确实不兼容时，隔离写流量，评估前向修复或另行验证迁移；撤销业务效果需要独立授权与补偿回执，不等同于应用回滚。</p>
+<ol class="bp-steps"><li>停候选并等待退出，记录当前保存行及两库版本；不从旧备份覆盖。</li><li>确认旧版能接手原绑定；对已提交项比较原回执和实际写入尝试。</li></ol>
+<p class="bp-result"><strong>诊断：</strong>启动被拒绝就不要接单；回执矛盾就停止该任务并对账，不以重试或补写消除警报。</p>
+</div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 待审任务编号没变，旧程序却不认识当前库的版本。交接时先做什么？</div><div class="quiz-options"><button data-answer="wrong">保留任务编号，调低状态版本</button><button data-answer="wrong">保留任务编号，覆盖当前状态</button><button data-answer="correct">保留当前状态，暂停写入接手</button><button data-answer="wrong">保留当前状态，放行旧版写入</button></div><div class="quiz-explanation">任务编号相同不代表状态布局兼容。先保全当前库与审批证据，再评估修复或迁移，不改版本号强行开机。</div></div>
+</section>
+
+<section class="section best-practice-lesson"><h2>2. 跟做：切回旧版，接住两批任务</h2>
+<p>以下命令和代码块都从可信仓库根目录运行，使用 Python 3.11+。跟做命令：<code>python -B -X utf8 code/phase11-deployment/deployment-lab/rollback.py worked</code>。也可将每个 Python 代码块另存为临时脚本，从仓库根运行 <code>python -I -B -X utf8 文件名.py</code>（不要加 <code>-O</code>）。子进程走本地管道，状态在自动清理的临时目录；不用安装依赖、启动服务或接触真实工单。</p>
+<p>v1 为 <code>pre-approve</code> 和 <code>pre-deny</code> 暂存草稿并落库决定；v2 为 <code>canary-approve</code>、<code>canary-deny</code> 做同样的事，另留一条未决定的 <code>sync</code>。在 v2 调用 <code>fixture_lost</code> 之前，独立快照 <code>pre_stop</code> 应看到五条决定（含 <code>lost</code> 的批准）、六条待执行检查点、零条已保存草稿。判停后 v2 不再接单，退出后的预检才确认 <code>lost</code> 已保存。新 v1 沿用原决定恢复任务，并以同一绑定重放 <code>lost</code> 两次。</p>
+<div class="card"><h3>可运行起点：看候选停发与两批任务去向</h3>
+<pre data-lang="Python"><code class="language-python" id="l97-worked-starter">from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from rollback import worked
+
+report = worked()
+print(report["stop"])
+for event in report["lifecycle"]:
+    if event["event"] != "dispatch":
+        print(event["role"], event["pid"], event["event"])
+for job, task in report["tasks"].items():
+    print(job, task["outcome"]["status"], len(task["outcome"]["inserts"]))
+print("sync", report["undecided"]["outcome"]["status"])
+# TODO：核对停发链和两库版本；用退出后查到的原回执对比两次重放。</code></pre>
+<p><strong>通过标准：</strong>同一 v2 PID 判停、退出，预检后才开 v1。两批各一批准、一拒绝，未决定任务仍待批。交接时全表 1 条保存行，恢复后 3 条；两次重放都返回原回执，均无新 INSERT。</p></div>
+<details class="bp-check"><summary>展开跟做参考与自检</summary>
+<pre data-lang="Python"><code class="language-python" id="l97-worked-check">from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from rollback import worked
+
+report = worked()
+candidate = report["pids"]["candidate"]
+assert len(set(report["pids"].values())) == 3
+stop, events = report["stop"], report["lifecycle"]
+assert (stop["pid"], stop["decision"], stop["reasons"]) == (candidate, "STOP_AND_ROLLBACK", ["uncertain_outcome"])
+stop_at, = [i for i, event in enumerate(events) if event["event"] == "stop"]
+fault, _, closed, preflight, opened = events[stop_at - 1:stop_at + 4]
+assert (fault["pid"], fault["operation"], fault["status"]) == (candidate, "fixture_lost", "reply_lost")
+assert [(event["event"], event["pid"]) for event in (closed, preflight, opened)] == [
+    ("exited", candidate), ("preflight_passed", candidate), ("started", report["pids"]["restored"])]
+assert len({event["store"] for event in events}) == 1
+assert all(event["operation"] == "recover" for event in events[stop_at + 4:] if event["event"] == "dispatch")
+
+before, pre_stop, handoff, after = (report[key] for key in ("before", "pre_stop", "handoff", "after"))
+assert all(snap["schemas"] == {"business.sqlite": 1, "review.sqlite": 1} for snap in (before, pre_stop, handoff, after))
+assert {row[2] for row in before["reviews"]} == {"pre-approve", "pre-deny"}
+assert pre_stop["saved"] == [] and pre_stop["reviews"] == handoff["reviews"] == after["reviews"]
+assert len(pre_stop["checkpoints"]) == 6 and all(row[-2:] == ["pending", None] for row in pre_stop["checkpoints"])
+assert handoff["extras"] == after["extras"] == [["canary-approve", 1], ["canary-deny", 1], ["lost", 1], ["sync", 1]]
+for job, task in report["tasks"].items():
+    binding, outcome = task["binding"], task["outcome"]
+    decision = "approve" if job.endswith("-approve") else "deny"
+    fields = ("tenant", "actor", "job", "action", "revision", "digest")
+    assert [binding[key] for key in fields] + [decision] in pre_stop["reviews"]
+    terminal, = [row for row in after["checkpoints"] if row[2] == job]
+    if decision == "approve":
+        row, = [row for row in after["saved"] if row[3] == job]
+        assert terminal[-2:] == ["saved", row[0]]
+        assert (outcome["status"], outcome["inserts"], outcome["draft"]) == ("saved", [row[0]], row[-1])
+    else:
+        assert terminal[-2:] == ["denied", None]
+        assert (outcome["status"], outcome["inserts"], outcome["receipt"], outcome["draft"]) == ("denied", [], None, None)
+assert report["undecided"]["outcome"]["status"] == "pending"
+assert [row for row in handoff["checkpoints"] if row[2] == "sync"] == [
+    row for row in after["checkpoints"] if row[2] == "sync" and row[-2:] == ["pending", None]]
+assert not any(row[2] == "sync" for row in after["reviews"])
+original, = handoff["saved"]
+assert {row[3] for row in after["saved"]} == {"pre-approve", "canary-approve", "lost"}
+assert original in after["saved"]
+lost = report["lost"]
+for reply in (lost["replay"], lost["repeated"]):
+    assert (reply["status"], reply["receipt"], reply["draft"], reply["inserts"]) == ("replayed", original[0], original[-1], [])
+print("L97 ACCEPTED")</code></pre></details>
+</section>
+
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>3. 独立变式：能开机，不代表能放行</h2>
+<p>运行 <code>python -B -X utf8 code/phase11-deployment/deployment-lab/rollback.py transfer</code>。五个案例分别从全新状态开始，不继承跟做的数据。先写出预期拒绝点，再查返回、实际写入尝试和所有主体的持久行。</p>
+<dl><dt><strong>错主体与跨租户窥读。</strong></dt><dd>改原绑定的 actor，可信评审恢复仍得 <code>rejected</code>。同名的 <code>operations/mei</code> 不是同一主体：查询没有任务信息，且不能通过评审入口恢复。</dd>
+<dt><strong>旧修订批准。</strong></dt><dd>任务、主题、原文与摘要完全相同，只把修订号从 1 升到 2。用第 1 稿批准绑定恢复得 <code>rejected</code>；用当前绑定仍为 <code>pending</code>，说明相同摘要也不能跨修订借用批准。</dd>
+<dt><strong>已提交后撤权。</strong></dt><dd>先确认原响应可重放，再撤销当前同步来源权限。换回 v1 后不返回回执或稿件，原保存记录仍在；<code>replay_withheld</code> 不是撤销提交。</dd>
+<dt><strong>回执正文损坏。</strong></dt><dd>只在所有写入者退出后的临时副本上改一条已保存回执的正文，不改检查点或审批。旧版返回 <code>inconsistent</code>，原始库不动，副本也不尝试补写。</dd>
+<dt><strong>未知 schema。</strong></dt><dd>在另一份关闭后复制的临时库把业务文件的 <code>PRAGMA user_version</code> 改成 2。真实宿主在接单前拒绝启动，两个文件的摘要和行都不变。这是未知版本实验，不是 v2 真正迁移了业务结构，也不证明任意真实迁移可逆。</dd></dl>
+<div class="card"><h3>可运行起点：区分恢复拒绝和启动拒绝</h3>
+<pre data-lang="Python"><code class="language-python" id="l97-transfer-starter">from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from rollback import transfer
+
+cases = transfer()
+for name in ("wrong_actor", "stale", "revoked", "corrupt_receipt"):
+    reply = cases[name]["outcome"]
+    print(name, reply["status"], len(reply["inserts"]), reply["receipt"] is None)
+print("startup", cases["incompatible"]["status"])
+# TODO：对比拒绝前后全表和文件摘要，指出哪些情况应当停止对账。</code></pre></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary>
+<pre data-lang="Python"><code class="language-python" id="l97-transfer-check">from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from rollback import transfer
+
+cases = transfer()
+for name, status in (("wrong_actor", "rejected"), ("stale", "rejected"),
+                     ("revoked", "replay_withheld"), ("corrupt_receipt", "inconsistent")):
+    case = cases[name]
+    reply = case["outcome"]
+    assert (reply["status"], reply["draft"], reply["receipt"], reply["inserts"]) == (status, None, None, [])
+    assert reply["read_calls"] == (1 if name == "revoked" else 0)
+    assert case["before"] == case["after"]
+wrong = cases["wrong_actor"]
+assert wrong["inspect"]["status"] == "not_available" and "binding" not in wrong["inspect"]
+assert wrong["cross_scope"]["status"] == "forbidden"
+stale = cases["stale"]
+assert stale["old_binding"]["revision"] == 1 and stale["binding"] == dict(stale["old_binding"], revision=2)
+old, = stale["original"]["checkpoints"]
+current, = stale["before"]["checkpoints"]
+assert current == [*old[:3], 2, *old[4:]] and current[-2:] == ["pending", None]
+assert stale["original"]["reviews"] == stale["after"]["reviews"] and stale["after"]["saved"] == []
+assert stale["current"]["status"] == "pending" and stale["current"]["inserts"] == []
+revoked = cases["revoked"]
+assert revoked["control"]["receipt"] == revoked["after"]["saved"][0][0]
+assert revoked["after"]["revocations"] == [["support", "mei", "SYNC-POLICY"]]
+corrupt = cases["corrupt_receipt"]
+assert corrupt["before"]["checkpoints"] == corrupt["original"]["checkpoints"]
+assert corrupt["before"]["saved"] != corrupt["original"]["saved"]
+unknown = cases["incompatible"]
+assert unknown["status"] == "incompatible_schema"
+assert unknown["before"]["schemas"] == {"business.sqlite": 2, "review.sqlite": 1}
+assert unknown["after"] == unknown["before"]
+assert unknown["fingerprints"]["before"] == unknown["fingerprints"]["after"]
+print("L97 TRANSFER PASSED")</code></pre></details>
+</section>
+
+<section class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-deployment-rollback"><h2>必做阶段检查点：本地回滚演练</h2>
+<p>本检查点约 10 分钟，计入本课。从仓库根先运行 <code>python -B -m unittest discover -v -s code/phase11-deployment/deployment-lab -p test_rollback.py</code>，再运行 <code>python -B -X utf8 code/phase11-deployment/deployment-lab/rollback.py stage</code>。交付一张值班记录：同一 PID 的丢回复、停发、退出与预检顺序；交接时两库版本；两批审批及未决定任务的去向；原回执重复核对；转人工对账的条件。只保留必要的操作编号、状态和计数，不粘贴真实正文或凭证。</p>
+<div class="card"><h3>可运行起点：提取下一课要用的回滚证据</h3>
+<pre data-lang="Python"><code class="language-python" id="l97-stage-starter">from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from rollback import rehearse
+
+report = rehearse()
+worked = report["worked"]
+print(report["decision"], worked["stop"]["reasons"], worked["handoff"]["schemas"])
+print("candidate", worked["stop"]["pid"], "receipt replay", worked["lost"]["replay"]["status"])
+print("refuse startup", report["transfer"]["incompatible"]["status"])
+# TODO：补齐同一 PID 的交接顺序、任务去向、重放次数与待对账事项。</code></pre></div>
+<details class="bp-check"><summary>展开阶段参考与自检</summary>
+<pre data-lang="Python"><code class="language-python" id="l97-stage-check">from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path("code/phase11-deployment/deployment-lab").resolve()))
+from rollback import rehearse
+
+report = rehearse()
+assert report["decision"] == "LOCAL_ROLLBACK_VERIFIED"
+worked, transfer = report["worked"], report["transfer"]
+pid = worked["pids"]["candidate"]
+assert worked["stop"]["pid"] == pid and worked["stop"]["reasons"] == ["uncertain_outcome"]
+chain = [(row["event"], row["pid"]) for row in worked["lifecycle"] if row["event"] != "dispatch"]
+at = chain.index(("stop", pid))
+assert chain[at + 1:at + 4] == [("exited", pid), ("preflight_passed", pid), ("started", worked["pids"]["restored"])]
+assert worked["handoff"]["schemas"] == {"business.sqlite": 1, "review.sqlite": 1}
+assert worked["pre_stop"]["reviews"] == worked["handoff"]["reviews"] == worked["after"]["reviews"]
+for era in ("pre", "canary"):
+    assert worked["tasks"][era + "-approve"]["outcome"]["status"] == "saved"
+    assert worked["tasks"][era + "-deny"]["outcome"]["status"] == "denied"
+assert worked["undecided"]["outcome"]["status"] == "pending"
+lost = worked["lost"]
+for replay in (lost["replay"], lost["repeated"]):
+    assert (replay["status"], replay["receipt"], replay["inserts"]) == ("replayed", lost["persisted_receipt"], [])
+assert all(case["outcome"]["inserts"] == [] for name, case in transfer.items() if name != "incompatible")
+assert transfer["revoked"]["outcome"]["status"] == "replay_withheld"
+assert transfer["corrupt_receipt"]["outcome"]["status"] == "inconsistent"
+assert transfer["incompatible"]["status"] == "incompatible_schema"
+print("P11 LOCAL ROLLBACK PASSED")</code></pre></details>
+<p><strong>边界：</strong>该标记只表示标准库本地演练通过，不代替 L87 的真实 LangGraph 兼容演练；也不证明容器部署、测试环境切流、并发写入、真实状态迁移或生产准入已验证。</p>
+</section>
+
+<section class="section" id="interview"><h2>面试自查</h2>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 灰度期间有了新待审单，值班想把库恢复到发布前备份。如何接手？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先停分流和新写入、确认在途请求；验证旧版能读当前库后只换程序，不覆盖当前数据。</p><p><strong>追问：</strong>旧版读不了时怎么办？</p><p><strong>答题要点：</strong>停写保全审批和保存记录；评估前向修复或经过验证的迁移。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 发布前批准了第 1 稿，灰度期间已经暂存第 2 稿。旧版能用历史批准保存吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。决定绑定租户、主体、任务、动作、修订和摘要，第 2 稿须等待匹配审批。</p><p><strong>追问：</strong>怎么证明旧批准没有被挪用？</p><p><strong>答题要点：</strong>原批准还在，新检查点仍待审；零草稿 INSERT，全表无新增。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 草稿提交成功却丢了回复。旧版重放时证据权限已撤销，如何答复？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>保留原行，不返回回执或草稿，也不再次写入。已提交不等于当前可披露。</p><p><strong>追问：</strong>如果回执行正文还和检查点有矛盾呢？</p><p><strong>答题要点：</strong>停下对账，不能用补写的回执掩盖矛盾。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 旧版拒绝启动改成 schema 2 的离线副本，能据此签生产回滚单吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。它只证明这个宿主对未知版本在接单前拒绝，并且本次未改文件。</p><p><strong>追问：</strong>还需要什么证据？</p><p><strong>答题要点：</strong>在获授权的测试环境用实际构建和状态演练在途请求、审批接续与回执对账。</p></div></details>
+</section>
+
+<section class="section"><h2>答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase11-qa.html#L97">L97 疑难解答 →</a><div class="qa-related"><a href="0110-L96-canary-stop-conditions.html">上一课 L96 · 灰度停止条件</a> · <a href="0112-L98-incident-evaluation-iteration.html">下一课 L98 · 事故响应与评估迭代</a> · <a href="0113-phase11-deployment-outline.html">阶段 11 大纲</a></div></div>
+<p>参考：<a href="https://www.sqlite.org/pragma.html#pragma_user_version">SQLite · PRAGMA user_version</a>、<a href="https://www.sqlite.org/lang_transaction.html">SQLite · Transactions</a>。</p></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

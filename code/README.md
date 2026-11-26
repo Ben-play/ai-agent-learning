@@ -68,6 +68,10 @@ code/
 
 [L85–L92](../lessons/0106-phase10-framework-evolution-outline.html) 使用[演进实验](phase10-framework-evolution/evolution-lab/README.md)：把旧任务、批准、业务回执分开验证，再比较架构与按需协作。标准库本地合同和真实 LangGraph 检查点是不同验收；未实跑的 SDK 不算通过。
 
+## Phase 11 受控部署与持续迭代实验
+
+[L93–L98](../lessons/0113-phase11-deployment-outline.html) 使用[部署实验](phase11-deployment/deployment-lab/README.md)验证进程替换、晋级门禁、权限、灰度停止、回滚和事故回归。标准库套件不部署；可选 FastAPI／Docker 与真实 LangGraph 兼容性均有独立未测项。
+
 ## 使用规范
 
 - 使用第三方依赖的项目用 `pyproject.toml` 描述依赖；完成实测后提供 `uv.lock`，从项目根运行 `uv run --offline --locked ...`。纯标准库项目使用自身说明中的 Python 命令；
