@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>L92 · 只读对照 Hermes 的状态与恢复边界</title><link rel="stylesheet" href="../assets/style.css"></head><body><main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></div><h1>只读对照 Hermes 的状态与恢复边界</h1><p class="subtitle">保存对话、确认操作、查到回执是三件事</p></div></div>
+<section class="section"><h2>为什么要读源码，而不是只看功能表？</h2><p>客服窗口重启后能看见上一句「已确认」。这证明对话可以续读，但不能说草稿一定获得了可信批准，更不能断定已经写过。学一个现成项目不是把其全部架构搬来，而是查清它在哪一层解决了什么，再用自己的验收补上没有证据的边界。本课只读固定版 Hermes；可执行练习是课程自己的只读记录观察器。</p><h3>学习目标</h3><ul><li>根据固定源码区分存储装配、兼容入口、补救记录与隔离说明。</li><li>用同一份合成任务判断等待人工、仅可交宿主复核、已核实回执和待对账；不把历史语句当批准或提交。</li></ul></section>
+<section class="section"><h2>1. 固定版本，分别找权威来源</h2><p>本课只看 Hermes Agent <code>v0.23.4</code>（提交 <code>8fc0374447313e276f6b9a2764bfc750190c966a</code>）。下表是针对这些文件的有限判断，不是整个项目的安全评估。不要根据名称把「保存」推断成「持久业务状态」，也不要从版本号推断部署配置：同一存储抽象下可以有不同的权限边界。</p>
+<table><thead><tr><th scope="col">固定源码</th><th scope="col">可支持的结论</th><th scope="col">仍缺什么</th></tr></thead><tbody>
+<tr><td><code>hermes_state.py</code></td><td>为旧插件保留已文档化名称的兼容入口，自己不持有数据库连接</td><td>兼容导入不等于所有旧状态都能迁移</td></tr>
+<tr><td><code>persistence_assembly.py</code></td><td>装配按 profile 选择的存储句柄；独立只读句柄能查看已有库</td><td>仅凭这个文件不能说明某次恢复选中哪个会话，或证明租户隔离</td></tr>
+<tr><td><code>session_rescue.py</code></td><td>运行时发现状态库被替换时，为队列中的消息保留备用文本记录</td><td>保留消息不等于恢复了业务回执，也不是外部效果去重保证</td></tr>
+<tr><td><code>SECURITY.md</code></td><td>设计声明将操作确认与进程隔离分开；确认用于避免错误，不承担隔离</td><td>这里未追踪批准的实际决策入口或主体检查，也未验证本机或生产环境是否启用隔离</td></tr>
+</tbody></table>
+<p>阅读顺序：先查应用把状态交给谁，再看异常时保住了什么，最后在独立安全说明里查批准与环境的责权。比如备用文本保存了原始消息，就可以为「用户看到了什么」提供线索；要回答「业务写了吗」，必须从业务存储或服务的权威回执另取证。不要从相邻概念中补出缺失保证。</p></section>
+<section class="section"><h2>2. 给这次任务三份互不替代的记录</h2><p>本地例子是 <code>support/mei</code> 的同步时间草稿（第 2 稿）。<code>transcript</code> 是对话片段；<code>task.binding</code> 是任务身份、动作、修订与正文摘要；<code>approval</code> 是独立业务审批；<code>receipts</code> 是只读观察到的实际确认记录。课内 <code>inspect()</code> 仅分类，永远不执行。其 <code>ready_for_host_review</code> 只是把案子交给宿主，不承诺已经写过或允许绕开当前来源验收。</p>
+<p>固定对话中两段语句均不变，拿掉批准或改指旧稿时应返回 <code>wait_for_review</code>。若状态暗示已提交，分别按操作 ID 和完整任务绑定查记录，两边都必须恰好找到同一行，再校验正文摘要。即使已有一个匹配的 ID，同一绑定又出现第二个 ID 也是冲突；另一任务的正常记录则不影响本次判断。缺失、冲突或改文都先 <code>reconcile</code>，不能发起新写。异租户不返回回执。这样的宿主校验是课堂抽象，并非从 Hermes 的说明推断它实际这样授权；代价是要维护绑定和观察点，但不会把最后一句话当事实。</p>
+<div class="best-practice-point"><h3>决策卡：只复用有证据的能力</h3><p><strong>适用：</strong>需要评估某框架能否替换现有在途恢复。<strong>边界：</strong>只读源码及合成分类，没有执行器、模型或生产恢复。</p><div class="bp-compare"><div class="bp-wrong"><strong>误判：</strong>会话能重开，就以恢复的消息批准业务。</div><div class="bp-right"><strong>选择：</strong>流程状态、业务批准与回执在各自权威来源验证。</div></div><p><strong>代价：</strong>维护证据映射与对账；系统没有在途副作用时，优先使用更薄的读取和人工核对。</p><ol><li>固定提交，列出原文支持与未测的声明。</li><li>保留同一段对话，只变批准或回执；对照等待、核验与停止。</li></ol><p><strong>诊断：</strong>如果删除回执仍判断完成，先查评分是否用编排字段或文字代替了读回结果。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question">对话存在，但提示已存的任务找不到对应回执，接下来怎么做？</div><div class="quiz-options"><button data-answer="wrong">按历史文字记为已提交</button><button data-answer="correct">按未确认结果暂停对账</button><button data-answer="wrong">按恢复成功直接再保存</button><button data-answer="wrong">按存储完整重开新任务</button></div><div class="quiz-explanation">没有独立确认不能推断成功，也不能推断未写。先对账。</div></div></section>
+<section class="section best-practice-lesson"><h2>3. 跟做：同一段话，三种证据</h2><p>在可信仓库根用 Python 3.11+ 将代码块保存并运行 <code>python -I -X utf8 文件名.py</code>，不要加 <code>-O</code>。见<a href="../code/phase10-framework-evolution/evolution-lab/README.md">演进实验</a>。代码不导入 Hermes。</p>
+<pre><code class="language-python" id="l92-worked-starter">from dataclasses import replace
+import runpy
+
+lab = runpy.run_path("code/phase10-framework-evolution/evolution-lab/source-study/lab.py")
+for row in (lab["PENDING"], lab["COMMITTED"], replace(lab["COMMITTED"], receipts=())):
+    print(lab["inspect"](row, tenant="support", actor="mei"))
+# TODO：核对三行状态与回执，并说明为何前后对话相同却结果不同。</code></pre>
+<p><strong>通过标准：</strong>顺序为等待、回执核实、待对账；只有中间一行返回 <code>fixture-receipt-02</code>。</p>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l92-worked-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase10-framework-evolution/evolution-lab/source-study/lab.py")
+a, b = lab["PENDING"], lab["COMMITTED"]
+assert a.transcript == b.transcript
+for row, status, receipt in ((a, "wait_for_review", None), (b, "receipt_verified", "fixture-receipt-02"),
+                             (replace(b, receipts=()), "reconcile", None)):
+    assert lab["inspect"](row, tenant="support", actor="mei") == {"status": status, "receipt": receipt}
+print("L92 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>独立变式：不同编号，也可能是同一任务的重写</h2>
+<p>先给待批准任务一份旧稿批准。再从同一个已提交样本出发，分别替换正文、追加同绑定新编号、追加其他任务的新编号；三次不叠加。最后以同名异租户主体查看允许记录。先写出哪项是冲突，再运行核对。</p>
+<pre><code class="language-python" id="l92-transfer-starter">from dataclasses import replace
+import runpy
+
+lab = runpy.run_path("code/phase10-framework-evolution/evolution-lab/source-study/lab.py")
+row = lab["COMMITTED"]
+receipt, = row.receipts
+second = replace(receipt, operation_id="another-fixture-receipt")
+print(lab["inspect"](replace(row, receipts=(receipt, second)), tenant="support", actor="mei"))
+# TODO：分别检查旧审批、改错正文、指向别的任务和同名异租户。</code></pre>
+<p><strong>通过标准：</strong>旧审批保持等待；同绑定双编号和错误正文进入对账；另一个任务的不同编号不影响本次；异租户不显示回执。</p>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l92-transfer-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase10-framework-evolution/evolution-lab/source-study/lab.py")
+row = lab["COMMITTED"]
+receipt, = row.receipts
+old = replace(lab["PENDING"], approval=replace(lab["BOUND"], revision=1))
+second = replace(receipt, operation_id="another-fixture-receipt")
+other = replace(second, binding=replace(second.binding, task="other-training-task"))
+wrong_text = replace(receipt, body="同步任务每天 03:00 运行。")
+for data, tenant, expected in (
+    (old, "support", ("wait_for_review", None)),
+    (replace(row, transcript=()), "support", ("receipt_verified", "fixture-receipt-02")),
+    (replace(row, receipts=(receipt, second)), "support", ("reconcile", None)),
+    (replace(row, receipts=(receipt, other)), "support", ("receipt_verified", "fixture-receipt-02")),
+    (replace(row, receipts=(wrong_text,)), "support", ("reconcile", None)),
+    (row, "operations", ("not_available", None)),
+):
+    result = lab["inspect"](data, tenant=tenant, actor="mei")
+    assert (result["status"], result["receipt"]) == expected
+print("L92 TRANSFER PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 旧插件还能读导入入口，能推断所有旧会话能继续吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能，导入契约和数据/流程契约不同。</p><p><strong>追问：</strong>测试只有全新会话呢？</p><p><strong>答题要点：</strong>用相同旧快照对照，特别检查在途节点与业务回执。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 备用记录保住了消息，能确认草稿落库吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>只能证实消息保存，找独立业务记录与操作 ID。</p><p><strong>追问：</strong>操作 ID 对了，但回复正文和持久内容不同？</p><p><strong>答题要点：</strong>先对账，不把半匹配当回执，也不重试写入。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 有人工确认，就可以不用环境隔离吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不可以，确认与运行环境的约束不同。</p><p><strong>追问：</strong>如果只是读取合成记录呢？</p><p><strong>答题要点：</strong>仍限定主体与数据；没有需求就不启用执行能力。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 源码有大部分边界，是否值得替换现有编排？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先说明本项目可测瓶颈，再用同任务比较迁移、支持与维护成本。</p><p><strong>追问：</strong>候选架构更全，但旧任务恢复没有证据？</p><p><strong>答题要点：</strong>不替换主线，先验证兼容与回退。选修比较不解除部署前置。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L92">L92 疑难解答 →</a><div class="qa-related"><a href="0104-L91-mcp-server-boundaries.html">上一课 L91 · MCP 服务边界</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>源码观察回答某层做了什么；生产决策仍以本任务的证据、权限和效果验收为准。</p><ul>
+<li><a href="https://github.com/NousResearch/hermes-agent/blob/8fc0374447313e276f6b9a2764bfc750190c966a/hermes_state.py">固定版兼容入口</a>、<a href="https://github.com/NousResearch/hermes-agent/blob/8fc0374447313e276f6b9a2764bfc750190c966a/persistence_assembly.py">持久层装配</a>：区分旧名称与存储职责。</li>
+<li><a href="https://github.com/NousResearch/hermes-agent/blob/8fc0374447313e276f6b9a2764bfc750190c966a/session_rescue.py">消息补救</a>与<a href="https://github.com/NousResearch/hermes-agent/blob/8fc0374447313e276f6b9a2764bfc750190c966a/SECURITY.md">安全说明</a>：有限恢复、批准与隔离。</li></ul></section>
+</main><aside class="toc" id="toc" aria-label="本课目录"></aside><script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script></body></html>

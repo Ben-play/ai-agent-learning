@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L89 · 有界 Worker 委托对照</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 框架演进与按需协作 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div><h1>单 Agent 与 Orchestrator–Worker 对照</h1><p class="subtitle">只委托一次只读取证；看交接和归并成本是否真的换来收益</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2>
+<p><a href="0101-L88-architecture-decision.html">L88</a> 的全批结论是保留 workflow。本选修不是推翻它，而是在团队已使用单 Agent 来选证据的假设下，检验「把附录交给专门 worker」是否有独立收益。只复用 L88 的三条过期请求（正常、缺权、超时），因为这三条才可能到达委托点；不能删掉两个失败，也不能把不会委托的常规查询加入本组稀释代价。</p>
+<h3>学习目标</h3><ul><li>把选路、派工、读权限、归并与人工接管分开，写出可验证的最小交接。</li><li>用同批的精确事实、授权、分发与预算证据，判断不采用委托何时才是正确选项。</li></ul></section>
+<section class="section"><h2>1. 同一个选择者，只替换第二次读的路径</h2>
+<p><strong>单 Agent 基线</strong>就是 L88 的 <code>single</code>：选择并读取主政策，再按原文选择附录，直接请宿主读。<strong>编排者</strong>用同样的本地选择器，但把第二次读封装成一次 <strong>worker</strong> 调用；它不把新目标交给 worker 自行探索。<strong>worker</strong> 是同进程 Python 函数，不是独立模型、线程、子进程或远程服务。它只有一个可用一次的读回调：不能换键、换租户、指定调用者身份、访问数据库句柄、写入或再委托。这个能力约束描述课程中的调用接口，不是能运行不受信任代码的沙箱。</p>
+<table><caption>正常过期任务的派工与归并边界</caption><thead><tr><th scope="col">位置</th><th scope="col">数据形状与检查</th></tr></thead><tbody>
+<tr><td>派工输入</td><td><code>{case: "expiry", actor: ("support", "mei"), key: ("EXPORT-OPS", 1, "§2"), max_reads: 1, credits: 3}</code>。由宿主绑定比对；<code>credits</code> 是最坏读预留、不是额外额度。缺字段或换主体，在分发前拒绝这次委托。</td></tr>
+<tr><td>worker 读回调</td><td>只接收指定键，最多进入一次读分发；实际仍用 L88 的 <code>EvidenceStore.source(tenant, user, key)</code> 同一授权查询。<code>support/lin</code> 看不到附录，不会退到另一身份。</td></tr>
+<tr><td>结果归并</td><td>归还任务绑定和附录证据元组；宿主对照刚才实际读取的回执（作用域、键、原文），相等才与主政策拼接。正常交付按顺序引用 <code>EXPORT-POLICY/v1 §1</code>「导出文件生成后保留 7 天。」与 <code>EXPORT-OPS/v1 §2</code>「导出文件过期后，需重新发起导出。」</td></tr>
+<tr><td>失败接手</td><td>无权、超时、缺字段、归并不符或不够预算都不能返回半份答案。保留已发生的调用，只交本地人工工单替身；不补读、不切租户、不补预算。</td></tr>
+</tbody></table>
+<p>三条案型、每条的 <code>(tenant, user)</code>、事实与停止金标和 <code>12 积分 / 2 次读 / 1 次 worker</code> 都不变。宿主在派工前从剩余额度预留最坏读取、worker、归并和人工工单；额度不是由下游自己申报消耗。一次 worker 算 1 分／4 模拟毫秒，一次归并算 1 分／2 模拟毫秒。worker 已启动后若读超时，归并没有发生：worker 和失败读照样入账，不能把未达归并的一段也算进去。</p>
+</section>
+<section class="section"><h2>2. 先抓遗漏，再看是否有净收益</h2>
+<table><caption>同一过期队列：结果、读取效果、合成开销</caption><thead><tr><th scope="col">方案</th><th scope="col">完整正确答复</th><th scope="col">真实 SQLite 授权查询／总分发</th><th scope="col">总积分／p95（模拟毫秒）</th></tr></thead><tbody>
+<tr><td>L88 单 Agent</td><td>1 / 3</td><td>5 / 14</td><td>21 / 43</td></tr>
+<tr><td>一次本地委托</td><td>1 / 3</td><td>5 / 18</td><td>25 / 47</td></tr>
+</tbody></table>
+<p>正常案型增加 worker 与归并各一次，缺授权和超时各只增加一次 worker。两臂的精确证据和授权读序列完全相同；候选多 4 分，尾部多 4 模拟毫秒。两次失败也入账，所以每正确答复为 21 分与 25 分，不是仅给成功那一条计费。最近秩 p95 对全批计算，三条时就是超时那条。先独立核对精确答复、实际读与事件，再按独立价表检查逐笔积分、模拟毫秒、总计和预算。计量出错不会把正确答复变成错答；基线账本不过关须停止复核，只有候选不过关则不采用候选。</p>
+<p>当前两臂通过合同，但委托没有净收益；即便在 <em>单 Agent 已在用</em> 的假设下也应保留它。独立测试还给候选一个更快的尾时、同时增加总成本，检查当前决策规则仍拒绝候选；实际产品阈值须在测量前约定。</p>
+<table><caption>故障注入时，按分发前、读取时、归并后分别找证据</caption><thead><tr><th scope="col">只改变一项</th><th scope="col">现象和诊断</th></tr></thead><tbody>
+<tr><td>丢掉派工积分字段，或把主体换成运维</td><td><code>invalid_handoff</code>；先前读主政策算一次，随后零 worker、零附录读；不能让 worker 靠默认值补齐。</td></tr>
+<tr><td>交回空证据、改附录版号或换结果主体</td><td><code>invalid_worker_result</code>；worker 和附录读已经发生，归并发现遗漏、来源或主体不符，停止、不外发。</td></tr>
+<tr><td>同一个 worker 重复使用读回调</td><td><code>read_lease_denied</code>；第二次调用回调被拒绝，不产生第二次附录分发或归并。</td></tr>
+<tr><td>两臂同降为 9 分</td><td>单 Agent 仍可答；委托在派工前 <code>budget_exhausted</code>。即使事后看到成功读只花 2 分，也不能取消事前最坏预留。</td></tr>
+</tbody></table>
+<div class="best-practice-point" id="bp-l89"><h3>决策卡：有可测的瓶颈，才切出读子任务</h3><p class="bp-scenario"><strong>适用：</strong>同一单 Agent 负载确有可隔离、可独立验收的读瓶颈。<strong>不适用：</strong>为了显得并行，或让第二个角色补第一臂没有的权限。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：先派工，再靠归并修错</span><p>只看最终有无答案，让遗漏的作用域、额外读取或失败分发藏在报告里。</p></div><div class="bp-right"><span class="bp-compare-label">选择：先约束能力，再过净收益门</span><p>派工前验证绑定、预算与次数，归并时对真实读取回执，没改善就不采用。</p></div></div><ol class="bp-steps"><li>冻结同批正负例；先跑 L88 原单 Agent，不写一个更弱的基线。</li><li>核对工单遗漏、来源错配、绝对用量和超成本，再查分发增量是否换来目标改善。</li></ol><p class="bp-result"><strong>复议：</strong>只有新增一种有独立边界的附录任务，在固定预算下补齐可授权证据或降低开销，再用回归证据支持试用。本课不验证并行速度、外部互操作或生产权限。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 同批结果和实际授权读取完全相同，但委托多 4 分，尾时也多 4 毫秒。当前怎么选？</div><div class="quiz-options"><button data-answer="wrong">采用委托，因为组件职责拆得更细</button><button data-answer="wrong">采用委托，只用成功请求重算尾时</button><button data-answer="correct">保留单 Agent，有收益再试</button><button data-answer="wrong">保留委托，给候选单独加额度复跑</button></div><div class="quiz-explanation">当前没有覆盖、成本或尾时的净收益。两臂换不同预算或剔除失败都破坏对照。</div></div></section>
+<section class="section best-practice-lesson"><h2>3. 跟做：逐条对照原单 Agent</h2>
+<p>先取与课文同版的可信课程源码，参阅<a href="../code/phase10-framework-evolution/evolution-lab/README.md">实验说明</a>。从仓库根保存并用 Python 3.11+ 执行 <code>python -I -X utf8 文件名.py</code>（不加 <code>-O</code>）。也可直接运行 <code>l89_bounded_worker_delegation.py</code>（不加参数）打印报告。无需网络、模型、凭据或安装。</p>
+<div class="card"><h3>最小起点：先找出新增事件</h3><pre><code class="language-python" id="l89-worked-starter">import runpy
+
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l89_bounded_worker_delegation.py"
+lab = runpy.run_path(entry)
+rows, summary, _ = lab["exercise"]()
+for base, worker in zip(rows["single"], rows["worker"], strict=True):
+    print(base.case, base.outcome == worker.outcome, worker.cost - base.cost)
+    print([(e.operation, e.status) for e in worker.dispatches])
+# TODO：检查两个实际读序列一致，再计算总成本和 p95 的差值，判断是否采用。</code></pre><p><strong>通过标准：</strong>案型顺序不变；答复、停止原因、作用域与授权读完全相同。总成本从 21 升到 25，p95 从 43 升到 47，建议留单 Agent。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l89-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l89_bounded_worker_delegation.py"
+lab = runpy.run_path(entry)
+lab["check_worked"]()
+rows, summary, decision = lab["exercise"]()
+assert [r.case for r in rows["single"]] == ["expiry", "expiry-no-grant", "expiry-timeout"]
+for base, worker in zip(rows["single"], rows["worker"], strict=True):
+    assert (base.case, base.actor, base.budget, base.outcome, base.source_calls) == (
+        worker.case, worker.actor, worker.budget, worker.outcome, worker.source_calls)
+assert [b.cost - a.cost for a, b in zip(rows["single"], rows["worker"], strict=True)] == [2, 1, 1]
+single, worker = summary["single"], summary["worker"]
+assert (worker.total_cost - single.total_cost, worker.p95_ms - single.p95_ms) == (4, 4)
+assert decision == "keep_single"
+print("L89 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：区分交接、归并与计量差错</h2>
+<p>每次都从原过期正控单独重跑：先去掉派工积分，再只去掉返回证据；另验错作用域、错版号、重复读和共用的紧预算。再用原过期队列只改运行端 worker 单价（1 改成 0），不动验收价表：候选成本变低，但仍有三笔账不符，其正确答复依旧是 1 条。最后恢复原设置复跑，确认不是把所有输入一律拒绝。</p>
+<div class="card"><h3>独立起点：比较同一个案子的两种遗漏</h3><pre><code class="language-python" id="l89-transfer-starter">import runpy
+
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l89_bounded_worker_delegation.py"
+lab = runpy.run_path(entry)["LAB"]
+case = lab["WORKER_COHORT"][0]
+for fault in (None, "omit_budget", "omit_evidence"):
+    row = lab["run"](case, "worker", fault=fault)
+    print(fault, row.outcome.status, row.outcome.reason, row.cost, row.source_calls)
+# TODO：分开验证 worker 分发、附录实读和归并；再跑紧预算的两条正负对照。
+# TODO：只改 worker 单价，检查正确答复数与计量错误是否各自正确。</code></pre><p><strong>通过标准：</strong>派工不全时只读主政策；返回不全时两次已读但不能发布。两者都交接，前者不应计 worker，后者必须计归并失败。9 分时委托不分发，单 Agent 正常交付；运行端少收 3 分时也不推荐候选，不改写正确答复数。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l89-transfer-check">import runpy
+from unittest.mock import patch
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l89_bounded_worker_delegation.py"
+module = runpy.run_path(entry)
+module["check_transfer"]()
+lab = module["LAB"]
+case = lab["WORKER_COHORT"][0]
+for fault, cause, reads, workers, cost in (
+    ("omit_budget", "invalid_handoff", 1, 0, 5),
+    ("omit_evidence", "invalid_worker_result", 2, 1, 9),
+):
+    row = lab["run"](case, "worker", fault=fault)
+    assert (row.outcome.status, row.outcome.reason, row.outcome.evidence) == ("handoff", cause, ())
+    assert len(row.source_calls) == reads and row.cost == cost
+    assert sum(e.operation == "worker" for e in row.dispatches) == workers
+    assert all(actor == ("support", "mei") for actor, _ in row.source_calls)
+tight = lab["Budget"](credits=9)
+assert lab["run"](case, "single", budget=tight).outcome.status == "answered"
+assert lab["run"](case, "worker", budget=tight).outcome.reason == "budget_exhausted"
+original, baseline, _ = module["exercise"]()
+with patch.dict(lab["RATES"], {"worker": (0, 4)}):
+    changed, summary, decision = module["exercise"]()
+assert summary["single"] == baseline["single"]
+for before, after in zip(original["worker"], changed["worker"], strict=True):
+    assert (before.outcome, before.source_calls) == (after.outcome, after.source_calls)
+worker = summary["worker"]
+assert (worker.correct_answers, worker.tasks, worker.total_cost, worker.p95_ms) == (1, 3, 22, 47)
+assert worker.contract_errors == (
+    "expiry:accounting", "expiry-no-grant:accounting", "expiry-timeout:accounting")
+assert decision == "keep_single"
+print("L89 TRANSFER PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2><p>每题先说判断和责任人，再说需要哪笔证据。</p>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> worker 返回准确文字，但工单里的主体不对，可以归并吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能；派工前就应该拦截，若结果的主体不符也不能归并。</p><p><strong>追问：</strong>另一个主体碰巧能读同一本政策呢？</p><p><strong>答题要点：</strong>个人和租户授权不能互换；只接受本任务授权视图里实际读到的回执。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 告诉 worker「最多读一次」就足够吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不够；由宿主提供一次性回调并检查固定键，重复调用在读前拒绝。</p><p><strong>追问：</strong>复用失败后怎样证明没有多读？</p><p><strong>答题要点：</strong>既看实际读适配器的事件，也对 SQLite 授权查询入口计数；不能只看 worker 自报。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 只返回一条证据但最终交人工，能说这条案子零取证成本吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。已进入的 worker、读与失败归并按各自事件计算；交人工也要计量。</p><p><strong>追问：</strong>怎么与派工前就被拦住的案子区分？</p><p><strong>答题要点：</strong>后者没有 worker 与附录读事件，但可能已经读主政策，分别查分发边界。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 在这个本地实验加快了某个成功样本，值得部署协作吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不够；要审同批覆盖、授权、预算、总成本、全量 p95 与维护代价。</p><p><strong>追问：</strong>什么时候才到下一课的 A2A？</p><p><strong>答题要点：</strong>只有确需不同系统之间互操作才评估协议；同进程的职责拆分或读瓶颈不自动产生远程需求。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L89">L89 疑难解答 →</a><div class="qa-related"><a href="0101-L88-architecture-decision.html">上一课 L88 · 架构决策</a> · <a href="0103-L90-a2a-task-boundaries.html">下一课 L90 · A2A 任务边界</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段 10 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>交接是有绑定、预算与结果的读合同，不是复制整个任务。当前同批没有净收益，保持单 Agent 对照，不把本地函数委托当成远程执行。</p><ul><li><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic · Building effective agents</a>：Orchestrator–Worker 模式用于不能提前写死子任务的场景；不要求所有团队都采用。</li><li><a href="https://docs.python.org/3.11/library/unittest.html">Python 3.11 · unittest</a>：把正控与各条负对照写成可回归的检查。</li><li><a href="0086-L75-tool-authority-bounds.html">L75 工具与权限边界</a>：授权必须由实际分发宿主实施。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

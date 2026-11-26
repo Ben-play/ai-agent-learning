@@ -64,6 +64,10 @@ code/
 
 [高级 Agent 选修 L80–L84](../lessons/0097-phase9-advanced-agent-outline.html#lesson-plan) 使用[进阶实验](phase9-advanced-agent/advanced-lab/README.md)对照推理投入、工具目录、界面预览、编码验收和持久取消。主线只需 Python 与 Node.js；本地浏览器演练只使用合成页面。没有可复现瓶颈时，可保留原有方案并直接查看 Phase 10 的必修规划。
 
+## Phase 10 框架演进实验
+
+[L85–L92](../lessons/0106-phase10-framework-evolution-outline.html) 使用[演进实验](phase10-framework-evolution/evolution-lab/README.md)：把旧任务、批准、业务回执分开验证，再比较架构与按需协作。标准库本地合同和真实 LangGraph 检查点是不同验收；未实跑的 SDK 不算通过。
+
 ## 使用规范
 
 - 使用第三方依赖的项目用 `pyproject.toml` 描述依赖；完成实测后提供 `uv.lock`，从项目根运行 `uv run --offline --locked ...`。纯标准库项目使用自身说明中的 Python 命令；

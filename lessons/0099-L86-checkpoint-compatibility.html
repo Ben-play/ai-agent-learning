@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L86 · 从同一批旧检查点比较恢复</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 框架演进与按需协作 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div><h1>从同一批旧检查点比较恢复</h1><p class="subtitle">先比输入的来处，再比批准、回执和持久效果</p></div></div>
+<section class="section"><h2>升级准入不只是「v2 能跑」</h2>
+<p>L85 由旧程序生成了客服 Agent 的三类停止点。本课用标准库合同追问：对于同一个停在修订 2 的导出保留期任务，旧应用和候选能否拒绝同样的错误批准，并交付同一份稿件？如果一边换了批准或新建了任务，结果相同也不能支持兼容。</p>
+<p><strong>学习目标：</strong>核对原包、准备包和两臂的输入，区分宿主调用、实际 INSERT 尝试、持久行与可返回回执；根据当前来源判断能否保存或返回原草稿。</p>
+</section>
+<section class="section"><h2>1. 原任务与批准都要绑定</h2>
+<p>每个案例先由 v1 到达指定停点，封存三个文件（<code>before.origin</code>）。可信宿主只在一个干净副本注入一次，关库后独立读回检查点、审批、来源和全表业务行。通过验证才封存准备包（<code>prepared.origin</code>）。两臂分别复制这个准备包，启动前记录各文件的 SHA-256（<code>arms.v1.from_prepared</code> 和 <code>arms.v2.from_prepared</code>）。两臂不各自注入，也不在同一份库先跑 v1 再跑 v2。</p>
+<p>审批表中一条决定由 <code>(tenant, actor, job, action, revision, digest)</code> 定位，值才是 <code>approve</code> 或 <code>deny</code>。例如训练租户的 <code>reviewer</code> 批准 <code>export</code> 的 <code>save_local_draft</code>、修订 2 和它的稿件摘要。<code>thread_id</code> 只是定位，<code>reviewed</code> 只是编排状态；宿主还得匹配当前 Phase 5 业务快照。只把批准的修订号改成 1、仍保留修订 2 的内容摘要，也不能通过；这与使用当时真实修订 1 的批准是两种不同的错输入。</p>
+<table><caption>同源对照：最常见的恢复路线</caption><thead><tr><th scope="col">给两个副本的条件</th><th scope="col">宿主返回</th><th scope="col">业务调用／INSERT 尝试／持久行</th></tr></thead><tbody>
+<tr><td>待批，无审批</td><td><code>pending</code>，保留原中断</td><td>0／0／0</td></tr>
+<tr><td>修订 2 明确拒绝</td><td><code>denied</code>；只写入拒绝结果</td><td>1／0／0</td></tr>
+<tr><td>主体、修订、摘要等全部匹配，来源仍有效</td><td><code>saved</code>；原稿和新回执</td><td>1／1／1</td></tr>
+<tr><td>错误主体、只错修订号或拿旧稿批准</td><td><code>rejected</code>；无稿件或回执</td><td>0／0／0</td></tr>
+<tr><td>已提交丢回复，绑定与来源仍匹配</td><td><code>replayed</code>；原稿和原回执</td><td>1／0／1</td></tr>
+</tbody></table>
+<p>明确拒绝会向业务库记录终止，不等于尝试写草稿。批准也不能绕过当前来源：批准后将 <code>KB-01</code> 的「7 天」改为「3 天」，新版和旧版都返回 <code>source_blocked</code>；已提交后撤掉 <code>KB-02</code> 的可读记录，返回 <code>replay_withheld</code>，不返回旧正文或回执，但也不抹去原持久行。报告中的全表是实验者的独立观察，不是给调用方的响应。</p>
+</section>
+<section class="section"><h2>2. 用独立证据识别「看似通过」</h2>
+<p>调用数在宿主真正调用 Phase 5 保存入口时计；INSERT 由存储的写前回调记录操作 ID；Phase 8 的全表观察器另开只读连接，核对所有主体的草稿、内容和回执。v2 只有保存或重放成功才执行 <code>finish</code>；两臂业务效果相同不要求图格式相同。</p>
+<p>注入器只写夹具，不能替验收器说「写的是哪一项」。手写 <code>expected.json</code> 指定应变字段和值，其余字段、行及未涉文件必须保持原样。例如错动作应是 <code>submit</code> 且任务仍是 <code>export</code>；若误改成错任务，两臂也会一起拒绝，但准备包应当在任何恢复前验收失败。</p>
+<div class="best-practice-point" id="bp-l86"><h3>决策卡：配对比较，再对独立金标</h3><p class="bp-scenario"><strong>适用：</strong>升级需要恢复未完成且有副作用的任务。<strong>不适用：</strong>如果无在途状态，直接做业务契约回归即可，不必维持成对历史输入。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">只比较两臂返回的标签</span><p>两边都误写，仍可能一起显示成功。</p></div><div class="bp-right"><span class="bp-compare-label">核对独立全表、回执和原稿</span><p>即使两臂共同出错，金标也能否决。</p></div></div><p class="bp-rationale"><strong>代价：</strong>闭库复制和结果金标要随业务维护；可以先排空再升级，但先处理剩余在途任务，不能把它们当作已取消。</p><ol class="bp-steps"><li>确认两臂输入来源一致，核查改动只发生在对应的工作副本。</li><li>对比错批准与有效批准，再用丢回复重放比原回执和全表。</li></ol><p class="bp-result"><strong>诊断：</strong>如果发生零次 INSERT 却多出一行，先核对是否用了范围过滤、是否读错库；不以候选自己报告的计数作准。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 业务已提交，但调用方丢了回复。哪项证明恢复没有重复保存？</div><div class="quiz-options"><button data-answer="correct">同一回执、零次插入、一行原稿</button><button data-answer="wrong">同一线程、零次中断、一条日志</button><button data-answer="wrong">同一节点、零次拒绝、一条批准</button><button data-answer="wrong">同一版本、零次迁移、一条响应</button></div><div class="quiz-explanation">回执、尝试次数和全表行分别证明返回的是谁、有没有再试写、实际留下了几份。</div></div>
+</section>
+<section class="section best-practice-lesson"><h2>3. 跟做：旧版与候选共享封存起点</h2>
+<p>在仓库的 <code>code/phase10-framework-evolution/evolution-lab/checkpoints</code> 目录，用 Python 3.11+ 执行 <code>python -B contract.py compare --case approve --case wrong_revision --case replay</code>，只跑本节三个案例。或者将所选代码块另存为临时 <code>.py</code> 文件，从仓库根执行 <code>python -B 文件名.py</code>（不加 <code>-O</code>）。</p>
+<div class="card"><h3>起点：比较有效批准、只错修订和重放</h3><pre><code class="language-python">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("compare", cases=("approve", "wrong_revision", "replay"))
+for name, case in report.items():
+    print(name, case["prepared"]["ledger"]["reviews"], [a["reply"]["status"] for a in case["arms"].values()])
+# TODO：核对准备包摘要、批准字段、INSERT、持久行和回执。</code></pre><p><strong>通过标准：</strong>批准每臂一写一行；只错修订保持当前内容摘要却零调用、零行；重放零 INSERT，返回已有一行的原回执。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l86-worked-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("compare", cases=("approve", "wrong_revision", "replay"))
+for name, status, calls, inserts, saved in (("approve", "saved", 1, 1, 1),
+        ("wrong_revision", "rejected", 0, 0, 0), ("replay", "replayed", 1, 0, 1)):
+    case = report[name]
+    before, prepared = case["before"], case["prepared"]
+    old, new = (case["arms"][key] for key in ("v1", "v2"))
+    assert old["from_prepared"] == new["from_prepared"] == prepared["origin"]
+    changed = {key for key in before["origin"] if before["origin"][key] != prepared["origin"][key]}
+    assert changed == (set() if name == "replay" else {"reviews.sqlite"})
+    assert old["reply"] == new["reply"] and old["ledger"] == new["ledger"]
+    for arm in (old, new):
+        assert (arm["reply"]["status"], arm["calls"], len(arm["inserts"]), len(arm["ledger"]["saved"])) == (status, calls, inserts, saved)
+    if name == "wrong_revision":
+        binding = prepared["graph"]["values"]["binding"]
+        fields = ("tenant", "actor", "job", "action", "revision", "digest")
+        expected = dict(binding, revision=1)
+        assert prepared["ledger"]["reviews"] == [[*(expected[key] for key in fields), "approve"]]
+        assert binding["revision"] == 2 and new["nodes"] == []
+        assert new["reply"] == {"status": "rejected", "receipt": None, "draft": None}
+    if name == "replay":
+        original, = before["ledger"]["saved"]
+        assert new["reply"]["receipt"] == original[0] and new["reply"]["draft"] == original[-1]
+        assert new["nodes"] == ["apply_review", "finish"]
+print("L86 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：批准不随替换稿件转移</h2>
+<p>现在独立准备两份新案例：一份暂存修订 3，却保留修订 2 的批准；另一份只换批准行的租户。即使正文没变，修订 3 也不能沿用修订 2 的批准。命令行可用 <code>python -B contract.py compare --case revised --case wrong_tenant</code> 单独观察。</p>
+<div class="card"><h3>独立起点：找出两边不同的记录</h3><pre><code class="language-python">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("compare", cases=("revised", "wrong_tenant"))
+for name, case in report.items():
+    ledger = case["prepared"]["ledger"]
+    print(name, ledger["reviews"], ledger["checkpoints"][0][:4])
+# TODO：确认注入只改目标字段，再证明两臂都没有超出原授权。</code></pre><p><strong>通过标准：</strong>批准行实际存在，且确实指向旧修订或错误租户；两臂都零调用、零 INSERT、零持久行，并不返回草稿。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l86-transfer-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("compare", cases=("revised", "wrong_tenant"))
+fields = ("tenant", "actor", "job", "action", "revision", "digest")
+for name, case in report.items():
+    before, prepared = case["before"], case["prepared"]
+    binding = before["graph"]["values"]["binding"]
+    original, = before["ledger"]["checkpoints"]
+    expected_review = [*(binding[key] for key in fields), "approve"]
+    expected_checkpoint = original[:]
+    if name == "revised":
+        assert expected_review[4] == 2
+        expected_checkpoint[3] = 3
+    else:
+        expected_review[0] = "another-tenant"
+    assert prepared["graph"] == before["graph"]
+    assert prepared["ledger"] == dict(before["ledger"], reviews=[expected_review], checkpoints=[expected_checkpoint])
+    for arm in case["arms"].values():
+        assert arm["from_prepared"] == prepared["origin"] and arm["ledger"] == prepared["ledger"]
+        assert (arm["nodes"], arm["calls"], arm["inserts"], arm["ledger"]["saved"]) == ([], 0, [], [])
+        assert arm["reply"] == {"status": "rejected", "receipt": None, "draft": None}
+print("L86 TRANSFER PASSED")</code></pre></details>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 基线和候选都返回 <code>saved</code>，负责人准备放行。你先核对什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>查两臂的封存源与场景变更，再用独立回执和全表检查效果。</p><p><strong>追问：</strong>两个版本都多写一笔怎么办？</p><p><strong>答题要点：</strong>不能以互相一致作为金标；独立断言行数、归属、原稿和操作 ID。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 重放时客户端带了正确线程号和 <code>approve</code>。可以保存吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不可以把线程和恢复参数当凭证，先读宿主审批并匹配完整绑定。</p><p><strong>追问：</strong>任务仍在原线程，但草稿修订已变呢？</p><p><strong>答题要点：</strong>保持旧输入，不替客户端补批准；新修订需要自己的决定。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 安全检查发现资料撤权，但已成功保存过。怎么回放？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>保全已提交事实，不释放旧草稿或回执；把当前资料校验放到宿主出口。</p><p><strong>追问：</strong>报告还能列持久行吗？</p><p><strong>答题要点：</strong>独立只读验收与应用返回是不同访问面；产品不能把演练的全表当响应。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 拒绝路径显示调用数 1，但 INSERT 为 0。是坏事吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不一定，明确拒绝可以记录终止；无批准或错批准则不分发。</p><p><strong>追问：</strong>只有调用数，没有持久行计数呢？</p><p><strong>答题要点：</strong>调用不是提交；需要另读全表，核对非预期主体也没有行。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L86">L86 疑难解答 →</a><div class="qa-related"><a href="0098-L85-versioned-graph-state.html">上一课 L85 · 版本化状态</a> · <a href="0100-L87-migration-fallback.html">下一课 L87 · 迁移失败与恢复路径</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段 10 大纲</a> · <a href="../code/phase10-framework-evolution/evolution-lab/README.md">实验说明</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>比较输入、身份和开销各自对应的证据；兼容旧检查点的目标，是保住许可、结果和持久效果，不是保住一个成功标签。独立 LangGraph 入口另核对 Phase 6 原图快照和 Phase 10 应用夹具；两部分都只静态核对，未在本次运行。</p><ul><li><a href="https://docs.langchain.com/oss/python/langgraph/persistence">LangGraph · Persistence</a>：线程、状态快照和待运行节点。</li><li><a href="https://www.sqlite.org/uri.html">SQLite · URI filenames</a>：用 <code>mode=ro</code> 打开核对连接。</li><li><a href="https://www.sqlite.org/lang_transaction.html">SQLite · Transactions</a>：分清业务事务和图状态的保存边界。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

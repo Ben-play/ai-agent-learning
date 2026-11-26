@@ -15,7 +15,7 @@
 <aside class="toc" id="toc" aria-label="页面目录"></aside>
 
 <h1>阶段 5–11 · 详细大纲草案</h1>
-<p>Phase 5–9 的历史草案留在本页；实际课程见 <a href="0063-phase5-agent-harness-outline.html">L45–L54</a>、<a href="0069-phase6-langgraph-mcp-outline.html">L55–L59</a>、<a href="0080-phase7-data-rag-outline.html">L60–L69</a>、<a href="0091-phase8-agent-engineering-outline.html">L70–L79</a> 与 <a href="0097-phase9-advanced-agent-outline.html">L80–L84（选修）</a>。Phase 10–11 仍只规划教学顺序和验收目标，不分配课号或计入进度。参阅<a href="0001-ai-agent-learning-path-overview.html">课程总览</a>。</p>
+<p>Phase 5–10 的历史草案留在本页；实际课程见 <a href="0063-phase5-agent-harness-outline.html">L45–L54</a>、<a href="0069-phase6-langgraph-mcp-outline.html">L55–L59</a>、<a href="0080-phase7-data-rag-outline.html">L60–L69</a>、<a href="0091-phase8-agent-engineering-outline.html">L70–L79</a>、<a href="0097-phase9-advanced-agent-outline.html">L80–L84（选修）</a> 与 <a href="0106-phase10-framework-evolution-outline.html">L85–L92</a>。Phase 11 仍只规划教学顺序和验收目标，不分配课号或计入进度。参阅<a href="0001-ai-agent-learning-path-overview.html">课程总览</a>。</p>
 
 <div class="tip">
   <strong>贯穿项目：带证据的业务问答 + 受控工单草稿。</strong>沿用<a href="0045-phase4-prompt-context-outline.html">阶段 4 的 Prompt / Context 大纲</a>中的项目：先用已有证据样例回答，再按权限引入检索；应用控制草稿写入，敏感操作不因模型建议而放行。<br>
@@ -228,7 +228,7 @@
 
 <section class="module" aria-labelledby="phase-10">
   <h2 class="part-header" id="phase-10">阶段 10 · 框架演进与按需协作</h2>
-  <p><span class="badge badge-agent">必修</span> 4 个拟定课题 <span class="badge badge-basic">选修</span> 4 个拟定课题</p>
+  <p><span class="badge badge-agent">已编写</span> 以下为原规划。实际课程：<a href="0106-phase10-framework-evolution-outline.html#required">L85–L88 必修</a> · <a href="0106-phase10-framework-evolution-outline.html#electives">L89–L92 选修</a>。</p>
   <p><strong>先修：</strong>阶段 6 的 LangGraph 项目与阶段 8 的验收基线，不依赖阶段 9。<strong>交付：</strong>升级前后恢复对照、旧检查点兼容与失败回退记录，以及是否引入协作的决策；部署前必须完成下面的检查点兼容性演练。</p>
   <div class="card">
     <div class="lesson-item"><div>
@@ -269,7 +269,7 @@
 <section class="module" aria-labelledby="phase-11">
   <h2 class="part-header" id="phase-11">阶段 11 · 生产部署与持续迭代</h2>
   <p><span class="badge badge-agent">必修</span> 6 个拟定课题</p>
-  <p><strong>先修：</strong><a href="#phase-8">阶段 8 的验收基线</a>及<a href="#phase-10">阶段 10 的必修旧检查点兼容性演练</a>；阶段 9、多 Agent、A2A 或 MCP 进阶均不阻塞。<strong>交付：</strong>同一项目的受控部署、故障与灰度回滚记录，以及一轮评估驱动的改进。</p>
+  <p><strong>先修：</strong><a href="0091-phase8-agent-engineering-outline.html">阶段 8 的验收基线</a>及<a href="0100-L87-migration-fallback.html#stage-practice-checkpoint-compatibility">阶段 10 的必修旧检查点兼容性演练</a>；阶段 9、多 Agent、A2A 或 MCP 进阶均不阻塞。<strong>交付：</strong>同一项目的受控部署、故障与灰度回滚记录，以及一轮评估驱动的改进。</p>
   <div class="card">
     <div class="lesson-item"><div>
       <div class="lesson-title">封装 FastAPI、Docker 与持久状态</div>

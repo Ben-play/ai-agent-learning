@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L91 · MCP 服务端的只读权限边界</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<section class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 框架演进与按需协作 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>MCP 服务端的只读权限边界</h1><p class="subtitle">授权和参数都过关，业务读才可以发生</p>
+</div></section>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>仍是客服 <code>support/mei</code> 的导出留存与同步时间工单。<a href="0103-L90-a2a-task-boundaries.html">L90</a> 关心委托任务归谁；这里关心一个固定只读工具能否读某项业务数据。即使工具可见且声明「只读」，读错主体的内容也已经是越界。沿用 <a href="0068-L59-mcp-skill-authority.html">L59</a> 和 <a href="0086-L75-tool-authority-bounds.html">L75</a> 的宿主边界，在真正读之前检查授权与参数。L90 与本课共享合成记录，但不互相调用；本节只有 Python 内存函数，不启动服务器或套接字、不接 SDK、不发真实令牌，也不实现 OAuth 或任何通用执行接口。</p>
+  <h3>学习目标</h3>
+  <ul><li>区分工具发现、请求的可信授权上下文、参数白名单和对象拥有者。</li><li>用读入口的独立观察与最小审计，证明拒绝确实没有读业务内容。</li><li>判断何时只需同步读取，何时值得验证双方对 MCP Tasks 扩展的支持。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 工具可见，不等于当前调用获准</h2>
+  <p>Model Context Protocol（MCP）让宿主经客户端访问服务端提供的工具或上下文。按 <a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">MCP 2026-07-28 的 Tools</a>，<code>tools/list</code> 用于发现、<code>tools/call</code> 用于调用；当前可见列表可以受请求授权影响，但不能替业务入口校验输入和权限。另固定 <a href="https://github.com/modelcontextprotocol/python-sdk/blob/v2.3.0/docs/protocol-versions.md">Python SDK 2.3.0 的 <code>docs/protocol-versions.md</code></a>，用于核对版本选择和发现差异，不作为本课依赖，不据此假定任一客户端已支持 Tasks。</p>
+  <p><strong>上下文来自可信宿主，不来自工具参数。</strong>下表的 <code>Context</code> 是没有凭据含义的分类标签；这不是令牌结构，构造对象也不代表真实授权。<code>issuer</code> 回答「参考的是不是本课认可的宿主」，<code>audience</code> 回答「是否给这个读边界」，<code>scopes</code> 表示允许哪类动作，<code>actor</code> 对照允许读具体对象的主体。正式 HTTP 授权的受众验证见规范；课堂的相等判断、scope、owner 和参数枚举是业务策略示范，不能用来代替真实的凭据验证。</p>
+  <table>
+    <caption>导出题：分清授权、业务入参、结果和最小审计</caption>
+    <thead><tr><th scope="col">形状</th><th scope="col">示例</th><th scope="col">约束</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">宿主上下文</th><td><code>Context("classroom-support-host", "classroom-policy-reader", Actor("support", "mei"), frozenset({"policy:read"}))</code></td><td>无上下文拒绝；形状正确还要核验预期签发方、受众、scope 及完整主体。</td></tr>
+      <tr><th scope="row">工具参数</th><td><code>{"topic": "export"}</code> 或 <code>{"topic": "sync"}</code></td><td>仅一个 <code>topic</code> 键、精确字符串白名单；布尔、列表、未列主题和额外键都拒绝。不允许从参数指定拥有者。</td></tr>
+      <tr><th scope="row">读结果</th><td><code>Reply("ok", Evidence("EXPORT-POLICY", 1, "§1", "导出文件生成后保留 7 天。"))</code></td><td>固定读入口在所有检查通过后才返回文档、版号、定位和合成原文。</td></tr>
+      <tr><th scope="row">课堂内部审计</th><td><code>AuditEvent(operation="read_policy", reason="audience_mismatch")</code></td><td>只有固定操作名和枚举式原因；不记身份、参数、上下文、证据正文或任何凭据。</td></tr>
+    </tbody>
+  </table>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 当前主体和 scope 均正确，但上下文受众是另一个读边界。应该怎么做？</div><div class="quiz-options"><button data-answer="correct">拒绝此次读取，记录原因</button><button data-answer="wrong">允许此次读取，记录受众</button><button data-answer="wrong">忽略此次受众，只验主体</button><button data-answer="wrong">改成本地受众，再行读取</button></div><div class="quiz-explanation">主体、动作许可和目标边界是独立的检查。不能用正确的 scope 替代受众匹配，也不能自行重写来放行。</div></div>
+</section>
+<section class="section">
+  <h2>2. 读之前拒绝，用另一条观测线证明</h2>
+  <p>本地先查缺失和上下文类型，再查签发方、受众与 scope；然后检查参数白名单，以固定拥有者元数据核对主体，最后才调用 <code>ReadObserver.read</code> 读取正文。每次调用使用当下宿主上下文，不沿用之前的许可。观察器在实际读方法的入口独立记一次主题，而不是从边界的 <code>Reply</code> 或审计倒推。元数据查询不算业务正文读取；「零读」在本实验只指未进入这个固定业务读入口。观察器仅为测试保留主题，不是审计日志的一部分。</p>
+  <table>
+    <caption>跟做干跑：同一导出输入，每行只改一处（成功放在最后）</caption>
+    <thead><tr><th scope="col">输入变化</th><th scope="col">调用返回</th><th scope="col">内部原因</th><th scope="col">累计正文读</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">无可信上下文</th><td><code>denied</code></td><td><code>missing_context</code></td><td>0</td></tr>
+      <tr><th scope="row">签发方换成另一个课堂标签</th><td><code>denied</code></td><td><code>issuer_mismatch</code></td><td>0</td></tr>
+      <tr><th scope="row">受众换成索引读边界</th><td><code>denied</code></td><td><code>audience_mismatch</code></td><td>0</td></tr>
+      <tr><th scope="row">只给 <code>queue:read</code></th><td><code>denied</code></td><td><code>insufficient_scope</code></td><td>0</td></tr>
+      <tr><th scope="row">主体换成 <code>support/lin</code></th><td><code>denied</code></td><td><code>owner_mismatch</code></td><td>0</td></tr>
+      <tr><th scope="row"><code>topic</code> 为布尔值</th><td><code>invalid_arguments</code></td><td><code>invalid_arguments</code></td><td>0</td></tr>
+      <tr><th scope="row">正确主体和导出参数</th><td><code>ok</code> ＋导出证据</td><td><code>ok</code></td><td>1</td></tr>
+    </tbody>
+  </table>
+  <p>授权失败统一对调用方报 <code>denied</code>；上表精确原因仅供本地内部观察，不是协议错误格式。若看到拒绝却累计多一次读，先查权限检查是否放在业务读之后；若少了审计事件，查是否所有拒绝都记了固定原因，不把参数或上下文整包写日志。每个边界实例只容纳 12 次受理及 12 条审计；之后在读前返回 <code>budget_exhausted</code>，不再增加事件。它只是实验上限，不是生产限流或审计保留方案。</p>
+  <h3>Tasks 扩展不增加业务能力</h3>
+  <p>MCP <a href="https://modelcontextprotocol.io/extensions/tasks/overview">Tasks</a> 让已支持的长操作可以返回任务句柄，再查状态或请求取消。只有客户端在请求里声明支持、服务端也宣布支持，且本来已授权的操作确实需要异步时，才考虑采用。扩展只改变受支持操作的交互方式，不提供新的服务端执行原语：任务句柄不是授权，不能放宽 scope、对象或参数边界，取消也不是撤销。一个固定快速读照旧同步；未协商支持就不要返回任务形状。课堂不实现 Tasks，也不模拟真实授权流。</p>
+  <div class="best-practice-point" id="bp-l91">
+    <h3>决策卡：让权限判定发生在业务读之前</h3>
+    <p class="bp-scenario"><strong>适用：</strong>多个宿主确实要以一致接口使用受保护工具。<strong>不适用：</strong>一个宿主只需查两条本地规则，保留类型明确的直接函数。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：先读导出规则再决定显示</span><p>读到正文才检查受众、scope 或拥有者，虽然返回拒绝，业务读已经发生。</p></div><div class="bp-right"><span class="bp-compare-label">选择：先验上下文和参数</span><p>同一导出请求错受众时零读；上下文及参数都正确才读一次，并返回准确来源。</p></div></div>
+    <ol class="bp-steps"><li>逐项替换上下文或参数，证明读次数没增加。</li><li>保留同一数据正控，核对一次实际读、完整证据和最小审计；再用撤权复访判断是否误用旧许可。</li></ol>
+    <p class="bp-result"><strong>代价：</strong>多一层策略、审计约定与版本验收；只有复用和隔离收益明确才引入协议，只有确有长操作且双方支持才加 Tasks。</p>
+  </div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 固定读工具很快，客户端没有声明 Tasks 扩展。调用通过权限校验后如何返回？</div><div class="quiz-options"><button data-answer="wrong">返回句柄，让调用方轮询</button><button data-answer="wrong">拒绝请求，等扩展可用</button><button data-answer="correct">返回结果，保持同步读取</button><button data-answer="wrong">标记异步，让调用方等待</button></div><div class="quiz-explanation">快速读没有异步收益；不支持扩展的客户端不能被要求处理任务结果，扩展也不改变现行授权。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：一笔正控，六次零读拒绝</h2>
+  <p>从<a href="../code/phase10-framework-evolution/evolution-lab/README.md">阶段实验说明</a>打开可信的同版本课程仓库；课程站点不发布 Python 实验文件。以下命令在仓库根运行，Python 3.11+、仅标准库。把起点复制到自己的练习文件，仍在仓库根用 <code>python -I -B -X utf8 文件名.py</code> 运行，不加 <code>-O</code>。</p>
+  <pre><code class="language-bash">python -B -X utf8 code/phase10-framework-evolution/evolution-lab/protocols/l91_mcp.py</code></pre>
+  <div class="card"><h3>可见起点：让错误签发方与正确上下文读取同一主题</h3><pre><code class="language-python" id="l91-worked-starter">from dataclasses import replace
+import sys
+
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l91_mcp import SUPPORT_CONTEXT, PolicyBoundary, ReadObserver
+
+store = ReadObserver()
+boundary = PolicyBoundary(store)
+args = {"topic": "export"}
+for context in (None, replace(SUPPORT_CONTEXT, issuer="classroom-other-issuer"), SUPPORT_CONTEXT):
+    print(boundary.read_policy(context, args), store.reads, boundary.audit[-1])
+# TODO：在正控前补错受众、scope 不足、错拥有者和布尔参数；逐次核对审计字段。</code></pre>
+    <p><strong>通过标准：</strong>六个负控均不返回证据且实际读为零；正控只读一次，回到 <code>EXPORT-POLICY v1 §1</code> 完整原句。审计逐项匹配内部原因，且只有两个固定字段。</p>
+  </div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l91-worked-check">from dataclasses import asdict, replace
+import sys
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+sys.dont_write_bytecode = True
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l91_mcp import LIN, SUPPORT_CONTEXT, Evidence, PolicyBoundary, ReadObserver, Reply
+
+store = ReadObserver()
+boundary = PolicyBoundary(store)
+args = {"topic": "export"}
+checks = (
+    (None, args, "denied", "missing_context"),
+    (replace(SUPPORT_CONTEXT, issuer="classroom-other-issuer"), args, "denied", "issuer_mismatch"),
+    (replace(SUPPORT_CONTEXT, audience="classroom-index-reader"), args, "denied", "audience_mismatch"),
+    (replace(SUPPORT_CONTEXT, scopes=frozenset({"queue:read"})), args, "denied", "insufficient_scope"),
+    (replace(SUPPORT_CONTEXT, actor=LIN), args, "denied", "owner_mismatch"),
+    (SUPPORT_CONTEXT, {"topic": True}, "invalid_arguments", "invalid_arguments"),
+)
+expected_audit = []
+for context, request, code, reason in checks:
+    assert boundary.read_policy(context, request) == Reply(code)
+    assert store.reads == ()
+    expected_audit.append({"operation": "read_policy", "reason": reason})
+    assert [asdict(event) for event in boundary.audit] == expected_audit
+assert boundary.read_policy(SUPPORT_CONTEXT, args) == Reply(
+    "ok", Evidence("EXPORT-POLICY", 1, "§1", "导出文件生成后保留 7 天。"))
+assert store.reads == ("export",)
+expected_audit.append({"operation": "read_policy", "reason": "ok"})
+assert [asdict(event) for event in boundary.audit] == expected_audit
+print("L91 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立变式：读同步信息，再撤掉读取权限</h2>
+  <p>从新实例开始，同样是 <code>mei</code>，但尝试用运维租户读同步主题；另试客服加一个多余的备注字段。负控之后用正确主体和精确参数读一次，再把 scope 清空，提交原参数。不要使用跟做中的观察器或输出。</p>
+  <div class="card"><h3>独立起点：分清同名主体与有效的同步请求</h3><pre><code class="language-python" id="l91-transfer-starter">from dataclasses import replace
+import sys
+
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l91_mcp import OTHER_MEI, SUPPORT_CONTEXT, PolicyBoundary, ReadObserver
+
+store = ReadObserver()
+boundary = PolicyBoundary(store)
+args = {"topic": "sync"}
+print(boundary.read_policy(replace(SUPPORT_CONTEXT, actor=OTHER_MEI), args))
+print(store.reads, boundary.audit)
+# TODO：试额外键，再做正控和撤权复查；比对完整证据、累计读和全部审计。</code></pre>
+    <p><strong>通过标准：</strong>同名跨租户和额外键都零读。成功仅读一条 <code>SYNC-POLICY v1 §1</code>，随后撤权的复访不回正文、累计仍为一次。最小审计里找不到备注或原句。</p>
+  </div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l91-transfer-check">from dataclasses import asdict, replace
+import sys
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+sys.dont_write_bytecode = True
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l91_mcp import OTHER_MEI, SUPPORT_CONTEXT, Evidence, PolicyBoundary, ReadObserver, Reply
+
+store = ReadObserver()
+boundary = PolicyBoundary(store)
+args = {"topic": "sync"}
+assert boundary.read_policy(replace(SUPPORT_CONTEXT, actor=OTHER_MEI), args) == Reply("denied")
+assert store.reads == ()
+assert boundary.read_policy(SUPPORT_CONTEXT, {**args, "note": "只用于变式"}) == Reply("invalid_arguments")
+assert store.reads == ()
+assert boundary.read_policy(SUPPORT_CONTEXT, args) == Reply(
+    "ok", Evidence("SYNC-POLICY", 1, "§1", "同步任务每天 02:00 运行。"))
+assert store.reads == ("sync",)
+revoked = replace(SUPPORT_CONTEXT, scopes=frozenset())
+assert boundary.read_policy(revoked, args) == Reply("denied")
+assert store.reads == ("sync",)
+assert [asdict(event) for event in boundary.audit] == [
+    {"operation": "read_policy", "reason": reason}
+    for reason in ("owner_mismatch", "invalid_arguments", "ok", "insufficient_scope")
+]
+print("L91 TRANSFER PASSED")</code></pre></details>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先判断是否该读，再说如何证明业务边界没被越过。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 导出工具已列出来，客服本次请求受众却不匹配。可以沿用上次许可吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不可以。发现和历史许可不替代当前请求授权，受众错就拒绝且零读。</p><p><strong>追问：</strong>受众正确、签发方错误呢？</p><p><strong>答题要点：</strong>同样不读；受众与签发方应有独立的负控和内部原因。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 日志报「已拒绝」，测试应该算通过吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能只看日志；同一次调用要返回无正文，并让业务读入口的观察增量为零。</p><p><strong>追问：</strong>正控一次后撤权，观察器已经记过一笔，怎么判？</p><p><strong>答题要点：</strong>对照撤权前后累计数；只能保留正控的一笔，撤权返回仍无正文。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 客服有 <code>policy:read</code>，工具参数又是白名单中的 <code>sync</code>，为什么还要验 owner？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>scope 允许动作类别，owner 决定这份记录。两者不等价，也不能从参数取身份。</p><p><strong>追问：</strong>遇到频繁的 owner 拒绝，要把对象内容放进审计吗？</p><p><strong>答题要点：</strong>不要。先用最小原因诊断；若生产确需关联，应另审最小字段及访问、留存策略。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 客服只读工具偶尔等待人工确认，团队想改用 Tasks。先核对什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先判断是否真有长等待或断线恢复需要，再验证双方扩展支持、授权和生命周期；扩展只管理原操作。</p><p><strong>追问：</strong>服务端支持，客户端却未声明呢？</p><p><strong>答题要点：</strong>不返回任务句柄；保留同步合同或在既有边界内交给人工，不新增执行入口。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L91">L91 疑难解答 →</a><div class="qa-related"><a href="0103-L90-a2a-task-boundaries.html">上一课 L90 · A2A 任务边界</a> · <a href="0105-L92-hermes-source-comparison.html">下一课 L92 · Hermes 源码对照</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段 10 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>先检查可信上下文、参数和资源归属，再允许固定读；用读入口观察证明拒绝没有发生正文读取。审计只留诊断所需信息；异步不是扩大权限的理由。</p><ul><li><a href="https://modelcontextprotocol.io/specification/2026-07-28">MCP 2026-07-28</a>与<a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">该版本的 Authorization</a>：区分规范受众要求与课堂业务检查。</li><li><a href="https://github.com/modelcontextprotocol/python-sdk/blob/v2.3.0/docs/protocol-versions.md">MCP Python SDK v2.3.0 · Protocol Versions</a>：只作版本文档，不执行 SDK。</li><li><a href="https://modelcontextprotocol.io/extensions/tasks/overview">MCP Tasks 扩展</a>：核对双方协商、句柄和原操作结果。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

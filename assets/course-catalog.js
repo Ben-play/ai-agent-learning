@@ -101,7 +101,16 @@
     { file: '0093-L81-tool-discovery.html', title: '工具搜索与受限聚合', phase: '第九阶段' },
     { file: '0094-L82-local-gui-preview.html', title: '本地 GUI 预览与取消', phase: '第九阶段' },
     { file: '0095-L83-coding-harness-boundaries.html', title: '编码 Agent 的工作区与验收', phase: '第九阶段' },
-    { file: '0096-L84-long-task-recovery.html', title: '长任务的取消、重放与预算', phase: '第九阶段' }
+    { file: '0096-L84-long-task-recovery.html', title: '长任务的取消、重放与预算', phase: '第九阶段' },
+    { file: '0106-phase10-framework-evolution-outline.html', title: '第十阶段大纲', phase: '', outlineFor: '第十阶段' },
+    { file: '0098-L85-versioned-graph-state.html', title: '版本化状态与分支', phase: '第十阶段' },
+    { file: '0099-L86-checkpoint-compatibility.html', title: '从同一批旧检查点比较恢复', phase: '第十阶段' },
+    { file: '0100-L87-migration-fallback.html', title: '演练迁移失败与恢复路径', phase: '第十阶段' },
+    { file: '0101-L88-architecture-decision.html', title: '记录架构决策：保留单 Agent 也有效', phase: '第十阶段' },
+    { file: '0102-L89-bounded-worker-delegation.html', title: '单 Agent 与 Orchestrator–Worker 对照', phase: '第十阶段' },
+    { file: '0103-L90-a2a-task-boundaries.html', title: 'A2A 的任务边界', phase: '第十阶段' },
+    { file: '0104-L91-mcp-server-boundaries.html', title: 'MCP 服务端的只读权限边界', phase: '第十阶段' },
+    { file: '0105-L92-hermes-source-comparison.html', title: '只读对照 Hermes 的状态与恢复边界', phase: '第十阶段' }
   ];
 
   var PHASE_NUMBERS = {

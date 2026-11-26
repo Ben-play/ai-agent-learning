@@ -4,8 +4,9 @@
 Uses only the standard library to run explicit allowlists. The default suite needs
 Pydantic v2 for L36 and uses loopback HTTP for L58/L59; it never calls external
 services. The separate LangGraph suite needs the graph-lab dependencies. The
-Phase 7–9 use local synthetic inputs; L75 reuses the loopback MCP checkpoint and
-L82 runs a fixed Node.js controller check. This script installs nothing.
+Phase 7–10 use local synthetic inputs; L75 reuses the loopback MCP checkpoint and
+L82 runs a fixed Node.js controller check. Phase 10's actual LangGraph rehearsal
+is separate from its standard-library checks. This script installs nothing.
 """
 
 from __future__ import annotations
@@ -137,8 +138,25 @@ ADVANCED_CASES = tuple(
 ) + (
     ("0096-L84-long-task-recovery.html", ("l84-stage-check",), "P9 ADVANCED DECISION PASSED"),
 )
+EVOLUTION_LESSONS = (
+    (85, "0098-L85-versioned-graph-state.html"),
+    (86, "0099-L86-checkpoint-compatibility.html"),
+    (87, "0100-L87-migration-fallback.html"),
+    (88, "0101-L88-architecture-decision.html"),
+    (89, "0102-L89-bounded-worker-delegation.html"),
+    (90, "0103-L90-a2a-task-boundaries.html"),
+    (91, "0104-L91-mcp-server-boundaries.html"),
+    (92, "0105-L92-hermes-source-comparison.html"),
+)
+EVOLUTION_CASES = tuple(
+    (filename, (f"l{number}-{kind}-check",), f"L{number} {expected}")
+    for number, filename in EVOLUTION_LESSONS
+    for kind, expected in (("worked", "ACCEPTED"), ("transfer", "TRANSFER PASSED"))
+) + (
+    ("0100-L87-migration-fallback.html", ("l87-stage-check",), "P10 LOCAL CHECKPOINT CONTRACT PASSED"),
+)
 ALL_CASES = (CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
-             + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES + ADVANCED_CASES)
+             + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES + ADVANCED_CASES + EVOLUTION_CASES)
 
 
 class CodeBlocks(HTMLParser):
@@ -167,7 +185,8 @@ class CodeBlocks(HTMLParser):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     suites = {"local": ALL_CASES, "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES,
-              "engineering": ENGINEERING_CASES, "advanced": ADVANCED_CASES}
+              "engineering": ENGINEERING_CASES, "advanced": ADVANCED_CASES,
+              "evolution": EVOLUTION_CASES}
     parser.add_argument("--suite", choices=tuple(suites), default="local")
     suite = parser.parse_args().suite
     cases = suites[suite]

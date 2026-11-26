@@ -18,10 +18,11 @@ const phase6Outline = '0069-phase6-langgraph-mcp-outline.html';
 const phase7Outline = '0080-phase7-data-rag-outline.html';
 const phase8Outline = '0091-phase8-agent-engineering-outline.html';
 const phase9Outline = '0097-phase9-advanced-agent-outline.html';
-const total = 84;
+const phase10Outline = '0106-phase10-framework-evolution-outline.html';
+const total = 92;
 assert.equal(current.lessons().length, total, 'Outlines and planning pages must not count as lessons');
 assert.equal(current.lessons()[0].lessonId, 'L01');
-assert.equal(current.lessons().at(-1).lessonId, 'L84');
+assert.equal(current.lessons().at(-1).lessonId, 'L92');
 assert.equal(current.context('/lessons/0043-L38-phase3-capstone.html').next.file, phase4Outline);
 assert.equal(current.context(`/lessons/${phase4Outline}`).isLesson, false);
 assert.equal(current.context(`/lessons/${phase4Outline}`).next.file, '0047-L39-testable-task-contract.html');
@@ -47,9 +48,13 @@ assert.equal(current.context('/lessons/0090-L79-engineering-baseline-handoff.htm
 assert.equal(current.context(`/lessons/${phase9Outline}`).isLesson, false);
 assert.equal(current.context(`/lessons/${phase9Outline}`).next.file, '0092-L80-reasoning-effort.html');
 assert.equal(current.context('/qa/phase9-qa.html'), null);
+assert.equal(current.context('/lessons/0096-L84-long-task-recovery.html').next.file, phase10Outline);
+assert.equal(current.context(`/lessons/${phase10Outline}`).isLesson, false);
+assert.equal(current.context(`/lessons/${phase10Outline}`).next.file, '0098-L85-versioned-graph-state.html');
+assert.equal(current.context('/qa/phase10-qa.html'), null);
 const phases = [[39, 44, 4, phase4Outline], [45, 54, 5, phase5Outline],
   [55, 59, 6, phase6Outline], [60, 69, 7, phase7Outline], [70, 79, 8, phase8Outline],
-  [80, 84, 9, phase9Outline]];
+  [80, 84, 9, phase9Outline], [85, 92, 10, phase10Outline]];
 for (const [from, to, phase, outline] of phases) {
   const lessons = current.lessons().slice(from - 1, to);
   assert.deepEqual(Array.from(lessons, item => item.lessonId),

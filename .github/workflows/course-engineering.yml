@@ -38,6 +38,14 @@ jobs:
           python3 -I -X utf8 code/phase9-advanced-agent/advanced-lab/coding/test_lab.py -v
           python3 -I -X utf8 code/phase9-advanced-agent/advanced-lab/recovery/test_recovery.py -v
 
+      - name: Run Phase 10 local contracts (no SDK integration)
+        run: |
+          python3 -I -X utf8 scripts/check-course-examples.py --suite evolution
+          python3 -B -X utf8 -m unittest discover -s code/phase10-framework-evolution/evolution-lab/checkpoints -v
+          python3 -I -X utf8 code/phase10-framework-evolution/evolution-lab/architecture/test_architecture.py -v
+          python3 -B -X utf8 -m unittest discover -s code/phase10-framework-evolution/evolution-lab/protocols -v
+          python3 -I -X utf8 code/phase10-framework-evolution/evolution-lab/source-study/test_lab.py -v
+
       - name: Check compatibility with the Phase 5 draft harness
         working-directory: code/phase5-agent-harness/harness-lab
         run: python3 -B -X utf8 -m unittest discover -s tests -p test_harness.py -v
