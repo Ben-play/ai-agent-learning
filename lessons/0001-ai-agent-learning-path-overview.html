@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>课程范围：</strong>已有 Phase 1–8 的 79 节课（L01–L79）。Phase 9–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>已有 Phase 1–9 的 84 节课（L01–L84，含 Phase 9 的 5 节选修）。Phase 10–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -339,8 +339,8 @@
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-9-body">
     <h3>高级 Agent 能力</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">5-6 课</span>
-      <span class="phase-meta-item">1-2 周</span>
+      <span class="phase-meta-item">5 节选修 · L80–L84</span>
+      <span class="phase-meta-item">按瓶颈选学</span>
     </div>
     <div class="phase-toggle">▼</div>
   </button>
@@ -349,14 +349,13 @@
   </div>
   <div class="phase-body" id="phase-9-body">
     <div class="card">
-      <span class="tag tag-agent">规划 · 按需进阶</span><br>
-      <strong>推理控制：</strong>按具体模型/API 核实 thinking / effort 能力和限制，以任务质量、延迟与成本决定推理投入，不依赖固定思维链模板。<br><br>
-      <strong>大工具集进阶：</strong>工具搜索、按需加载、在受限代码执行环境中聚合中间结果。与小工具集基线比较选择质量、上下文量与延迟；程序化调用仍须执行授权、参数校验和资源预算，不照抄旧文章的 beta/API 字段。<br><br>
-      <strong>Computer Use & Browser Agent：</strong>Claude Computer Use、<strong>browser-use</strong>（开源、模型无关，社区活跃）、Playwright MCP、GUI 自动化<br><br>
-      <strong>Agentic Coding（2026 爆发）：</strong>真实开源案例剖析 — <strong>OpenHands</strong>（开源编码 Agent）、Claude Code、SWE-agent；Harness + Scaffolding 架构<br><br>
-      <strong>Long-running Agents：</strong>深化 Phase 5/6 的持久恢复基线，评测长任务中的取消、重放、预算和故障恢复，而非此时才首次引入检查点。<br><br>
-      <strong>选修，不阻塞部署：</strong>只为明确的项目瓶颈选择一项增强，比较收益、授权边界与维护成本。长任务深化取消、恢复和预算，不重复 Phase 5 的检查点基础。<br><br>
-      <a href="0046-phase5-to-11-planned-outlines.html#phase-9">查看 Phase 9 选修草案 →</a>
+      <span class="tag tag-agent">已编写 · 全阶段选修</span><br>
+      <strong>推理与工具：</strong>按 API 核对推理投入的支持范围。用同批题在证据与任务合约通过后再比合成成本、延迟；只有目录过大时才考虑工具按需加载，执行授权从不跟着目录变化。<br><br>
+      <strong>界面与编码：</strong>没有稳定接口才对照固定的本地界面预览；取消后的迟到结果不能更新页面，不提交业务。只读追踪固定版 OpenHands 源码，比较工作区、确认与独立验收，不运行外部 Agent。<br><br>
+      <strong>持久取消与重放：</strong>从新进程读取任务状态和预算；已提交时查原回执，不因回包丢失而重复写。<br><br>
+      <strong>选修不阻塞主线：</strong>只在 Phase 8 基线暴露具体瓶颈时选一项。保留收益、权限、维护成本和未测项，也允许决定不引入。<br><br>
+      <a href="0097-phase9-advanced-agent-outline.html">查看 Phase 9 选修课程与实验 →</a><br>
+      <a href="../best-practices/phase9-advanced-agent-practices.html">阶段实践复盘 →</a> · <a href="../qa/phase9-qa.html">阶段答疑 →</a> · <a href="0046-phase5-to-11-planned-outlines.html#phase-10">直接看 Phase 10 必修规划 →</a>
     </div>
   </div>
 </div>
@@ -420,7 +419,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 9–11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 10–11 对应项仍为规划。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>

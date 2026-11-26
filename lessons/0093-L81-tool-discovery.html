@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L81 · 工具搜索与受限的结果聚合</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<section class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第九阶段 · 高级 Agent 能力 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>工具搜索与受限的结果聚合</h1><p class="subtitle">少展开定义，不少检查权限；找到候选，不冒充交付</p>
+</div></section>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>同一位客服既可能只查导出留存，也可能查同步或交班值守。把所有目录端上来浪费上下文；只给一个工具能省字节，却完不成后两类任务。工具搜索适合「目录大、每题只用少数」的负载，不替代 <a href="0086-L75-tool-authority-bounds.html">L75 的分发权限边界</a>。本节只用固定合成只读业务记录：不写入、不联网，不加载外部工具或执行用户输入。</p>
+  <h3>学习目标</h3><ul><li>在同一批任务上比较刻意收窄的小工具集、展开全部授权工具和按需加载。</li><li>区分候选命中、真实本地读次数、有来源的完整结果，以及目录是否完整发出。</li><li>先过滤可发现元数据，在分发边界重验当前主体、scope、严格类型和累计预算。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 目录只给线索，宿主决定能不能读</h2>
+  <figure class="card" aria-labelledby="l81-flow-caption">
+    <figcaption id="l81-flow-caption"><strong>图 1｜发现、分发与聚合是三个独立边界</strong></figcaption>
+    <ol><li><strong>发现：</strong>宿主先按可信主体和 scope 筛元数据，再匹配题目的预设主题；同分按工具名升序，只取首个，返回并展开其定义。</li><li><strong>分发：</strong>用当下身份、scope、会话可见集合和参数重新检查；检查累计预算后，才进固定的本地读入口。</li><li><strong>聚合：</strong>把记录连同来源放进结果；缺项就标为未完成，不用候选命中替代真实读和交付。</li></ol>
+  </figure>
+  <p>实验可信主体固定为 <code>(support, mei)</code>，有 <code>policy:read</code> 和 <code>desk:read</code>。同一合成目录中，客服可读六个工具：留存、留存术语说明、同步、值守、队列及草稿标签；运维的留存工具虽然同样是只读、同为 <code>mei</code>，也不会进入这位客服的候选或输出。目录中没有写工具，也没有文件路径、命令、脚本、URL 或凭据参数。</p>
+  <table>
+    <caption>课堂形状与独立的检查点</caption>
+    <thead><tr><th scope="col">阶段</th><th scope="col">可见示例</th><th scope="col">验收点</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">元数据</th><td>名称、说明、<code>limit</code> 输入模式</td><td>按需查留存时，<code>read_retention</code> 与术语工具同分，稳定排序后只展开前者。不得泄漏同主题的运维名称。</td></tr>
+      <tr><th scope="row">分发提议</th><td><code>read_retention</code>，<code>{"limit": 1}</code></td><td>仅收精确的单字段对象，值为 1–2 的整数；<code>true</code>、<code>1.0</code>、字符串、缺键、额外 <code>tenant</code> 都拒绝。宿主不从提议取身份。</td></tr>
+      <tr><th scope="row">业务结果</th><td><code>support / EXPORT-POLICY v1 §1</code> 与原句</td><td>每条保留租户、文档、版号、定位和原文；验证准确工具、实际进入读入口的次数、完整来源和内容。</td></tr>
+    </tbody>
+  </table>
+  <p>每题上限为两次实际读、两条累计记录；分发前用 <code>limit</code> 预留最坏的返回条数，不靠事后截断来谎称预算合格。比如先取留存两条，再取同步一条，即使还有一次调用额度，也必须拒绝第二次读。若只设每次最多两条，跨工具聚合仍可能超量。本实验预算管本地读次数与结果条数；模型回合、发现次数、时长、输出字节的线上硬上限应另设，不能从这两个值推出。</p>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 已发现留存工具，调度前宿主撤销 <code>policy:read</code>。应该怎样处理？</div><div class="quiz-options"><button data-answer="correct">拒绝分发，保留零读证据</button><button data-answer="wrong">沿用旧许可，照常完成读</button><button data-answer="wrong">缩小结果量，再次提交读</button><button data-answer="wrong">更换用户后，继续原任务</button></div><div class="quiz-explanation">旧目录不是新授权；缩小返回量也不会获得授权。用当前可信状态拦在业务读取之前。</div></div>
+</section>
+<section class="section">
+  <h2>2. 三种目录用一张账本：测整个实际输出</h2>
+  <p>固定 <code>phase9-tools/v1</code>：只查留存、合查留存与同步、只查值守，共需四个正确候选。刻意收窄组只给常用留存工具；全授权组给客服的六个工具，而不是跨租户全库；按需组先给发现入口，用题目主题查找并逐次加载定义。三组共用分发逻辑、读取实现和业务结果金标，目录金标则按策略和题目确定。</p>
+  <p>宿主明确传入 <code>compare(rows, strategy=...)</code>，评分器不从报告推断策略，也不调用运行时目录或搜索来生成答案。它用独立金标逐题校验目录条目的类型与顺序、完整定义（名称、说明、schema）以及发现说明、主题与候选；候选命中、实际读次数、业务原文和来源另行核对。</p>
+  <p>上下文大小按实际序列化的 <code>{manifest, results}</code> 计 UTF-8 字节：发现说明、发现结果、展开的定义、来源、返回记录、拒绝终态和 JSON 结构都算。每题一次序列化，整批求和；这不是 Token、线上带宽、缓存或真实模型延迟。本实验用精确主题和排序，不测模型选工具准确率。</p>
+  <table>
+    <caption>同一批三题：小工具集只有窄题足够；字节数越少不代表越合格</caption>
+    <thead><tr><th scope="col">策略</th><th scope="col">命中／实际读</th><th scope="col">上下文（B）<br>整批／只查留存</th><th scope="col">整批入围？</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">小工具集</th><td>2/4；2 次</td><td>1248／456</td><td>否，缺同步与值守</td></tr>
+      <tr><th scope="row">全授权展开</th><td>4/4；4 次</td><td>4838／1564</td><td>是</td></tr>
+      <tr><th scope="row">按需发现</th><td>4/4；4 次</td><td>2483／677</td><td>是</td></tr>
+    </tbody>
+  </table>
+  <p>合查题的按需目录依次发出空定义列表、发现说明、留存候选与定义、同步候选与定义，另有两份业务结果。即使正文和来源全对，漏发目录条目、截短 schema 或调换目录顺序仍会记入 <code>manifest_errors</code>；实际字节和命中分母照计，但不能入围。</p>
+  <p>若累计预算压到一条，同步候选仍命中，分发却返回 <code>budget_exhausted</code>；此时按需方案是 4/4 命中、3 次实际读，目录正确但交付不完整。反过来，若业务只做留存，小工具集完整读一次，只用 456 B，低于按需的 677 B。</p>
+  <p>厂商接口与课堂模拟不是同一件事。以 Claude 的工具搜索为例，<code>defer_loading: true</code> 延后的是<strong>进入模型上下文</strong>，不是免于在 API 请求中提交已授权工具定义；发现返回引用，服务将其展开。无论在哪一层搜索，发现和参数模式都不赋予业务权限。MCP 的列工具与调用也是分开的操作；本实验不启动 MCP 服务、不验证厂商实现。</p>
+  <div class="best-practice-point" id="bp-l81">
+    <h3>决策卡：先缩小业务面，再判断是否值得搜索</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一可信目录支持多类任务，大片定义很少会用，但主动删掉会造成实际任务缺项。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：正文对，字节少，就更好</span><p>少发目录也会省字节，即使合查结果带着正确的来源。</p></div><div class="bp-right"><span class="bp-compare-label">选择：目录完整、结果有据才入围</span><p>选择前过滤、分发时复验；把所有实际输出和本地读计入观察。</p></div></div>
+    <ol class="bp-steps"><li>先用够用的小目录做正控，锁定任务族和授权规则。</li><li>需要覆盖长尾时比较全授权与按需；逐题核对实际发出的目录、命中、读取、来源和结果。</li><li>预先定聚合预算；用目录漏发、撤权、非法参数和预算耗尽做负控。</li></ol>
+    <p class="bp-result"><strong>取舍：</strong>按需少展开定义，却多一次发现决策与维护成本。若目录很小或大部分工具每题都用，直接展开可能更划算；若业务确实只有留存，单工具方案最简单。</p>
+  </div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 合查题命中两个工具，但累计预算只允许实际读取一条。如果业务需要两条完整来源，该方案算什么？</div><div class="quiz-options"><button data-answer="wrong">计为完成，采用命中数</button><button data-answer="wrong">计为完成，保留首条记录</button><button data-answer="correct">计为未完成，保留计数</button><button data-answer="wrong">移除缺项，再对比整批</button></div><div class="quiz-explanation">命中是找到工具，不是读到了结果；把未完成的任务留在分母里。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：追一次选择、读取和字节对账</h2>
+  <p>打开 <a href="../code/phase9-advanced-agent/advanced-lab/README.md">高级 Agent 实验说明</a>。网站不发布实验 Python 文件；从同版本可信课程仓库根运行。Python 3.11+，仅标准库、无参数、无凭据；下列代码块保存后用 <code>python -I -X utf8 文件名.py</code> 运行，不加 <code>-O</code>。</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase9-advanced-agent/advanced-lab/tools/main.py</code></pre>
+  <div class="card" id="guided-l81"><h3>可见起点：对比同批任务的目录和实际读</h3><pre><code class="language-python" id="l81-worked-starter">import json
+import runpy
+
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/tools/main.py")
+for strategy in lab["STRATEGIES"]:
+    rows = lab["replay"](strategy)
+    report = lab["compare"](rows, strategy=strategy)
+    print(strategy, report.context_bytes, report.ineligible_tasks, report.manifest_errors)
+    print([(r.task_id, r.selected, r.reads, r.context_bytes) for r in rows])
+paired = lab["replay"]("lazy")[1]
+print([entry["type"] for entry in json.loads(paired.context)["manifest"]])
+# TODO：只删掉合查题的发现说明，保留读取和结果，重新比较字节和入围。</code></pre><p><strong>通过标准：</strong>核对上表；按需组在合查题保留同步原句与定位，各组都不含运维工具。删减后仍有 4/4 命中和 4 次实际读，字节变少，但合查题报目录错误。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l81-worked-check">from dataclasses import replace
+import json
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/tools/main.py")
+assert lab["COHORT_VERSION"] == "phase9-tools/v1"
+for strategy, hits, reads, size, failures in (
+    ("small", 2, 2, 1248, ("policy-and-sync", "duty")),
+    ("all-authorized", 4, 4, 4838, ()),
+    ("lazy", 4, 4, 2483, ()),
+):
+    rows = lab["replay"](strategy)
+    report = lab["compare"](rows, strategy=strategy)
+    assert (report.candidate_hits, report.expected_candidates, report.read_calls) == (hits, 4, reads)
+    assert (report.context_bytes, report.ineligible_tasks, report.eligible) == (size, failures, not failures)
+    assert not report.manifest_errors
+    for row in rows:
+        whole = json.loads(row.context)
+        assert set(whole) == {"manifest", "results"}
+        text = json.dumps(whole, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        assert row.context == text.encode("utf-8")
+        assert b"read_ops_retention" not in row.context
+routine, dual, duty = lab["replay"]("lazy")
+assert dual.selected == dual.reads == ("read_retention", "read_sync")
+assert dual.records[-1] == lab["Record"]("support", "SYNC-POLICY", 1, "§1", "同步任务每天 02:00 运行。")
+assert [item["type"] for item in json.loads(dual.context)["manifest"]] == [
+    "definitions", "discovery", "discovery_result", "definitions", "discovery_result", "definitions"
+]
+for change in ("omitted", "truncated", "reordered"):
+    payload = json.loads(dual.context)
+    manifest = payload["manifest"]
+    if change == "omitted":
+        del manifest[1]  # 只改目录，不改结果。
+    elif change == "truncated":
+        del manifest[3]["tools"][0]["input_schema"]["required"]
+    else:
+        manifest[2], manifest[3] = manifest[3], manifest[2]
+    damaged = replace(dual, context=lab["serialize"](payload))
+    rows = (routine, damaged, duty)
+    report = lab["compare"](rows, strategy="lazy")
+    assert (report.candidate_hits, report.expected_candidates, report.read_calls) == (4, 4, 4)
+    assert report.context_bytes == sum(len(row.context) for row in rows)
+    assert (report.context_bytes &lt; 2483) == (change != "reordered")
+    assert report.manifest_errors == report.ineligible_tasks == ("policy-and-sync",)
+    assert not report.eligible
+print("L81 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立变式：妥善处理撤权、预算见底和任务收窄</h2>
+  <p>先发现客服留存工具，再从可信宿主撤掉 <code>policy:read</code>，检查旧候选无法分发。恢复正常可信主体后，分别用布尔和整数参数对照。另起会话，把累计行数降到 1 而不降调用额度；最后只保留常规任务，单独验证小工具集足够，不把子集混入原版本的整批比较。</p>
+  <div class="card"><h3>独立起点：同一个已发现的名称，两种宿主状态</h3><pre><code class="language-python" id="l81-transfer-starter">import runpy
+
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/tools/main.py")
+host = lab["Host"]()
+session = lab["Session"]("lazy", host)
+name = session.select("retention")
+host.scopes = frozenset({"desk:read"})
+print(name, session.dispatch(name, {"limit": 1}), session.reads)
+rows = lab["replay"]("lazy", limits=lab["Limits"](calls=2, rows=1))
+report = lab["compare"](rows, strategy="lazy")
+print(report.read_calls, report.ineligible_tasks, report.manifest_errors)
+# TODO：用新会话做正控和参数对照；再比较只查留存的字节数。</code></pre><p><strong>通过标准：</strong>撤权和非法参数都零读；合查题在 1 行预算时仍命中两候选但只读一次，因结果不完整而不入围，不报目录错误。只查留存时小工具集和按需的事实、来源相同，分别是 456 B 和 677 B。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l81-transfer-check">import json
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/tools/main.py")
+host = lab["Host"]()
+session = lab["Session"]("lazy", host)
+name = session.select("retention")
+assert name == "read_retention" and name in session.visible
+assert session.dispatch("read_ops_retention", {"limit": 1}) == "not_allowed"
+host.scopes = frozenset({"desk:read"})
+assert session.dispatch(name, {"limit": 1}) == "not_allowed"
+assert session.reads == session.records == []
+assert session.select("retention") is None
+assert b"read_ops_retention" not in session.emitted()
+
+positive = lab["Session"]("lazy", lab["Host"]())
+assert positive.select("retention") == name
+assert positive.dispatch(name, {"limit": True}) == "invalid_arguments"
+assert positive.dispatch(name, {"limit": 1, "tenant": "support"}) == "invalid_arguments"
+assert positive.reads == []
+assert positive.dispatch(name, {"limit": 1}) == "ok" and positive.reads == [name]
+assert positive.records[0].locator == "§1"
+
+rows = lab["replay"]("lazy", limits=lab["Limits"](calls=2, rows=1))
+report = lab["compare"](rows, strategy="lazy")
+assert (report.candidate_hits, report.read_calls, report.ineligible_tasks) == (4, 3, ("policy-and-sync",))
+assert not report.manifest_errors
+assert rows[1].reads == ("read_retention",) and len(rows[1].records) == 1
+assert json.loads(rows[1].context)["results"][-1] == {"status": "budget_exhausted"}
+assert not report.eligible
+
+routine = lab["TASKS"][0]
+small, lazy = (lab["run_task"](s, routine) for s in ("small", "lazy"))
+assert small.selected == small.reads == lazy.selected == lazy.reads == ("read_retention",)
+assert small.records == lazy.records == (lab["Record"]("support", "EXPORT-POLICY", 1, "§1", "导出文件生成后保留 7 天。"),)
+assert (small.context_bytes, lazy.context_bytes) == (456, 677)
+print("L81 TRANSFER PASSED")</code></pre></details>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先描述边界和观测点，再说换条件会怎样。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 目录找到了一个正确的工具，却在执行前撤权。能不能读一次再更新列表？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。当前授权要在业务分发前检查，证明零读。旧目录未即时消失不是许可。</p><p><strong>追问（改条件）：</strong>若 scope 不变，但登录主体从客服换成同名运维呢？</p><p><strong>答题要点：</strong>原会话绑定的主体已变化；重建授权上下文和目录，不能复用旧候选执行。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 工具名和参数格式都正确，合查只拿到第一条。先查什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>分别查候选、分发终态和有来源的实际结果；看是否耗尽累计行数或调用额度。</p><p><strong>追问（改条件）：</strong>单次限制仍为两条，新需求却要合计三条，能把初始限制不变继续多读一次吗？</p><p><strong>答题要点：</strong>不能绕开总预算。要么从批准的任务参数调整预算并验证，要么报告明确缺项。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 按需组的启动目录很短，但报告没少多少字节，为什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>查完整序列：发现能力说明、搜索返回、延后定义、结果及包裹都占空间。</p><p><strong>追问（改条件）：</strong>若用厂商的 <code>defer_loading</code>，能直接承诺 HTTP 请求也更小吗？</p><p><strong>答题要点：</strong>不能；请求传输与模型上下文不同，先按实际接口分别计量。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 小目录组省了一半以上字节，为什么仍不建议在整批上线？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>它少了同步与值守，省量不是同质交付；先过独立完整性门再省。</p><p><strong>追问（改条件）：</strong>若新产品只承诺查留存呢？</p><p><strong>答题要点：</strong>重定任务版本，在同一窄负载比较；同样成功时可以选择小目录。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase9-qa.html#L81">L81 疑难解答 →</a><div class="qa-related"><a href="0092-L80-reasoning-effort.html">上一课 L80 · 推理投入</a> · <a href="0094-L82-local-gui-preview.html">下一课 L82 · 本地 GUI 预览</a> · <a href="0097-phase9-advanced-agent-outline.html">阶段 9 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2>
+  <p>授权决定可发现范围，宿主决定可分发范围；完整性决定能否入围。评分器按宿主选定的策略，用独立金标核对实际目录和业务结果。字节照实计，漏发不算节省；命中不替代真实读和交付。</p>
+  <ul><li><a href="https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool">Claude API · Tool search tool</a>：核对 <code>defer_loading</code>、引用展开和模型支持。</li><li><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">MCP Tools（课程固定修订）</a>：区分列工具、调用工具、输入验证和访问控制。</li></ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

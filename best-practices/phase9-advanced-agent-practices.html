@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Phase 9 · 按需进阶复盘</title><link rel="stylesheet" href="../assets/style.css"></head>
+<body><main>
+<div class="section"><h1>Phase 9 · 按需进阶复盘</h1><p>这不是必须用完的功能清单。先写目前可复现的失败，再说明现有的哪项保证不能退步。没有收益的实验，结论可以是「保留现有方案」。</p></div>
+<section class="section"><h2>1. 推理投入先过质量门</h2><p><strong>判断：</strong>按 API、模型和模式核对能力；推理投入不是硬预算。固定任务、证据与金标，负例必须能区分缺少证据和推理不足。简单题已交付就无需升级。</p><p><strong>证据：</strong><a href="../lessons/0092-L80-reasoning-effort.html">L80 固定与按需对照</a>。逐事件与总账核对，拒答也要计取证。不推断线上费用或尾延迟。</p></section>
+<section class="section"><h2>2. 工具露出少了，实际授权不能变松</h2><p><strong>判断：</strong>先试小集合；工具集确实放不下或选错时才按需。选择、实际调用、返回的出处和整个上下文的字节分别记；先检查权限与参数，再按预算调度。</p><p><strong>证据：</strong><a href="../lessons/0093-L81-tool-discovery.html">L81 目录与聚合对照</a>。没有执行的建议不算执行；目录、说明或引用漏发不能算节约。</p></section>
+<section class="section"><h2>3. 只在缺稳定接口时考虑界面</h2><p><strong>判断：</strong>固定表单的可见预览，不等于已提交。取消使当前预览失效，迟到回调不得恢复它；同一状态机可做更快的离线回归，但不能替代真实本地浏览器验证。</p><p><strong>证据：</strong><a href="../lessons/0094-L82-local-gui-preview.html">L82 界面终态</a>。课程不试外站、不提交业务。</p></section>
+<section class="section"><h2>4. 有补丁不等于验收通过</h2><p><strong>判断：</strong>区分工作区范围、操作批准与独立验证。比较实际改动文件，用独立输入检验完整结果；候选修改了测试或自报成功不能替代宿主检查。</p><p><strong>证据：</strong><a href="../lessons/0095-L83-coding-harness-boundaries.html">L83 固定源码与合成验收</a>。源码只读，无通用执行器。</p></section>
+<section class="section"><h2>5. 新进程继续读状态，不重新发额度</h2><p><strong>判断：</strong>取消或耗尽阻止下一步，不能撤销已经提交的业务事实。回执不明先对账；把写入尝试、持久记录和回执区分开。</p><p><strong>证据：</strong><a href="../lessons/0096-L84-long-task-recovery.html#stage-practice-advanced-decision">L84 选修检查点</a>。用同一个已批准任务比较未持久与持久停止，核对重启后是否少一步、少一笔写入；丢回复的恢复另做正控。</p></section>
+<nav class="card" aria-label="阶段链接"><a href="../lessons/0097-phase9-advanced-agent-outline.html">← 第九阶段大纲</a> · <a href="../code/phase9-advanced-agent/advanced-lab/README.md">进阶实验</a> · <a href="../qa/phase9-qa.html">阶段答疑</a></nav>
+</main><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/pwa.js"></script></body>
+</html>

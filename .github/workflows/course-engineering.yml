@@ -28,6 +28,16 @@ jobs:
           python3 -I -X utf8 code/phase8-agent-engineering/engineering-lab/tests/test_gate.py -v
           node scripts/check-course-catalog.cjs
 
+      - name: Run Phase 9 offline exercises and behavior tests
+        run: |
+          node --version
+          python3 -I -X utf8 scripts/check-course-examples.py --suite advanced
+          python3 -I -X utf8 code/phase9-advanced-agent/advanced-lab/effort/test_effort.py -v
+          python3 -I -X utf8 code/phase9-advanced-agent/advanced-lab/tools/test_tools.py -v
+          node --test code/phase9-advanced-agent/advanced-lab/gui/controller.test.cjs
+          python3 -I -X utf8 code/phase9-advanced-agent/advanced-lab/coding/test_lab.py -v
+          python3 -I -X utf8 code/phase9-advanced-agent/advanced-lab/recovery/test_recovery.py -v
+
       - name: Check compatibility with the Phase 5 draft harness
         working-directory: code/phase5-agent-harness/harness-lab
         run: python3 -B -X utf8 -m unittest discover -s tests -p test_harness.py -v

@@ -95,7 +95,13 @@
     { file: '0087-L76-agent-load-cost.html', title: '按负载比较降本方案', phase: '第八阶段' },
     { file: '0088-L77-offline-ci-gates.html', title: '把验收标准接入离线 CI', phase: '第八阶段' },
     { file: '0089-L78-agent-system-design.html', title: '在系统设计中说明取舍', phase: '第八阶段' },
-    { file: '0090-L79-engineering-baseline-handoff.html', title: '交付可复核的工程基线', phase: '第八阶段' }
+    { file: '0090-L79-engineering-baseline-handoff.html', title: '交付可复核的工程基线', phase: '第八阶段' },
+    { file: '0097-phase9-advanced-agent-outline.html', title: '第九阶段选修大纲', phase: '', outlineFor: '第九阶段' },
+    { file: '0092-L80-reasoning-effort.html', title: '按任务选择推理投入', phase: '第九阶段' },
+    { file: '0093-L81-tool-discovery.html', title: '工具搜索与受限聚合', phase: '第九阶段' },
+    { file: '0094-L82-local-gui-preview.html', title: '本地 GUI 预览与取消', phase: '第九阶段' },
+    { file: '0095-L83-coding-harness-boundaries.html', title: '编码 Agent 的工作区与验收', phase: '第九阶段' },
+    { file: '0096-L84-long-task-recovery.html', title: '长任务的取消、重放与预算', phase: '第九阶段' }
   ];
 
   var PHASE_NUMBERS = {
