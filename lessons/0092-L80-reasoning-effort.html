@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L80 · 按任务选择推理投入</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<section class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第九阶段 · 高级 Agent 能力 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>按任务选择推理投入</h1><p class="subtitle">简单题不升级，复杂题不漏证，没有证据就停</p>
+</div></section>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>客服既要答「导出文件保留多久」，也要核对留存和同步两条政策。加大推理投入可能对第二题有用，却不会凭空补出备份政策，更不能替代租户隔离。沿用 <a href="0090-L79-engineering-baseline-handoff.html">L79 的交接原则</a>：没有质量瓶颈就不引入高级能力；有瓶颈才用同一批题对照，这节选修不阻塞后续必修。</p>
+  <h3>学习目标</h3>
+  <ul><li>区分厂商的 effort 字段、thinking 模式、单次输出上限和宿主的任务级预算。</li><li>用独立的事实、引文和拒答标签比较三个策略，并区分「便宜」「可选」「尾部更快」。</li><li>分别诊断掉证、错证、不支持的配置和账本错误；答对也不能掩盖漏账。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 先核对接口与型号，再谈 low 或 high</h2>
+  <table>
+    <caption>一手文档对照｜2026-11-25；仅列本文示例所用直连 API 与型号</caption>
+    <thead><tr><th scope="col">接口与型号</th><th scope="col">投入与模式</th><th scope="col">硬输出上限与终态</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Claude Messages<br><code>claude-sonnet-4-6</code></th><td><code>output_config.effort</code> 支持 <code>low/medium/high/max</code>，不支持 <code>xhigh</code>；effort 默认 <code>high</code>。默认不启用 thinking；可显式选 <code>thinking.type: adaptive</code>，让模型按题决定是否及如何深入。effort 也影响正文和工具调用，不只是 thinking。</td><td><code>max_tokens</code> 给单次输出设硬上限，包含 thinking；若 <code>stop_reason</code> 为 <code>max_tokens</code>，不要把截断当交付。</td></tr>
+      <tr><th scope="row">OpenAI Responses<br><code>gpt-5-2025-08-07</code></th><td><code>reasoning.effort</code> 支持 <code>minimal/low/medium/high</code>，不是 <code>none</code>；不传 Claude 的 <code>thinking</code>。同名档位不代表两家使用相同 Token 数。</td><td><code>max_output_tokens</code> 同时覆盖推理与可见输出；触顶可返回 <code>status: incomplete</code> 和 <code>incomplete_details.reason: max_output_tokens</code>，甚至无可见答复。推理用量看 <code>usage.output_tokens_details.reasoning_tokens</code>。</td></tr>
+    </tbody>
+  </table>
+  <p>Sonnet 4.6 仍接受手动旧模式 <code>thinking: {type: "enabled", budget_tokens: 1024}</code>，但已弃用；这个数是推理目标，不是严格上限。普通非交错手动模式要求至少 1024 且小于 <code>max_tokens</code>；旧交错模式有例外。本实验不实现该例外。不要把 <code>budget_tokens</code> 留在 <code>adaptive</code> 里，也不要把 <code>adaptive</code> 当 effort 值。别的型号可能拒绝旧模式，或不允许关闭 thinking。OpenAI Chat Completions 另用顶层 <code>reasoning_effort</code> 和 <code>max_completion_tokens</code>，不能把 Responses 选项直接搬过去。</p>
+  <figure class="card" aria-labelledby="l80-request-caption">
+    <figcaption id="l80-request-caption"><strong>图 1｜同为低投入，发给两个接口的参数不是同一份</strong>。这里是参数片段，不是完整请求；均不发送。</figcaption>
+    <pre><code class="language-json">{
+  "model": "claude-sonnet-4-6",
+  "thinking": {"type": "adaptive"},
+  "output_config": {"effort": "low"},
+  "max_tokens": 4096
+}</code></pre>
+    <pre><code class="language-json">{
+  "model": "gpt-5-2025-08-07",
+  "reasoning": {"effort": "low"},
+  "max_output_tokens": 4096
+}</code></pre>
+  </figure>
+  <p><strong>别拿软信号当保险丝。</strong> effort 不规定固定 Token 或时间，不保障质量。API 的硬上限只管一次输出，不管整个工作流的检索、重复请求、排队和工具。宿主另设总费用、截止时间或调用次数，执行前检查剩余量，用完就明确停。线上还要用保守预留和实测用量对账；到期时停止安排新动作不等于撤销已经开始的调用。</p>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 合法的高投入请求耗尽输出空间，没有可用正文。怎样记账？</div><div class="quiz-options"><button data-answer="wrong">记交付成功，稍后补写</button><button data-answer="correct">记未交付，保留已用量</button><button data-answer="wrong">记没有调用，清零用量</button><button data-answer="wrong">记安全拒答，忽略截断</button></div><div class="quiz-explanation">空正文、明确拒答、无调用不是一种状态。不能用较高 effort 抵销截断或账单。</div></div>
+</section>
+<section class="section">
+  <h2>2. 固定同一批 Phase 7 查证题</h2>
+  <p><code>phase9-effort/v1</code> 固定题序、主题和可信身份 <code>mei</code>，从 Phase 7 合成资料的内存 SQLite 按租户、文档、版号和定位读取。先比可信来源与交接包，再由模拟器从已收引文抽取值；独立金标手写原句，不从交接包和模拟答复复制。改标签、资料或题目后应给负载另起版本，并重跑三臂。</p>
+  <table>
+    <caption>四题同序回放：同名政策不等于同租户证据</caption>
+    <thead><tr><th scope="col">题与可信租户</th><th scope="col">手写事实与引文约束</th><th scope="col">按需动作</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">常规查导出 · 客服</th><td><code>7 天</code>；<code>support / EXPORT-POLICY v1 §1</code></td><td>低</td></tr>
+      <tr><th scope="row">同一句 · 运维</th><td><code>30 天</code>；<code>operations / EXPORT-POLICY v1 §1</code></td><td>低</td></tr>
+      <tr><th scope="row">核两项政策 · 客服</th><td><code>7 天</code> 与 <code>02:00</code> 各附原句、租户、定位；第二处是 <code>SYNC-POLICY v1 §1</code></td><td>高</td></tr>
+      <tr><th scope="row">问备份留存 · 客服</th><td>无授权证据；答证据不足、无断言</td><td>拒答，零生成</td></tr>
+    </tbody>
+  </table>
+  <figure class="card" aria-labelledby="l80-flow-caption">
+    <figcaption id="l80-flow-caption"><strong>图 2｜从查证到入围，分开看四类诊断</strong></figcaption>
+    <ol><li><strong>证据：</strong>先查完整性、租户、文档版本、定位和原句；交接缺一条或有错配，停止。</li><li><strong>分发：</strong>仅接收实验支持的接口、型号、模式和档位；费用与截止时间过门才发起模拟调用。</li><li><strong>质量：</strong>独立核对事实、引文和正确拒答；答对也不能替代交接证据。</li><li><strong>账本：</strong>独立核对实际发生的取证和调用，复核费用与耗时总数；无调用也要检查宿主上限。</li></ol>
+  </figure>
+  <p>固定低和固定高只约束<strong>可以发起</strong>的题；三臂缺证都拒答。按需臂先查证，单事实用低、多事实用高，不把用户要求的「更认真」当可信路由。最低档在复杂题只答第一条是故意写的失败脚本，用来确认判分能区分完整与不完整，不是实际模型质量结论。</p>
+</section>
+<section class="section">
+  <h2>3. 质量先过门，再看成本和尾部</h2>
+  <p>实际执行模拟取证才记 <code>6 uc / 15 ms</code>；调用低档模型替身加 <code>18 uc / 45 ms</code>，高档加 <code>42 uc / 105 ms</code>，截断也要计这笔。取证前因预算不足停下，零事件、零费用、零耗时；缺证拒答不生成，但已取证就要计账。</p>
+  <p><code>compare()</code> 用独立冻结的数值核对取证与调用，再把两者相加核对每个终态的费用、耗时和宿主上限。整批任务（含拒答和失败）都留在统计中，按记录的事件累计成本和 p95，不直接信任报告总数。账本错误单列为 <code>ledger_errors</code>，有关答案不计合格交付，整臂不入围。零交付时没有均摊值。按需费用可手算为 <code>24 + 24 + 48 + 6 = 102 uc</code>，除以三件交付是 <code>34 uc/件</code>。</p>
+  <table>
+    <caption>同一批题的合成回放结果；uc 为虚构计费单位，ms 不是实测模型耗时</caption>
+    <thead><tr><th scope="col">策略</th><th scope="col">过门／交付</th><th scope="col">费用（总额／每件，uc）</th><th scope="col">p95（ms）</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">固定低</th><td>否／2/4</td><td>78／39</td><td>60</td></tr>
+      <tr><th scope="row">固定高</th><td>是／3/4</td><td>150／50</td><td>120</td></tr>
+      <tr><th scope="row">按需</th><td>是／3/4</td><td>102／34</td><td>120</td></tr>
+    </tbody>
+  </table>
+  <p>仅在过硬门的方案间先比每件交付成本、再看 p95。固定低虽快但漏了同步，不能排第一；按需省了常规题的开销，但最慢的双事实题不变。四件任务的最近秩 p95 取升序第 4 项，只是这批的最大值，不是 SLO，也不是实际费率。</p>
+  <div class="best-practice-point" id="bp-l80">
+    <h3>决策卡：何时值得加推理投入？</h3>
+    <p class="bp-scenario"><strong>适用：</strong>资料齐全且能区分查证成本与推理瓶颈的混合负载。<strong>停止条件：</strong>缺授权证据、配置不兼容或任务预算不足时，拒答或报未完成，不默认升级或换型号。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：更多推理必然更可靠</span><p>证据不是靠思考产生，正确措辞也不是正确交付轨迹。</p></div><div class="bp-right"><span class="bp-compare-label">选择：按可测任务差异调整</span><p>固定语料与金标，确认复杂题确有收益；成本和尾部都要报。</p></div></div>
+    <ol class="bp-steps"><li>为锁定的型号与接口核对支持表、停止原因和用量口径。</li><li>分别判质量、来源、分发资格和账本；截断和拒答保留实际发生的开销。</li><li>在入围方案间选更便宜的一个，并确认尾部满足预先设定的目标。</li></ol>
+    <p class="bp-result"><strong>取舍：</strong>按需需要维护分类和异常退路，分类错会导致漏证或白花费用。若固定低已过门，优先保留简单方案；若尾部不可接受，先找到真正慢的阶段。</p>
+  </div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 按需方案的账本总额更低，但删掉了复杂题的同步原句。怎么比较？</div><div class="quiz-options"><button data-answer="wrong">成本更低，优先入围</button><button data-answer="wrong">主事实正确，维持排序</button><button data-answer="wrong">先提高档位，再看排名</button><button data-answer="correct">不入围，先定位缺证</button></div><div class="quiz-explanation">取证、交接、答复各自可失效。升级不能恢复从交接包消失的来源。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>4. 跟做：跑三臂，再独立核账</h2>
+  <p>打开 <a href="../code/phase9-advanced-agent/advanced-lab/README.md">高级 Agent 实验说明</a>。网站不发布实验 Python 文件；获取同版本可信课程仓库，从仓库根运行。Python 3.11+，仅使用标准库；保存并运行下面的块用 <code>python -I -X utf8 文件名.py</code>，不要加 <code>-O</code>。入口无需参数或凭据，实验不联网。</p>
+  <pre><code class="language-bash">python -I -X utf8 code/phase9-advanced-agent/advanced-lab/effort/main.py</code></pre>
+  <div class="card" id="guided-l80"><h3>可见起点：先看事件和终态，不只看均价</h3><pre><code class="language-python" id="l80-worked-starter">import runpy
+
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/effort/main.py")
+for policy in lab["POLICIES"]:
+    rows = lab["replay"](policy)
+    print(policy, "ledger_errors:", lab["compare"](rows).ledger_errors)
+    for r in rows:
+        print(r.task_id, r.status, r.lookup,
+              (r.call.effort, r.call.charge_uc, r.call.duration_ms) if r.call else None,
+              (r.charge_uc, r.elapsed_ms), [claim.value for claim in r.claims])</code></pre><p><strong>通过标准：</strong>三臂账本无误；两道常规题按需都为低，双事实题唯有固定低漏项。缺证题三臂都无调用，但均记 <code>6 uc / 15 ms</code>；两条入围方案的 p95 一样，按需每件更省。</p></div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l80-worked-check">from fractions import Fraction
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/effort/main.py")
+assert lab["COHORT_VERSION"] == "phase9-effort/v1"
+for policy, delivered, total, unit, p95, failures in (
+    ("fixed-low", 2, 78, 39, 60, ("cross-check",)),
+    ("fixed-high", 3, 150, 50, 120, ()),
+    ("selective", 3, 102, 34, 120, ()),
+):
+    rows = lab["replay"](policy)
+    support, ops, complex_row, missing = rows
+    assert (support.claims[0].value, ops.claims[0].value) == ("7 天", "30 天")
+    assert (support.claims[0].source.tenant, ops.claims[0].source.tenant) == ("support", "operations")
+    assert missing.status == "insufficient_evidence" and missing.call is None and missing.claims == ()
+    assert [(r.lookup.charge_uc, r.lookup.duration_ms) for r in rows] == [(6, 15)] * 4
+    assert (missing.charge_uc, missing.elapsed_ms) == (6, 15)
+    assert len(complex_row.call.packet) == 2
+    if policy == "selective":
+        assert [(r.call.effort, r.call.charge_uc, r.call.duration_ms) for r in rows[:-1]] == [
+            ("low", 18, 45), ("low", 18, 45), ("high", 42, 105)]
+    report = lab["compare"](rows)
+    assert (report.eligible, report.successes, report.total_charge) == (not failures, delivered, total)
+    assert (report.charge_per_success, report.p95_ms) == (Fraction(unit), p95)
+    assert (report.quality_errors, report.evidence_errors, report.dispatch_errors, report.ledger_errors) == (
+        failures, (), (), ())
+print("L80 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立变式：盖住最终答复，还能找到哪个门坏了吗？</h2>
+  <p>保持复杂题原来的两个事实，把交接包改为只有第一条，或替换成同文档键的运维留存引文，再把 Sonnet 的配置单独换成该型号不支持的 thinking 模式。比较运行前拦截和事后轨迹诊断。接着保留答复和事件，只改总账：给复杂题漏记取证，给正确拒答漏记费用或填入超限耗时。最后分别用 <code>48 / 47 uc</code> 和 <code>120 / 119 ms</code> 跑边界，另一项保持默认。</p>
+  <div class="card"><h3>独立起点：保留正确答复，漏记一笔取证</h3><pre><code class="language-python" id="l80-transfer-starter">from dataclasses import replace
+import runpy
+
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/effort/main.py")
+rows = lab["replay"]("selective")
+good = rows[2]
+short = replace(good, charge_uc=42, elapsed_ms=105)
+report = lab["compare"]((*rows[:2], short, rows[-1]))
+print(report.ledger_errors, report.eligible, f"{report.successes}/{len(rows)}", report.total_charge)
+# TODO：改缺证题总账，再分别试费用和时间的「刚好够／差一」。</code></pre><p><strong>通过标准：</strong>漏记取证应显示 <code>('cross-check',) False 2/4 102</code>；删减总数不会变便宜。换掉正确拒答的账本只报 <code>missing</code> 的账本错。费用或时间刚好够可调用，差一则只有取证；连取证预算都不够则是零账本。保留证据和配置对照：掉证、错证只报证据错，不支持选项只报分发错。</p></div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l80-transfer-check">from dataclasses import replace
+import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/effort/main.py")
+rows = lab["replay"]("selective")
+_, other, good, _ = rows
+a, b = good.call.packet
+mutations = ((a,), (other.call.packet[0], b), (a, replace(b, quote="同步任务每天 03:00 运行。")))
+task = lab["TASKS"][2]
+bad_mode = replace(lab["CLAUDE"], thinking="between_tools")
+with lab["open_demo"]() as db:
+    for packet in mutations:
+        bad = lab["run_task"](db, task, "selective", packet=packet)
+        assert (bad.status, bad.claims, bad.call) == ("evidence_mismatch", (), None)
+    refused = lab["run_task"](db, task, "selective", target=bad_mode)
+    assert refused.status == "unsupported_config" and refused.call is None
+
+for packet in mutations:
+    fake = replace(good, call=replace(good.call, packet=packet))
+    report = lab["compare"]((*rows[:2], fake, rows[-1]))
+    assert not report.eligible and report.quality_errors == report.dispatch_errors == report.ledger_errors == ()
+    assert report.evidence_errors == ("cross-check",)
+bad_options = {**good.call.options, "thinking": {"type": "between_tools"}}
+fake = replace(good, call=replace(good.call, options=bad_options))
+report = lab["compare"]((*rows[:2], fake, rows[-1]))
+assert not report.eligible and report.quality_errors == report.evidence_errors == report.ledger_errors == ()
+assert report.dispatch_errors == ("cross-check",)
+
+missing = rows[-1]
+for batch, task_id, delivered in (
+    ((*rows[:2], replace(good, charge_uc=42, elapsed_ms=105), missing), "cross-check", 2),
+    ((*rows[:-1], replace(missing, charge_uc=0)), "missing", 3),
+    ((*rows[:-1], replace(missing, elapsed_ms=151)), "missing", 3),
+):
+    report = lab["compare"](batch)
+    assert report.ledger_errors == (task_id,)
+    assert report.quality_errors == report.evidence_errors == report.dispatch_errors == ()
+    assert (report.eligible, report.successes, report.total_charge, report.p95_ms) == (False, delivered, 102, 120)
+
+for field, cap in (("charge_uc", 48), ("deadline_ms", 120)):
+    exact, tight = (lab["Limits"](**{field: n}) for n in (cap, cap - 1))
+    full = lab["replay"]("selective", limits=exact)
+    assert lab["compare"](full, limits=exact).eligible
+    assert lab["compare"](full, limits=tight).ledger_errors == ("cross-check",)
+    stopped = lab["replay"]("selective", limits=tight)
+    row = stopped[2]
+    assert (row.status, row.call, row.charge_uc, row.elapsed_ms) == ("budget_exhausted", None, 6, 15)
+    report = lab["compare"](stopped, limits=tight)
+    assert stopped[0].call.effort == "low" and not report.eligible and report.ledger_errors == ()
+
+for field, cap in (("charge_uc", 6), ("deadline_ms", 15)):
+    exact, tight = (lab["Limits"](**{field: n}) for n in (cap, cap - 1))
+    refusal = lab["replay"]("selective", limits=exact)[-1]
+    assert (refusal.status, refusal.call, refusal.charge_uc, refusal.elapsed_ms) == ("insufficient_evidence", None, 6, 15)
+    zeros = lab["replay"]("selective", limits=tight)
+    assert [(r.lookup, r.call, r.charge_uc, r.elapsed_ms) for r in zeros] == [(None, None, 0, 0)] * 4
+    assert lab["compare"](zeros, limits=tight).ledger_errors == ()
+print("L80 TRANSFER PASSED")</code></pre></details>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先说要保护的边界，再换一个条件，看结论是否仍成立。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 常规题压到低档后没漏事实，是否把所有题都调低？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能从常规题推断复杂题。分层检查多来源任务与缺证拒答，再比较同批账本。</p><p><strong>追问（改条件）：</strong>复杂题的所有证据先压成了一条，应该按「一条」路由吗？</p><p><strong>答题要点：</strong>输入条数改变不等于事实核对变简单；确认两项事实仍可分别追溯，再用独立样本重测复杂度规则。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 三档都拒答备份题，要不要提高 effort 重试？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>缺授权证据时不重试生成。检查资料是否存在或有无授权，不把高档当数据源。</p><p><strong>追问（改条件）：</strong>后来已发布并授予备份政策读取权，还算正确拒答吗？</p><p><strong>答题要点：</strong>重建版本化证据与金标，准许新版本回答；不要拿旧拒答标签判断新资料。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 把 Claude 的配置迁到 OpenAI Responses，为什么不能原样照搬？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>字段、可用档位与模式依接口和型号；宿主验证后才分发。</p><p><strong>追问（改条件）：</strong>如果选的是 OpenAI Chat Completions 呢？</p><p><strong>答题要点：</strong>重新查顶层字段与限制，用实际目标接口的配置与终态验收，而不是只换模型字符串。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 按需更省，但 p95 不动，能承诺更快吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。尾部仍是高档复杂题；现有数字是四个合成时长的最近秩，不是线上承诺。</p><p><strong>追问（改条件）：</strong>上线样本的尾部主要是等待检索，不再是推理，优先改什么？</p><p><strong>答题要点：</strong>先分解端到端时长，验证检索瓶颈；改推理档位不一定改善等待。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase9-qa.html#L80">L80 疑难解答 →</a><div class="qa-related"><a href="0097-phase9-advanced-agent-outline.html">阶段 9 大纲</a> · <a href="0093-L81-tool-discovery.html">下一课 L81 · 工具搜索与受限聚合</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2>
+  <p>先验资料与配置，按任务选择投入，再用独立质量门和账本做决定。缺证、无权或超预算，应该停，而不是升级。</p>
+  <ul>
+    <li><a href="https://platform.claude.com/docs/en/build-with-claude/effort">Claude API · Effort</a>、<a href="https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting">逐型号 thinking 支持表</a>与<a href="https://platform.claude.com/docs/en/build-with-claude/extended-thinking">手动模式与预算规则</a>：核对档位、默认值和不兼容组合。</li>
+    <li><a href="https://developers.openai.com/api/docs/guides/reasoning">OpenAI · Reasoning guide</a>、<a href="https://developers.openai.com/api/docs/models/gpt-5">GPT-5 型号页</a>与<a href="https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create">Chat Completions 参数</a>：核对快照、推理用量与终态字段。</li>
+  </ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

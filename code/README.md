@@ -60,6 +60,10 @@ code/
 
 [L70–L79](../lessons/0091-phase8-agent-engineering-outline.html#lesson-plan) 使用[工程实验](phase8-agent-engineering/engineering-lab/README.md)验证合成遥测、离线评估、草稿权限、成本账本、PR 门禁与基线交接。示例不需要真实模型、账单、远程后端或生产身份。
 
+## Phase 9 按需进阶实验（选修）
+
+[高级 Agent 选修 L80–L84](../lessons/0097-phase9-advanced-agent-outline.html#lesson-plan) 使用[进阶实验](phase9-advanced-agent/advanced-lab/README.md)对照推理投入、工具目录、界面预览、编码验收和持久取消。主线只需 Python 与 Node.js；本地浏览器演练只使用合成页面。没有可复现瓶颈时，可保留原有方案并直接查看 Phase 10 的必修规划。
+
 ## 使用规范
 
 - 使用第三方依赖的项目用 `pyproject.toml` 描述依赖；完成实测后提供 `uv.lock`，从项目根运行 `uv run --offline --locked ...`。纯标准库项目使用自身说明中的 Python 命令；

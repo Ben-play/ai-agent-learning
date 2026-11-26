@@ -4,8 +4,8 @@
 Uses only the standard library to run explicit allowlists. The default suite needs
 Pydantic v2 for L36 and uses loopback HTTP for L58/L59; it never calls external
 services. The separate LangGraph suite needs the graph-lab dependencies. The
-Phase 7 RAG and Phase 8 engineering use the standard library and local synthetic
-inputs; L75 reuses the loopback MCP checkpoint. This script installs nothing.
+Phase 7–9 use local synthetic inputs; L75 reuses the loopback MCP checkpoint and
+L82 runs a fixed Node.js controller check. This script installs nothing.
 """
 
 from __future__ import annotations
@@ -123,8 +123,22 @@ ENGINEERING_CASES = tuple(
     ("0086-L75-tool-authority-bounds.html", ("l75-mcp-check",), "L75 MCP CHECK PASSED"),
     ("0090-L79-engineering-baseline-handoff.html", ("l79-stage-check",), "P8 ENGINEERING HANDOFF PASSED"),
 )
+ADVANCED_LESSONS = (
+    (80, "0092-L80-reasoning-effort.html"),
+    (81, "0093-L81-tool-discovery.html"),
+    (82, "0094-L82-local-gui-preview.html"),
+    (83, "0095-L83-coding-harness-boundaries.html"),
+    (84, "0096-L84-long-task-recovery.html"),
+)
+ADVANCED_CASES = tuple(
+    (filename, (f"l{number}-{kind}-check",), f"L{number} {expected}")
+    for number, filename in ADVANCED_LESSONS
+    for kind, expected in (("worked", "ACCEPTED"), ("transfer", "TRANSFER PASSED"))
+) + (
+    ("0096-L84-long-task-recovery.html", ("l84-stage-check",), "P9 ADVANCED DECISION PASSED"),
+)
 ALL_CASES = (CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
-             + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES)
+             + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES + ADVANCED_CASES)
 
 
 class CodeBlocks(HTMLParser):
@@ -153,7 +167,7 @@ class CodeBlocks(HTMLParser):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     suites = {"local": ALL_CASES, "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES,
-              "engineering": ENGINEERING_CASES}
+              "engineering": ENGINEERING_CASES, "advanced": ADVANCED_CASES}
     parser.add_argument("--suite", choices=tuple(suites), default="local")
     suite = parser.parse_args().suite
     cases = suites[suite]

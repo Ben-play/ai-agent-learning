@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>L82 · 本地预览台</title>
+  <style>
+    :root { color-scheme: light; color: #182c2c; background: #f7f3e8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 1rem/1.6 Georgia, 'Microsoft YaHei', serif; }
+    main { width: min(58rem, calc(100% - 2rem)); margin: 2rem auto; }
+    header { border-block: 3px double #294a45; padding: .9rem 0 1rem; }
+    h1, h2 { line-height: 1.25; margin: 0 0 .5rem; }
+    h1 { font-size: clamp(1.8rem, 5vw, 3rem); }
+    header p, .panel p { margin: .35rem 0; }
+    .index { font: 700 .85rem/1.5 Consolas, monospace; letter-spacing: .14em; color: #694126; }
+    .cases { display: grid; grid-template-columns: 4fr 5fr; gap: 1rem; margin: 1.4rem 0; }
+    .panel { min-width: 0; padding: 1rem; border: 1px solid #52756f; border-top: 5px solid #294a45; background: #fffdf6; }
+    .panel:last-child { border-top-color: #965028; }
+    .receipt { border-top: 1px dashed #52756f; margin: 1rem 0 0; padding: .8rem 0 0; }
+    dt { font-weight: 700; }
+    dd { margin: 0 0 .5rem; overflow-wrap: anywhere; }
+    output, code { font-family: Consolas, 'Microsoft YaHei', monospace; }
+    .controls { display: flex; flex-wrap: wrap; gap: .55rem; margin: .75rem 0; }
+    button { padding: .45rem .65rem; font: inherit; font-size: .95rem; color: white; background: #294a45; border: 1px solid #294a45; cursor: pointer; }
+    button:enabled:hover { background: #172f2a; }
+    button:disabled { cursor: default; background: #e8e4d9; color: #50524c; border-color: #82867c; }
+    button:focus-visible { outline: 3px solid #9a582d; outline-offset: 2px; }
+    .trace { font-size: .92rem; }
+    @media (max-width: 43rem) { .cases { grid-template-columns: 1fr; } }
+  </style>
+  <script src="controller.js" defer></script>
+  <script src="preview.js" defer></script>
+  <script src="browser-smoke.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <p class="index">L82 / LOCAL LAB / V1</p>
+    <h1>导出客服 · 本地草稿预览台</h1>
+    <p>同一条合成政策，两种预览路径。只在本页内存中显示，不保存、不提交、不外发。</p>
+  </header>
+  <noscript><p>此预览台需要浏览器运行仓库中的本地脚本。</p></noscript>
+  <div class="cases">
+    <section class="panel" aria-labelledby="stable-title">
+      <p class="index">01 / STABLE INTERFACE</p>
+      <h2 id="stable-title">有稳定应用接口</h2>
+      <p>直接返回相同的草稿和来源，不排队、不操作旧界面。</p>
+      <div class="controls"><button id="stable-start" type="button" disabled>读取接口预览</button></div>
+      <dl class="receipt" aria-live="polite">
+        <dt>状态 / 尝试编号</dt><dd><output id="stable-status">idle · #0</output></dd>
+        <dt>预览正文</dt><dd id="stable-text">—</dd>
+        <dt>来源</dt><dd id="stable-source">—</dd>
+      </dl>
+    </section>
+    <section class="panel" aria-labelledby="legacy-title">
+      <p class="index">02 / LEGACY GUI</p>
+      <h2 id="legacy-title">无稳定应用接口</h2>
+      <p>预览先排队。可以先取消，也可以手动交付最早排入的回调；没有定时器。</p>
+      <div class="controls">
+        <button id="legacy-start" type="button" disabled>请求预览</button>
+        <button id="legacy-cancel" type="button" disabled>取消待处理预览</button>
+        <button id="legacy-deliver" type="button" disabled>交付最早的回调</button>
+      </div>
+      <dl class="receipt" aria-live="polite">
+        <dt>状态 / 尝试编号</dt><dd><output id="legacy-status">idle · #0</output></dd>
+        <dt>预览正文</dt><dd id="legacy-text">—</dd>
+        <dt>来源</dt><dd id="legacy-source">—</dd>
+      </dl>
+      <p class="trace">模拟队列：<output id="legacy-queue">0</output>；最近交付：<output id="legacy-delivery">未交付</output></p>
+    </section>
+  </div>
+  <p><strong>终态：</strong><code>previewed</code> 表示已显示，<code>cancelled</code> 表示本次预览已停止；两者均不代表草稿持久化。新尝试另编号。刷新会清空演练状态。</p>
+  <p id="browser-smoke" role="status" hidden></p>
+</main>
+</body>
+</html>

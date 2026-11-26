@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L83 · 编码 Agent 的工作区与验收</title><link rel="stylesheet" href="../assets/style.css">
+  <style>
+    .l83-ledger { margin: 1.5rem 0; padding: .25rem 1.15rem; border-inline-start: 3px solid var(--accent); background: var(--bg-warm); }
+    .l83-ledger div { display: grid; grid-template-columns: minmax(8rem, 1fr) 3fr; gap: .2rem 1.25rem; padding: .75rem 0; }
+    .l83-ledger div + div { border-block-start: 1px solid var(--border); }
+    .l83-ledger dt { font-family: var(--font-display); font-weight: 700; color: var(--accent); }
+    .l83-ledger dd { margin: 0; }
+    .l83-scroll { overflow-x: auto; }
+    .l83-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 38rem) { .l83-ledger div { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="section"><div class="lesson-header">
+    <div class="lesson-meta-row"><span class="lesson-phase-tag">第九阶段 · 高级 Agent 能力 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+    <h1>编码 Agent 的工作区与验收</h1>
+    <p class="subtitle">对照 Harness：目录不是隔离，确认不是验收</p>
+  </div></div>
+
+  <section class="section"><h2>为什么这课重要？</h2>
+    <p>客服答复要补上一条引用。候选报告「测试通过」，正文也写对了同步时间；审阅才发现它省掉了出处定位，或者同时改了与任务无关的文件。<strong>Harness</strong> 是包在 Agent 外面的宿主控制层，负责约束工作环境、承接确认并接入验收。工作区、人工确认和独立验收回答的是三个问题。把其中一个信号当成「已完成」，就会漏掉另外两道边界。</p>
+    <h3>学习目标</h3>
+    <ul>
+      <li>用固定版本的一手源码，区分工作区、确认政策、等待状态与独立验收。</li>
+      <li>用可信基线核对整份制品清单与完整引用；从报告里判断缺定位和越界改动各失败在哪一项。</li>
+      <li>把验收迁移到只允许改预览稿的任务，写出继续使用确定性检查或复议引入复杂 Harness 的条件。</li>
+    </ul>
+  </section>
+
+  <section class="section"><h2>1. 源码对照：三道边界，三个问题</h2>
+    <p>只读对照 <strong>OpenHands Software Agent SDK v1.64.0</strong>（<code>289299ef2d3b8ea4116bde0f3e9343ef84d7d78e</code>）。不下载、不安装、不运行 SDK。本节只看边界，不复刻工具或操作流程。</p>
+    <dl class="l83-ledger">
+      <div><dt>01 · 工作区</dt><dd>候选被放在什么环境里？目录是位置；只有具体运行环境实施的访问边界，才是隔离证据。</dd></div>
+      <div><dt>02 · 暂停确认</dt><dd>谁有权让待执行动作继续？等待确认是过程状态，确认不是对实际结果的验收。</dd></div>
+      <div><dt>03 · 独立验收</dt><dd>实际交付是否符合任务？用候选无法改写的基线和预期，检查全部交付内容与范围。</dd></div>
+    </dl>
+    <ul>
+      <li><code>workspace/base.py</code> 的 <code>BaseWorkspace</code> 是工作区抽象，描述工作目录和接口，不保证沙箱隔离。<code>conversation/impl/local_conversation.py</code> 的本地会话可使用 <code>LocalWorkspace</code>；有单独目录也不能据此断言它是隔离环境。</li>
+      <li><code>ConfirmationPolicyBase.should_confirm()</code> 根据单个动作的风险判断是否需要确认；<code>AlwaysConfirm</code> 对交给它判断的动作总是返回「需要确认」。这是逐动作判断，不是要求审核者逐项批准。</li>
+      <li>同一批动作中只要有一个需要确认，Agent 就暂缓整批，<code>LocalConversation</code> 停在 <code>WAITING_FOR_CONFIRMATION</code>，不是已完成，也不同于普通暂停 <code>PAUSED</code>。从待确认状态恢复运行时，会话将这批待执行项视为一并确认。确认只决定能否继续，不能替代隔离或独立验收。</li>
+      <li><code>conversation/state.py</code> 的 <code>ConversationState</code> 分别记录 <code>confirmation_policy</code>、<code>security_analyzer</code> 与 <code>execution_status</code>。不能假定默认每步都要求显式确认，也不能拿终态替代独立结果检查。本课的验收规则由课程端单独持有，不从这些字段推断通过。</li>
+    </ul>
+    <div class="quiz" data-quiz="q1">
+      <div class="quiz-question"><span class="quiz-q">Q</span>只知道会话有自己的工作目录。评审可以先得出什么结论？</div>
+      <div class="quiz-options"><button data-answer="correct">目录指出工作位置，隔离另验</button><button data-answer="wrong">目录说明写入边界，只读范围另查</button><button data-answer="wrong">目录说明访问边界，测试结果另查</button><button data-answer="wrong">目录说明确认范围，用户权限另查</button></div>
+      <div class="quiz-explanation">路径不是访问控制。确认、隔离和独立验收均需各自的证据。</div>
+    </div>
+  </section>
+
+  <section class="section"><h2>2. 把「格式正确」和「只改任务文件」都写成验收条件</h2>
+    <p>延续客服同步问答的合成证据：<code>SYNC-POLICY v1 §1</code> 约定「同步任务每天 02:00 运行。」本轮只允许改 <code>answer.md</code>，要求正文和来源各一行（末尾也有换行）。来源必须有文档号、版本和小节定位；本题要求规范格式，不判断开放式措辞。</p>
+    <p>夹具 <code>candidates-v1.json</code> 把每个候选表示为下列数据。<code>files</code> 是提议交付的<strong>完整</strong>清单，不是只列修改项的补丁。键只是标签，值只是文本；包含 <code>tests/</code> 的标签也不是真正运行的测试。</p>
+    <pre><code class="language-json">{
+  "claimed_pass": true,
+  "files": {
+    "answer.md": "同步任务每天 02:00 运行。\n来源：SYNC-POLICY v1 §1\n",
+    "preview.md": "预览待补证据。\n",
+    "notes.md": "内部备忘（合成）。\n",
+    "tests/citation-cases.json": "{\"locator_required\": true}\n"
+  }
+}</code></pre>
+    <p>可信判定器（<code>lab.py</code>）用基线的完整键和值计算 <code>delta.added / removed / changed</code>；缺项算删除。只有新增与删除都为空、且恰好改了目标文件，<code>scope_ok</code> 才为真。用可信预期比对目标完整文本得到 <code>citation_ok</code>。两项都真才 <code>accepted</code>；<code>claimed_pass</code> 只用于对照，根本不传入判定器。</p>
+    <div class="l83-scroll" tabindex="0" role="region" aria-label="四个候选的验收结果">
+      <table><caption>同一任务下的四个候选（均自称通过）</caption>
+      <thead><tr><th scope="col">候选</th><th scope="col">引用</th><th scope="col">范围</th><th scope="col">独立结论</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>valid</code></th><td>完整</td><td>只改答复</td><td>通过</td></tr>
+        <tr><th scope="row"><code>missing-locator</code></th><td>缺 <code>§1</code></td><td>只改答复</td><td>引用不通过</td></tr>
+        <tr><th scope="row"><code>unrelated-edit</code></th><td>完整</td><td>也改了备忘</td><td>范围不通过</td></tr>
+        <tr><th scope="row"><code>test-edit</code></th><td>完整</td><td>也改了候选里的测试数据</td><td>范围不通过</td></tr>
+      </tbody></table>
+    </div>
+    <div class="quiz" data-quiz="q2">
+      <div class="quiz-question"><span class="quiz-q">Q</span>候选正文和引用完整，自称通过，却把备忘从完整清单中省略。怎么判？</div>
+      <div class="quiz-options"><button data-answer="wrong">视为备忘不变，引用通过就接受</button><button data-answer="correct">记为备忘删除，引用通过但拒绝</button><button data-answer="wrong">记为内容不完整，范围仍通过</button><button data-answer="wrong">记为信息不足，用自报结果补验</button></div>
+      <div class="quiz-explanation">这是全量快照，不是增量说明。两项都要过，省略文件也改变了范围。</div>
+    </div>
+  </section>
+
+  <section class="section best-practice-lesson"><h2>3. 跟做：复跑，再解释哪一项挡住了候选</h2>
+    <p>从可信课程仓库根使用 Python 3.11+，不装依赖。下列命令只运行课程自带的判定器和单元测试；不应用候选、不写制品、不执行候选文字，也不运行第三方 Agent。若从 Pages 阅读，请使用可信课程检出（见<a href="../code/phase9-advanced-agent/advanced-lab/README.md">实验 README</a>）。</p>
+    <pre><code class="language-bash">python -I -X utf8 code/phase9-advanced-agent/advanced-lab/coding/lab.py
+python -I -X utf8 code/phase9-advanced-agent/advanced-lab/coding/test_lab.py -v</code></pre>
+    <p>把起点复制到自己的学习练习目录，从可信课程仓库根运行 <code>python -I -X utf8 练习文件的路径.py</code>（不加 <code>-O</code>）。两份起点可独立运行。</p>
+    <div class="card"><h3>可运行起点：读四份报告</h3>
+    <pre><code class="language-python" id="l83-worked-starter">import runpy
+
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/coding/lab.py")
+candidates = lab["load_candidates"]()
+for name in ("valid", "missing-locator", "unrelated-edit", "test-edit"):
+    candidate = candidates[name]
+    report = lab["verify"](candidate["files"])
+    print(name, candidate["claimed_pass"], report["accepted"], report["delta"])
+# TODO：为每条报告断言引用、范围，以及清单差异。</code></pre>
+    <p><strong>通过标准：</strong>仅 <code>valid</code> 获验收；缺定位只卡引用，多改备忘或测试数据只卡范围；用实际差异说明它们为何没过。</p></div>
+    <details class="bp-check"><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l83-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/coding/lab.py")
+candidates = lab["load_candidates"]()
+expected = {
+    "valid": (True, True, ["answer.md"]),
+    "missing-locator": (False, True, ["answer.md"]),
+    "unrelated-edit": (True, False, ["answer.md", "notes.md"]),
+    "test-edit": (True, False, ["answer.md", "tests/citation-cases.json"]),
+}
+for name, (citation_ok, scope_ok, changed) in expected.items():
+    candidate = candidates[name]
+    report = lab["verify"](candidate["files"])
+    assert candidate["claimed_pass"] is True
+    assert report["target"] == "answer.md"
+    assert (report["citation_ok"], report["scope_ok"]) == (citation_ok, scope_ok)
+    assert report["accepted"] is (citation_ok and scope_ok)
+    assert report["delta"] == {"added": [], "removed": [], "changed": changed}
+print("L83 ACCEPTED")</code></pre></details>
+  </section>
+
+  <section class="section best-practice-lesson" id="lesson-best-practices"><h2>4. 独立变式：只许改预览稿，原来的绿灯还算吗？</h2>
+    <p>复用同一基线和格式要求，但新任务明确要求只改 <code>preview.md</code>，正式答复保持原状。课程端指定 <code>preview-only</code>，不是候选自选。试验三份提交：上一轮的绿灯、只改预览稿、正确预览稿加一份副本。先预测三者的清单差异，再运行。</p>
+    <div class="card"><h3>可运行起点：换目标，不换验收原则</h3>
+    <pre><code class="language-python" id="l83-transfer-starter">import runpy
+
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/coding/lab.py")
+candidates = lab["load_candidates"]()
+for name in ("valid", "preview-only", "preview-extra"):
+    report = lab["verify"](candidates[name]["files"], profile="preview-only")
+    print(name, report["target"], report["accepted"], report["delta"])
+# TODO：定位刚才的绿灯改了哪里，并区分正确预览与多出的副本。</code></pre>
+    <p><strong>通过标准：</strong>旧绿灯会改正式答复，因此本轮失败；只改预览的正控通过；多出副本即使预览正文和引用正确，也不得通过。</p></div>
+    <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l83-transfer-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+lab = runpy.run_path("code/phase9-advanced-agent/advanced-lab/coding/lab.py")
+candidates = lab["load_candidates"]()
+old_files = candidates["valid"]["files"]
+assert lab["verify"](old_files)["accepted"] is True
+expected = {
+    "valid": (False, False, [], ["answer.md"]),
+    "preview-only": (True, True, [], ["preview.md"]),
+    "preview-extra": (True, False, ["preview-copy.md"], ["preview.md"]),
+}
+for name, (citation_ok, scope_ok, added, changed) in expected.items():
+    report = lab["verify"](candidates[name]["files"], profile="preview-only")
+    assert report["target"] == "preview.md"
+    assert (report["citation_ok"], report["scope_ok"]) == (citation_ok, scope_ok)
+    assert report["accepted"] is (citation_ok and scope_ok)
+    assert report["delta"] == {"added": added, "removed": [], "changed": changed}
+print("L83 TRANSFER PASSED")</code></pre></details>
+    <div class="quiz" data-quiz="q3">
+      <div class="quiz-question"><span class="quiz-q">Q</span>需求从正式答复改为仅预览，哪件事应保持不变？</div>
+      <div class="quiz-options"><button data-answer="wrong">继续把正式答复当唯一目标</button><button data-answer="wrong">沿用原候选的通过结论</button><button data-answer="correct">用可信基线比较完整清单</button><button data-answer="wrong">让候选选择这次验哪份文件</button></div>
+      <div class="quiz-explanation">由任务方改变目标，完整清单与独立金标的原则保留，结论必须重新计算。</div>
+    </div>
+  </section>
+
+  <section class="section"><h2>5. 取舍：何时才值得考虑更复杂的 Harness？</h2>
+    <div class="best-practice-point" id="bp-l83"><h3>决策卡：固定格式先用确定性检查</h3>
+      <p class="bp-scenario"><strong>适用：</strong>任务目标明确、交付物很小、可以预先写出正确结果。<strong>本课选择：</strong>只读源码对照，用静态数据和独立判定器验收。</p>
+      <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：有工作区或绿灯就完成</span><p>只看目标稿，或把候选自报的测试结果当成发布凭据。</p></div><div class="bp-right"><span class="bp-compare-label">选择：看全清单，并复核内容</span><p>任务方固定范围；评审方持有基线和金标，两项各有拒绝理由。</p></div></div>
+      <p class="bp-rationale"><strong>代价：</strong>需维护基线和金标；精确文本比较会拒绝等义但不合格式的稿。若需求允许多种写法，先改可信验收规则，保留来源和范围硬门，不据此放宽权限。</p>
+      <ol class="bp-steps"><li>记录现有瓶颈；如果只是固定格式问题，保留小检查器。</li><li>若真实维护成本来自大量依赖人工梳理，再用相同任务比较人工方案与备选 Harness 的收益和审阅成本；隔离、审批与独立验收仍要分别验证。</li></ol>
+      <p class="bp-result"><strong>门槛：</strong>合成正控通过、反例确实被拒；结果仅证明本地文本制品合同，不证明真实沙箱、生产授权或第三方运行行为。</p>
+    </div>
+    <div class="quiz" data-quiz="q4">
+      <div class="quiz-question"><span class="quiz-q">Q</span>格式只有一种，固定检查已抓住全部已知反例。现在怎么选？</div>
+      <div class="quiz-options"><button data-answer="wrong">为了统一流程扩大可编辑范围</button><button data-answer="wrong">用增加一次确认代替清单比对</button><button data-answer="wrong">只保留验过引用的绿灯截图</button><button data-answer="correct">保留小检查器，等瓶颈再对照</button></div>
+      <div class="quiz-explanation">引入更多控制面会增加维护与审阅成本；先证明确有需求，控制仍须逐项验收。</div>
+    </div>
+  </section>
+
+  <section class="section" id="interview"><h2>面试自查</h2><p>先说哪个边界失效，再说你会拿哪一份证据复核。</p>
+    <details class="think-q"><summary><span class="think-q-tag">Q1</span>同事把工作目录单独建好，就在评审单上勾了「隔离」，你怎么验？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>工作目录解决定位，不足以证明隔离；索取实际部署环境的访问范围和单独的隔离验证。</p><p><strong>追问：</strong>测试报告全绿是否能补上这项？</p><p><strong>答题要点：</strong>除非报告单独验证了相应隔离合同，否则产物正确不能证明环境隔离。</p></div></details>
+    <details class="think-q"><summary><span class="think-q-tag">Q2</span>审核者同意继续，结果却少了小节定位。谁该判失败？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>用户确认只管是否继续，独立判定器按可信引用规则拒绝；等待与同意都不是质量结果。</p><p><strong>追问：</strong>还处于待确认，能否标记完成？</p><p><strong>答题要点：</strong>不能；先单列待确认状态，产物实际交付后再按独立合同验收。</p></div></details>
+    <details class="think-q"><summary><span class="think-q-tag">Q3</span>目标稿正确，但候选也更新了测试数据，报告说全部通过，怎么处理？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>保留报告作对照，按可信基线比较完整制品，报告实际改了哪一项；本任务不允许改测试数据，范围失败。</p><p><strong>追问：</strong>合法需求确实要更新测试呢？</p><p><strong>答题要点：</strong>任务方明确批准新范围，由独立评审更新验收合同，再复核；候选不能自行改写判据。</p></div></details>
+    <details class="think-q"><summary><span class="think-q-tag">Q4</span>上一版验收通过，现在只允许改预览稿，评审说明该怎么改？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>用新任务目标和相同基线重跑；解释原稿在新合同下为何越界，并给出通过的预览正控与新增副本反例。</p><p><strong>追问：</strong>正控和反例都符合预览引用，为什么只接受一个？</p><p><strong>答题要点：</strong>引用和范围是两个独立硬门；额外副本本身就是新增制品。</p></div></details>
+  </section>
+
+  <section class="section"><h2>❓ 答疑与延伸</h2>
+    <div class="card"><a class="lesson-qa-link" href="../qa/phase9-qa.html#L83">L83 疑难解答 →</a>
+      <nav class="qa-related" aria-label="相邻课程与阶段大纲"><a rel="prev" href="0094-L82-local-gui-preview.html">上一课 L82 · 本地 GUI 预览</a> · <a rel="next" href="0096-L84-long-task-recovery.html">下一课 L84 · 长任务恢复</a> · <a href="0097-phase9-advanced-agent-outline.html">阶段 9 大纲</a></nav>
+    </div>
+  </section>
+  <section class="section"><h2>小结与一手参考</h2>
+    <p>先问工作环境的边界，再问谁有权继续，最后用独立规则比较完整制品。能证明的是本地候选的内容和范围，不是实际执行、沙箱或上线资格。</p>
+    <ul>
+      <li><a href="https://github.com/OpenHands/software-agent-sdk/blob/289299ef2d3b8ea4116bde0f3e9343ef84d7d78e/openhands-sdk/openhands/sdk/workspace/base.py">OpenHands · workspace/base.py</a>：工作区抽象的职责。</li>
+      <li><a href="https://github.com/OpenHands/software-agent-sdk/blob/289299ef2d3b8ea4116bde0f3e9343ef84d7d78e/openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py#L2646-L2655">OpenHands · conversation/impl/local_conversation.py</a>：本地会话等待确认、恢复时一并确认待执行项。</li>
+      <li><a href="https://github.com/OpenHands/software-agent-sdk/blob/289299ef2d3b8ea4116bde0f3e9343ef84d7d78e/openhands-sdk/openhands/sdk/security/confirmation_policy.py">OpenHands · security/confirmation_policy.py</a>：逐动作判断是否需要确认。</li>
+      <li><a href="https://github.com/OpenHands/software-agent-sdk/blob/289299ef2d3b8ea4116bde0f3e9343ef84d7d78e/openhands-sdk/openhands/sdk/agent/agent.py#L1375-L1386">OpenHands · agent/agent.py</a> 与 <a href="https://github.com/OpenHands/software-agent-sdk/blob/289299ef2d3b8ea4116bde0f3e9343ef84d7d78e/openhands-sdk/openhands/sdk/agent/response_dispatch.py#L196-L200">agent/response_dispatch.py</a>：任一动作需要确认即暂缓整批。</li>
+      <li><a href="https://github.com/OpenHands/software-agent-sdk/blob/289299ef2d3b8ea4116bde0f3e9343ef84d7d78e/openhands-sdk/openhands/sdk/conversation/state.py">OpenHands · conversation/state.py</a>：策略与生命周期状态。</li>
+    </ul>
+  </section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

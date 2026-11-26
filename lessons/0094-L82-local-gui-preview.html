@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L82 · 本地 GUI 预览与取消</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<section class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第九阶段 · 高级 Agent 能力 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>本地 GUI 预览与取消</h1><p class="subtitle">有稳定接口就不绕道；必须走界面时，让取消经得起迟到的回调</p>
+</div></section>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>客服只想看一眼导出保留期草稿及依据。如果业务已经提供稳定、有授权的预览接口，绕到界面不仅多一次等待，还把稳定合同变成对按钮和页面布局的依赖。某个旧系统只能在自己的界面上显示预览，这才值得评估一条受限的 GUI 路径。本课用同一条合成政策做对照，不构造真正的浏览器助手。</p>
+  <h3>学习目标</h3>
+  <ul><li>用同一草稿与来源比较接口直读和旧界面预览，说明何时不引入 GUI。</li><li>区分待处理、已显示和已取消，验证迟到回调不会发布已取消或已过期的结果。</li><li>区分 Node 控制器验收与本机浏览器交互验收，记录各自未覆盖什么。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 同一个任务，只比较两条预览路径</h2>
+  <p>固定夹具 <code>l82-export-preview/v1</code> 引用 Phase 7 合成政策 <code>EXPORT-POLICY v1 §1</code> 的原文。<code>stable-interface</code> 模拟同一应用内部有稳定读取接口，直接拿到正文和来源，不进入旧界面队列；这里没有 HTTP 或真实业务 API。<code>legacy-gui</code> 模拟缺少这个接口，在同一个本地 HTML 中发起预览并等待回调。两条路径对比的是交付合同和等待环节，不是测 UI 与 API 的实际吞吐。</p>
+  <pre><code class="language-json">{
+  "route": "legacy-gui",
+  "attempt": 1,
+  "status": "previewed",
+  "preview": {
+    "text": "导出文件生成后保留 7 天。",
+    "source": "EXPORT-POLICY/v1 §1（合成）"
+  }
+}</code></pre>
+  <p><code>attempt</code> 是同一控制器内递增的尝试编号，不是凭据；<code>preview</code> 是正文与来源组成的一个结果，待处理或取消时一并为空。「已预览」只说明这对内容已显示，不是批准、保存或送达。页面没有真实站点、登录、提交、外发、数据提取或网络调用，也不接受地址、任意选择器或截图目标。它只读本课写死的合成数据。</p>
+  <table>
+    <caption>固定 <code>worked</code> 对照：队列和公开快照记录了什么</caption>
+    <thead><tr><th scope="col">路径</th><th scope="col">动作顺序</th><th scope="col">可复核的结果</th></tr></thead>
+    <tbody>
+      <tr><td>稳定接口 #1</td><td>读取接口预览</td><td>直接 <code>previewed</code>；排队 0 次；显示 7 天和同一来源</td></tr>
+      <tr><td>旧界面 #1</td><td>请求预览 → 交付回调</td><td>先 <code>pending</code> 且无内容；接受当前回调后 <code>previewed</code>，正文与来源和接口相同</td></tr>
+      <tr><td>旧界面 #2</td><td>请求预览 → 取消 → 交付回调</td><td>交付返回 <code>false</code>，前后均为 <code>cancelled</code>；正文、来源都不出现</td></tr>
+    </tbody>
+  </table>
+</section>
+<section class="section">
+  <h2>2. 取消与回调分开验证，不靠抢时间</h2>
+  <p>发起后从 <code>idle</code> 进入 <code>pending</code>；旧界面等当前回调才到成功终态 <code>previewed</code>，或在待处理时到取消终态 <code>cancelled</code>。取消并不撤回排队的回调：演练保留它，点击「交付最早的回调」实际执行，让拒绝可见。控制器只有在当前仍为 <code>pending</code> 且编号匹配时才接受完成。只判断待处理不够：取消 #1 后若已发起 #2，旧回调到来时 #2 恰好仍待处理。已完成的预览不能再用取消撤回；真正的业务写入、撤销与补偿不在本课范围。</p>
+  <p>本地页与 Node 都引用 <code>gui/controller.js</code>。用手动队列固定回调顺序，免用睡眠或碰运气；页面只把状态、预览和来源渲染到自己的固定区域。「已忽略」是交付记录变化，不是取消状态或预览内容变化。Node 可判定状态机，不能证明浏览器加载了脚本或按钮接线正确。</p>
+  <div class="best-practice-point" id="bp-l82">
+    <h3>决策卡：接口优先，界面预览有条件</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一只读交付确实缺少稳定、已授权的应用接口，能圈定固定界面和可核验的来源。<strong>不适用：</strong>界面漂移、来源不明或只剩高副作用操作；停止并转人工，不扩大能力。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：能看到界面，就用它代替接口</span><p>给原本直接可读的任务增加队列、误判和 UI 回归负担；还可能把「看到」误作「已保存」。</p></div><div class="bp-right"><span class="bp-compare-label">选择：同一交付，先拿接口基线</span><p>只有缺接口时再验证固定预览；正文和来源须同显，取消与完成须互斥，旧回调须拒绝。</p></div></div>
+    <p class="bp-rationale"><strong>代价与复议：</strong>即使只预览，也要维护界面绑定、来源合同与本机回归。如果稳定接口补齐，或界面变更使来源无法验证，重新选路，不增加浏览权限。</p>
+    <ol class="bp-steps"><li>固定结果合同；对照有接口时不排队且结果完整。</li><li>分别验证正常完成、取消后回调和重试时旧回调，保留状态与来源。</li><li>分别记录 Node 与本机浏览器结果；浏览器不能运行就标未验证。</li></ol>
+  </div>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span>旧界面取消 #1 后发起 #2，#1 回调先到。接纳回调前应核对什么？</div><div class="quiz-options"><button data-answer="wrong">核对 #2 是否待处理、两份正文是否一致</button><button data-answer="wrong">核对 #1 是否已取消、#2 是否已发起</button><button data-answer="correct">核对 #2 是否待处理、回调编号是否匹配 #2</button><button data-answer="wrong">核对 #2 是否待处理、回调编号是否匹配 #1</button></div><div class="quiz-explanation">#2 正在 pending 并不能授权 #1 的回调；编号绑定回调与本次预览。两份正文相同也无法证明归属。</div></div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span>有授权的稳定接口已能返回同一份正文和来源。该怎么选？</div><div class="quiz-options"><button data-answer="correct">保留接口直读，把它作为基线</button><button data-answer="wrong">改用旧界面，以肉眼显示为准</button><button data-answer="wrong">并行走两条路线，以先到为准</button><button data-answer="wrong">接口读正文，再去界面核对来源</button></div><div class="quiz-explanation">稳定接口已满足同一交付合同。再加 GUI 会带来等待与绑定维护，当前没有补齐任何缺口。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：看见预览，再亲手交付迟到回调</h2>
+  <p><a href="../code/phase9-advanced-agent/advanced-lab/README.md">高级 Agent 实验说明</a>。课程网站不发布 GUI 夹具及源码。用可信课程检出，在本机 Chrome 或 Edge 的临时干净配置中打开 <code>code/phase9-advanced-agent/advanced-lab/gui/preview.html</code> 的 <code>file:</code> 地址。不要访问真实站点，也不因环境限制而关闭浏览器安全措施。若本机策略不允许，记录「浏览器未跑」，仍可独立跑 Node。</p>
+  <ol>
+    <li>点「读取接口预览」：直接看到 <code>previewed · #1</code>、正文与来源；旧界面队列仍为 0。</li>
+    <li>点「请求预览」：右栏 <code>pending · #1</code>，正文和来源为空；点「交付最早的回调」才显示同样的正文与来源。</li>
+    <li>再次请求，然后先取消，再交付。交付标记「已忽略」，状态仍是 <code>cancelled · #2</code>，两项内容都为空。只看见取消状态、没交付回调，不能证明它会被忽略。</li>
+  </ol>
+  <p>本机浏览器也可在新标签页打开末尾带 <code>#browser-smoke</code> 的同一个 <code>file:</code> 地址。页面加载时会触发固定按钮并核对状态、正文与来源，还验证旧回调先于新回调的重试。通过时页面显示 <code>L82 BROWSER SMOKE PASSED</code>。这验证浏览器接线与 DOM 输出，不等于人工视觉、键盘或真实站点验收。</p>
+  <p>从可信仓库根用已有 Node 18+ 和 Python 3.11+。可直接运行 <code>node code/phase9-advanced-agent/advanced-lab/gui/run.cjs worked</code>。将下方 Python 块分别保存或在仓库根执行，用 <code>python -I -X utf8 文件名.py</code>，不加 <code>-O</code>。独立单测入口：</p>
+  <pre><code class="language-bash">node --test code/phase9-advanced-agent/advanced-lab/gui/controller.test.cjs</code></pre>
+  <div class="card"><h3>可见起点：先读实际的三组结果</h3><pre><code class="language-python" id="l82-worked-starter">import json
+import subprocess
+
+entry = "code/phase9-advanced-agent/advanced-lab/gui/run.cjs"
+p = subprocess.run(["node", entry, "worked"], check=True,
+                   capture_output=True, encoding="utf-8", timeout=10)
+row = json.loads(p.stdout)
+print(row["stable"], row["legacy"], row["cancelled"])
+# TODO：用 Phase 7 的授权来源核对正文与定位，并断言队列、待处理快照和两个终态。</code></pre>
+    <p><strong>通过标准：</strong>接口不入队，正常旧界面从空预览变成同一正文与来源，取消路径真的交付了回调且前后完整快照不变。</p>
+  </div>
+  <p>两份 Python 自检分别通过 Phase 7 的 <code>EvidenceStore.source()</code>，以合成租户 <code>support</code> 与已授权用户 <code>mei</code> 读取指定版本和小节。用查到的原文、文档号、版本和定位逐字核对实际 Node 输出；不是拿两份预览互相比。资料库只在自检侧打开，Node 和浏览器仍只使用固定本地控制器。</p>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l82-worked-check">import json
+import runpy
+import subprocess
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+entry = "code/phase9-advanced-agent/advanced-lab/gui/run.cjs"
+p = subprocess.run(["node", entry, "worked"], check=True,
+                   capture_output=True, encoding="utf-8", timeout=10)
+assert not p.stderr
+row = json.loads(p.stdout)
+assert row["fixture"] == "l82-export-preview/v1"
+phase7 = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+with phase7["open_demo"]() as store:
+    source = store.source("support", "mei", ("EXPORT-POLICY", 1, "§1"))
+assert source is not None, "Phase 7 did not return the authorized source"
+draft = {
+    "text": source.text,
+    "source": f"{source.doc_id}/v{source.version} {source.locator}（合成）",
+}
+assert row["stable"] == {"queued": 0, "terminal": {
+    "route": "stable-interface", "attempt": 1, "status": "previewed", "preview": draft,
+}}
+assert row["legacy"]["pending"] == {
+    "route": "legacy-gui", "attempt": 1, "status": "pending", "preview": None,
+}
+assert row["legacy"]["completionAccepted"] is True
+assert row["legacy"]["terminal"] == {
+    "route": "legacy-gui", "attempt": 1, "status": "previewed", "preview": draft,
+}
+cancelled = {"route": "legacy-gui", "attempt": 2, "status": "cancelled", "preview": None}
+assert row["cancelled"]["beforeLate"] == row["cancelled"]["afterLate"] == cancelled
+assert row["cancelled"]["lateAccepted"] is False
+print("L82 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立变式：重试已在等待，第一次回调才到</h2>
+  <p>不要只重放上一个取消案。取消 #1 后，不交付回调，立刻发起 #2；两条回调都在队列中。先写下每一步的预期快照，再交付 #1 并核对 #2 仍等待且预览为空。之后交付 #2 才允许显示；Node 再交付一次 #2 回调并尝试取消已完成的结果，两次都要被拒绝。</p>
+  <div class="card"><h3>可见起点：比较旧回调前后，再看自己的回调</h3><pre><code class="language-python" id="l82-transfer-starter">import json
+import subprocess
+
+entry = "code/phase9-advanced-agent/advanced-lab/gui/run.cjs"
+p = subprocess.run(["node", entry, "transfer"], check=True,
+                   capture_output=True, encoding="utf-8", timeout=10)
+row = json.loads(p.stdout)
+print(row["retryPending"], row["afterStale"], row["terminal"])
+# TODO：断言两个尝试的快照和每次交付的布尔值，再用 Phase 7 的授权来源核对结果。</code></pre>
+    <p><strong>通过标准：</strong>#1 的迟到回调无法更改 #2 的任何可见字段。只有 #2 的首次回调可发布完整结果；重复交付和终态取消均无效。</p>
+  </div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l82-transfer-check">import json
+import runpy
+import subprocess
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+entry = "code/phase9-advanced-agent/advanced-lab/gui/run.cjs"
+p = subprocess.run(["node", entry, "transfer"], check=True,
+                   capture_output=True, encoding="utf-8", timeout=10)
+assert not p.stderr
+row = json.loads(p.stdout)
+assert row["fixture"] == "l82-export-preview/v1"
+assert row["cancelled"] == {
+    "route": "legacy-gui", "attempt": 1, "status": "cancelled", "preview": None,
+}
+pending = {"route": "legacy-gui", "attempt": 2, "status": "pending", "preview": None}
+assert row["retryPending"] == row["afterStale"] == pending
+assert row["staleAccepted"] is False and row["currentAccepted"] is True
+phase7 = runpy.run_path("code/phase7-data-rag/rag-lab/lab.py")
+with phase7["open_demo"]() as store:
+    source = store.source("support", "mei", ("EXPORT-POLICY", 1, "§1"))
+assert source is not None, "Phase 7 did not return the authorized source"
+draft = {
+    "text": source.text,
+    "source": f"{source.doc_id}/v{source.version} {source.locator}（合成）",
+}
+terminal = {"route": "legacy-gui", "attempt": 2, "status": "previewed", "preview": draft}
+assert row["terminal"] == row["afterDuplicate"] == terminal
+assert row["duplicateAccepted"] is False and row["cancelAfterCompletion"] is False
+print("L82 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">若跟做通过而变式失败，查回调是否在入队时记住了自己的编号，以及是否在发布前同时核对编号与状态。可在浏览器刷新后手动复现双回调顺序；重复交付由 Node 验证，页面按钮每次只取走一个回调。</p>
+</section>
+<section class="section" id="interview">
+  <h2>面试自查</h2>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span>客服系统已有授权预览接口，团队展示了一条漂亮的界面路线，该上线吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先验证接口是否完整交付正文与来源；若已满足合同，保留直读，避免无收益的等待和界面维护。</p><p><strong>追问：</strong>接口只有正文，缺来源呢？</p><p><strong>答题要点：</strong>先补接口或寻找可靠且已授权的来源；不能凭看起来相同的正文认定来源，也不默认开通 GUI。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span>客服取消待处理预览，旧系统仍回了完整草稿，要显示吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不要。取消是控制器终态，后来的回调只能被忽略，不能发布正文和来源。</p><p><strong>追问：</strong>取消能证明上游完全停止了吗？</p><p><strong>答题要点：</strong>不能。这里只验证本地不接纳结果；上游是否可中止，以及已发生的副作用能否补偿，是另一份合同。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span>两次尝试生成同样的文字，旧回调先到时直接显示，风险在哪里？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>文字相同不能证明结果属于当前尝试。若状态与编号未绑定，旧回调可错误结束新任务；下次两份来源不同时更难发现。</p><p><strong>追问：</strong>怎样稳定复验？</p><p><strong>答题要点：</strong>先取消 #1、启动 #2，再按旧先新后交付；核对 #2 的待处理快照、空结果及正确终态，不靠延迟碰撞。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span>Node 全绿，本机浏览器却被策略阻止，验收记录怎么写？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>明确写控制器已测、浏览器交互未跑；按钮接线、脚本本地加载和 DOM 输出仍需本机补验。</p><p><strong>追问：</strong>本地浏览器冒烟也过了，能推断真实站点可用吗？</p><p><strong>答题要点：</strong>不能，证据只覆盖固定文件和确定性按钮序列，不覆盖真实站点、授权、布局变化或业务提交。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase9-qa.html#L82">L82 疑难解答 →</a><div class="qa-related"><a href="0093-L81-tool-discovery.html">上一课 L81 · 工具搜索</a> · <a href="0095-L83-coding-harness-boundaries.html">下一课 L83 · 编码 Harness 边界</a> · <a href="0097-phase9-advanced-agent-outline.html">阶段 9 纲要</a></div></div></section>
+<section class="section">
+  <h2>小结与一手参考</h2>
+  <p>先比稳定接口 → 缺接口才试固定预览 → 用状态与编号核对回调 → 正文、来源和终态一并验收。把控制器结果与浏览器结果分别记录。</p>
+  <ul><li><a href="https://html.spec.whatwg.org/multipage/webappapis.html#event-loops">WHATWG HTML · Event loops</a>：浏览器异步任务的背景；本实验为可复验手动排序，不模拟浏览器调度。</li><li><a href="https://dom.spec.whatwg.org/#aborting-ongoing-activities">WHATWG DOM · Aborting ongoing activities</a>：中止需异步操作配合；本实验展示的是宿主拒收结果，不承诺中止上游。</li><li><a href="https://nodejs.org/api/test.html">Node.js · Test runner</a>：用内置测试工具独立复验控制器。</li></ul>
+</section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/course-catalog.js"></script>
+<script src="../assets/bottom-nav.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/course-bar.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/toc.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>
