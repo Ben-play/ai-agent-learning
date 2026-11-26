@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L90 · A2A 的任务边界</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<section class="section"><div class="lesson-header">
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 框架演进与按需协作 · 选修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div>
+  <h1>A2A 的任务边界</h1><p class="subtitle">能力卡让你找到候选；主体绑定决定谁能看、谁能取消</p>
+</div></section>
+<section class="section">
+  <h2>为什么这课重要？</h2>
+  <p>客服 <code>support/mei</code> 被问到「导出文件保留多久、同步几点运行」。在 <a href="0102-L89-bounded-worker-delegation.html">L89</a> 的同进程委托里，宿主自己维护工作边界。如果取证由独立维护的另一套系统完成，发出委托后还要能查状态、取消未完成任务，并决定是否接纳结果；函数调用的返回值不够表达这段生命周期。这里用纯内存的客服取证替身：只有两份合成记录、两个固定任务；不接对端、不运行网络 Agent、不使用凭据，也不写业务数据。</p>
+  <h3>学习目标</h3>
+  <ul><li>区分能力发现、身份可信来源、任务对象授权与结果接纳。</li><li>沿待完成、已取消和已完成三种状态对账，核对错主体、串任务和迟到结果均不改变原状态。</li><li>说明哪些证据支持引入 A2A，哪些证据只支持保留进程内工作流。</li></ul>
+</section>
+<section class="section">
+  <h2>1. 先发现候选，再校验任务归属</h2>
+  <p>Agent-to-Agent（A2A）为独立系统之间的交互提供共同术语和操作。课程固定官方规范 <a href="https://a2a-protocol.org/v1.0.0/specification/">A2A 1.0.0</a> 与 <a href="https://github.com/a2aproject/a2a-python/blob/v1.3.1/README.md">Python SDK 1.3.1 的 README</a>：前者核对规范名称，后者只作固定版本的项目说明。不安装或运行 SDK，也不声明这两个版本与课堂代码兼容、协议一致或能与任何实现互通。</p>
+  <p><strong>Agent Card 是能力说明，不是授权。</strong>规范中的卡片可描述对端技能、接口与安全要求，不能证明你就是任务的拥有者。课堂卡片进一步简化成 <code>AgentCard(peer="classroom-policy-desk", capability="support-evidence")</code>。拿到卡片的运维 <code>ops/mei</code> 与同租户的 <code>support/lin</code> 都不能据此查看或取消客服 <code>support/mei</code> 的任务。<code>Actor(tenant, name)</code> 由可信宿主单独传入；任务存了完整二元组，不从卡片、任务 ID 或结果中重新认领身份。</p>
+  <table>
+    <caption>同一客服工单的本地数据形状（不是协议请求）</caption>
+    <thead><tr><th scope="col">形状</th><th scope="col">导出取证样例</th><th scope="col">谁决定</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">任务记录</th><td><code>Task(id, owner, peer, state, evidence)</code>；ID 为 <code>task-export</code>，初态 <code>WORKING</code>、无证据</td><td>宿主创建一次，锁定主体和预期对端；同一 ID 不重开。</td></tr>
+      <tr><th scope="row">查状态／取消</th><td>宿主传入当前 <code>Actor("support", "mei")</code> 和 <code>task-export</code></td><td>课堂只允许绑定主体；查无此项与不可访问返回同样的 <code>not_found</code>，且不附任务。</td></tr>
+      <tr><th scope="row">结果交接</th><td><code>PeerResult(task_id, peer, evidence)</code>；证据为 <code>EXPORT-POLICY v1 §1</code>「导出文件生成后保留 7 天。」</td><td>按宿主记住的原 ID 查任务；核对结果的 ID、对端标签、工作状态及四项证据字段才接纳。对端标签只是合成关联值，不证明网络身份。</td></tr>
+    </tbody>
+  </table>
+  <div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 运维 <code>ops/mei</code> 看到了能力卡，也知道导出任务 ID。查看任务时该怎么做？</div><div class="quiz-options"><button data-answer="wrong">按卡片能力，返回任务</button><button data-answer="correct">按主体绑定，拒绝查看</button><button data-answer="wrong">按同名规则，仅给状态</button><button data-answer="wrong">按任务编号，隐去主体</button></div><div class="quiz-explanation">能力与编号只帮助定位，授权以当前可信主体和已绑定任务为准；不能连存在性或状态也泄露给无权方。</div></div>
+</section>
+<section class="section">
+  <h2>2. 查询、取消和接纳结果各有一道门</h2>
+  <p>规范把两项操作命名为 <a href="https://a2a-protocol.org/v1.0.0/specification/#313-get-task"><code>GetTask</code></a> 和 <a href="https://a2a-protocol.org/v1.0.0/specification/#315-cancel-task"><code>CancelTask</code></a>：前者读取现有任务，后者请求取消，不能保证任务仍可取消。规范枚举的拼写是 <code>TASK_STATE_CANCELED</code>，只有一个 L；课堂 <code>CANCELED</code> 是短名，不是传输字段。<code>get_task</code>、<code>cancel_task</code> 是本地方法，<code>not_found</code>、<code>not_cancelable</code> 是本地诊断码，不是线上绑定的错误格式。课堂只覆盖 <code>WORKING</code>、<code>CANCELED</code>、<code>COMPLETED</code>，不实现规范的完整状态机或传输层。</p>
+  <table>
+    <caption>跟做干跑：先取消，后收到本来正确的导出证据</caption>
+    <thead><tr><th scope="col">步</th><th scope="col">本地操作</th><th scope="col">可核对的结果</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">1</th><td>发现 <code>support-evidence</code>；运维尝试提交，随后由客服提交</td><td>运维 <code>not_found</code>；客服建立一条绑定任务，<code>WORKING</code>、无证据。</td></tr>
+      <tr><th scope="row">2</th><td>运维查询，客服查询</td><td>前者与不存在的 ID 一样只得 <code>not_found</code>；后者查到原快照。</td></tr>
+      <tr><th scope="row">3</th><td>客服取消；再注入原任务、原对端的正确证据</td><td>取消变为 <code>CANCELED</code>；结果接纳报 <code>not_working</code>。再查与取消时的快照完全相同，证据仍为空。</td></tr>
+    </tbody>
+  </table>
+  <p>结果接纳先核对关联，再看状态。<code>binding_mismatch</code> 时对照宿主原 ID 与对端标签；<code>evidence_mismatch</code> 时核对文档、版号、定位和原文；两者都不能写入结果。<code>not_working</code> 表示任务不能再接结果，先查原终态，不能重新提交同一 ID 来抹掉历史。若结果先被接受，任务是 <code>COMPLETED</code>；之后取消只报 <code>not_cancelable</code>，不擦去原证据。相同取消请求再来时，本地不新增状态变化，不承诺返回原响应。这里只比较顺序执行的两条时间线，不证明并发竞争、对端工作停止或业务撤销。</p>
+  <div class="best-practice-point" id="bp-l90">
+    <h3>决策卡：独立系统有任务生命周期，才考虑 A2A</h3>
+    <p class="bp-scenario"><strong>适用：</strong>独立团队确实需要通用的委托、查询与取消合同。<strong>不适用：</strong>客服只在本进程做有限取证；保留直接函数或 L89 受限工作流。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：卡片和任务编号足够</span><p>同一导出任务只按编号查询、取消和接收结果，错主体或迟到结果也可能改变交付。</p></div><div class="bp-right"><span class="bp-compare-label">选择：每个动作按它的边界判断</span><p>查与取消验当前主体；接纳验原任务、对端、状态和证据。先取消后的证据没有资格改写终态。</p></div></div>
+    <ol class="bp-steps"><li>先跑错主体与不存在任务的对照，确认同样拒绝且原状态未动。</li><li>各跑一次「取消先到」与「结果先到」，重查完整快照而非只看返回码。</li></ol>
+    <p class="bp-result"><strong>代价：</strong>要维护版本契约、任务相关性、错误与对账；课程只验证本地不变量，真实身份、互通与并发取消需另行验收。</p>
+  </div>
+  <div class="quiz" data-quiz="q2"><div class="quiz-question"><span class="quiz-q">Q</span> 原任务已是 <code>CANCELED</code>，同一对端送来来源也正确的证据。怎么处置？</div><div class="quiz-options"><button data-answer="wrong">保留已取消，补填证据</button><button data-answer="wrong">改成已完成，保留证据</button><button data-answer="wrong">恢复到进行中，重收证据</button><button data-answer="correct">保留已取消，不接证据</button></div><div class="quiz-explanation">关联和来源匹配只是必要条件；终态还要挡住接纳。核对任务重查结果与取消快照一致。</div></div>
+</section>
+<section class="section best-practice-lesson">
+  <h2>3. 跟做：取消之后，原任务没有被结果改写</h2>
+  <p>从<a href="../code/phase10-framework-evolution/evolution-lab/README.md">阶段实验说明</a>进入可信的同版本课程仓库；课程站点不发布 Python 实验文件。以下命令在仓库根运行，Python 3.11+、仅标准库。把起点复制到自己的练习文件，并仍在仓库根用 <code>python -I -B -X utf8 文件名.py</code> 运行，不加 <code>-O</code>；代码只导入固定的课程目录，不接收外部路径。</p>
+  <pre><code class="language-bash">python -B -X utf8 code/phase10-framework-evolution/evolution-lab/protocols/l90_a2a.py</code></pre>
+  <div class="card"><h3>可见起点：比较两位同名主体的查单结果</h3><pre><code class="language-python" id="l90-worked-starter">import sys
+
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l90_a2a import MEI, OTHER_MEI, WORKED_TASK, TaskDesk, classroom_result
+
+desk = TaskDesk()
+print(desk.discover())
+desk.submit(MEI, WORKED_TASK)
+print(desk.get_task(OTHER_MEI, WORKED_TASK), desk.get_task(MEI, WORKED_TASK))
+fixture = classroom_result(WORKED_TASK)
+# TODO：让客服取消，再交付 fixture；重查原任务并与取消快照比较。</code></pre>
+    <p><strong>通过标准：</strong>运维看不到任务，与 ID 不存在的返回相同；客服取消成功。迟到结果报 <code>not_working</code>，重查仍为 <code>CANCELED</code>、无证据。再取消或再提交并不会重开任务。</p>
+  </div>
+  <details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l90-worked-check">import sys
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+sys.dont_write_bytecode = True
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l90_a2a import MEI, OTHER_MEI, WORKED_TASK, Reply, State, Task, TaskDesk, classroom_result
+
+desk = TaskDesk()
+assert desk.discover().capability == "support-evidence"
+assert desk.submit(OTHER_MEI, WORKED_TASK) == Reply("not_found")
+working = Task("task-export", MEI, "classroom-policy-desk", State.WORKING)
+assert desk.submit(MEI, WORKED_TASK) == Reply("ok", working)
+assert desk.get_task(OTHER_MEI, WORKED_TASK) == desk.get_task(MEI, "absent") == Reply("not_found")
+assert desk.cancel_task(OTHER_MEI, WORKED_TASK) == Reply("not_found")
+assert desk.get_task(MEI, WORKED_TASK) == Reply("ok", working)
+canceled = desk.cancel_task(MEI, WORKED_TASK)
+assert canceled == Reply("ok", Task("task-export", MEI, "classroom-policy-desk", State.CANCELED))
+assert canceled.task.state.value == "CANCELED"
+assert desk.accept_result(WORKED_TASK, classroom_result(WORKED_TASK)) == "not_working"
+assert desk.cancel_task(MEI, WORKED_TASK) == Reply("not_cancelable")
+assert desk.submit(MEI, WORKED_TASK) == Reply("already_exists")
+assert desk.get_task(MEI, WORKED_TASK) == canceled and canceled.task.evidence is None
+print("L90 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立变式：同步证据先到，再收到取消</h2>
+  <p>新建任务台，同时提交同工单的同步和导出分支，不依赖跟做数据。先让同租户的 <code>support/lin</code> 取消同步；再把仍在工作的导出结果交到同步任务，并试带错对端标签的同步结果。两个任务都不得被错投改变。只有正确同步证据可完成同步任务。最后再由拥有者取消，并重放一次正确结果。</p>
+  <div class="card"><h3>独立起点：在工作状态试投另一任务的结果</h3><pre><code class="language-python" id="l90-transfer-starter">import sys
+
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l90_a2a import LIN, MEI, TRANSFER_TASK, WORKED_TASK, TaskDesk, classroom_result
+
+desk = TaskDesk()
+print(desk.submit(MEI, TRANSFER_TASK))
+desk.submit(MEI, WORKED_TASK)
+print(desk.cancel_task(LIN, TRANSFER_TASK))
+print(desk.accept_result(TRANSFER_TASK, classroom_result(WORKED_TASK)))
+# TODO：重查两项任务；再换错对端。交正确证据后取消并重放，比较同步快照。</code></pre>
+    <p><strong>通过标准：</strong>错主体和错关联都不能推进；接受正确结果后是 <code>COMPLETED</code>，只留 <code>SYNC-POLICY v1 §1</code>「同步任务每天 02:00 运行。」。晚取消和重复结果都不改变这份证据。</p>
+  </div>
+  <details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l90-transfer-check">from dataclasses import replace
+import sys
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+sys.dont_write_bytecode = True
+sys.path.insert(0, "code/phase10-framework-evolution/evolution-lab/protocols")
+from l90_a2a import LIN, MEI, TRANSFER_TASK, WORKED_TASK, Evidence, Reply, State, Task, TaskDesk, classroom_result
+
+desk = TaskDesk()
+started = desk.submit(MEI, TRANSFER_TASK)
+assert started == Reply("ok", Task("task-sync", MEI, "classroom-policy-desk", State.WORKING))
+other = desk.submit(MEI, WORKED_TASK)
+assert other == Reply("ok", Task("task-export", MEI, "classroom-policy-desk", State.WORKING))
+assert desk.cancel_task(LIN, TRANSFER_TASK) == Reply("not_found")
+genuine = classroom_result(TRANSFER_TASK)
+for result in (classroom_result(WORKED_TASK), replace(genuine, peer="other-classroom-desk")):
+    assert desk.accept_result(TRANSFER_TASK, result) == "binding_mismatch"
+    assert desk.get_task(MEI, TRANSFER_TASK) == started
+    assert desk.get_task(MEI, WORKED_TASK) == other
+wrong_source = replace(genuine, evidence=replace(genuine.evidence, version=2))
+assert desk.accept_result(TRANSFER_TASK, wrong_source) == "evidence_mismatch"
+assert desk.get_task(MEI, TRANSFER_TASK) == started
+assert desk.accept_result(TRANSFER_TASK, genuine) == "accepted"
+expected = Evidence("SYNC-POLICY", 1, "§1", "同步任务每天 02:00 运行。")
+completed = Reply("ok", Task("task-sync", MEI, "classroom-policy-desk", State.COMPLETED, expected))
+assert desk.get_task(MEI, TRANSFER_TASK) == completed
+assert desk.cancel_task(MEI, TRANSFER_TASK) == Reply("not_cancelable")
+assert desk.accept_result(TRANSFER_TASK, genuine) == "not_working"
+assert desk.get_task(MEI, TRANSFER_TASK) == completed
+print("L90 TRANSFER PASSED")</code></pre></details>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2><p>先说能不能做，再说用哪条证据确认。</p>
+  <details class="think-q"><summary><span class="think-q-tag">Q1</span> 卡片写着支持取证，运维又与客服同名，查询能只按用户名通过吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。查与取消需要当前可信主体及完整任务绑定；名字相同不代表租户相同。</p><p><strong>追问：</strong>换成同租户的另一位客服呢？</p><p><strong>答题要点：</strong>本地仍需匹配拥有者；若产品支持共享，需独立授权规则与正负控，不由卡片默认放行。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q2</span> 客服已收到取消成功，迟到结果的证据又确实正确。可以保留在该任务里吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不接纳；状态门保护取消快照。重查应无新证据，也不改变终态。</p><p><strong>追问：</strong>如果结果先被成功接纳，再来取消呢？</p><p><strong>答题要点：</strong>保留完成和原证据；取消不是撤销，也不能以顺序实验推断对端实际停工。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q3</span> 同步证据的句子正确，但属于另一任务或另一个版本，先查什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先查与原任务的关联，再核对文档、版本、定位和原文；正确句子不能补齐关联和来源。</p><p><strong>追问：</strong>如果结果里的对端名称也正确，能证明是谁发的么？</p><p><strong>答题要点：</strong>不能；标签检查不替代真实可信对端的认证。</p></div></details>
+  <details class="think-q"><summary><span class="think-q-tag">Q4</span> 同进程已经可做固定只读取证，团队想「为了标准」换成 A2A，怎么评估？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>没有跨独立系统的生命周期与互通需求，继续用函数或有界工作流；协议会增加状态与对账成本。</p><p><strong>追问：</strong>后来交给独立服务，纯内存用例全绿就够吗？</p><p><strong>答题要点：</strong>不够；锁版本并验证互通、身份、生命周期和真实取消对账，本课不替代这些证据。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L90">L90 疑难解答 →</a><div class="qa-related"><a href="0102-L89-bounded-worker-delegation.html">上一课 L89 · 有界委托</a> · <a href="0104-L91-mcp-server-boundaries.html">下一课 L91 · MCP 服务端边界</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段 10 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>用卡片找候选，用当前主体查与取消，用原任务绑定和状态接纳结果。取消保护后续交付，不会抹去已经完成的事实。无跨系统瓶颈就保留原设计。</p><ul><li><a href="https://a2a-protocol.org/v1.0.0/specification/">A2A 1.0.0 官方规范</a>：核对 Agent Card、任务操作、终态与服务端授权。</li><li><a href="https://github.com/a2aproject/a2a-python/blob/v1.3.1/README.md">A2A Python SDK v1.3.1 README</a>：只读项目及版本说明，不作为课堂运行依赖或兼容性证明。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

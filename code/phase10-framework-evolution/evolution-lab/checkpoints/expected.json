@@ -1,0 +1,55 @@
+{
+  "task": {
+    "tenant": "training", "actor": "reviewer", "job": "export", "action": "save_local_draft", "revision": 2,
+    "digest": "d45c47d3c0bbccfc503cd56ac79c53aa7fc2b1a3ef40d15f1586505ed448745a"
+  },
+  "old_digest": "08ec8e28e06fccb6c71236ddcfce8913ed15fa1939b10a19cfe703e85b8a583c",
+  "binding_order": ["tenant", "actor", "job", "action", "revision", "digest"],
+  "thread": "training:reviewer:export",
+  "receipt": "1eaf6bd068cfe3ae20ca8437cdc28cdb368e281e98df98eacaefda94bd38c407",
+  "draft": ["需人工确认：导出保留期", "导出文件生成后保留 7 天。 超过保留期需重新发起导出。", ["KB-01", "KB-02"]],
+  "sources": [
+    ["training", "reviewer", "KB-01", 1, "导出文件生成后保留 7 天。"],
+    ["training", "reviewer", "KB-02", 1, "超过保留期需重新发起导出。"]
+  ],
+  "prepared_changes": {
+    "deny": {"review": {"decision": "deny"}},
+    "approve": {"review": {"decision": "approve"}},
+    "wrong_actor": {"review": {"actor": "another-reviewer", "decision": "approve"}},
+    "wrong_tenant": {"review": {"tenant": "another-tenant", "decision": "approve"}},
+    "wrong_job": {"review": {"job": "another-job", "decision": "approve"}},
+    "wrong_action": {"review": {"action": "submit", "decision": "approve"}},
+    "wrong_revision": {"review": {"revision": 1, "decision": "approve"}},
+    "wrong_digest": {"review": {"digest": "0000000000000000000000000000000000000000000000000000000000000000", "decision": "approve"}},
+    "old_review": {"review": {"revision": 1, "digest": "08ec8e28e06fccb6c71236ddcfce8913ed15fa1939b10a19cfe703e85b8a583c", "decision": "approve"}},
+    "revised": {"review": {"decision": "approve"}, "business_revision": 3},
+    "source_changed": {"source_replaced": ["training", "reviewer", "KB-01", 2, "导出仅保留 3 天。"]},
+    "source_revoked": {"source_removed": ["training", "reviewer", "KB-02", 1, "超过保留期需重新发起导出。"]},
+    "missing_receipt": {"saved_removed": true},
+    "mismatched_receipt": {"saved_payload": ["错误草稿", "不匹配的回执正文", ["KB-01"]]}
+  },
+  "seeds": {
+    "pending":   {"status": "pending",  "next": ["review"], "business": "pending", "saved": 0},
+    "approved":  {"status": "reviewed", "next": ["apply_review"], "business": "pending", "saved": 0},
+    "committed": {"status": "reviewed", "next": ["apply_review"], "business": "saved",   "saved": 1}
+  },
+  "cases": {
+    "pending":        {"seed": "pending",   "status": "pending",        "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "deny":           {"seed": "pending",   "status": "denied",         "nodes": ["review", "apply_review"], "calls": 1, "inserts": 0, "business": "denied",  "saved": 0, "releases": false},
+    "approve":        {"seed": "pending",   "status": "saved",          "nodes": ["review", "apply_review"], "calls": 1, "inserts": 1, "business": "saved",   "saved": 1, "releases": true},
+    "wrong_actor":    {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "wrong_tenant":   {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "wrong_job":      {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "wrong_action":   {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "wrong_revision": {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "wrong_digest":   {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "old_review":     {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "revised":        {"seed": "pending",   "status": "rejected",       "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "apply_approved": {"seed": "approved",  "status": "saved",          "nodes": ["apply_review"],           "calls": 1, "inserts": 1, "business": "saved",   "saved": 1, "releases": true},
+    "source_changed": {"seed": "approved",  "status": "source_blocked", "nodes": [],                         "calls": 0, "inserts": 0, "business": "pending", "saved": 0, "releases": false},
+    "replay":         {"seed": "committed", "status": "replayed",       "nodes": ["apply_review"],           "calls": 1, "inserts": 0, "business": "saved",   "saved": 1, "releases": true},
+    "source_revoked": {"seed": "committed", "status": "replay_withheld", "nodes": [],                        "calls": 0, "inserts": 0, "business": "saved",   "saved": 1, "releases": false},
+    "missing_receipt": {"seed": "committed", "status": "inconsistent",  "nodes": ["apply_review"],            "calls": 1, "inserts": 0, "business": "saved",   "saved": 0, "releases": false},
+    "mismatched_receipt": {"seed": "committed", "status": "inconsistent", "nodes": ["apply_review"],          "calls": 1, "inserts": 0, "business": "saved",   "saved": 1, "releases": false}
+  }
+}

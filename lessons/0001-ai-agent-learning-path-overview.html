@@ -41,7 +41,7 @@
 <p>学习目标不是增加自主性或框架数量，而是构建能验证结果、控制权限与预算、失败后可恢复的系统。保留 Python 和模型基础，以同一个业务项目逐阶段演进。</p>
 
 <div class="info">
-  <strong>课程范围：</strong>已有 Phase 1–9 的 84 节课（L01–L84，含 Phase 9 的 5 节选修）。Phase 10–11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
+  <strong>课程范围：</strong>已有 Phase 1–10 的 92 节课（L01–L92，含选修）。Phase 11 仍为逐课草案与验收目标，不计入正式课数或学习进度；起始项目和参考页也不另计课号。离线验收不代表生产能力，阶段周数为估算。基础依据见<a href="https://github.com/Ben-play/ai-agent-learning/blob/main/docs/research/2026-11-06-curriculum-audit.md">课程可靠性审查报告</a>。
 </div>
 <div class="tip">
   <strong>贯穿项目与决策基线：</strong>从“带证据的业务问答与受控工单”出发，先判断普通函数或确定性 workflow 是否足够；需要动态决策时默认单 Agent。先定义成功标准，再比较质量、成功任务总成本和延迟；有明确收益才引入复杂检索、多 Agent 或新框架。全程只选一个框架深学，其余做能力与版本对照。<br>
@@ -355,7 +355,7 @@
       <strong>持久取消与重放：</strong>从新进程读取任务状态和预算；已提交时查原回执，不因回包丢失而重复写。<br><br>
       <strong>选修不阻塞主线：</strong>只在 Phase 8 基线暴露具体瓶颈时选一项。保留收益、权限、维护成本和未测项，也允许决定不引入。<br><br>
       <a href="0097-phase9-advanced-agent-outline.html">查看 Phase 9 选修课程与实验 →</a><br>
-      <a href="../best-practices/phase9-advanced-agent-practices.html">阶段实践复盘 →</a> · <a href="../qa/phase9-qa.html">阶段答疑 →</a> · <a href="0046-phase5-to-11-planned-outlines.html#phase-10">直接看 Phase 10 必修规划 →</a>
+      <a href="../best-practices/phase9-advanced-agent-practices.html">阶段实践复盘 →</a> · <a href="../qa/phase9-qa.html">阶段答疑 →</a> · <a href="0106-phase10-framework-evolution-outline.html#required">直接看 Phase 10 必修课程 →</a>
     </div>
   </div>
 </div>
@@ -363,9 +363,9 @@
 <!-- ============ 阶段 10 ============ -->
 <div class="phase" data-num="10">
   <button type="button" class="phase-header" aria-expanded="true" aria-controls="phase-10-body">
-    <h3>生产级框架与多智能体系统</h3>
+    <h3>框架演进与按需协作</h3>
     <div class="phase-meta">
-      <span class="phase-meta-item">8-10 课</span>
+      <span class="phase-meta-item">4 必修 + 4 选修 · L85–L92</span>
       <span class="phase-meta-item">2-3 周</span>
     </div>
     <div class="phase-toggle">▼</div>
@@ -376,13 +376,12 @@
   </div>
   <div class="phase-body" id="phase-10-body">
     <div class="card">
-      <span class="tag tag-agent">规划 · 验收目标</span><br>
-      <strong>沿主线深化编排：</strong>在 Phase 6 的 LangGraph 项目中深化状态、分支、持久化和故障恢复；CrewAI 仅作角色/流程对照。Microsoft Agent Framework 是 Semantic Kernel 与 AutoGen 的共同后继，按语言与版本核实支持状态，不另开一套必修框架项目。<br><br>
-      <strong>MCP 深化：</strong>固定规范与 SDK 版本开发 Server，单独实现业务权限、参数白名单与审计；按采纳的 HTTP 授权规范测试缺令牌、错误 audience/issuer、scope 不足。Tasks 属官方可选扩展，先核实客户端/服务端支持再采用。<br><br>
-      <strong>多 Agent 决策：</strong>默认保留单 Agent；需要边界清晰的委托时才尝试 Orchestrator-Worker 等模式，比较交接丢失、成功率、总成本与端到端延迟。A2A 仅在远程 Agent 互操作需求下学习，不因本地并行就强行引入协议。<br><br>
-      <strong>源码对照（选一）：</strong>从 <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer">OpenClaw</a>、<a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener noreferrer">Hermes Agent</a> 或 <a href="https://github.com/All-Hands-AI/OpenHands" target="_blank" rel="noopener noreferrer">OpenHands</a> 中固定一个源码版本，分析其状态/权限/恢复边界，不以热度证明架构适用性。<br><br>
-      <strong>验收目标：</strong>用新版代码恢复旧版检查点，或显式走兼容处理，作为部署前必做项。多 Agent 和 A2A 为选修；若确有委托需求，再用同一任务与单 Agent / workflow 比较。保留单 Agent 是合格结论。<br><br>
-      <a href="0046-phase5-to-11-planned-outlines.html#phase-10">查看 Phase 10 逐课草案 →</a>
+      <span class="tag tag-agent">已编写 · 4 必修 / 4 选修</span><br>
+      <strong>必修兼容性：</strong>用同一批旧检查点的副本比较旧版、新版与回退路径。编排状态、可信审批和业务回执分别检查。标准库合同实验不等于真实 LangGraph 检查点实测；部署前需另跑真实图演练，目前待验。<br><br>
+      <strong>必修架构决策：</strong>用同一批任务比较函数、workflow 和受限单 Agent，先核证据与权限，再看合成成功成本和延迟。保留原方案是合格结论。<br><br>
+      <strong>按需选修：</strong>受限 Worker、A2A 任务替身、MCP 宿主授权校验和固定版 Hermes 只读源码。它们不阻塞 Phase 11，不代表 SDK 互通、模型质量或生产恢复。<br><br>
+      <a href="0106-phase10-framework-evolution-outline.html#required">查看 Phase 10 必修课程 →</a><br>
+      <a href="../best-practices/phase10-framework-evolution-practices.html">阶段实践复盘 →</a> · <a href="../qa/phase10-qa.html">阶段答疑 →</a>
     </div>
   </div>
 </div>
@@ -419,7 +418,7 @@
 </div><!-- end phase-timeline -->
 
 <h2>技术栈速览</h2>
-<p>这是能力与候选工具索引，不是全部必修清单；Phase 10–11 对应项仍为规划。</p>
+<p>这是能力与候选工具索引，不是全部必修清单；Phase 11 对应项仍为规划。</p>
 <table>
   <tr><th>领域</th><th>主线与边界</th></tr>
   <tr><td>语言与工程</td><td>Python、类型、异步、Pydantic、httpx；Git、ruff、mypy、uv</td></tr>

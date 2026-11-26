@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L88 · 记录架构决策</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 框架演进与按需协作 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span></div><h1>记录架构决策：保留单 Agent 也有效</h1><p class="subtitle">先固定业务合同，再用失败也入账的对照决定谁来选下一步</p></div></div>
+<section class="section"><h2>为什么这课重要？</h2>
+<p><a href="0100-L87-migration-fallback.html">L87</a> 解决的是「升级遇到不支持的旧任务，谁来安全接续」。这次先不动旧任务，改问新请求的入口：客服只需回答「导出文件能保留多久、过期后怎么办」，真的需要 Agent 决定查哪条资料吗？如果用已经够用的流程也得到同一份证据，加一层编排就可能只是多付等待与维护成本。判断必须来自同一批请求，而不是让每个架构各挑顺手的示例。</p>
+<h3>学习目标</h3><ul><li>区分固定读取、代码控制的 workflow 和按已读证据选下一步的受限单 Agent。</li><li>用精确事实、独立调用账本和失败对照写一张能复议的架构决策卡。</li></ul></section>
+<section class="section"><h2>1. 只改变谁决定下一步，不改变权限</h2>
+<p>三臂都跑 <code>support-evidence-v1</code>，按同一顺序执行六个合成请求，每个试次重新打开 Phase 7 的内存 SQLite（<code>code/phase7-data-rag/rag-lab/lab.py</code> 的 <code>open_demo()</code> 与 <code>EvidenceStore.source()</code>）。作用域为宿主固定的 <code>(tenant, user)</code>，按案型限定可读证据键，再由原 SQL 同时查租户、授予记录与精确版号、定位。<code>support/mei</code> 与 <code>operations/mei</code> 在不同租户看到同键不同文，不是同一个可共享的答案。这里没有草稿写入；若已有获批本地草稿，也只能由旧课的宿主按原绑定处理，并不因此需要另一个执行者。</p>
+<table><caption>冻结输入与手写事实／停止金标（独立于运行实现）</caption><thead><tr><th scope="col">请求</th><th scope="col">宿主作用域</th><th scope="col">精确证据或终态</th></tr></thead><tbody>
+<tr><td><code>support-retention</code></td><td><code>support/mei</code></td><td><code>EXPORT-POLICY/v1 §1</code>「导出文件生成后保留 7 天。」</td></tr>
+<tr><td><code>operations-retention</code></td><td><code>operations/mei</code></td><td><code>EXPORT-POLICY/v1 §1</code>「运维导出文件保留 30 天。」</td></tr>
+<tr><td><code>expiry</code></td><td><code>support/mei</code></td><td>先给 7 天的原文，再给 <code>EXPORT-OPS/v1 §2</code>「导出文件过期后，需重新发起导出。」</td></tr>
+<tr><td><code>expiry-no-grant</code></td><td><code>support/lin</code></td><td>附录不在当前授权视图；<code>source_not_visible</code>，交人工、不把部分证据充当答案。</td></tr>
+<tr><td><code>expiry-timeout</code></td><td><code>support/mei</code></td><td>第二次本地读适配器超时；<code>timeout</code>，交人工、不重试。</td></tr>
+<tr><td><code>unlisted</code></td><td><code>support/mei</code></td><td>未列案型在分发前拒绝；<code>out_of_scope</code>，零读取、零交接分发。</td></tr>
+</tbody></table>
+<p><strong>薄函数</strong>只查预定的主政策；不完整就报告 <code>needs_followup</code>，不能用保留期冒充过期处理。<strong>确定性 workflow</strong>由代码在「过期」案型追加附录；适合路径已知的多步取证，不表示本例有持久队列。<strong>受限单 Agent 替身</strong>先选择读主政策，只有已读证据符合固定条件时才选读附录；选择器只是 Python 函数，不调用模型，也不代表实际推理效果。三臂都不接受任意查询、SQL 或范围扩展，都使用同一个宿主读权限、停止与转人工边界。函数也可以把固定分支写进去；此时就拥有本课所谓 workflow 的控制结构，不需要另装框架。</p>
+</section>
+<section class="section"><h2>2. 用分发事件算合成成本与 p95</h2>
+<p>每个请求同样最多 2 次读、1 次 worker（L88 不用）、12 个合成积分；其中 1 分留给可能的本地人工工单替身，不模拟人工响应。读前要能覆盖最坏的 3 分，实际按结果收费：命中或不可见为 2 分／8 模拟毫秒，超时尝试是 3 分／24 毫秒；一次选择是 1 分／3 毫秒，交人工是 1 分／5 毫秒。分发前拒绝的检查占 0 分／1 毫秒，但没有实际分发。计划中的步骤和被拦截的步骤不能算成已用调用。</p>
+<p>例如 workflow 的 <code>expiry-timeout</code> 账本是「主政策读成功 → 附录适配器超时 → 交人工」，合计 6 分、37 毫秒。适配器调用了两次，但只有第一次真正进入 SQLite 的 <code>source()</code>；缺授权那一行则两次进入查询，第二次不返回文档。</p>
+<p>验收分三步：先按金标核终态、原因、主体以及每条引文的作用域、键、原文和顺序；再核实际事件的顺序、状态、主体、分发标记与独立记录的 SQLite 读取；最后按独立价表核对每笔积分、模拟毫秒与合计，并单独检查积分、读次数和 worker 上限。答对的条数不受账本差错影响，但账本或预算不过关就不能推荐该臂。符合金标的拒绝或转人工是正确处理，不计作正确答复。</p>
+<table><caption>整批合成结果；p95 对六条任务取最近秩，包含拒绝、超时和人工交接</caption><thead><tr><th scope="col">方案</th><th scope="col">完整正确答复</th><th scope="col">实际分发数</th><th scope="col">总积分／每正确答复积分</th><th scope="col">p95（模拟毫秒）</th></tr></thead><tbody>
+<tr><td>薄函数</td><td>2 / 6</td><td>8</td><td>13 / 6.50</td><td>13</td></tr>
+<tr><td>workflow</td><td>3 / 6</td><td>10</td><td>19 / 约 6.33</td><td>37</td></tr>
+<tr><td>受限单 Agent</td><td>3 / 6</td><td>18</td><td>27 / 9.00</td><td>43</td></tr>
+</tbody></table>
+<p>最近秩是把每条任务的用时排序后取第 <code>ceil(0.95 × n)</code> 条：六条时正好取最大值。总积分除以正确答复数，失败仍保留在分子；零成功则不定义该比值。薄函数虽尾时低，却没有过期答案，另外两个过期负例也只报笼统缺口，不能冒充已诊断缺权或超时。workflow 和单 Agent 完成同一合同，前者少 8 分、尾部少 6 模拟毫秒，当前留 workflow。真实账单、生产 p95、模型适应性和人工排队均未验证。</p>
+<div class="best-practice-point" id="bp-l88"><h3>决策卡：先过硬门，再选最简单的达标方案</h3><p class="bp-scenario"><strong>适用：</strong>新请求有可重复的作用域、事实标签与停机路径。<strong>不适用：</strong>本表不能为未迁移的旧检查点、真实模型或写入路径背书。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">误判：最快或最灵活就上线</span><p>把未完成或缺权的案型移出统计，成本和尾时看起来都更低。</p></div><div class="bp-right"><span class="bp-compare-label">选择：同一批逐条核验</span><p>先比事实、作用域、预算、分发和正确停机；再比覆盖、成本与尾时。</p></div></div><ol class="bp-steps"><li>写下当前决策：留 workflow；不引入委托；薄函数可单独服务已知键案型。</li><li>记录反证：若固定路径在新案型中确实漏掉合法证据，且经同批独立验收的单 Agent 补齐、未过限额，可以保留单 Agent。没有一臂达标就停止复核，不升权限。</li></ol><p class="bp-result"><strong>交接：</strong>附工作负载版本、金标、失败账本和取舍理由，沿用 <a href="0087-L76-agent-load-cost.html">L76 的计量</a>与 <a href="0090-L79-engineering-baseline-handoff.html">L79 的交接</a>惯例。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 薄函数 p95 最小，但过期案型只能交人工。哪一项最能支持保留 workflow？</div><div class="quiz-options"><button data-answer="wrong">两臂只比答完的任务，再看谁的单次更快</button><button data-answer="correct">三臂都用全批金标，再比较达标臂的成本</button><button data-answer="wrong">三臂都用同一框架，再看谁的节点数更少</button><button data-answer="wrong">两臂各挑顺手案型，再比较答完任务数</button></div><div class="quiz-explanation">同一队列、同一金标才能比较资格；剔除失败会改变成本、尾时和结论。</div></div></section>
+<section class="section best-practice-lesson"><h2>3. 跟做：从失败账本复算选型</h2>
+<p>先取与课文同版本的可信课程源码（<a href="../code/phase10-framework-evolution/evolution-lab/README.md">实验说明</a>）；Pages 不发布 Python 文件。从仓库根把可见起点保存成脚本，用 Python 3.11+ 执行 <code>python -I -X utf8 文件名.py</code>（不加 <code>-O</code>）。也可运行同一目录下的 <code>l88_architecture_decision.py</code>（不加参数）打印各试次与账本。全程只用标准库，不用网络或凭据。</p>
+<div class="card"><h3>最小起点：先看超时那一笔</h3><pre><code class="language-python" id="l88-worked-starter">import runpy
+
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l88_architecture_decision.py"
+lab = runpy.run_path(entry)
+rows, summary, _ = lab["exercise"]()
+for arm, trials in rows.items():
+    row = next(row for row in trials if row.case == "expiry-timeout")
+    print(arm, row.outcome.reason, row.cost, row.ms, len(row.source_calls))
+# TODO：按全批事件重算总积分与 p95，再解释为什么薄函数不能直接胜出。</code></pre><p><strong>通过标准：</strong>workflow 的超时适配器算一次分发，后接一次人工替身；实际 SQLite 查询恰好一次，不把 timeout 当零成本。workflow 和单 Agent 答对同样三条，workflow 费用更低。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l88-worked-check">import runpy
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l88_architecture_decision.py"
+lab = runpy.run_path(entry)
+lab["check_worked"]()
+rows, summary, decision = lab["exercise"]()
+for arm, trials in rows.items():
+    assert len(trials) == 6
+    assert sum(e.cost for row in trials for e in row.events) == summary[arm].total_cost
+    assert max(sum(e.ms for e in row.events) for row in trials) == summary[arm].p95_ms
+failed = rows["workflow"][4]
+assert failed.case == "expiry-timeout" and failed.outcome.evidence == ()
+assert [(e.operation, e.status) for e in failed.dispatches] == [
+    ("read", "ok"), ("read", "timeout"), ("review", "timeout")]
+assert failed.source_calls == ((("support", "mei"), ("EXPORT-POLICY", 1, "§1")),)
+assert (failed.cost, failed.ms, decision) == (6, 37, "workflow")
+print("L88 ACCEPTED")</code></pre></details></section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：读上限与价表各自核验</h2>
+<p>第一个变式只复制原正控 <code>expiry</code>，把所有臂的每请求读上限从 2 改成 1；积分、作用域和原文都不变。业务需求仍要两条证据，不能把只返回保留期改成通过。第二个变式重跑原全批，只把运行端普通读取单价从 2 改成 3，验收价表、读上限及积分上限都不变：答复和实读不变，计量检查应报错，三臂都不可推荐。</p>
+<div class="card"><h3>独立起点：给三臂同一读上限</h3><pre><code class="language-python" id="l88-transfer-starter">import runpy
+
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l88_architecture_decision.py"
+module = runpy.run_path(entry)
+lab = module["LAB"]
+case = lab["WORKER_COHORT"][0]
+for arm in module["ARMS"]:
+    row = lab["run"](case, arm, budget=lab["Budget"](reads=1))
+    print(arm, row.outcome, len(row.source_calls))
+# TODO：核对预分发阻断、零第二次读与一张交接单；再用原预算复跑正控。
+# TODO：只改普通读单价，分别比较正确答复数与推荐资格。</code></pre><p><strong>通过标准：</strong>三个臂都不发不全的事实；薄函数报告本来就存在的缺口，另外两臂明确 <code>budget_exhausted</code>。两臂恢复原读取预算后交付完整原文，不把预算失败误作数据库无记录。普通读单价漂移时，正确答复仍为 2、3、3 条，但结果为 <code>stop_review</code>。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l88-transfer-check">import runpy
+from unittest.mock import patch
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+entry = "code/phase10-framework-evolution/evolution-lab/architecture/l88_architecture_decision.py"
+module = runpy.run_path(entry)
+module["check_transfer"]()
+lab = module["LAB"]
+case = lab["WORKER_COHORT"][0]
+for arm in module["ARMS"]:
+    row = lab["run"](case, arm, budget=lab["Budget"](reads=1))
+    expected = "needs_followup" if arm == "thin" else "budget_exhausted"
+    assert (row.outcome.status, row.outcome.reason, row.outcome.evidence) == ("handoff", expected, ())
+    assert [e.operation for e in row.dispatches if e.operation != "choose"] == ["read", "review"]
+    assert row.source_calls == ((("support", "mei"), ("EXPORT-POLICY", 1, "§1")),)
+    assert [e.dispatched for e in row.events if e.operation == "blocked"] == ([] if arm == "thin" else [False])
+# 只改运行端价表的一项，保留独立验收价表；退出 with 后自动恢复。
+original, _, _ = module["exercise"]()
+with patch.dict(lab["RATES"], {"read": (3, 8)}):
+    changed, summary, decision = module["exercise"]()
+for arm, correct, cost in (("thin", 2, 18), ("workflow", 3, 26), ("single", 3, 34)):
+    for before, after in zip(original[arm], changed[arm], strict=True):
+        assert (before.outcome, before.source_calls) == (after.outcome, after.source_calls)
+    result = summary[arm]
+    assert (result.correct_answers, result.total_cost) == (correct, cost)
+    assert "support-retention:accounting" in result.contract_errors
+    assert "support-retention:events" not in result.contract_errors
+assert decision == "stop_review"
+print("L88 TRANSFER PASSED")</code></pre></details></section>
+<section class="section" id="interview"><h2>面试自查</h2><p>每题先给结论，再给能推翻结论的观测。</p>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 主政策和过期附录都是固定键，两个步骤就得用 Agent 吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不由步骤数决定。若分支能先写定，固定 workflow 可覆盖。</p><p><strong>追问：</strong>如果新增适用区域只能从主政策知道？</p><p><strong>答题要点：</strong>先试把区域解析与映射写成规则，再对照有界选择，按同批精确引文检验增益。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 两个租户引用同一个文档号能共用一条答复吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能。同键不同授权和原文，来源需要绑定作用域。</p><p><strong>追问：</strong>哪一条本地反例可证明只比引文键不够？</p><p><strong>答题要点：</strong>用运维 30 天替换客服 7 天，键相同但作用域和原文金标都应失败。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 超时没有返回来源，应该从成本里扣掉吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不应。读适配器实际调用过，且交人工也是一次事件。</p><p><strong>追问：</strong>什么证据能说明没有再查询 SQLite？</p><p><strong>答题要点：</strong>查 <code>source_calls</code> 只有主政策；不能从回答为空或看见 timeout 就推断没有任何分发。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 单 Agent 补齐一个 workflow 失败样本，就能改默认吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先过全批硬门，检查是否误用范围、超预算或使尾时不可接受，再写回访条件。</p><p><strong>追问：</strong>若两臂都过不了边界，增加一个 Agent 审核可直接放行吗？</p><p><strong>答题要点：</strong>不能。先安全停止，修复与重新验收宿主边界；审核不等于授权。</p></div></details></section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L88">L88 疑难解答 →</a><div class="qa-related"><a href="0100-L87-migration-fallback.html">上一课 L87 · 迁移拒绝与回退</a> · <a href="0102-L89-bounded-worker-delegation.html">下一课 L89 · 有界委托（选修）</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段 10 大纲</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>固定输入、事实、权限与预算后，才有资格说某种架构更划算。当前保留 workflow；有证据时保留单 Agent 同样是有效决策，不必为了验收添加协作。</p><ul><li><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic · Building effective agents</a>：按控制权区分 workflow 与 Agent，从简单方案开始。</li><li><a href="https://docs.python.org/3.11/library/sqlite3.html">Python 3.11 · sqlite3</a>：内存 SQLite、连接和参数绑定；本例授权仍由宿主和 SQL 实施。</li><li><a href="0078-L68-rag-retrieval-evals.html">阶段 7 的证据验收</a>：先定授权、事实与引文，再看自动结果。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

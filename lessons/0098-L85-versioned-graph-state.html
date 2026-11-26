@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L85 · 版本化状态与分支</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 框架演进与按需协作 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div><h1>版本化状态与分支</h1><p class="subtitle">先保住旧任务停下的位置，再给新流程加路</p></div></div>
+<section class="section"><h2>升级前，队列里究竟有什么？</h2>
+<p>客服 Agent 起草了一份导出保留期说明，引用 <code>KB-01</code> 的「导出文件生成后保留 7 天。」以及 <code>KB-02</code> 的补充规则。升级开始时，有的进程还在等人工，有的已收到批准但未保存，有的已经保存却没回复。只看进程退出或用新程序造三个同名状态，会漏掉真正要兼容的在途输入。</p>
+<p><strong>学习目标：</strong>区分应用状态版本、图中停点和业务修订；用标准库合同练习封存三个停点；再读实际 Phase 6 旧图的演练入口，说明哪些变更可做加法、哪些先不得上线。先修是阶段 6 的审批图和阶段 8 的验收基线，不要求完成阶段 9。</p>
+</section>
+<section class="section"><h2>1. 版本、节点、稿件修订是三个坐标</h2>
+<table><caption>读一份 Phase 10 应用合同的待审批快照时，各字段回答不同的问题</caption><thead><tr><th scope="col">坐标</th><th scope="col">本例的数据</th><th scope="col">回答的问题</th></tr></thead><tbody>
+<tr><td>应用状态 schema</td><td><code>schema: 1</code>；<code>binding</code> 是有字段名的对象</td><td>当前应用能按这个形状解读状态吗？它不是 SDK 版本。</td></tr>
+<tr><td>下一节点与中断</td><td><code>next: ["review"]</code>；中断只含 <code>job: "export", revision: 2</code></td><td>原图等在哪里、恢复信号会回到哪里？它不是批准。</td></tr>
+<tr><td>业务草稿修订</td><td><code>revision: 2</code>；绑定还含租户、主体、任务、动作及内容摘要</td><td>批准的是哪一份草稿？草稿升级不要求改状态 schema。</td></tr>
+</tbody></table>
+<p>状态里的 <code>thread</code>（真实图的 <code>thread_id</code>）定位 <code>training:reviewer:export</code>。授权仍由独立的审批库与当前业务库比对。正文和来源 ID 不放进图状态；业务快照保存原稿，回执标识指向业务行。</p>
+<table><caption>同一业务输入，由 Phase 10 v1 应用合同分别推进到三个停点</caption><thead><tr><th scope="col">停止点</th><th scope="col">图中可读事实</th><th scope="col">审批与持久业务事实</th></tr></thead><tbody>
+<tr><td>待批准</td><td><code>pending</code>；下一节点 <code>review</code>，有一个中断</td><td>无审批，也没有已保存行</td></tr>
+<tr><td>已批准未执行</td><td><code>reviewed</code>；下一节点 <code>apply_review</code></td><td>有匹配批准；宿主停在业务调用之前，无保存行</td></tr>
+<tr><td>提交后丢回复</td><td>仍是 <code>reviewed</code>，仍待 <code>apply_review</code></td><td>相同批准，业务已持久化一行及回执；故障发生在提交后</td></tr>
+</tbody></table>
+<p>后两种的图状态值与下一节点相同，不能仅看标签判断是否提交。闭库后，标准库实验将编排快照 <code>contract.json</code>、审批与来源 <code>reviews.sqlite</code>、业务 <code>business.sqlite</code> 一起封存，并逐文件计算 SHA-256；若还有 SQLite 附属文件就不封存。真实演练用自己的 <code>graph.sqlite</code>；业务金标可复用，快照格式和文件不可互换。此处是顺序本地夹具，不等于带并发写流量时跨库一致的备份方案。</p>
+<div class="card"><h3>另一路：Phase 6 原图实际写的是什么？</h3>
+<p>独立入口直接用 Phase 6 的 <code>draft_graph.py</code>：<code>run_step(..., "stage")</code> 留下人工中断；原 <code>open_graph</code> 用公开的 <code>interrupt_before=["apply_review"]</code> 停在获批未执行；再推进原图并捕获 Phase 6 的 <code>LostReply</code>，由业务全表读回判断是否确已提交。待批只初始化空的审批表。</p>
+<p>旧图的顶层通道是 <code>revision</code>、<code>digest</code>、<code>status</code> 和可选的 <code>op_id</code>，没有 Phase 10 的 <code>schema</code>／<code>binding</code>。候选图保留旧通道、节点和中断顺序；固定宿主身份在内存补齐绑定，不能从 <code>thread_id</code> 推断批准。原审批库没有来源表；当前来源由固定合成宿主另行校验，不把新表当成原始证据。</p>
+<p>原图和候选只推进从封存输入复制出的独立副本，不重建旧任务、不写 saver 私表。继续获批步骤时，<code>invoke(None, ...)</code> 仅传目标线程，不带快照里的 <code>checkpoint_id</code>。用公开接口核对最新 ID、一个可区分的旧快照及推进后的父链，旧 ID 只作对照；是否保存或重放仍由原稿、全表和持久回执证明。</p>
+<p><strong>本课不执行真实 SDK。</strong>在已有获准且依赖锁定的 Phase 6 环境，可从 <code>checkpoints/</code> 用该解释器运行 <code>python -B -X utf8 langgraph_rehearsal.py --native-only</code>；不带参数则另跑 Phase 10 应用图夹具。后者不是 Phase 6 快照。本环境只做静态检查，真实演练仍待验。</p></div>
+</section>
+<section class="section"><h2>2. 给完成态加分支，不搬动旧中断</h2>
+<p>Phase 10 应用合同的 v2 仍能读命名字段的 <code>schema: 1</code>；Phase 6 原图的候选则读真实的旧通道。两者都保留 <code>review</code> 的第一次中断和 <code>apply_review</code> 节点。保存或重放成功后才走无业务副作用的 <code>finish</code>，写入 <code>completion: "receipt_checked"</code> 与 <code>schema: 2</code>。反例：为重命名把 <code>apply_review</code> 删除，或在已有中断之前再插一个中断。新任务可能跑通，但已排队的旧节点或暂停时的索引不再对应。若一读取旧状态就写新版字段，还在等批准的任务也会被就地升级。</p>
+<div class="best-practice-point" id="bp-l85"><h3>决策卡：优先保留在途入口</h3><p class="bp-scenario"><strong>适用：</strong>升级时仍有跨请求的人工审批。<strong>不适用：</strong>不持久化的单次查询；能停收并排空的队列也可以安排切换窗口。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">替换旧节点</span><p>只验证 v2 新任务，忽视旧图下一跳。</p></div><div class="bp-right"><span class="bp-compare-label">保留旧节点，只扩展结尾</span><p>旧输入可读；只有成功推进才写新版信息。</p></div></div><p class="bp-rationale"><strong>代价：</strong>要维护两套读法与三种有代表性的历史停止点；如果长期维护成本过高，先排空或提供显式迁移，不在启动时猜测旧字段。</p><ol class="bp-steps"><li>用 v1 造停点，关连接后封存三文件。</li><li>对比两种同节点快照的审批与全表差异。</li></ol><p class="bp-result"><strong>诊断：</strong>如果图相同而持久行也相同，先检查故障是否真的在业务提交之后，而不是相信「已提交」这个案例名。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 两份快照都排到了 <code>apply_review</code>。如何区分未执行与丢回复？</div><div class="quiz-options"><button data-answer="wrong">比较应用 schema 和字段数</button><button data-answer="wrong">比较暂停线程名和节点名</button><button data-answer="correct">比较业务全表和持久回执</button><button data-answer="wrong">比较审批动作和稿件号</button></div><div class="quiz-explanation">两份任务可共用 schema、节点、审批与修订；独立业务读回才证明是否提交。</div></div>
+</section>
+<section class="section best-practice-lesson"><h2>3. 跟做：逐包读出三个停止点</h2>
+<p>用 Python 3.11+，从可信仓库根进入 <code>code/phase10-framework-evolution/evolution-lab/checkpoints</code>，先执行 <code>python -B contract.py seed</code>。要运行下方代码，在 VS Code 将所选代码块另存为临时 <code>.py</code> 文件，从仓库根的终端执行 <code>python -B 文件名.py</code>，不要加 <code>-O</code>。程序只用临时目录，退出会清理。</p>
+<div class="card"><h3>起点：列出图的下一节点</h3><pre><code class="language-python">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+seeds = run("seed")
+for name, seed in seeds.items():
+    print(name, seed["graph"]["next"])
+# TODO：补查 schema、实际审批与已保存行，解释相同下一节点为何不是同一停止点。</code></pre><p><strong>通过标准：</strong>待批只有一个中断；已批未保存没有业务行；丢回复停止点已有一条业务行，但没有应用收到的回执。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l85-worked-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+seeds = run("seed")
+pending, approved, committed = (seeds[s] for s in ("pending", "approved", "committed"))
+assert pending["graph"]["values"]["schema"] == 1
+assert pending["graph"]["interrupts"] == [{"job": "export", "revision": 2}]
+assert pending["ledger"]["reviews"] == pending["ledger"]["saved"] == []
+assert approved["graph"] == committed["graph"]
+assert approved["graph"]["next"] == ["apply_review"]
+assert approved["ledger"]["reviews"] == committed["ledger"]["reviews"]
+assert approved["ledger"]["reviews"][0][-1] == "approve"
+assert approved["ledger"]["saved"] == []
+row, = committed["ledger"]["saved"]
+assert committed["fault_observer"]["inserts"] == [row[0]]
+assert committed["fault_observer"]["reply"]["receipt"] is None
+print("L85 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：假如只复制图文件</h2>
+<p>换一个约束：从一个完好的待批包复制，模拟只复制编排文件，检查为什么连待批准的任务也不算可恢复。</p>
+<div class="card"><h3>独立起点：先复制完整包</h3><pre><code class="language-python">from pathlib import Path
+from tempfile import TemporaryDirectory
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+import contract
+from rehearsal import clone, seed_bundle
+
+with TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    source = root / "sealed"
+    origin = seed_bundle(contract, source, "pending", "named")["origin"]
+    copy = clone(source, root / "working", origin)
+    print(sorted(p.name for p in copy.iterdir()))
+    # TODO：只让副本保留图快照；验证副本失败、封存包仍通过。</code></pre><p><strong>通过标准：</strong>图的字节没变也不足以过关；缺审批库或业务库时拒绝接纳副本，原包的三个摘要仍匹配。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l85-transfer-check">from pathlib import Path
+from tempfile import TemporaryDirectory
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+import contract
+from rehearsal import clone, hashes, seed_bundle
+
+with TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    source = root / "sealed"
+    origin = seed_bundle(contract, source, "pending", "named")["origin"]
+    copy = clone(source, root / "working", origin)
+    assert hashes(copy, origin) == origin
+    for name in ("business.sqlite", "reviews.sqlite"):
+        (copy / name).unlink()
+    assert contract.inspect(copy) == contract.inspect(source)
+    try:
+        hashes(copy, origin)
+    except AssertionError as error:
+        assert "closed bundle entries" in str(error)
+    else:
+        raise AssertionError("accepted graph file without its ledgers")
+    assert hashes(source, origin) == origin
+print("L85 TRANSFER PASSED")</code></pre></details>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 线上业务把草稿修订从 2 升到 3。是否也要升级应用 schema？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不必，修订标识的是批准绑定的稿件，不是应用状态形状。</p><p><strong>追问：</strong>正文碰巧没变呢？</p><p><strong>答题要点：</strong>修订仍是绑定的一部分；不能因摘要一样而替换批准对象。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 同事希望直接重命名待运行的审批节点。上线前要什么证据？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先用旧运行路径生成实际暂停记录，复跑原节点与恢复顺序。</p><p><strong>追问：</strong>可以在旧名外保留适配节点吗？</p><p><strong>答题要点：</strong>可以对照，但要核对中断顺序和效果；不能只测新建任务。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 恢复日志没有回复，能按「未提交」处理吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能；先看业务回执和持久行是否存在且一致。</p><p><strong>追问：</strong>图和审批都还是已批呢？</p><p><strong>答题要点：</strong>两份样本正好有相同图状态和批准；业务库才区分。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> 能用三个 SHA-256 摘要证明线上备份跨库一致吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能，摘要只比对字节；此处靠无并发且闭库后同批封存。</p><p><strong>追问：</strong>线上不能停写怎么办？</p><p><strong>答题要点：</strong>先设计一致切点或日志重放策略，再独立演练，不拷贝正在写的库。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L85">L85 疑难解答 →</a><div class="qa-related"><a href="0096-L84-long-task-recovery.html">上一课 L84 · 长任务恢复（选修）</a> · <a href="0099-L86-checkpoint-compatibility.html">下一课 L86 · 检查点兼容性</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段 10 大纲</a> · <a href="../code/phase10-framework-evolution/evolution-lab/README.md">实验说明</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>分开看应用合同与原图存量：先封存三种停点，再对照最新续跑、历史快照和独立业务读回。标准库合同不证明旧图可恢复；真实入口仍需在阶段 6 固定依赖环境验证，未运行不算通过。</p><ul><li><a href="https://docs.langchain.com/oss/python/langgraph/interrupts">LangGraph · Interrupts</a>：节点会重新从开头执行，中断顺序要稳定。</li><li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api#graph-migrations">LangGraph · Graph migrations</a>：图拓扑与运行中线程的约束。</li><li><a href="https://www.sqlite.org/wal.html">SQLite · Write-Ahead Logging</a>：附属文件与数据库状态的关系。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

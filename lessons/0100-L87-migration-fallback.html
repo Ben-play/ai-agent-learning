@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1"><link rel="icon" href="../assets/icons/icon-192.png">
+  <title>L87 · 演练迁移失败与恢复路径</title><link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="section"><div class="lesson-header"><div class="lesson-meta-row"><span class="lesson-phase-tag">第十阶段 · 框架演进与按需协作 · 必修</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span></div><h1>演练迁移失败与恢复路径</h1><p class="subtitle">先拒绝不认识的旧形状，再从不变的输入接续</p></div></div>
+<section class="section"><h2>如果不是所有旧任务都能读怎么办？</h2>
+<p>前两课验证了使用命名字段的旧检查点；这次 v1 另有一种真正可读的历史形状：<code>binding</code> 不是对象，而是六项有顺序的列表，依次是租户、主体、任务、动作、修订和内容摘要。它也带 <code>schema: 1</code>，例如 <code>["training", "reviewer", "export", "save_local_draft", 2, "…"]</code>。v2 没有经验证的列表解码器，不把它猜成命名字段。这里不是「故意写个不存在的版本号」：这份数据由 v1 正常推进所得，v1 能按原约定处理。</p>
+<p><strong>学习目标：</strong>让两个新进程在同一候选副本上拒绝且不调度或写入；从同一准备包交给 v1 独立续跑，验证回退不扩大授权，并识别必须停止对账的情况。</p>
+</section>
+<section class="section"><h2>1. 先预检，再选择运行路径</h2>
+<ol><li>先封存 v1 原包。只在一个干净副本录入审批或注入故障，关库并用独立金标核对实际变化和其余字段。候选与旧路径各复制同一准备包，不在任何一臂补批准、换来源或修回执。</li><li>候选只读预检拒绝列表形状，返回 <code>migration_refused</code>。两个新进程先后打开同一候选副本：每次在分发与业务调用前停下，不写入、不返回草稿或回执；检查点与全表不变，各文件前后摘要都等于准备包。</li><li>另一个新进程用 v1 打开从未交给候选的副本，确认起跑摘要相同。识别列表形状并不授予权限：只有当前来源、稿件修订、决定和回执各自符合契约才继续。</li></ol>
+<p>「回退」在这里是<strong>切回旧运行路径，继续处理未改的旧检查点</strong>，不是回滚候选已改写的数据库，更不撤销已提交动作。线上若已有候选写入，要先确认在途动作、同时存在的状态格式与副作用，再设计回退或补偿；不能覆盖已保存的业务数据。</p>
+<table><caption>旧路径不是强行重跑：分别验证它确实会做什么</caption><thead><tr><th scope="col">旧路径工作副本的条件</th><th scope="col">返回</th><th scope="col">INSERT 尝试／全表行</th></tr></thead><tbody>
+<tr><td>待批，宿主录入匹配拒绝</td><td><code>denied</code>，无回执</td><td>0／0</td></tr>
+<tr><td>待批后获匹配批准；或原本已批未保存</td><td><code>saved</code>，原稿和确定的操作回执</td><td>1／1</td></tr>
+<tr><td>已提交丢回复，来源和回执都匹配</td><td><code>replayed</code>，原回执和原稿</td><td>0／1</td></tr>
+<tr><td>错主体或拿旧稿批准当前稿</td><td><code>rejected</code>，不分发，不返回回执或正文</td><td>0／0</td></tr>
+<tr><td>已提交，但来源撤权</td><td><code>replay_withheld</code>，不分发，不返回回执或正文</td><td>0／1（保留原行）</td></tr>
+</tbody></table>
+<p>要把「认得旧形状」与「可以续跑」分别验收。错批准与撤权都要核对零节点、零业务调用、零 INSERT，以及持久记录和对外返回。已提交事实不等于当前可以放行旧结果。</p>
+</section>
+<section class="section"><h2>2. 把拒绝、可恢复和可发布分开</h2>
+<div class="best-practice-point" id="bp-l87"><h3>决策卡：不能证明可迁移，就保留可核验的旧路径</h3><p class="bp-scenario"><strong>适用：</strong>历史任务尚未完成，而候选对部分状态缺乏已验解码器。<strong>不适用：</strong>候选已写入后，不把切回旧副本当作被改数据的回滚。</p><div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">猜字段并继续发单</span><p>可能把旧批准接到错稿上，也可能重写刚提交的效果。</p></div><div class="bp-right"><span class="bp-compare-label">只读识别、停机、按原路径处理</span><p>保留拒绝证据，旧版也只处理验证通过的业务动作。</p></div></div><p class="bp-rationale"><strong>代价：</strong>要保留旧运行环境和给人工对账留容量；替代方案是停收后排空，或先写可审计的显式迁移及反向兼容测试。</p><ol class="bp-steps"><li>用同一候选副本重启两次，核对每个文件摘要与零分发。</li><li>跑旧路径正控和坏回执，分别核对拒绝、单写、重放与停止。</li></ol><p class="bp-result"><strong>诊断：</strong>只要候选改变一个文件，或旧路径暗中补写丢失回执，本方案就不能按原证据放行。</p></div>
+<div class="quiz" data-quiz="q1"><div class="quiz-question"><span class="quiz-q">Q</span> 已保存标记仍在，但独立只读查询找不到原回执行。应如何处理？</div><div class="quiz-options"><button data-answer="wrong">沿用旧批准，再插入同一草稿</button><button data-answer="wrong">沿用旧线程，再生成一份回执</button><button data-answer="wrong">沿用旧摘要，再标记一次成功</button><button data-answer="correct">保留原输入，停下并发起对账</button></div><div class="quiz-explanation">缺回执行和已保存标记冲突，无法证明可安全重写。先保留证据，再核对原操作。</div></div>
+</section>
+<section class="section best-practice-lesson"><h2>3. 跟做：让候选重复拒绝，让旧路径继续</h2>
+<p>在仓库的 <code>code/phase10-framework-evolution/evolution-lab/checkpoints</code> 目录用 Python 3.11+ 执行 <code>python -B contract.py fallback --case approve --case wrong_actor --case old_review --case source_revoked</code>，只跑本节案例。或者将所选代码块另存为临时 <code>.py</code> 文件，从仓库根执行 <code>python -B 文件名.py</code>（不加 <code>-O</code>）。</p>
+<div class="card"><h3>起点：先观察同一个旧任务的两种路径</h3><pre><code class="language-python">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("fallback", cases=("approve", "wrong_actor", "old_review", "source_revoked"))
+for name, case in report.items():
+    print(name, [a["reply"]["status"] for a in case["refused"]], case["arms"]["v1"]["reply"]["status"])
+# TODO：比各臂摘要，查错批准与撤权是否零分发、无草稿或回执泄漏。</code></pre><p><strong>通过标准：</strong>每个案例的候选都两次无写入地拒绝；旧版只在匹配批准下保存，错主体、旧稿批准、撤权均不分发。</p></div>
+<details><summary>展开跟做参考与自检</summary><pre><code class="language-python" id="l87-worked-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("fallback", cases=("approve", "wrong_actor", "old_review", "source_revoked"))
+for name, case in report.items():
+    before, prepared = case["before"], case["prepared"]
+    assert prepared["graph"] == before["graph"]
+    binding = prepared["graph"]["values"]["binding"]
+    assert isinstance(binding, list)
+    if name == "wrong_actor":
+        assert prepared["ledger"]["reviews"] == [[binding[0], "another-reviewer", *binding[2:], "approve"]]
+    elif name == "old_review":
+        old_binding = before["old_binding"]
+        assert old_binding["revision"] == 1 and old_binding["digest"] != binding[5]
+        assert prepared["ledger"]["reviews"] == [[*binding[:4], 1, old_binding["digest"], "approve"]]
+    elif name == "source_revoked":
+        assert [s[2] for s in before["ledger"]["sources"]] == ["KB-01", "KB-02"]
+        assert prepared["ledger"]["sources"] == before["ledger"]["sources"][:1]
+    assert before["origin"] != prepared["origin"] and len(case["refused"]) == 2
+    for attempt in case["refused"]:
+        assert attempt["reply"] == {"status": "migration_refused", "receipt": None, "draft": None}
+        assert (attempt["nodes"], attempt["calls"], attempt["inserts"]) == ([], 0, [])
+        assert attempt["origin"] == attempt["after"] == prepared["origin"]
+        assert attempt["graph"] == prepared["graph"] and attempt["ledger"] == prepared["ledger"]
+    old = case["arms"]["v1"]
+    assert old["from_prepared"] == prepared["origin"]
+    assert old["ledger"]["reviews"] == prepared["ledger"]["reviews"]
+    if name == "approve":
+        row, = old["ledger"]["saved"]
+        assert old["nodes"] == ["review", "apply_review"] and old["calls"] == 1
+        assert old["inserts"] == [row[0]] and old["reply"] == {"status": "saved", "receipt": row[0], "draft": row[-1]}
+    else:
+        status = "replay_withheld" if name == "source_revoked" else "rejected"
+        assert old["reply"] == {"status": status, "receipt": None, "draft": None}
+        assert (old["nodes"], old["calls"], old["inserts"]) == ([], 0, [])
+        assert old["after"] == prepared["origin"]
+        assert old["ledger"] == prepared["ledger"] and old["graph"] == prepared["graph"]
+        assert old["ledger"]["saved"] == before["ledger"]["saved"]
+print("L87 ACCEPTED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson" id="lesson-best-practices"><h2>本课最佳实践验收：保住原回执，也能识别坏回执</h2>
+<p>现在从全新副本观察提交后丢回复：分别保留原回执、移除回执、替换回执正文。可用 <code>python -B contract.py fallback --case replay --case missing_receipt --case mismatched_receipt</code> 单独运行。故障只改准备包的业务回执行，不改图或已保存标记；空表或错行都不授权补写。必须停下对账，核对操作 ID、归属、正文和当前权限。</p>
+<div class="card"><h3>独立起点：对比旧路径的返回和持久行</h3><pre><code class="language-python">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("fallback", cases=("replay", "missing_receipt", "mismatched_receipt"))
+for name, case in report.items():
+    print(name, len(case["prepared"]["ledger"]["saved"]), case["arms"]["v1"]["reply"]["status"])
+# TODO：查实际注入的回执变化，再证明故障没有补写或泄露正文。</code></pre><p><strong>通过标准：</strong>正常重放保留一条原行；故障报告仍见已保存检查点，但没有返回原回执或正文，也没有任何 INSERT。</p></div>
+<details class="bp-check"><summary>展开独立参考与自检</summary><pre><code class="language-python" id="l87-transfer-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("fallback", cases=("replay", "missing_receipt", "mismatched_receipt"))
+for name, case in report.items():
+    before, prepared = case["before"], case["prepared"]
+    original, = before["ledger"]["saved"]
+    if name == "replay":
+        expected_saved = [original]
+    elif name == "missing_receipt":
+        expected_saved = []
+    else:
+        expected_saved = [[*original[:-1], ["错误草稿", "不匹配的回执正文", ["KB-01"]]]]
+    assert prepared["graph"] == before["graph"]
+    assert prepared["ledger"] == dict(before["ledger"], saved=expected_saved)
+    changed = {key for key in before["origin"] if before["origin"][key] != prepared["origin"][key]}
+    assert changed == (set() if name == "replay" else {"business.sqlite"})
+    assert len(case["refused"]) == 2
+    for attempt in case["refused"]:
+        assert attempt["origin"] == attempt["after"] == prepared["origin"]
+    old = case["arms"]["v1"]
+    assert old["from_prepared"] == prepared["origin"] and old["ledger"] == prepared["ledger"]
+    assert (old["nodes"], old["calls"], old["inserts"]) == (["apply_review"], 1, [])
+    if name == "replay":
+        assert old["reply"] == {"status": "replayed", "receipt": original[0], "draft": original[-1]}
+    else:
+        assert old["reply"] == {"status": "inconsistent", "receipt": None, "draft": None}
+print("L87 TRANSFER PASSED")</code></pre></details>
+</section>
+<section class="section best-practice-lesson stage-practice-checkpoint" id="stage-practice-checkpoint-compatibility"><h2>必做阶段检查点：旧检查点兼容性演练</h2>
+<p>这个本地检查点约 10 分钟，已计入本课。完成上面的独立变式后，先运行 <code>python -B -m unittest -v test_contract</code>，再运行 <code>python -B contract.py stage</code> 跑完整矩阵。记录合法审批、越界审批、原回执重放，以及两次拒绝的全文件摘要。写明是否切回旧路径，什么情况下必须停止对账。</p>
+<pre><code class="language-python" id="l87-stage-starter">import json, subprocess, sys
+
+entry = "code/phase10-framework-evolution/evolution-lab/checkpoints/contract.py"
+result = subprocess.run([sys.executable, "-B", "-X", "utf8", entry, "stage"],
+                        capture_output=True, encoding="utf-8", check=True, timeout=30)
+body, marker = result.stdout.rstrip().rsplit("\n", 1)
+report = json.loads(body)
+print(marker, len(report["compare"]), len(report["fallback"]))
+# TODO：比较封存摘要与两臂收到的准备包摘要，找出零新增写入及需对账的样本。</code></pre>
+<p><strong>标准库：</strong><code>P10 LOCAL CHECKPOINT CONTRACT PASSED</code> 只表示本地替身通过。<strong>真实 LangGraph：</strong>当前缺阶段 6 固定依赖，入口仅静态核对，两部分均未运行。之后在已获授权且具备原固定环境时，用同一 Python 3.11–3.13 环境先跑阶段 6 的真实图验收，再从 <code>checkpoints/</code> 目录运行 <code>python -B -X utf8 langgraph_rehearsal.py</code>。完整报告须含 <code>phase6_original_snapshots</code>（原图快照）与 <code>phase10_application_fixtures</code>（本阶段应用夹具），<code>--native-only</code> 只用于诊断，不能替代完整验收。两部分均沿用 LangGraph <code>1.2.24</code> 和 SQLite saver <code>3.1.3</code>，不是 SDK 升级试验。真实演练通过才满足 Phase 11 兼容性前置；标准库通过不能替代它。</p>
+<details class="bp-check"><summary>展开本地阶段自检</summary><pre><code class="language-python" id="l87-stage-check">from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path("code/phase10-framework-evolution/evolution-lab/checkpoints").resolve()))
+from contract import run
+
+report = run("stage")
+compat, fallback = report["compare"], report["fallback"]
+assert compat["wrong_actor"]["arms"]["v2"]["calls"] == 0
+approved = compat["approve"]["arms"]["v2"]
+assert approved["nodes"] == ["review", "apply_review", "finish"]
+assert len(approved["inserts"]) == len(approved["ledger"]["saved"]) == 1
+for case in fallback.values():
+    origin = case["prepared"]["origin"]
+    assert case["arms"]["v1"]["from_prepared"] == origin
+    assert len(case["refused"]) == 2 and all(a["origin"] == a["after"] == origin for a in case["refused"])
+for name, status in (("wrong_actor", "rejected"), ("old_review", "rejected"), ("source_revoked", "replay_withheld")):
+    old = fallback[name]["arms"]["v1"]
+    assert old["reply"] == {"status": status, "receipt": None, "draft": None}
+    assert (old["nodes"], old["calls"], old["inserts"]) == ([], 0, [])
+replay = fallback["replay"]["arms"]["v1"]
+assert replay["reply"]["receipt"] == fallback["replay"]["before"]["ledger"]["saved"][0][0]
+assert replay["inserts"] == []
+assert fallback["mismatched_receipt"]["arms"]["v1"]["reply"]["status"] == "inconsistent"
+print("P10 LOCAL CHECKPOINT CONTRACT PASSED")</code></pre></details>
+</section>
+<section class="section" id="interview"><h2>面试自查</h2>
+<details class="think-q"><summary><span class="think-q-tag">Q1</span> 状态标了 <code>schema: 1</code>，却含未知形状。能尝试按顺序解码吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>先停止调度，不猜布局；用经验证的旧路径或明确定义的转换。</p><p><strong>追问：</strong>如何证明不是候选造了个无法读取的样本？</p><p><strong>答题要点：</strong>由旧程序产生，旧运行路径能处理同一源的副本，业务金标也通过。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q2</span> 候选日志写了两次「未迁移」。还要观察什么？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>在同一个副本上重启，核对三文件摘要、调度记录、业务调用和 INSERT。</p><p><strong>追问：</strong>两个独立新副本各运行一次够吗？</p><p><strong>答题要点：</strong>那不能发现某次运行给下次留了标记或损坏；要重开同一份。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q3</span> 灰度中的候选已经写了业务行，此时切旧副本安全吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>本课不证明安全；不能用旧数据覆盖事实。先停止新增写，辨认哪些输入和副作用已变。</p><p><strong>追问：</strong>业务允许撤销时怎么做？</p><p><strong>答题要点：</strong>作为独立补偿动作设计权限、审批、回执和效果验证。</p></div></details>
+<details class="think-q"><summary><span class="think-q-tag">Q4</span> CI 只显示本地合同标记，能开始 Phase 11 的部署练习吗？</summary><div class="think-q-answer"><p><strong>参考回答：</strong>不能把本地结果当真实 LangGraph 兼容证明，报告应拆成通过与待验两列。</p><p><strong>追问：</strong>固定 SDK 上的应用迁移通过后，能说升级了 SDK 也行吗？</p><p><strong>答题要点：</strong>不能；同 SDK 的应用迁移与 SDK 版本迁移是两个变量。</p></div></details>
+</section>
+<section class="section"><h2>❓ 答疑与延伸</h2><div class="card"><a class="lesson-qa-link" href="../qa/phase10-qa.html#L87">L87 疑难解答 →</a><div class="qa-related"><a href="0099-L86-checkpoint-compatibility.html">上一课 L86 · 检查点兼容性</a> · <a href="0101-L88-architecture-decision.html">下一课 L88 · 架构决策</a> · <a href="0106-phase10-framework-evolution-outline.html">阶段 10 大纲</a> · <a href="../code/phase10-framework-evolution/evolution-lab/README.md">实验说明</a></div></div></section>
+<section class="section"><h2>小结与一手参考</h2><p>未知旧形状先拒绝且不改输入，再以原路径续跑可证实的业务。丢回复可对账，矛盾回执不补写；演练结论只覆盖已测环境。</p><ul><li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api#graph-migrations">LangGraph · Graph migrations</a>：图变化与运行中线程兼容。</li><li><a href="https://docs.python.org/3.11/library/subprocess.html#subprocess.run">Python · subprocess.run</a>：独立进程、参数列表与退出结果。</li><li><a href="https://www.sqlite.org/lang_transaction.html">SQLite · Transactions</a>：事务撤销不等于应用回退。</li></ul></section>
+</main>
+<aside class="toc" id="toc" aria-label="本课目录"></aside>
+<script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/quiz.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script>
+</body>
+</html>

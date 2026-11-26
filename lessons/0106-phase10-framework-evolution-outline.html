@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>阶段 10 · 框架演进与按需协作</title><link rel="stylesheet" href="../assets/style.css"></head><body><main>
+<h1>阶段 10 · 框架演进与按需协作</h1>
+<p>从 <a href="0069-phase6-langgraph-mcp-outline.html">Phase 6 编排与 MCP</a>、<a href="0091-phase8-agent-engineering-outline.html">Phase 8 工程基线</a> 继续，不要求先学 Phase 9。核心问题是旧任务能否安全续跑，之后才问是否需要更多编排或协作。</p>
+<div class="total-bar"><span>8 节 · L85–L92 · 260 分钟</span><span>必修 135 分钟（含 L87 本地检查点 10 分钟） · 选修 125 分钟</span></div>
+<aside class="toc" id="toc" aria-label="本阶段目录"></aside>
+<nav aria-label="阶段导航"><a href="0090-L79-engineering-baseline-handoff.html">Phase 8 验收基线</a> · <a href="../qa/phase10-qa.html">阶段答疑</a> · <a href="0001-ai-agent-learning-path-overview.html#phase-10-body">课程总纲</a></nav>
+<section class="section" id="required"><h2>必修：兼容、回退与架构决策</h2>
+<table><thead><tr><th scope="col">课程</th><th scope="col">主题</th><th scope="col">要观察的证据</th></tr></thead><tbody>
+<tr><td>L85 <span class="lesson-num-time">30min</span></td><td><a href="0098-L85-versioned-graph-state.html">版本化状态与分支</a></td><td>从旧版流程生成待批、已批未保存、已提交丢回复三种快照。</td></tr>
+<tr><td>L86 <span class="lesson-num-time">30min</span></td><td><a href="0099-L86-checkpoint-compatibility.html">从同一批旧检查点比较恢复</a></td><td>对照副本来源、绑定、权限、写入、原稿和稳定回执。</td></tr>
+<tr><td>L87 <span class="lesson-num-time">40min</span></td><td><a href="0100-L87-migration-fallback.html">演练迁移失败与恢复路径</a></td><td>候选拒绝时原任务不变；旧路径仍需核授权、来源和回执。</td></tr>
+<tr><td>L88 <span class="lesson-num-time">35min</span></td><td><a href="0101-L88-architecture-decision.html">记录架构决策：保留单 Agent 也有效</a></td><td>同任务比较函数、workflow 和受限单 Agent，独立核对答复、行为和账本。</td></tr>
+</tbody></table>
+<p><strong>进入部署前：</strong>完成 <a href="0100-L87-migration-fallback.html#stage-practice-checkpoint-compatibility">L87 检查点兼容性练习</a>。标准库课内自检只证明宿主应用合同；真实 LangGraph 验收另跑，当前未验证，不以绿色离线自检替代。详情见<a href="../code/phase10-framework-evolution/evolution-lab/README.md">演进实验</a>。</p></section>
+<section class="section" id="electives"><h2>选修：有瓶颈才引入协作或新协议</h2>
+<table><thead><tr><th scope="col">课程</th><th scope="col">主题</th><th scope="col">采用条件</th></tr></thead><tbody>
+<tr><td>L89 <span class="lesson-num-time">30min</span></td><td><a href="0102-L89-bounded-worker-delegation.html">单 Agent 与 Orchestrator–Worker 对照</a></td><td>只为有边界的委托做对照，不丢交接、不扩权，收益覆盖代价。</td></tr>
+<tr><td>L90 <span class="lesson-num-time">35min</span></td><td><a href="0103-L90-a2a-task-boundaries.html">A2A 的任务边界</a></td><td>有跨系统需求才考虑；合成替身验证任务、主体、取消和可见结果。</td></tr>
+<tr><td>L91 <span class="lesson-num-time">35min</span></td><td><a href="0104-L91-mcp-server-boundaries.html">MCP 服务端的只读权限边界</a></td><td>读取前分别核对接入和业务授权，并观察拒绝为零实际调用。</td></tr>
+<tr><td>L92 <span class="lesson-num-time">25min</span></td><td><a href="0105-L92-hermes-source-comparison.html">只读对照 Hermes 的状态与恢复边界</a></td><td>只摘取能由固定源码支持的判断，不运行候选或迁移主线。</td></tr>
+</tbody></table>
+<p>选修不阻塞 Phase 11。收尾看<a href="../best-practices/phase10-framework-evolution-practices.html">阶段实践复盘</a>；兼容性前置满足后，可查<a href="0046-phase5-to-11-planned-outlines.html#phase-11">Phase 11 部署规划</a>。</p></section>
+</main><script src="../assets/content-tools.js"></script><script src="../assets/course-catalog.js"></script><script src="../assets/bottom-nav.js"></script><script src="../assets/theme-toggle.js"></script><script src="../assets/back-to-top.js"></script><script src="../assets/course-bar.js"></script><script src="../assets/toc.js"></script><script src="../assets/pwa.js"></script></body></html>
