@@ -1,8 +1,9 @@
 /* AI Agent 学习路径：scope 隔离、内容版本化的离线缓存 */
 'use strict';
 
-/* 构建器会把占位符替换为完整发布产物的内容摘要。 */
+/* 构建器注入精确发布清单，再计算完整产物的内容摘要。 */
 var CACHE_VERSION = '__BUILD_VERSION__';
+var PUBLISHED_PATHS = '__PUBLISHED_PATHS__';
 var SCOPE_URL = new URL(self.registration.scope);
 var SCOPE_KEY = encodeURIComponent(SCOPE_URL.href);
 /* github.io 根 scope 会接管同源所有 Project Pages；仅在该共享宿主上清理并注销。 */
@@ -28,96 +29,49 @@ function legacyScopeFingerprint(value) {
 }
 var LEGACY_CACHE_PREFIX = 'ai-agent-learning-' + legacyScopeFingerprint(SCOPE_URL.href) + '-';
 
-var SHELL_ASSETS = [
-  './index.html',
-  './404.html',
-  './offline.html'
-];
+var SHELL_ASSETS = ['index.html', '404.html', 'offline.html'];
+var STATIC_ASSETS = PUBLISHED_PATHS.static || [];
+var PAGE_PATHS = new Set((PUBLISHED_PATHS.pages || []).map(scopedPath));
+var STATIC_PATHS = new Set(STATIC_ASSETS.map(scopedPath));
+var HOME_PATH = scopedPath('index.html');
 
-var STATIC_ASSETS = [
-  './manifest.webmanifest',
-  './assets/style.css',
-  './assets/course-catalog.js',
-  './assets/content-tools.js',
-  './assets/bottom-nav.js',
-  './assets/theme-toggle.js',
-  './assets/back-to-top.js',
-  './assets/course-bar.js',
-  './assets/quiz.js',
-  './assets/toc.js',
-  './assets/overview-toggle.js',
-  './assets/pwa.js',
-  './assets/icons/icon-192.png',
-  './assets/icons/icon-512.png',
-  './assets/icons/icon-maskable-512.png'
-];
+function scopedPath(path) {
+  return SCOPE_URL.pathname + path.split('/').map(encodeURIComponent).join('/');
+}
 
 function scopedUrl(path) {
-  return new URL(path, SCOPE_URL).href;
+  return new URL(scopedPath(path), SCOPE_URL).href;
 }
 
-function isWithinScope(url) {
-  var scopePath = SCOPE_URL.pathname;
-  return url.origin === SCOPE_URL.origin &&
-    (url.pathname === scopePath.slice(0, -1) || url.pathname.startsWith(scopePath));
+function publishedUrl(value, kind, base) {
+  var url;
+  try { url = new URL(value, base); } catch (error) { return null; }
+  if (url.origin !== SCOPE_URL.origin || url.username || url.password) return null;
+  if (kind === 'page') {
+    if (url.pathname === SCOPE_URL.pathname || url.pathname === SCOPE_URL.pathname.slice(0, -1)) {
+      url.pathname = HOME_PATH;
+    }
+    /* 本站 HTML 不以 query 选择内容；移除追踪参数，避免无限缓存副本。 */
+    url.search = '';
+  }
+  url.hash = '';
+  return (kind === 'page' ? PAGE_PATHS : STATIC_PATHS).has(url.pathname) ? url : null;
 }
 
-function isCoursePath(url) {
-  var relative;
-  if (!isWithinScope(url)) return false;
-  relative = url.pathname.slice(SCOPE_URL.pathname.length);
-  if (!relative && url.pathname === SCOPE_URL.pathname.slice(0, -1)) relative = '';
-  return relative === '' ||
-    /^(?:index|404|offline|service-worker)\.html$/.test(relative) ||
-    relative === 'manifest.webmanifest' ||
-    relative.startsWith('assets/') ||
-    relative.startsWith('lessons/') ||
-    relative.startsWith('qa/') ||
-    relative.startsWith('reference/') ||
-    relative.startsWith('best-practices/') ||
-    relative.startsWith('code/phase1-python/phase1-practices-capstone/') ||
-    relative.startsWith('code/phase2-model-selection/phase2-practices-capstone/');
-}
-
-function isCacheableResponse(response) {
-  return Boolean(response && response.ok && !response.redirected && response.type !== 'opaqueredirect');
+function isPublishedResponse(response, kind) {
+  return Boolean(response && response.ok && !response.redirected && response.type !== 'opaqueredirect' &&
+    publishedUrl(response.url, kind));
 }
 
 function isPageRequest(request) {
   return request.mode === 'navigate' || request.destination === 'document';
 }
 
-function isStaticRequest(request, url) {
-  if (['style', 'script', 'image', 'font'].indexOf(request.destination) !== -1) return true;
-  return /\.(?:css|js|mjs|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|json|webmanifest)$/i.test(url.pathname);
-}
-
-function pageCacheKey(request) {
-  var url = new URL(request.url);
-  url.hash = '';
-  /* 本站 HTML 不以 query 选择内容；移除追踪参数，避免无限缓存副本。 */
-  url.search = '';
-  if (url.pathname === SCOPE_URL.pathname || url.pathname === SCOPE_URL.pathname.slice(0, -1)) {
-    url = new URL('./index.html', SCOPE_URL);
-  }
-  return new Request(url.href, { credentials: 'same-origin' });
-}
-
-function staticCacheKey(request) {
-  var url = new URL(request.url);
-  url.hash = '';
-  return new Request(url.href, { credentials: 'same-origin' });
-}
-
-async function cacheResponse(cacheName, request, response) {
-  var copy;
-  if (!isCacheableResponse(response)) return false;
+async function storeResponse(cacheName, key, response) {
   try {
-    var requestUrl = new URL(request.url);
-    var responseUrl = new URL(response.url);
-    if (!isCoursePath(requestUrl) || !isCoursePath(responseUrl)) return false;
-    copy = response.clone();
-    await (await caches.open(cacheName)).put(request, copy);
+    /* 导航可能先读走原始响应流，必须在等待 Cache Storage 前复制。 */
+    var copy = response.clone();
+    await (await caches.open(cacheName)).put(key, copy);
     return true;
   } catch (error) {
     return false;
@@ -150,26 +104,26 @@ async function matchFrom(cacheName, request) {
 async function pageFallback(key) {
   var cached = await matchFrom(PAGES_CACHE, key);
   if (cached) return cached;
-  if (new URL(key.url).pathname === new URL('./index.html', SCOPE_URL).pathname) {
-    cached = await matchFrom(SHELL_CACHE, scopedUrl('./index.html'));
+  if (new URL(key.url).pathname === HOME_PATH) {
+    cached = await matchFrom(SHELL_CACHE, scopedUrl('index.html'));
     if (cached) return cached;
   }
   return undefined;
 }
 
 async function offlineFallback() {
-  return matchFrom(SHELL_CACHE, scopedUrl('./offline.html'));
+  return matchFrom(SHELL_CACHE, scopedUrl('offline.html'));
 }
 
-function networkFirstPage(request, event) {
-  var key = pageCacheKey(request);
+function networkFirstPage(request, event, url) {
+  var key = new Request(url.href, { credentials: 'same-origin' });
   var network = settleWithin(fetch(request), NETWORK_TIMEOUT_MS);
 
   event.waitUntil(network.then(function (response) {
     if (response.status === 404 || response.status === 410) {
       return caches.open(PAGES_CACHE).then(function (cache) { return cache.delete(key); });
     }
-    return isCacheableResponse(response) ? cacheResponse(PAGES_CACHE, key, response) : false;
+    return isPublishedResponse(response, 'page') ? storeResponse(PAGES_CACHE, key, response) : false;
   }).catch(function () { return false; }));
 
   return network.then(async function (response) {
@@ -183,11 +137,11 @@ function networkFirstPage(request, event) {
   });
 }
 
-function networkFirstStatic(request, event) {
-  var key = staticCacheKey(request);
+function networkFirstStatic(request, event, url) {
+  var key = new Request(url.href, { credentials: 'same-origin' });
   var network = settleWithin(fetch(request), NETWORK_TIMEOUT_MS);
   event.waitUntil(network.then(function (response) {
-    return isCacheableResponse(response) ? cacheResponse(STATIC_CACHE, key, response) : false;
+    return isPublishedResponse(response, 'static') ? storeResponse(STATIC_CACHE, key, response) : false;
   }).catch(function () { return false; }));
   return network.then(async function (response) {
     if (response.status >= 500) return (await matchFrom(STATIC_CACHE, key)) || response;
@@ -197,7 +151,7 @@ function networkFirstStatic(request, event) {
   });
 }
 
-async function precache(cacheName, paths) {
+async function precache(cacheName, paths, kind) {
   var cache = await caches.open(cacheName);
   await Promise.all(paths.map(async function (path) {
     var request = new Request(scopedUrl(path), {
@@ -206,8 +160,7 @@ async function precache(cacheName, paths) {
       cache: 'reload'
     });
     var response = await fetch(request);
-    var responseUrl = new URL(response.url);
-    if (!isCacheableResponse(response) || !isCoursePath(responseUrl)) {
+    if (!isPublishedResponse(response, kind)) {
       throw new Error('Required offline asset is not cacheable: ' + request.url);
     }
     await cache.put(request, response);
@@ -228,14 +181,13 @@ async function previousPageCacheNames() {
 
 async function visitedPageCandidates() {
   var names = await previousPageCacheNames();
-  var candidates = Object.create(null);
+  var candidates = new Set();
   for (var n = 0; n < names.length; n += 1) {
     var source = await caches.open(names[n]);
     var requests = await source.keys();
     for (var i = 0; i < requests.length; i += 1) {
-      var key = pageCacheKey(requests[i]);
-      if (!isCoursePath(new URL(key.url))) continue;
-      candidates[key.url] = key;
+      var pageUrl = publishedUrl(requests[i].url, 'page');
+      if (pageUrl) candidates.add(pageUrl.href);
     }
   }
   return candidates;
@@ -244,17 +196,15 @@ async function visitedPageCandidates() {
 async function migrateVisitedPages() {
   var destination = await caches.open(PAGES_CACHE);
   var candidates = await visitedPageCandidates();
-  await Promise.all(Object.keys(candidates).map(async function (url) {
-    var pageKey = candidates[url];
+  await Promise.all(Array.from(candidates, async function (url) {
     try {
-      var response = await settleWithin(fetch(new Request(pageKey.url, {
+      var request = new Request(url, {
         credentials: 'same-origin',
         redirect: 'error',
         cache: 'reload'
-      })), NETWORK_TIMEOUT_MS);
-      if (isCacheableResponse(response) && isCoursePath(new URL(response.url))) {
-        await destination.put(pageKey, response);
-      }
+      });
+      var response = await settleWithin(fetch(request), NETWORK_TIMEOUT_MS);
+      if (isPublishedResponse(response, 'page')) await destination.put(request, response);
     } catch (error) {
       /* 未能重新验证的旧页面不带入新发布版本。 */
     }
@@ -378,8 +328,8 @@ self.addEventListener('install', function (event) {
   }
   event.waitUntil(writeVersionCreated().then(function () {
     return Promise.all([
-      precache(SHELL_CACHE, SHELL_ASSETS),
-      precache(STATIC_CACHE, STATIC_ASSETS),
+      precache(SHELL_CACHE, SHELL_ASSETS, 'page'),
+      precache(STATIC_CACHE, STATIC_ASSETS, 'static'),
       migrateVisitedPages()
     ]);
   }).then(function () {
@@ -419,71 +369,65 @@ self.addEventListener('activate', function (event) {
 
 self.addEventListener('fetch', function (event) {
   var request = event.request;
-  if (request.method !== 'GET') return;
-
-  var url;
-  try {
-    url = new URL(request.url);
-  } catch (error) {
-    return;
-  }
-  if (!isCoursePath(url)) return;
-
-  if (isPageRequest(request)) {
-    event.respondWith(networkFirstPage(request, event));
-    return;
-  }
-  if (isStaticRequest(request, url)) {
-    event.respondWith(networkFirstStatic(request, event));
-  }
+  if (RETIRE_ROOT_SCOPE || request.method !== 'GET') return;
+  var page = isPageRequest(request);
+  var url = publishedUrl(request.url, page ? 'page' : 'static');
+  if (!url) return;
+  event.respondWith(page ? networkFirstPage(request, event, url) : networkFirstStatic(request, event, url));
 });
 
 function sourceIsCourseClient(event) {
-  if (!event.source || typeof event.source.url !== 'string') return false;
-  try {
-    return isCoursePath(new URL(event.source.url));
-  } catch (error) {
-    return false;
+  return event.source && typeof event.source.url === 'string' && publishedUrl(event.source.url, 'page');
+}
+
+function replyToVisit(event, ok, retryable) {
+  if (typeof event.source.postMessage !== 'function') return;
+  var reply = { type: 'CACHE_VISITED_PAGE_RESULT', ok: ok };
+  var id = event.data.id;
+  if (typeof id === 'string' && id.length > 0 && id.length <= 128) {
+    reply.id = id;
+    if (!ok) reply.retryable = retryable;
   }
+  event.source.postMessage(reply);
+}
+
+async function cacheVisitedPage(event, url) {
+  var request = new Request(url.href, {
+    credentials: 'same-origin',
+    redirect: 'manual', // 不跟随重定向，且能把重定向与临时网络失败区分开。
+    cache: 'reload'
+  });
+  var response;
+  try {
+    response = await settleWithin(fetch(request), NETWORK_TIMEOUT_MS);
+  } catch (error) {
+    replyToVisit(event, false, true);
+    return;
+  }
+  if (!isPublishedResponse(response, 'page')) {
+    var status = response.status;
+    replyToVisit(event, false, status === 408 || status === 429 || status >= 500);
+    return;
+  }
+  var ok = await storeResponse(PAGES_CACHE, request, response);
+  replyToVisit(event, ok, !ok);
 }
 
 self.addEventListener('message', function (event) {
   var data = event.data;
-  if (!sourceIsCourseClient(event)) return;
+  if (RETIRE_ROOT_SCOPE || !data || typeof data !== 'object' || !sourceIsCourseClient(event)) return;
 
-  if (data && typeof data === 'object' && data.type === 'SKIP_WAITING') {
+  if (data.type === 'SKIP_WAITING') {
     event.waitUntil(self.skipWaiting());
     return;
   }
+  if (data.type !== 'CACHE_VISITED_PAGE') return;
 
-  if (!data || typeof data !== 'object' || data.type !== 'CACHE_VISITED_PAGE') return;
-  if (typeof data.url !== 'string' || data.url.length === 0 || data.url.length > 2048) return;
-
-  var pageUrl;
-  try {
-    pageUrl = new URL(data.url, SCOPE_URL);
-  } catch (error) {
+  var pageUrl = typeof data.url === 'string' && data.url.length > 0 && data.url.length <= 2048 &&
+    publishedUrl(data.url, 'page', SCOPE_URL);
+  if (!pageUrl) {
+    replyToVisit(event, false, false);
     return;
   }
-  pageUrl.hash = '';
-  pageUrl.search = '';
-  if (!isCoursePath(pageUrl) || pageUrl.username || pageUrl.password) return;
-  if (!/\.(?:html?|md|markdown)$/i.test(pageUrl.pathname)) return;
-
-  var request = new Request(pageUrl.href, {
-    method: 'GET',
-    credentials: 'same-origin',
-    redirect: 'error',
-    cache: 'reload'
-  });
-  event.waitUntil(
-    fetch(request)
-      .then(function (response) { return cacheResponse(PAGES_CACHE, request, response); })
-      .catch(function () { return false; })
-      .then(function (ok) {
-        if (event.source && typeof event.source.postMessage === 'function') {
-          event.source.postMessage({ type: 'CACHE_VISITED_PAGE_RESULT', ok: ok === true });
-        }
-      })
-  );
+  event.waitUntil(cacheVisitedPage(event, pageUrl));
 });

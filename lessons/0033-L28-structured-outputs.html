@@ -17,10 +17,10 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Structured Outputs（约束解码）</h1>
-    <p class="subtitle">正常完成时约束结构；拒答、截断、事实与业务校验分别处理</p>
+    <p class="subtitle">正常完成且未拒答、未截断时保证符合受支持的 Schema 子集；事实与业务另验</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:28%"></div></div>
   </div>
 </div>
@@ -29,7 +29,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>Agent 的每一步都要把 LLM 的输出<strong>交给下游代码</strong>——存进数据库、拿去调 API、传给下一个节点。这些下游只吃<strong>结构化数据</strong>：字段名要对、类型要对、必填的不能少。可 LLM 生来输出的是自由文本，你写句"请返回 JSON"求它配合，它随时可能不听。</p>
-    <p>这一课教你把"求它配合"升级成"机制上保证"。核心是一个 <strong>2026 面试高频区分题</strong>：<strong>纯 prompt、JSON mode、Structured Outputs 是三个不同强度的层次</strong>——尤其 <strong>Structured Outputs ≠ JSON mode</strong>，这句话答错当场扣分。搞懂它，你就掌握了 Agent 可靠性的一根支柱。本课延续 <a href="0018-L14-pydantic.html">L14 的 Pydantic</a>——你已经会用它定义 schema，这里让那份 schema 真正"锁死"模型的输出。</p>
+    <p>从纯 prompt 到 JSON mode，再到 Structured Outputs，保证逐步变强。<strong>仅对目标模型和接口支持的 JSON Schema 子集，在响应正常完成、没有拒答也没有截断时，Structured Outputs 才保证输出符合 Schema。</strong>本课接着用 <a href="0018-L14-pydantic.html">L14 的 Pydantic</a> 定义结构，再把格式、事实和业务许可分开验证。</p>
   </div>
 </div>
 
@@ -40,7 +40,7 @@
     <ul>
       <li>分清 <strong>纯 prompt / JSON mode / Structured Outputs</strong> 三个层次各<strong>保证什么</strong></li>
       <li>一句话说清 <strong>Structured Outputs ≠ JSON mode</strong>（这是面试送分/送命题）</li>
-      <li>解释<strong>约束解码</strong>（constrained decoding）在 token 层面怎么做到"不可能违反 schema"</li>
+      <li>解释<strong>约束解码</strong>（constrained decoding）如何约束每一步可选的 token</li>
       <li>用 <strong>Pydantic 模型 + OpenAI <code>parse</code></strong> 拿回一个已验证的对象</li>
       <li>知道<strong>兜底</strong>：不支持时退回"校验 + 重试"，并处理 refusal</li>
     </ul>
@@ -48,7 +48,7 @@
 </div>
 
 <div class="section">
-  <div class="tip"><strong>先限定“保证”的范围：</strong>以下结构保证只针对目标接口支持的 Schema、正常完成且未拒答/未截断的响应。它不保证事实、业务授权或外部动作成功。JSON mode 也可能因输出耗尽而产生未完成内容。<a href="https://developers.openai.com/api/docs/guides/structured-outputs" target="_blank">官方边界</a>与第 5 节必须一起读。</div>
+  <div class="tip"><strong>保证之外：</strong>结构正确不代表事实正确、业务已授权或外部动作成功。JSON mode 也可能因输出耗尽而产生未完成内容。参见<a href="https://developers.openai.com/api/docs/guides/structured-outputs" target="_blank">官方边界</a>和第 5 节。</div>
   <h2>1. 问题：下游代码只吃可靠的结构化数据</h2>
   <div class="card">
     <p>设想 Agent 要从一段用户消息里抽出订单信息，交给 <code>create_order(...)</code>：</p>
@@ -80,7 +80,7 @@ create_order(item=data["item"], qty=data["qty"])</code></pre>
 <div class="section">
   <h2>2. 三个层次：这是面试的分水岭</h2>
   <div class="card">
-    <p>把 LLM 输出格式化，业界有<strong>三个强度递增</strong>的手段。务必分清它们各自<strong>保证什么</strong>：</p>
+    <p>对正常完成、没有拒答且未截断的输出，分清<strong>三个强度递增</strong>的手段各保证什么：</p>
     <table>
       <tr><th>方法</th><th>保证什么</th><th>可靠性</th></tr>
       <tr>
@@ -95,8 +95,8 @@ create_order(item=data["item"], qty=data["qty"])</code></pre>
       </tr>
       <tr>
         <td><strong>Structured Outputs</strong><br>（strict mode / 约束解码）</td>
-        <td><strong>最强</strong>：在 token 生成层面<em>保证</em>输出严格符合你给的 <strong>JSON Schema</strong></td>
-        <td>强 · 字段、类型、必填、枚举全部锁死</td>
+        <td><strong>最强</strong>：对支持的 JSON Schema 子集，正常、未拒答且未截断的输出必须符合 Schema</td>
+        <td>强 · 约束字段、类型、必填、枚举等受支持规则</td>
       </tr>
     </table>
     <p style="margin-top:.7rem;">这三行请刻进脑子。面试官问"怎么保证 LLM 输出格式"，本质就是在考你分不分得清这三层。</p>
@@ -104,18 +104,18 @@ create_order(item=data["item"], qty=data["qty"])</code></pre>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 一句话记牢：Structured Outputs ≠ JSON mode</strong>
-    <p><strong>JSON mode 只保证"是合法 JSON"，Structured Outputs 保证"符合你的 schema"。</strong>JSON mode 给你的可能是 <code>{"数量": "两杯", "note": "多加糖"}</code>——它是合法 JSON，但字段名、类型、结构全不对你的胃口，下游照样炸。OpenAI 官方原话：<em>"only Structured Outputs ensure schema adherence"</em>（只有 Structured Outputs 保证符合 schema）。把这两个概念混为一谈，是这块最常见的错答。</p>
+    <p><strong>JSON mode 约束 JSON 语法；Structured Outputs 还约束受支持的结构。</strong>前者给你的可能是 <code>{"数量": "两杯", "note": "多加糖"}</code>：能解码，却不符合下游要求的 <code>item</code> 和整数 <code>qty</code>。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> JSON mode 和 Structured Outputs 的核心区别是？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 在正常完成、未拒答且未截断，并使用受支持的 Schema 子集时，Strict Structured Outputs 比 JSON mode 多保证什么？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">JSON mode 更快、更省钱</button>
-      <button data-answer="correct">前者只保证合法 JSON</button>
-      <button data-answer="wrong">两者保证完全一样</button>
-      <button data-answer="wrong">Structured Outputs 只是别名</button>
+      <button data-answer="wrong">保证内容事实正确</button>
+      <button data-answer="correct">保证符合指定结构</button>
+      <button data-answer="wrong">保证业务授权通过</button>
+      <button data-answer="wrong">保证处理成本更低</button>
     </div>
-    <div class="quiz-explanation"><strong>JSON mode 只保证输出是合法 JSON</strong>（能解析），但不保证符合你的具体 schema——字段可能缺、类型可能错、可能多字段。<strong>Structured Outputs 额外保证严格符合你给的 JSON Schema</strong>。二者不是别名、也不是同一件事：官方明确"only Structured Outputs ensure schema adherence"。速度/成本不是区分点。</div>
+    <div class="quiz-explanation">在这些前提下，JSON mode 约束 JSON 语法，但字段仍可能缺失或类型错误；Structured Outputs 还保证符合指定的受支持 Schema。遇到拒答、截断或失败应另走分支，格式也不代替事实和业务校验。</div>
   </div>
 </div>
 
@@ -133,58 +133,68 @@ create_order(item=data["item"], qty=data["qty"])</code></pre>
    logits[非法 token] = -∞      # 概率被压到 0，绝无可能被采样
    logits ──softmax──▶ 采样 ──▶ 只可能是"让结构依然合法"的 token</code></pre>
     <p>原理拆开看：把你的 <strong>JSON Schema 编译成一套语法</strong>（上下文无关文法 CFG），据此在生成的<strong>每一步</strong>算出"接下来只有哪些 token 能让输出仍然符合 schema"。所有不合法的 token，其 logits 被设为 <code>-∞</code>——softmax 之后概率是 0，<strong>根本不可能被采样出来</strong>。</p>
-    <p>所以结论是机制级的：<strong>模型"不可能"生成不符合 schema 的输出</strong>——不是因为它乖，而是因为非法的路径在采样时被物理封死了。这和 prompt"请你务必按格式来"有本质区别：后者是<strong>请求</strong>，前者是<strong>约束</strong>。</p>
+    <p>这约束的是<strong>受支持语法中的生成路径</strong>，并不保证能走到终点：输出耗尽可以只留下合法前缀，拒答也不走这份 Schema。这和在 prompt 里仅仅<strong>请求</strong>一种格式不同。</p>
   </div>
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发关联：</strong>
-    <p>"保证"这两个字对 Agent 是刚需。工具调用的参数、状态机的更新、路由的决策——这些输出<strong>一旦格式错，整条链就断</strong>。约束解码把"格式对不对"从一个<strong>概率问题</strong>（大概率对）变成<strong>确定性问题</strong>（一定对），这是 Agent 能稳定跑长链路的底层保障。</p>
+    <p>工具参数、状态机更新、路由决策都依赖稳定的结构。约束解码减少了<strong>正常返回但格式错误</strong>的分支；是否执行工具、更新状态，仍由宿主校验并决定。</p>
   </div>
 
   <div class="quiz" data-quiz="q3">
-    <div class="quiz-question"><span class="quiz-q">Q</span> 约束解码为什么能"保证"符合 schema？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> 对正常完成、未拒答且未截断的输出，约束解码怎样落实受支持的 Schema 规则？</div>
     <div class="quiz-options">
       <button data-answer="wrong">因为把 prompt 写得足够严厉</button>
       <button data-answer="correct">非法 token 概率归零</button>
       <button data-answer="wrong">生成后再自动重写一遍</button>
       <button data-answer="wrong">用了更聪明的大模型</button>
     </div>
-    <div class="quiz-explanation">约束解码把 JSON Schema 编译成语法，<strong>在每一步生成时把"不符合 schema 的 token"的 logits 设为 -∞</strong>，softmax 后概率为 0，永远采样不到。所以模型<strong>不可能</strong>产出违反 schema 的输出。这是采样机制上的保证，既不靠 prompt 严厉，也不是"生成后再修"，更不是换个大模型就行。</div>
+    <div class="quiz-explanation">约束解码把受支持的 Schema 转成生成规则，每一步都让破坏规则的 token 概率为零。它不依赖提示词语气，也不是生成后重写；拒答或输出耗尽仍不算正常完成的结构化答案。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>4. 实操：配合 Pydantic，拿回已验证的对象</h2>
   <div class="card">
-    <p>好消息：你不用手写 JSON Schema。<a href="0018-L14-pydantic.html">L14</a> 学的 <strong>Pydantic 模型可以直接当 schema 传给 API</strong>——OpenAI SDK 会自动导出 <code>model_json_schema()</code>、开启 strict、并把返回<strong>解析成 Pydantic 对象</strong>还给你。三步走：</p>
-    <pre><code>from pydantic import BaseModel, Field
-from openai import OpenAI
+    <p>用 <a href="0018-L14-pydantic.html">L14</a> 的 Pydantic 模型定义结构。Chat Completions 的 Python SDK <code>parse</code> 会生成 strict Schema，并尝试在<strong>返回给应用之前</strong>解析。以下两块按顺序运行是可选联网对照；沿用 <code>OPENAI_MODEL</code>、凭证和预算约定，先确认模型和接口支持这份 Schema。</p>
+    <pre><code class="language-python">import os
+from openai import ContentFilterFinishReasonError, LengthFinishReasonError, OpenAI
+from pydantic import BaseModel, ValidationError
 
-# ① 用 Pydantic 定义 schema（呼应 L14）—— 就是你想要的结构
-class Order(BaseModel):
-    item: str = Field(..., description="商品名")
-    qty:  int = Field(..., ge=1, description="数量，至少 1")
+client = OpenAI()
 
-client = OpenAI()   # key 走环境变量（L25），没 key 可 mock
 
-# ② 传给 API：response_format 直接吃 Pydantic 模型
-#    方法名 parse 以官方文档为准
-completion = client.chat.completions.parse(
-    model="gpt-5.5",
-    messages=[{"role": "user", "content": "来两杯拿铁"}],
-    response_format=Order,          # ← strict 约束解码在此开启
-)
+def parse_chat(prompt, Model):
+    try:
+        completion = client.chat.completions.parse(
+            model=os.environ["OPENAI_MODEL"],
+            messages=[{"role": "user", "content": prompt}],
+            response_format=Model,
+        )
+    except LengthFinishReasonError as exc:
+        raise ValueError("Chat 输出截断") from exc
+    except ContentFilterFinishReasonError as exc:
+        raise ValueError("Chat 输出被内容过滤") from exc
+    except ValidationError as exc:
+        raise ValueError("Chat 返回无法通过 Pydantic 解析或校验") from exc
 
-# ③ 先检查状态，再取对象；parse 还可能因截断/校验而抛出异常。
-choice = completion.choices[0]
-if choice.finish_reason != "stop" or choice.message.refusal:
-    raise ValueError("未得到可消费的完整结构化答案")
-order = choice.message.parsed
-if order is None:
-    raise ValueError("missing parsed order")
-# 这里只拿到候选数据；下单还需独立授权、业务校验和幂等控制。
+    choice = completion.choices[0]
+    if choice.message.refusal:
+        raise ValueError("模型拒答")
+    if choice.finish_reason != "stop" or choice.message.parsed is None:
+        raise ValueError("未得到可消费的完整结构化答案")
+    return choice.message.parsed</code></pre>
+    <pre><code class="language-python">class Order(BaseModel):
+    item: str
+    qty: int
+
+
+order = parse_chat("从这句抽取订单：来两杯拿铁", Order)
+if order.qty &lt; 1:
+    raise ValueError("数量不符合业务规则")
+# 下单还需独立授权和幂等控制；这里只输出候选数据。
 print(order.model_dump())</code></pre>
-    <p>和第 1 节的脆代码对比：那里是 <code>json.loads(raw)</code> 加一堆祈祷；这里 <code>completion.choices[0].message.parsed</code> 直接是<strong>结构正确的对象</strong>，<code>order.qty</code> 铁定是 <code>int ≥ 1</code>。约束解码保证结构、Pydantic 保证类型与业务约束，两层叠加。</p>
+    <p><code>length</code> 和 <code>content_filter</code> 可在调用 <code>parse</code> 时分别触发 SDK 异常；它们不是返回消息里的 <code>refusal</code>。只有 <code>parse</code> 成功返回，才能查 <code>finish_reason</code>、<code>message.refusal</code> 和 <code>message.parsed</code>。网络和 API 错误在此继续抛出，不当格式错误处理。<code>qty</code> 的最小值由本地业务规则判断，不假定所有模型都支持范围关键字。</p>
     <p style="font-size:.9rem;color:var(--muted);">※ 底层等价于给 <code>chat.completions.create</code> 传 <code>response_format={"type": "json_schema", "json_schema": {..., "strict": True}}</code> 且 <code>additionalProperties: false</code>；<code>parse</code> 只是帮你把这些 + Pydantic 解析都包好了。工具调用（Function Calling）里同理，在 tool 定义上加 <code>strict: true</code>。具体方法名 / 参数一律<strong>以官方文档为准</strong>。</p>
   </div>
 
@@ -200,23 +210,13 @@ print(order.model_dump())</code></pre>
     <p>Structured Outputs 很强，但工程上必须知道它的边界，并准备退路：</p>
     <ul>
       <li><strong>① 不是所有模型 / 所有情况都支持。</strong>老模型、某些接口、或走 <a href="0030-L25-llm-api-basics.html">L25</a> 的兼容层时可能没这能力。<strong>退路：验证 + 重试</strong>——照常让模型输出，拿 Pydantic 校验；<code>ValidationError</code> 了就把<strong>报错信息塞回 messages 让模型重试</strong>（"你上次 qty 不是整数，请修正"）。这就把 L14 的校验变成了自愈循环。</li>
-      <li><strong>② refusal（拒答）要单独处理。</strong>模型可能因安全原因拒绝，此时它<strong>不会</strong>吐你要的 schema。strict 模式下会有独立的 <code>refusal</code> 字段——<strong>先判空 refusal，再取 parsed</strong>，否则你会拿着 <code>None</code> 去访问字段而崩溃。</li>
-      <li><strong>③ schema 太复杂可能不支持。</strong>Structured Outputs 只覆盖 JSON Schema 的一个子集（出于性能/技术原因），过深的嵌套、某些高级关键字可能被拒。<strong>对策：schema 尽量扁平、字段克制。</strong></li>
-      <li><strong>④ 输出耗尽和业务失败另行处理。</strong>检查终止原因；<code>parse</code> 可能抛出截断或验证异常。只有可恢复的格式错误才做有界修正，拒答不是通用重试或切厂商的理由。结构正确不保证事实正确，入库/下单仍需授权与幂等。</li>
+      <li><strong>② refusal（拒答）单独处理。</strong>Chat 在 <code>parse</code> 成功返回后查 <code>message.refusal</code>；Responses 查每个消息 Item 的内容块（第 6.1 节）。拒答不进入格式修正重试。</li>
+      <li><strong>③ schema 太复杂可能不支持。</strong>Structured Outputs 只覆盖 JSON Schema 的一个子集，过深的嵌套、某些高级关键字可能被拒。先查目标模型和接口，再选尽量扁平的结构。</li>
+      <li><strong>④ 截断、过滤和业务失败另行处理。</strong>Chat SDK 可能在返回对象前抛异常；Responses 则先看终态。仅对可恢复的格式错误做有界修正。格式通过不保证事实正确，入库和下单仍需授权与幂等。</li>
     </ul>
-    <pre><code># 集成片段：completion来自第4节；handle_refusal/call_llm由应用提供。
-from pydantic import ValidationError
+    <pre><code class="language-python">from pydantic import ValidationError
 
-choice = completion.choices[0]
-msg = choice.message
-if msg.refusal:                       # 安全拒答，不进入格式修正重试
-    handle_refusal(msg.refusal)
-elif choice.finish_reason != "stop" or msg.parsed is None:
-    raise ValueError("输出截断或缺少已验证对象")
-else:
-    order = msg.parsed
-
-# 仅用于不支持结构约束且正常返回文本的接口；call_llm自己处理拒答/截断。
+# 用于不支持结构约束的接口。call_llm 由应用提供，仅返回通过终态/拒答检查的文本。
 def ask_with_retry(prompt, Model, max_try=3):
     for _ in range(max_try):
         raw = call_llm(prompt)        # 普通调用，不保证格式
@@ -240,120 +240,159 @@ def ask_with_retry(prompt, Model, max_try=3):
   <div class="card">
     <details>
       <summary>💡 练习：从用户评论抽取结构化情感数据（点击查看参考答案）</summary>
-      <p style="margin-top:.6rem;"><strong>场景：</strong>你的 Agent 要把一段用户评论抽成固定结构 <code>{sentiment, score, keywords}</code>，交给下游做统计入库。要求：<code>sentiment</code> 只能是 <code>positive/negative/neutral</code> 三选一；<code>score</code> 是 0~1 的浮点；<code>keywords</code> 是字符串列表。请用 <strong>Pydantic 定义 schema</strong>，并说明 <strong>Structured Outputs 如何保证这份输出能被下游直接用</strong>。先自己写，再看答案。</p>
+      <p style="margin-top:.6rem;"><strong>场景：</strong>你的 Agent 要把一段用户评论抽成 <code>{sentiment, score, keywords}</code>。用 Pydantic 定义结构：<code>sentiment</code> 三选一，<code>score</code> 是数字，<code>keywords</code> 是字符串列表；另外在本地检查分数是否在 0 到 1 之间。沿用第 4 节的 SDK 异常和拒答分支，先自己写，再看答案。</p>
       <h4>参考答案</h4>
-      <pre><code>from typing import Literal
-from pydantic import BaseModel, Field
-from openai import OpenAI
+      <pre><code class="language-python">from typing import Literal
+from pydantic import BaseModel
+
 
 class Review(BaseModel):
-    sentiment: Literal["positive", "negative", "neutral"] = Field(
-        ..., description="整体情感倾向")
-    score: float = Field(..., ge=0, le=1, description="情感强度 0~1")
-    keywords: list[str] = Field(..., description="评论中的关键短语")
+    sentiment: Literal["positive", "negative", "neutral"]
+    score: float
+    keywords: list[str]
 
-client = OpenAI()
-completion = client.chat.completions.parse(
-    model="gpt-5.5",
-    messages=[
-        {"role": "system", "content": "你是情感分析器，抽取结构化情感数据。"},
-        {"role": "user",   "content": "用了三年，最近这次更新界面太难用了，找功能像寻宝。"},
-    ],
-    response_format=Review,          # 约束解码：strict 开启
-)
 
-choice = completion.choices[0]
-if choice.finish_reason != "stop" or choice.message.refusal:
-    raise ValueError("评论抽取未正常完成")
-r = choice.message.parsed
-if r is None:
-    raise ValueError("missing parsed review")
-# 结构通过不保证情感判断正确；先作为候选结果，不在示例里直接产生外部动作。
-print(r.model_dump())</code></pre>
-      <h4>Structured Outputs 如何"保证可直接用"？</h4>
-      <ul>
-        <li><strong>字段齐全</strong>：三个字段都是必填（<code>...</code>），约束解码不会漏生成任一字段。</li>
-        <li><strong>类型正确</strong>：<code>score</code> 生成时只允许合法的数字 token，不可能给你 <code>"高"</code> 这种字符串。</li>
-        <li><strong>枚举锁死</strong>：<code>Literal[...]</code> 让 <code>sentiment</code> 只可能是这三个值之一，下游 <code>if r.sentiment == "positive"</code> 永不落空。</li>
-        <li><strong>下游仍有边界</strong>：先判终态/拒答，验证本地契约，再检查授权、事实与业务规则；数据库失败、重复提交等并不会被约束解码消除。</li>
-      </ul>
+# 接在第 4 节 parse_chat 的定义后；异常和拒答处理沿用。
+review = parse_chat("抽取情感：最近更新后的界面让我找不到需要的功能。", Review)
+if not 0 &lt;= review.score &lt;= 1:
+    raise ValueError("score 必须在 0 到 1 之间")
+print(review.model_dump())</code></pre>
+      <p>正常完成、无拒答和截断且规则受支持时，三个必填字段按声明的类型生成，<code>Literal</code> 约束情感标签。输出结构正确并不证明评分合理，也不自动授权入库。</p>
       <p style="margin-top:.4rem;color:var(--muted);font-size:.9rem;">思考：若换成一个<strong>不支持</strong> Structured Outputs 的模型，你会怎么改？（提示：用第 5 节的 <code>model_validate_json</code> + 带错重试兜底。）</p>
     </details>
   </div>
 
   <div class="tip">
-    <strong>🎤 面试高频：「如何保证 LLM 输出格式？」</strong>满分答按强度分三层：<strong>Structured Outputs（约束解码，token 级<em>保证</em>符合 schema）> JSON mode（只保证是合法 JSON）> prompt 请求（最弱，可能不听）</strong>；并主动补一句 <strong>Structured Outputs ≠ JSON mode——前者保证符合你的 schema，后者只保证是合法 JSON</strong>。最后加兜底：<strong>模型/接口不支持时，用 Pydantic 校验 + 带错重试</strong>，并处理 <strong>refusal</strong>。这样层次、区分、兜底都齐，直接满分。
+    <strong>🎤 面试高频：「如何保证 LLM 输出格式？」</strong>区分纯 prompt、仅约束语法的 JSON mode，以及约束受支持 Schema 子集的 Structured Outputs。结构保证以正常完成、未拒答且未截断为前提；接口不支持时，可做本地校验并对可恢复的格式问题有界重试。<br><strong>变式追问：</strong>同一个合法候选在名额从 2 降到 1 后还能用吗？结构没变，业务结果变了；按当前余量复验，不能靠重试 JSON 解决。
   </div>
 </div>
 
 <div class="section">
   <h2>6.1 Responses 对照与离线失败分支</h2>
   <div class="card">
-    <p>L25 的 Responses 主线使用 <code>text.format</code>，不是 Chat 的 <code>response_format</code>。以下只展示请求结构，实际调用需网络、凭证和预算；Schema支持范围仍按目标模型核查。</p>
-    <pre><code class="language-python"># 放在已构造 client / 已配置 OPENAI_MODEL 的项目中；不会被离线自检执行。
-response = client.responses.create(
-    model=os.environ["OPENAI_MODEL"], input="用一句话介绍 SSE。", store=False,
+    <p>L25 的 Responses 主线使用 <code>text.format</code>，不是 Chat 的 <code>response_format</code>。先确认响应状态、检查<strong>所有</strong>消息 Item 中的拒答，再将 <code>output_text</code> 解码并校验结构。无效 JSON 和合法 JSON 但结构错误是两类问题。</p>
+    <pre><code class="language-python" id="l28-contract-core">import json
+
+
+class SchemaMismatch(ValueError):
+    pass
+
+
+def checked_answer(response, *, decode=json.loads):
+    if response.status != "completed":
+        raise ValueError(f"not completed: {response.status}")
+    if any(part.type == "refusal" for item in response.output
+           if item.type == "message" for part in item.content):
+        raise ValueError("refused")
+    data = decode(response.output_text)  # JSONDecodeError 表示文本不是合法 JSON
+    if not isinstance(data, dict) or set(data) != {"summary"} or not isinstance(data["summary"], str):
+        raise SchemaMismatch("summary must be the only field and must be a string")
+    return data</code></pre>
+    <p>可选联网片段接在上面的函数之后，沿用 L25 已初始化的 <code>client</code>、<code>os</code> 和 <code>OPENAI_MODEL</code>；需凭证和预算，先核查模型支持本例的 Schema。</p>
+    <pre><code class="language-python">response = client.responses.create(
+    model=os.environ["OPENAI_MODEL"], input="返回一个包含 SSE 简介的 JSON 对象。", store=False,
     text={"format": {"type": "json_schema", "name": "answer", "strict": True,
         "schema": {"type": "object", "properties": {"summary": {"type": "string"}},
                    "required": ["summary"], "additionalProperties": False}}},
 )
-# 先判 response.status、检查 message 中的 refusal 内容块，再消费 output_text。
-# 不要把 Chat 的 finish_reason/refusal 顶层形状套到 Responses。</code></pre>
-    <details><summary>本地契约验收（只用标准库，可独立运行）</summary>
-    <pre><code class="language-python" id="l28-contract-check">import json
+print(checked_answer(response))</code></pre>
+    <details><summary>本地契约验收（只用标准库，接在消费函数后运行）</summary>
+    <pre><code class="language-python" id="l28-contract-check">from types import SimpleNamespace as Record
+from unittest.mock import Mock
 
-def checked_answer(status, refused, content):
-    if status != "completed" or refused:
-        raise ValueError("not a completed answer")
-    data = json.loads(content)
-    if type(data) is not dict or set(data) != {"summary"} or type(data["summary"]) is not str:
-        raise ValueError("schema mismatch")
-    return data
 
-assert checked_answer("completed", False, '{"summary":"甲"}') == {"summary": "甲"}
-for args in [("incomplete", False, '{'), ("completed", True, None),
-             ("completed", False, '{"summary":7}'), ("completed", False, 'not-json')]:
+def fixture(text, *, status="completed", refused=False):
+    items = [Record(type="reasoning"), Record(type="message", content=[
+        Record(type="output_text", text=text),
+    ])]
+    if refused:
+        items.append(Record(type="message", content=[Record(type="refusal", refusal="未提供答案")]))
+    return Record(status=status, output=items, output_text=text)
+
+
+raw = '{"summary":"甲"}'
+decode = Mock(wraps=json.loads)
+assert checked_answer(fixture(raw), decode=decode) == {"summary": "甲"}
+decode.assert_called_once_with(raw)
+decode.reset_mock()
+
+for response, expected in [
+    (fixture(raw, refused=True), "refused"),
+    (fixture(raw, status="incomplete"), "not completed: incomplete"),
+    (fixture(raw, status="failed"), "not completed: failed"),
+]:
     try:
-        checked_answer(*args)
-    except (ValueError, TypeError):
+        checked_answer(response, decode=decode)
+    except ValueError as exc:
+        assert type(exc) is ValueError and str(exc) == expected, exc
+    else:
+        raise AssertionError(f"{expected} 不应进入解码")
+    decode.assert_not_called()
+
+for text, expected in [("not-json", json.JSONDecodeError), ('{"summary":7}', SchemaMismatch)]:
+    try:
+        checked_answer(fixture(text))
+    except expected:
         pass
     else:
-        raise AssertionError("失败响应不应进入成功路径")
+        raise AssertionError(f"应区分 {expected.__name__}")
 print("L28 ACCEPTED")</code></pre></details>
-    <p>该实验验证本地失败分支，不证明服务端执行过约束解码。遇到新字段或支持范围疑问，带上模型/API/SDK版本向教学代理提问。</p>
+    <p>把 <code>checked_answer</code> 所在代码块和折叠验收放入同一文件，用 <code>python -I 文件名.py</code> 运行，唯一输出为 <code>L28 ACCEPTED</code>。后置拒答、截断和失败均带看似合法的正文，解码探针须记录零次调用。fixture 使用消费函数读取的属性形状，不验证 SDK 或服务端约束解码。</p>
   </div>
+  <div class="best-practice-point" id="bp-l28">
+    <h3>决策卡：先验响应，再分开验语法、结构和业务</h3>
+    <p class="bp-scenario"><strong>适用：</strong>订单抽取要交给程序消费。<strong>不适用：</strong>只供人阅读的说明不必强制成 JSON；不支持 strict 的端点可本地校验，只对可恢复的格式问题有界重试。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：能解码就能下单</span><p>同一候选写着 <code>{"item":"拿铁","qty":0}</code>。它是合法 JSON，也符合两字段结构，却不是合法订单。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：结构通过后还要验数量</span><p>同一候选先过终态和拒答门槛，再解码、校验结构。随后在业务层拦住零数量；不提交订单。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>多一个业务关口，但能区分解码失败、结构错误与业务不允许，避免无效修正或误操作；不能只靠模型输出保证授权。</p>
+    <ol class="bp-steps"><li>跑本节的解码自检，观察非法 JSON、类型错误和零次解码。</li><li>做课末变式，在有效结构上只改变业务余量。</li></ol>
+    <p class="bp-result"><strong>结果诊断：</strong>后置拒答触发解码说明终态守门过晚；名额不足仍放行则是业务规则缺失，不是 Schema 太宽就一定能解决。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：正常解码的预约仍可能超额</h2>
+  <p>已通过终态和拒答检查的文本仍需分类。活动还有两个名额；Schema 只要求对象仅含整数 <code>seats</code>。复制起点，实现 <code>classify(raw, remaining)</code>，区分 <code>invalid_json</code>、<code>invalid_schema</code>、<code>outside_capacity</code> 和 <code>candidate</code>。人数须在 1 到剩余名额之间；两席仅在还有两席时可接受，三席虽是整数也要拦住。只分类，不实际预约，不用前面的代码。</p>
+  <pre data-label="独立练习起点"><code class="language-python" id="l28-transfer-starter">import json
+
+remaining = 2
+raw_cases = ['{"seats":', '{"seats":"2"}', '{"seats":true}', '{"seats":3}', '{"seats":2}']
+# TODO: 实现 classify(raw, remaining)。先解码，再验形状，最后比对名额。</code></pre>
+  <details class="bp-check"><summary>展开独立参考与断言（接在起点后运行）</summary><pre><code class="language-python" id="l28-transfer-check">def classify(raw, remaining):
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return "invalid_json"
+    if not isinstance(data, dict) or set(data) != {"seats"} or type(data["seats"]) is not int:
+        return "invalid_schema"
+    if not 1 &lt;= data["seats"] &lt;= remaining:
+        return "outside_capacity"
+    return "candidate"
+
+
+observed = [classify(raw, remaining) for raw in raw_cases]
+assert observed == ["invalid_json", "invalid_schema", "invalid_schema", "outside_capacity", "candidate"], observed
+assert classify('{"seats":2}', remaining=1) == "outside_capacity"
+print("L28 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">把起点和参考放进同一个文件，用 <code>python -I 文件名.py</code> 运行；唯一输出应为 <code>L28 TRANSFER PASSED</code>。若 <code>true</code> 被当成人数，检查 Python 的 <code>bool</code> 是 <code>int</code> 的子类；若同一候选无论余量都通过，检查是否把 Schema 有效误当成业务可用。</p>
 </div>
 
 <div class="section">
   <h2>🎯 速查卡：Structured Outputs</h2>
   <div class="card">
-    <pre><code>【三个层次 · 强度递增】★面试分水岭
-  纯 prompt "请输出 JSON"  → 什么都不保证（可能不听/裹废话/字段错）
-  JSON mode               → 只保证是【合法 JSON】，不保证符合你的 schema
-  Structured Outputs      → 【保证严格符合你给的 JSON Schema】（strict/约束解码）
+    <pre><code>【三个层次】正常完成、未拒答且未截断时：
+  纯 prompt 请求格式；JSON mode 约束 JSON 语法；
+  Structured Outputs 用约束解码强制符合受支持的 JSON Schema 子集。
 
-【一句话】Structured Outputs ≠ JSON mode
-  JSON mode = 合法 JSON        Structured Outputs = 符合 schema
-  官方原话：only Structured Outputs ensure schema adherence
+【Chat Completions】response_format；parse 可能提前抛截断、过滤或校验异常。
+  拿到返回对象后，查终止原因与 message.refusal，再取 message.parsed。
 
-【约束解码原理】不是求配合，是机制保证
-  JSON Schema → 语法(CFG) → 每步算"合法 token 集合"
-  非法 token 的 logits = -∞ → 概率归 0 → 不可能被采样
-  ∴ 模型"不可能"产出违反 schema 的输出
+【Responses】text.format；先看 status，遍历消息块排除拒答，再解码并验结构。
+  区分非法 JSON 与合法 JSON 但结构错误；事实、业务规则和授权另验。
 
-【实操 · 配合 Pydantic（方法名以官方为准）】
-  class Order(BaseModel): item: str; qty: int
-  c = client.chat.completions.parse(..., response_format=Order)
-  order = c.choices[0].message.parsed   # 拿回已验证对象，不是字符串
-  # 等价：response_format={"type":"json_schema",...,"strict":True}
-  # 工具调用同理：tool 定义加 strict:true
-
-【兜底三坑】
-  ① 不支持 → 退回：Pydantic 校验 + 带错重试（自愈循环）
-  ② refusal → 先判 msg.refusal，再取 .parsed（否则拿 None 崩）
-  ③ schema 太复杂可能不支持 → 尽量扁平、字段克制
-
-【记忆锚】能约束就约束，不能约束就校验+重试（呼应 L19）</code></pre>
+【兜底】不支持 strict 时做本地校验，只对可恢复的格式错误有界重试。</code></pre>
   </div>
 </div>
 
@@ -391,15 +430,13 @@ print("L28 ACCEPTED")</code></pre></details>
   <div class="card">
     <ul>
       <li>Agent 每步输出都要喂下游代码，<strong>格式对 = 硬前提</strong>，"请返回 JSON" 靠 prompt 不可靠</li>
-      <li>三个层次：<strong>纯 prompt（不保证）&lt; JSON mode（只保证合法 JSON）&lt; Structured Outputs（保证符合 schema）</strong></li>
-      <li>核心区分：<strong>Structured Outputs ≠ JSON mode</strong>——前者保证符合你的 schema，后者只保证是合法 JSON</li>
-      <li>原理是<strong>约束解码</strong>：把非法 token 概率归零，模型"不可能"违反 schema——是机制保证，不是求配合</li>
-      <li>实操：把 <strong>Pydantic 模型当 schema</strong> 传给 <code>parse</code>，拿回<strong>已验证的对象</strong>直接用</li>
-      <li>兜底：不支持时<strong>校验 + 带错重试</strong>；strict 下先处理 <strong>refusal</strong>；schema 尽量扁平</li>
+      <li>纯 prompt 只能请求格式；JSON mode 约束语法；Structured Outputs 通过约束解码保证受支持的结构，前提是响应正常完成且不拒答、不截断。</li>
+      <li>Chat SDK 可能先抛解析相关异常；Responses 则先检查终态和全部消息块，再自行解码并验证。</li>
+      <li>结构正确不等于事实正确、业务可用或有权执行；不支持 strict 时做本地校验，只对可恢复的格式错误有界重试。</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    有 key 的话，把第 4 节那段 <code>parse</code> 跑一次，再故意把 <code>Order</code> 改出个 <code>Literal</code> 字段，看模型是不是"只可能"给你允许的值——你会对"约束"两个字有实感。没 key 也行，用第 5 节的 <code>model_validate_json</code> + 重试先把兜底链路跑通。记住这根准绳：<strong>能约束就约束，不能约束就校验加重试。</strong>下一课：让模型开始"看图听声"——多模态 API。
+    先运行第 6.1 节离线验收，再做预约名额变式。有凭证和预算时可选跑第 4 节，对照对象和失败分支。下一课 <a href="0034-L29-multimodal-api.html">L29 · 多模态 API</a> 把文字、图片、PDF 和录音接到各自的输入与输出边界。
   </div>
 </div>
 

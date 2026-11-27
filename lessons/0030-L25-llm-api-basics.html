@@ -121,13 +121,27 @@ print(reply.usage)  # prompt_tokens / completion_tokens</code></pre>
 <button data-answer="correct">核对能力并验证适配层</button><button data-answer="wrong">假设字段与语义全相同</button><button data-answer="wrong">只改域名就跳过所有测</button><button data-answer="wrong">删除终止状态判断逻辑</button>
 </div><div class="quiz-explanation">兼容表示支持某些接口形状，不表示全部语义等价。适配层要处理能力、状态和 usage 的实际差异。</div></div></div>
 
-<div class="section best-practice-lesson"><h2>5. 离线近迁移验收：先辨认接口，再取正文</h2><div class="card">
-  <p>以下 fixture 全为虚构，不发送请求。先独立实现：给三个<strong>纯文本、已正常完成</strong>的响应提取正文，并拒绝未知接口。真实工具/拒答/截断分支由原生 Adapter 负责，L38 会练这些控制路径。</p>
+<div class="section best-practice-lesson"><h2>5. 离线示例：先辨认接口，再取正文</h2><div class="card">
+  <p>用以下虚构 fixture 练习纯文本适配：<strong>确认该接口的成功终态、排除拒答，再取正文</strong>。字典模拟各接口字段，Responses 的 <code>output_text</code> 是对 SDK 便捷属性的替身；测试不发请求，也不处理工具调用。</p>
+  <div class="best-practice-point" id="bp-l25">
+    <h3>决策卡：统一交付规则，不统一终态字段</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一份摘要要支持多个原生接口。<strong>不适用：</strong>工具流程不能只留正文，必须保留调用和关联状态。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：摘要非空就交付</span><p>Responses 已有一段摘要，但后续消息包含拒答。只读 <code>output_text</code> 会交付本应拦住的正文。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：按原生接口验收</span><p>同一响应即使是 <code>completed</code>，也先查全部消息块是否拒答；Messages 和 Chat 则检查各自的停止原因。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>多维护一层映射，换来统一且可检验的交付规则；兼容接口的字段形状不能替代该检查。</p>
+    <ol class="bp-steps"><li>运行下方参考，先验三个正常终态。</li><li>保持正文不变，改终态或加入后置拒答，再验是否拦截。</li></ol>
+    <p class="bp-result"><strong>结果诊断：</strong>只有 <code>L25 ACCEPTED</code> 表示本地分支通过；若后置拒答仍交付正文，检查是否只读了第一条输出 Item。</p>
+  </div>
   <details><summary>参考实现与精确自检（可独立运行）</summary>
   <pre><code class="language-python" id="l25-adapter-check">def text_only(api, payload):
     if api == "responses":
         if payload["status"] != "completed":
-            raise ValueError("incomplete")
+            raise ValueError("not completed")
+        if any(part["type"] == "refusal" for item in payload["output"]
+               if item["type"] == "message" for part in item["content"]):
+            raise ValueError("refused")
         return payload["output_text"]
     if api == "messages":
         if payload["stop_reason"] != "end_turn":
@@ -140,26 +154,89 @@ print(reply.usage)  # prompt_tokens / completion_tokens</code></pre>
         return choice["message"]["content"]
     raise ValueError("unknown API")
 
-assert text_only("responses", {"status": "completed", "output_text": "甲"}) == "甲"
-assert text_only("messages", {"stop_reason": "end_turn", "content": [
-    {"type": "thinking"}, {"type": "text", "text": "乙"}
-]}) == "乙"
-assert text_only("chat", {"choices": [{"finish_reason": "stop", "message": {"content": "丙"}}]}) == "丙"
-for api, data in [("unknown", {}), ("responses", {"status": "incomplete"})]:
+response = {"status": "completed", "output_text": "甲", "output": [
+    {"type": "reasoning"}, {"type": "message", "content": [{"type": "output_text", "text": "甲"}]},
+]}
+message = {"stop_reason": "end_turn", "content": [
+    {"type": "thinking"}, {"type": "text", "text": "乙"},
+]}
+choice = {"finish_reason": "stop", "message": {"content": "丙", "refusal": None}}
+assert text_only("responses", response) == "甲"
+assert text_only("messages", message) == "乙"
+assert text_only("chat", {"choices": [choice]}) == "丙"
+
+later_refusal = {"type": "message", "content": [{"type": "refusal", "refusal": "未提供答案"}]}
+for api, data in [
+    ("unknown", {}),
+    ("responses", dict(response, status="incomplete")),
+    ("responses", dict(response, output=[*response["output"], later_refusal])),
+    ("messages", dict(message, stop_reason="max_tokens")),
+    ("messages", dict(message, stop_reason="refusal")),
+    ("chat", {"choices": [dict(choice, finish_reason="length")]}),
+    ("chat", {"choices": [dict(choice, message={"content": "丙", "refusal": "未提供答案"})]}),
+]:
     try:
         text_only(api, data)
     except ValueError:
         pass
     else:
-        raise AssertionError("应拒绝未知接口或未完成响应")
+        raise AssertionError(f"{api} 不应放行失败或拒答")
 print("L25 ACCEPTED")</code></pre></details>
-  <p><strong>怎么看结果：</strong>只出现 <code>L25 ACCEPTED</code>，证明这几个本地分支通过；不证明 SDK 兼容、网络可用或模型能力。在线实践要另外记录模型、API、SDK版本、终止原因与实际 usage，且先确认调用预算。</p>
+  <p><strong>怎么看结果：</strong>把参考块单独保存，用 <code>python -I 文件名.py</code> 运行。只出现 <code>L25 ACCEPTED</code> 说明本地分支通过；不证明 SDK 兼容、网络可用或模型能力。在线实践另记录模型、API、SDK 版本、终止原因与实际用量，先确认调用预算。</p>
 </div></div>
+
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：换接口后，班车公告还能发布吗？</h2>
+  <p>公告编辑器要保留拒绝发布的原因。四条候选正文相同，但接口和终态不同。复制起点，实现 <code>build_outbox(rows)</code>，返回两份字典：可发布的编号 → 正文，被拦截的编号 → 原因（<code>refused</code> 或原生终止值）。仅 A、D 可发布；B、C 应有不同的拦截原因。不需要前面的代码、SDK 或密钥。</p>
+  <pre data-label="独立练习起点"><code class="language-python" id="l25-transfer-starter">notice = "北门班车停运。"
+message = {"type": "message", "content": [{"type": "output_text", "text": notice}]}
+refusal = {"type": "message", "content": [{"type": "refusal", "refusal": "未提供答案"}]}
+responses = {"status": "completed", "output_text": notice, "output": [message]}
+chat = {"finish_reason": "stop", "message": {"content": notice, "refusal": None}}
+rows = [
+    ("A", "responses", responses),
+    ("B", "chat", {"choices": [dict(chat, finish_reason="length")]}),
+    ("C", "responses", dict(responses, output=[message, refusal])),
+    ("D", "chat", {"choices": [chat]}),
+]
+# TODO: 实现 build_outbox(rows)，一份发布字典，一份拦截字典。</code></pre>
+  <details class="bp-check"><summary>展开独立参考与断言（接在起点后运行）</summary><pre><code class="language-python" id="l25-transfer-check">def build_outbox(rows):
+    published, blocked = {}, {}
+    for notice_id, api, payload in rows:
+        if api == "responses":
+            status = payload["status"]
+            if status != "completed":
+                blocked[notice_id] = status
+            elif any(part["type"] == "refusal" for item in payload["output"]
+                     if item["type"] == "message" for part in item["content"]):
+                blocked[notice_id] = "refused"
+            else:
+                published[notice_id] = payload["output_text"]
+        elif api == "chat":
+            choice = payload["choices"][0]
+            reason = choice["finish_reason"]
+            if reason != "stop":
+                blocked[notice_id] = reason
+            elif choice["message"]["refusal"]:
+                blocked[notice_id] = "refused"
+            else:
+                published[notice_id] = choice["message"]["content"]
+        else:
+            raise ValueError("unknown API")
+    return published, blocked
+
+
+published, blocked = build_outbox(rows)
+assert published == {"A": "北门班车停运。", "D": "北门班车停运。"}, published
+assert blocked == {"B": "length", "C": "refused"}, blocked
+print("L25 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">验证参考时只把起点与折叠块放入同一个文件，用 <code>python -I 文件名.py</code> 运行；唯一输出应为 <code>L25 TRANSFER PASSED</code>。若 B 或 C 出现在发布字典里，说明只看了正文或只看了终态。</p>
+</div>
 
 <div class="section"><h2>总结与下一课</h2><div class="card"><ul>
   <li>同一个业务目标可以跨厂商复用，但协议状态不能无损地简化成一个字符串。</li>
   <li>Responses 是 OpenAI 新项目推荐方向；Chat Completions 的兼容价值仍在。</li>
-  <li>Claude 使用原生 SDK；先检查终止状态，再按类型提取内容。</li>
+  <li>Claude 使用原生 SDK；各接口先验正常终态、排除拒答，再按类型提取内容。</li>
   <li>凭证不写入源码；项目声明依赖并保留锁文件，生产可使用密钥管理与工作负载身份。</li>
 </ul><p>下一课 <a href="0031-L26-streaming.html">L26 · Streaming</a> 把一次响应拆成有类型、有终态的事件。看不懂接口差异或返回字段，随时向教学代理提问。</p>
 <a class="lesson-qa-link" href="../qa/phase3-qa.html#L25">L25 疑难解答 →</a>

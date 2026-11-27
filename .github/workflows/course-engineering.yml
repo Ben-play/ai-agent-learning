@@ -17,6 +17,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check early lessons and Phase 3 contracts (standard library)
+        run: python3 -I -B -X utf8 scripts/check-course-examples.py --suite foundations
+
+      - name: Check the paired holdout route and Phase 2 assessment
+        working-directory: code/phase2-model-selection/phase2-practices-capstone
+        run: |
+          python3 -B -X utf8 -m phase2_practices.acceptance
+          python3 -B -X utf8 -m unittest discover -s tests -p test_paired_routes.py -v
+
+      - name: Check course navigation and both Pages base paths
+        env:
+          PYTHON: python3
+        run: |
+          node scripts/check-course-catalog.cjs
+          node --test scripts/check-site-pwa.cjs scripts/check-pages.cjs
+
       - name: Run Phase 8 contract and lesson checks
         run: |
           python3 --version
@@ -26,7 +42,6 @@ jobs:
           python3 -I -X utf8 code/phase8-agent-engineering/engineering-lab/evaluation/test_evaluation.py -v
           python3 -I -X utf8 code/phase8-agent-engineering/engineering-lab/design/test_design.py -v
           python3 -I -X utf8 code/phase8-agent-engineering/engineering-lab/tests/test_gate.py -v
-          node scripts/check-course-catalog.cjs
 
       - name: Run Phase 9 offline exercises and behavior tests
         run: |

@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 from .adapters import (
     PreflightBudgetError,
@@ -29,6 +29,7 @@ from .contracts import (
     EvaluationCase,
     EvidenceRecord,
     HardGates,
+    HoldoutTrial,
     Observation,
     ProviderObservationCount,
     QualityMetrics,
@@ -68,6 +69,13 @@ _METRIC_DIRECTIONS = {
     "latency": False,
 }
 
+_TrialKey = tuple[str, int]  # case ID and repeat within a task
+
+
+class _TrialOutcome(NamedTuple):
+    failed: bool
+    cost: float
+
 
 class FixtureIntegrityError(ValueError):
     """Raised when deterministic fixtures are incomplete or inconsistent."""
@@ -98,7 +106,7 @@ class AssessmentLab:
             loaded.run_spec,
             candidate_task_runs=candidate_task_runs,
         )
-        tasks = self._gate_rank_and_route(loaded, assessments)
+        tasks = self._gate_rank_and_route(loaded, assessments, observations)
         counts = Counter(observation.provider for observation in observations)
         return AssessmentReport(
             fixture_integrity_validated=True,
@@ -265,7 +273,6 @@ class AssessmentLab:
             task_policies={policy.task: policy for policy in task_policies},
             prices=price_book,
             adapters=adapters,
-            observation_lookup=observation_lookup,
         )
 
     def _evaluate(
@@ -376,60 +383,73 @@ class AssessmentLab:
         self,
         loaded: _LoadedFixtures,
         assessments: Mapping[tuple[str, str], CandidateAssessment],
+        observations: Sequence[Observation],
     ) -> tuple[TaskAssessment, ...]:
+        cases_by_id = {case.case_id: case for case in loaded.cases}
+        holdout_by_candidate: dict[tuple[str, str], list[Observation]] = defaultdict(list)
+        for observation in observations:
+            if observation.split == "holdout":
+                case = cases_by_id[observation.case_id]
+                holdout_by_candidate[(case.task, observation.candidate_id)].append(observation)
+
         results: list[TaskAssessment] = []
         for task in sorted(loaded.task_policies):
             policy = loaded.task_policies[task]
-            gated: list[CandidateAssessment] = []
-            for profile in loaded.profiles:
-                assessment = assessments[(task, profile.candidate_id)]
-                if assessment.metrics is None:
-                    gated.append(assessment)
-                    continue
-                failures = list(_gate_failures(assessment.metrics, policy.hard_gates))
-                failed_runs = assessment.failed_holdout_runs
-                if policy.require_every_holdout_run:
-                    failed_runs = _joint_holdout_run_failures(
-                        assessment.candidate_id,
-                        tuple(
-                            case
-                            for case in loaded.cases
-                            if case.task == task and case.split == "holdout"
-                        ),
-                        loaded.observation_lookup,
-                    )
-                    if failed_runs:
-                        failures.append("noncompensable holdout run gate failed")
-                gated.append(
-                    _replace_assessment(
-                        _replace_failed_holdout_runs(assessment, failed_runs),
-                        qualified=not failures,
-                        gate_failures=tuple(failures),
-                        normalized_score=None,
-                    )
-                )
-
-            holdout_cases = tuple(
-                case
+            expected_keys = {
+                (case.case_id, repeat)
                 for case in loaded.cases
                 if case.task == task and case.split == "holdout"
-            )
-            calibrated = tuple(
-                _replace_escalation_probability(
-                    assessment,
-                    _candidate_escalation_probability(
-                        assessment.candidate_id,
-                        holdout_cases,
-                        loaded.observation_lookup,
-                        require_every_holdout_run=policy.require_every_holdout_run,
-                    ),
+                for repeat in range(1, case.repeats + 1)
+            }
+            gated: list[CandidateAssessment] = []
+            trials: list[HoldoutTrial] = []
+            outcomes: dict[str, dict[_TrialKey, _TrialOutcome]] = {}
+            for profile in loaded.profiles:
+                candidate_id = profile.candidate_id
+                assessment = assessments[(task, candidate_id)]
+                runs = holdout_by_candidate[(task, candidate_id)]
+                failed_keys = sorted(
+                    (run.case_id, run.repeat)
+                    for run in runs
+                    if _holdout_failed(
+                        run, cases_by_id[run.case_id], policy.require_every_holdout_run
+                    )
                 )
-                for assessment in gated
-            )
-            qualified = [assessment for assessment in calibrated if assessment.qualified]
+                probability = _safe_ratio(len(failed_keys), len(runs))
+                if assessment.metrics is None:
+                    gated.append(replace(assessment, holdout_escalation_probability=probability))
+                    continue
+                failures = list(_gate_failures(assessment.metrics, policy.hard_gates))
+                failed_runs: tuple[str, ...] = ()
+                if policy.require_every_holdout_run and failed_keys:
+                    failed_runs = tuple(f"{case_id}#{repeat}" for case_id, repeat in failed_keys)
+                    failures.append("noncompensable holdout run gate failed")
+                gated.append(
+                    replace(
+                        assessment,
+                        failed_holdout_runs=failed_runs,
+                        holdout_escalation_probability=probability,
+                        qualified=not failures,
+                        gate_failures=tuple(failures),
+                    )
+                )
+                if not failures:
+                    trial_rows = _qualified_holdout_trials(
+                        task, candidate_id, runs, expected_keys, loaded.prices[candidate_id]
+                    )
+                    failed = set(failed_keys)
+                    trials.extend(trial_rows)
+                    outcomes[candidate_id] = {
+                        (trial.case_id, trial.repeat): _TrialOutcome(
+                            (trial.case_id, trial.repeat) in failed, trial.cost
+                        )
+                        for trial in trial_rows
+                    }
+
+            qualified = [assessment for assessment in gated if assessment.qualified]
             scored = _rank_qualified(qualified, policy.weights)
             scores = {assessment.candidate_id: assessment for assessment in scored}
-            final = tuple(scores.get(item.candidate_id, item) for item in calibrated)
+            final = tuple(scores.get(item.candidate_id, item) for item in gated)
             ranking = tuple(
                 item.candidate_id
                 for item in sorted(
@@ -446,7 +466,7 @@ class AssessmentLab:
             route = _recommend_route(
                 task,
                 ranking,
-                final,
+                outcomes,
                 capability_tiers,
                 policy.manual_review_unit_cost,
             )
@@ -460,6 +480,7 @@ class AssessmentLab:
                     candidates=final,
                     qualified_ranking=ranking,
                     route=route,
+                    holdout_trials=tuple(trials),
                 )
             )
         return tuple(results)
@@ -475,7 +496,6 @@ class _LoadedFixtures:
         task_policies: Mapping[str, TaskPolicy],
         prices: Mapping[str, Mapping[str, float]],
         adapters: Mapping[str, ProviderAdapter],
-        observation_lookup: Mapping[tuple[str, str, int], Mapping[str, Any]],
     ) -> None:
         self.profiles = profiles
         self.cases = cases
@@ -483,7 +503,6 @@ class _LoadedFixtures:
         self.task_policies = task_policies
         self.prices = prices
         self.adapters = adapters
-        self.observation_lookup = observation_lookup
 
 
 def _validate_observation(case: EvaluationCase, observation: Observation) -> None:
@@ -792,120 +811,57 @@ def _rank_qualified(
     )
 
 
-def _joint_holdout_run_failures(
-    candidate_id: str,
-    holdout_cases: Sequence[EvaluationCase],
-    observations: Mapping[tuple[str, str, int], Mapping[str, Any]],
-) -> tuple[str, ...]:
-    failures: list[str] = []
-    for case in holdout_cases:
-        for repeat in range(1, case.repeats + 1):
-            raw = observations.get((candidate_id, case.case_id, repeat))
-            if raw is None:
-                continue
-            answer_correct = _normalize_answer(_string(raw["answer"])) == _normalize_answer(
-                case.expected_answer
-            )
-            cited = set(_strings(raw["evidence_ids"]))
-            evidence_complete = case.required_evidence_ids <= cited
-            abstention_correct = _boolean(raw["abstained"]) == case.should_abstain
-            if not (answer_correct and evidence_complete and abstention_correct):
-                failures.append(f"{case.case_id}#{repeat}")
-    return tuple(failures)
-
-
-def _replace_failed_holdout_runs(
-    assessment: CandidateAssessment, failures: tuple[str, ...]
-) -> CandidateAssessment:
-    return CandidateAssessment(
-        task=assessment.task,
-        candidate_id=assessment.candidate_id,
-        provider=assessment.provider,
-        expected_observations=assessment.expected_observations,
-        observed_observations=assessment.observed_observations,
-        dev_observations=assessment.dev_observations,
-        holdout_observations=assessment.holdout_observations,
-        dev_metrics=assessment.dev_metrics,
-        metrics=assessment.metrics,
-        dev_costs=assessment.dev_costs,
-        costs=assessment.costs,
-        preflight_rejections=assessment.preflight_rejections,
-        failed_holdout_runs=failures,
-        holdout_escalation_probability=assessment.holdout_escalation_probability,
-        qualified=assessment.qualified,
-        gate_failures=assessment.gate_failures,
-        normalized_score=assessment.normalized_score,
-    )
-
-
-def _candidate_escalation_probability(
-    candidate_id: str,
-    holdout_cases: Sequence[EvaluationCase],
-    observations: Mapping[tuple[str, str, int], Mapping[str, Any]],
-    *,
-    require_every_holdout_run: bool,
-) -> float:
-    case_by_id = {case.case_id: case for case in holdout_cases}
-    outcomes = tuple(
-        observations[(candidate_id, case.case_id, repeat)]
-        for case in holdout_cases
-        for repeat in range(1, case.repeats + 1)
-        if (candidate_id, case.case_id, repeat) in observations
-    )
-    if not outcomes:
-        return 0.0
-    failures = 0
-    for raw in outcomes:
-        case = case_by_id[_string(raw["case_id"])]
-        answer_correct = _normalize_answer(_string(raw["answer"])) == _normalize_answer(
-            case.expected_answer
+def _holdout_failed(
+    run: Observation, case: EvaluationCase, require_every_holdout_run: bool
+) -> bool:
+    # Factual errors were validated against the normalized reference answer.
+    return run.factual_errors != 0 or (
+        require_every_holdout_run
+        and (
+            run.abstained != case.should_abstain
+            or not case.required_evidence_ids.issubset(run.evidence_ids)
         )
-        abstention_correct = _boolean(raw["abstained"]) == case.should_abstain
-        evidence_complete = case.required_evidence_ids <= set(_strings(raw["evidence_ids"]))
-        failed = not answer_correct
-        if require_every_holdout_run:
-            failed = not (answer_correct and abstention_correct and evidence_complete)
-        if failed:
-            failures += 1
-    return _safe_ratio(failures, len(outcomes))
-
-
-def _replace_escalation_probability(
-    assessment: CandidateAssessment, probability: float
-) -> CandidateAssessment:
-    if not math.isfinite(probability) or not 0 <= probability <= 1:
-        raise FixtureIntegrityError("candidate escalation probability must be in [0, 1]")
-    return CandidateAssessment(
-        task=assessment.task,
-        candidate_id=assessment.candidate_id,
-        provider=assessment.provider,
-        expected_observations=assessment.expected_observations,
-        observed_observations=assessment.observed_observations,
-        dev_observations=assessment.dev_observations,
-        holdout_observations=assessment.holdout_observations,
-        dev_metrics=assessment.dev_metrics,
-        metrics=assessment.metrics,
-        dev_costs=assessment.dev_costs,
-        costs=assessment.costs,
-        preflight_rejections=assessment.preflight_rejections,
-        failed_holdout_runs=assessment.failed_holdout_runs,
-        holdout_escalation_probability=probability,
-        qualified=assessment.qualified,
-        gate_failures=assessment.gate_failures,
-        normalized_score=assessment.normalized_score,
     )
+
+
+def _qualified_holdout_trials(
+    task: str,
+    candidate_id: str,
+    runs: Sequence[Observation],
+    expected_keys: set[_TrialKey],
+    prices: Mapping[str, float],
+) -> tuple[HoldoutTrial, ...]:
+    keys = {(run.case_id, run.repeat) for run in runs}
+    if not keys or keys != expected_keys or len(keys) != len(runs):
+        raise FixtureIntegrityError(f"holdout trial coverage mismatch for {task}/{candidate_id}")
+    trials = []
+    for run in sorted(runs, key=lambda run: (run.case_id, run.repeat)):
+        cost = _compute_costs((run,), prices).total
+        if not math.isfinite(cost):
+            raise FixtureIntegrityError(f"non-finite holdout trial cost for {run.observation_id}")
+        trials.append(
+            HoldoutTrial(
+                candidate_id=candidate_id,
+                case_id=run.case_id,
+                repeat=run.repeat,
+                answer=run.answer,
+                abstained=run.abstained,
+                evidence_ids=tuple(sorted(run.evidence_ids)),
+                cost=cost,
+            )
+        )
+    return tuple(trials)
 
 
 def _recommend_route(
     task: str,
     ranking: Sequence[str],
-    candidates: Sequence[CandidateAssessment],
+    outcomes: Mapping[str, Mapping[_TrialKey, _TrialOutcome]],
     capability_tiers: Mapping[str, int],
     manual_review_unit_cost: float,
 ) -> RouteRecommendation:
     if not math.isfinite(manual_review_unit_cost) or manual_review_unit_cost <= 0:
         raise FixtureIntegrityError("manual review unit cost must be finite and strictly positive")
-    by_id = {candidate.candidate_id: candidate for candidate in candidates}
     if not ranking:
         return RouteRecommendation(
             task=task,
@@ -923,9 +879,10 @@ def _recommend_route(
         )
     strategies: list[RouteStrategy] = []
     for primary_id in ranking:
-        primary = by_id[primary_id]
-        if primary.costs is None:
-            raise FixtureIntegrityError(f"primary route lacks costs: {primary_id}")
+        primary = outcomes[primary_id]
+        n_trials = len(primary)
+        primary_cost = math.fsum(run.cost for run in primary.values()) / n_trials
+        triggered = tuple(key for key, run in primary.items() if run.failed)
         stronger = sorted(
             candidate_id
             for candidate_id in ranking
@@ -933,47 +890,36 @@ def _recommend_route(
         )
         fallback_options: tuple[str | None, ...] = tuple(stronger) if stronger else (None,)
         for escalation_id in fallback_options:
-            expected_escalation = 0.0
-            applied_probability = 0.0
-            residual_probability = primary.holdout_escalation_probability
-            residual_handling: str | None = "manual_review" if residual_probability > 0 else None
+            escalation_cost = 0.0
+            escalation_probability = 0.0
+            residual_count = len(triggered)
             if escalation_id is not None:
-                escalation = by_id[escalation_id]
-                if escalation.costs is None:
-                    raise FixtureIntegrityError(
-                        f"escalation route lacks costs: {escalation_id}"
-                    )
-                applied_probability = primary.holdout_escalation_probability
-                expected_escalation = escalation.costs.total * applied_probability
-                residual_probability = (
-                    primary.holdout_escalation_probability
-                    * escalation.holdout_escalation_probability
-                )
-                residual_handling = (
-                    "manual_review" if residual_probability > 0 else None
-                )
-            expected_manual_review = (
-                residual_probability * manual_review_unit_cost
-            )
+                fallback = outcomes[escalation_id]
+                escalation_probability = len(triggered) / n_trials
+                escalation_cost = math.fsum(fallback[key].cost for key in triggered) / n_trials
+                residual_count = sum(fallback[key].failed for key in triggered)
+            residual_probability = residual_count / n_trials
+            manual_review_cost = residual_probability * manual_review_unit_cost
             strategies.append(
                 RouteStrategy(
                     primary_candidate=primary_id,
                     escalation_candidate=escalation_id,
-                    escalation_probability=applied_probability,
-                    primary_cost=primary.costs.total,
-                    escalation_cost=expected_escalation,
-                    manual_review_cost=expected_manual_review,
-                    total_expected_cost=(
-                        primary.costs.total
-                        + expected_escalation
-                        + expected_manual_review
-                    ),
+                    escalation_probability=escalation_probability,
+                    primary_cost=primary_cost,
+                    escalation_cost=escalation_cost,
+                    manual_review_cost=manual_review_cost,
+                    total_expected_cost=primary_cost + escalation_cost + manual_review_cost,
                     residual_failure_probability=residual_probability,
-                    residual_failure_handling=residual_handling,
+                    residual_failure_handling="manual_review" if residual_count else None,
                 )
             )
     evaluated = tuple(
-        sorted(strategies, key=lambda item: (item.total_expected_cost, item.primary_candidate))
+        sorted(
+            strategies,
+            key=lambda item: (
+                item.total_expected_cost, item.primary_candidate, item.escalation_candidate or ""
+            ),
+        )
     )
     selected = evaluated[0]
     return RouteRecommendation(

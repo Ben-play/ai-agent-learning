@@ -30,7 +30,7 @@
 <div class="section">
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
-    <p>Agent 项目通常由多个模块组成（schemas.py、tools.py、config.py、main.py）。如果不理解 Python 的模块加载机制，你迟早会遇到 <code>ImportError</code>、循环导入、模块找不到等问题。这些在 Agent 开发中尤其常见，因为框架代码本身就大量使用模块系统。</p>
+    <p>本课用仓库里的 <code>agent-hello</code> 练习模块分工：<code>main.py</code> 是入口，<code>agent/core.py</code> 生成回复，<code>agent/schemas.py</code> 定义消息。先读懂入口与导入路径，再跑真实起步项目；最后通过阶段检查点验证重命名实现文件时，调用方为什么可以不变。</p>
   </div>
 </div>
 
@@ -115,7 +115,7 @@ dis.dis(greet)
   <div class="card">
     <strong>核心规则：</strong><br>
     · 当一个文件被<strong>直接运行</strong>时，<code>__name__</code> 的值是 <code>"__main__"</code><br>
-    · 当一个文件被<strong>import</strong>时，<code>__name__</code> 的值是<strong>模块名</strong>（文件名去掉 .py）
+    · 当一个文件被<strong>import</strong>时，<code>__name__</code> 是<strong>模块的完整导入名</strong>，例如 <code>calculator</code> 或 <code>agent.core</code>
   </div>
 
   <pre><code># calculator.py
@@ -138,22 +138,21 @@ $ python -c "from calculator import add; print(add(10, 20))"
 
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>🔑 Agent 开发中的实际用法：</strong>
-    <p>Agent 项目的 main.py 通常这样写：</p>
-    <pre><code># main.py
+    <p>下面是仓库里 <code>agent-hello/main.py</code> 的真实入口。<code>run()</code> 通过 <code>agent.create_response</code> 的公开导入取得一个 <code>Message</code>，再打印该对象。调用方不用知道实现位于 <code>agent/core.py</code>。</p>
+    <pre data-lang="python" data-label="Python · agent-hello/main.py"><code id="l02-starter-main" class="language-python">import sys
+
 from agent import create_response
 
+
 def run():
-    message = create_response("Hello Agent!")
-    print(message)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    msg = create_response("Hello Agent!")
+    print(msg)
 
 if __name__ == "__main__":
     run()</code></pre>
-    <p>这样做的好处：</p>
-    <ul>
-      <li>直接运行 <code>python main.py</code> 启动 Agent</li>
-      <li>其他模块可以 import main 中的函数而不会意外启动 Agent</li>
-      <li>测试时可以单独测试 run() 函数</li>
-    </ul>
+    <p>从项目根运行 <code>python main.py</code> 会调用 <code>run()</code>；<code>import main</code> 只载入定义，不会打印回复。测试可以显式调用 <code>main.run()</code>。开头的 <code>sys.stdout</code> 设置只用于让命令行正确输出中文，与导入机制无关。</p>
   </div>
 
   <div class="quiz" data-quiz="q1">
@@ -168,7 +167,7 @@ if __name__ == "__main__":
       <button data-answer="wrong">None</button>
     </div>
     <div class="quiz-explanation">
-      被 import 时，<code>__name__</code> 的值是模块名（文件名去掉 .py）。只有直接运行时才是 <code>"__main__"</code>。
+      被 <code>import agent</code> 时，<code>__name__</code> 是导入名 <code>agent</code>；例如包内的 <code>core.py</code> 被导入时则是 <code>agent.core</code>。作为程序入口运行时才是 <code>"__main__"</code>。
     </div>
   </div>
 </div>
@@ -178,36 +177,19 @@ if __name__ == "__main__":
   <h2>3. 模块与包</h2>
 
   <h3>模块（Module）</h3>
-  <p>一个 <code>.py</code> 文件就是一个模块。模块名就是文件名（去掉 <code>.py</code>）。</p>
-
-  <pre><code># tools.py          → 模块名是 "tools"
-# schemas.py        → 模块名是 "schemas"
-# agent/core.py     → 模块名是 "agent.core"</code></pre>
+  <p>在本课中，一个 <code>.py</code> 文件就是一个模块。模块在包内时，用带包前缀的全名：<code>agent/core.py</code> 对应 <code>agent.core</code>，<code>agent/schemas.py</code> 对应 <code>agent.schemas</code>。</p>
 
   <h3>包（Package）</h3>
-  <p>一个包含 <code>__init__.py</code> 文件的目录就是一个包。包是用来组织模块的。</p>
-
-  <pre><code>my-agent/        # 项目目录，可以含连字符（不是 Python 标识符，不能被 import）
-└── agent/       # Python 包名，必须是合法标识符
-    ├── __init__.py      # 标记 agent 是一个包
-    ├── core.py          # 模块: agent.core
-    ├── tools.py         # 模块: agent.tools
-    └── schemas.py       # 模块: agent.schemas
-└── main.py</code></pre>
+  <p>包把相关模块组织在一起；本例的 <code>agent/</code> 有 <code>__init__.py</code>，因此是常规包。完整结构见下方<a href="#agent-hello-project">实战练习目录</a>。</p>
 
   <div class="card" style="border-left: 4px solid #DC2626;">
     <strong>⚠️ 常见混淆：项目目录 ≠ Python 包名</strong>
-    <p><code>my-agent/</code> 这一层只是操作系统里的一个文件夹，用来装你的项目，它的名字随便起（甚至可以带连字符），<strong>不能被 import</strong>，因为 <code>-</code> 不是合法的 Python 标识符。真正能被 <code>import</code> 的是里面那个没有连字符、且含 <code>__init__.py</code> 的目录，比如这里的 <code>agent/</code>。</p>
+    <p><code>agent-hello/</code> 是项目目录，不是导入名称；普通 <code>import</code> 语句中的名称要是合法标识符，不能有连字符。从这个项目根启动时，用 <code>import agent</code> 找里面的 <code>agent/</code> 包，不用项目目录名。</p>
   </div>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 Python 3.3+ 的变化：</strong>
-    <p>Python 3.3 引入了"命名空间包"，<code>__init__.py</code> 不再是必须的。但<strong>强烈建议始终创建它</strong>，因为：</p>
-    <ul>
-      <li>明确标识这是一个包</li>
-      <li>某些工具（如 pytest、mypy）依赖它</li>
-      <li>可以在其中控制包的公开接口</li>
-    </ul>
+    <p>Python 3.3+ 支持没有 <code>__init__.py</code> 的命名空间包，但本课有意使用常规包：文件既明确包边界，也提供一个稳定的公开导入入口。命名空间包适合需要跨多个目录或发行包共享命名空间的场景，不是本练习所需。</p>
   </div>
 
   <h3><code>__init__.py</code> 的作用</h3>
@@ -239,46 +221,53 @@ from agent import create_response</code></pre><p>公开路径保持稳定；包�
     <p class="bp-rationale"><strong>为什么更优：</strong>只 re-export 稳定名称，会用包入口隔离公开调用方与内部文件布局，从而提升接口稳定性和重构可维护性。代价是维护精确的公开清单，并承担首次导入这些模块的启动成本；实验性实现或重模块的低频能力应保留显式子模块导入，避免过早承诺兼容性和拖慢包导入。</p>
     <ol class="bp-steps"><li>把 <code>Message</code> 与 <code>create_response</code> 定为本练习的两个稳定公开名称。</li><li>在 <code>agent/__init__.py</code> 精确再导出并列入 <code>__all__</code>。</li><li>让 <code>main.py</code> 从 <code>agent</code> 导入，内部模块按需显式导入子模块。</li></ol>
     <details class="bp-check">
-      <summary><strong>动手自检：验证精确公开 API、re-export 身份与静默导入</strong></summary>
-      <pre><code>uv run --offline python - &lt;&lt;'PY'
-import contextlib
-import io
+      <summary><strong>动手自检：运行真实起步包（标准库、离线）</strong></summary>
+      <p>把下面的 Python 块存为临时脚本，用 Python 3.11+ 从<strong>课程仓库根目录</strong>运行（不是从 <code>agent-hello</code> 目录）。检查脚本会把真实项目根加入本次进程的搜索路径；不改项目源码，不需要安装依赖，也不读取 <code>.env</code>。</p>
+      <pre data-lang="python" data-label="Python · 真实起步包验收"><code id="l02-starter-check" class="language-python">import sys
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
 
-stdout, stderr = io.StringIO(), io.StringIO()
-with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+project = (Path.cwd() / "code/phase1-python/part-a-basics/agent-hello").resolve()
+assert (project / "main.py").is_file(), "Run from the course repository root"
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(project))
+
+stdout, stderr = StringIO(), StringIO()
+with redirect_stdout(stdout), redirect_stderr(stderr):
     import agent
+    import main
     from agent.core import create_response as core_create_response
     from agent.schemas import Message as SchemaMessage
 
-expected = ["Message", "create_response"]
-assert agent.__all__ == expected, (
-    f"agent.__all__: expected {expected!r}, got {agent.__all__!r}"
-)
-assert agent.Message is SchemaMessage, (
-    "agent.Message is not the exact agent.schemas.Message object"
-)
-assert agent.create_response is core_create_response, (
-    "agent.create_response is not the exact agent.core.create_response object"
-)
-assert stdout.getvalue() == "", f"import agent wrote stdout: {stdout.getvalue()!r}"
-assert stderr.getvalue() == "", f"import agent wrote stderr: {stderr.getvalue()!r}"
-print("public API: exact re-exports, silent import")
-PY</code></pre>
+assert Path(agent.__file__).resolve() == project / "agent/__init__.py"
+assert Path(main.__file__).resolve() == project / "main.py"
+assert not stdout.getvalue() and not stderr.getvalue(), "Imports must be silent"
+assert agent.__all__ == ["Message", "create_response"]
+assert agent.Message is SchemaMessage and agent.create_response is core_create_response
+assert main.create_response is agent.create_response
+
+reply = agent.create_response("offline probe")
+assert isinstance(reply, agent.Message)
+assert (reply.role, reply.content) == ("assistant", "你说的是：offline probe")
+
+with redirect_stdout(stdout), redirect_stderr(stderr):
+    with patch.object(main, "create_response", wraps=agent.create_response) as call:
+        main.run()
+        call.assert_called_once_with("Hello Agent!")
+assert stdout.getvalue() == "Message(role='assistant', content='你说的是：Hello Agent!')\n"
+assert not stderr.getvalue()
+print("L02 STARTER PASSED")</code></pre>
     </details>
-    <p class="bp-result"><strong>怎么看结果：</strong>只出现 <code>public API: exact re-exports, silent import</code> 即通过；否则断言会分别报告 <code>__all__</code>、re-export 对象身份、stdout 或 stderr 的实际差异。<code>__all__</code> 控制星号导入，不会禁止显式子模块导入。</p>
+    <p class="bp-result"><strong>怎么看结果：</strong>stdout 只出现 <code>L02 STARTER PASSED</code> 才通过。自检确认导入来自真实项目、导入不打印、公开对象身份不变，以及 <code>main.run()</code> 调用真实函数并打印正确的 <code>Message</code>。这不是课末的完整验收，也不替代后面的模块重构检查点。</p>
   </div>
 
-  <h3><code>__all__</code> 控制公开接口</h3>
-  <pre><code># agent/__init__.py
-from .core import create_response
-from .schemas import Message
-from .internal import _debug  # 内部工具，不希望用户直接使用
-
-__all__ = ["create_response", "Message"]  # 只有这两个会被 from agent import * 导出</code></pre>
-
-  <pre><code># 用户代码
-from agent import *       # 只导入 create_response 和 Message，不导入 _debug
-from agent import _debug  # 显式导入仍然可以</code></pre>
+  <h3><code>__all__</code> 约定星号导入的范围</h3>
+  <pre data-lang="python"><code class="language-python"># 从 agent-hello 项目根启动 Python
+from agent import *   # 只绑定 __all__ 中的 Message 和 create_response
+import agent.core     # 显式导入子模块仍然可以</code></pre>
+  <p>实际项目优先使用显式名称，如 <code>from agent import create_response</code>；星号导入这里只用来观察 <code>__all__</code> 的作用。</p>
 </div>
 
 <!-- ==================== 知识点 4 ==================== -->
@@ -329,14 +318,14 @@ $ python -c "import sys; print(sys.path)"
   </div>
 
   <h3>两种 import 方式</h3>
-
-  <pre><code># 方式 1：导入整个模块
+  <p>在 <code>agent-hello</code> 根目录启动 Python。下面两种写法最终都调用真实的 <code>create_response</code>；<code>run()</code> 则在 <code>main.py</code>，不在 <code>agent.core</code>。显式访问子模块有助于学习或测试内部实现；应用入口仍从 <code>agent</code> 导入。</p>
+  <pre data-lang="python"><code class="language-python"># 方式 1：导入模块，调用时保留模块路径
 import agent.core
-agent.core.run()
+print(agent.core.create_response("Hello Agent!"))
 
-# 方式 2：从模块中导入特定内容
-from agent.core import run
-run()</code></pre>
+# 方式 2：把函数名导入当前模块
+from agent.core import create_response
+print(create_response("Hello Agent!"))</code></pre>
 
   <div class="best-practice-point" id="bp-top-level-imports">
     <h3>最佳实践：普通 import 放在模块顶部</h3>
@@ -392,29 +381,28 @@ PY</code></pre>
 
   <h3>相对导入 vs 绝对导入</h3>
 
-  <pre><code># 绝对导入（推荐，尤其是入口文件）
-from agent.core import run
-from agent.schemas import Message
+  <p><strong>绝对导入</strong>从顶层包名写起；<strong>相对导入</strong>的点以当前包为起点。下面两行分别位于真实项目的两个文件，不要粘进同一个脚本：</p>
+  <pre data-lang="python" data-label="Python · 两个文件的导入对照"><code class="language-python"># main.py：绝对导入，从顶层包 agent 的公开入口取函数
+from agent import create_response
 
-# 相对导入（只在包内部使用）
-# 在 agent/tools.py 中（agent 是当前唯一一层包）：
-from .schemas import Message      # 当前包的 schemas 模块
-from .config import load_config   # 当前包的 config 模块</code></pre>
+# agent/core.py：包内相对导入，从同包的 schemas 取 Message
+from .schemas import Message</code></pre>
+  <p>在 <code>agent/core.py</code> 改写成 <code>from agent.schemas import Message</code> 也可导入同一个类，但那是绝对导入。当前 <code>agent/config.py</code> 只是空占位，没有 <code>load_config</code>，不参与导入。</p>
 
   <div class="card" style="border-left: 4px solid var(--accent);">
     <strong>💡 什么时候才需要 <code>..</code>？</strong>
-    <p><code>..</code> 表示"上一级包"，只有当你的模块<strong>确实有父包</strong>时才用得上。比如结构是 <code>project/agent/tools.py</code>，且 <code>project/</code> 也是一个包（含 <code>__init__.py</code>）：这时 <code>project.agent.tools</code> 里如果要访问 <code>project.config</code>，才写 <code>from ..config import load_config</code>。在本课 <code>agent-hello/agent/</code> 这种只有一层包的结构里，<code>agent</code> 已经是顶层包，没有"上一级包"可言，所以不会用到 <code>..</code>。</p>
+    <p><code>..</code> 表示“上一级包”，不是上一级文件夹。例如在假想模块 <code>project.agent.core</code> 中，<code>from .. import config</code> 会从 <code>project</code> 包找 <code>config</code>。本课的 <code>agent</code> 已是顶层包，没有上一级包，不用 <code>..</code>。</p>
   </div>
 
   <div class="card" style="border-left: 4px solid #DC2626;">
     <strong>⚠️ 常见陷阱：</strong>
-    <p>相对导入只能在包内部使用，不能在直接运行的脚本中使用。如果你在 <code>main.py</code> 中写 <code>from .agent import run</code>，会报 <code>ImportError</code>。这就是为什么 main.py 通常用绝对导入。</p>
+    <p>相对导入需要包上下文。根目录的 <code>main.py</code> 不是任何包的子模块，直接运行它时，<code>from .agent import create_response</code> 会报 <code>ImportError</code>；应保留实际的绝对导入 <code>from agent import create_response</code>。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
     <div class="quiz-question">
       <span class="quiz-q">Q</span>
-      以下哪个是正确的相对导入？假设当前文件在 <code>agent/tools.py</code> 中。
+      在实际的 <code>agent/core.py</code> 中，哪一行用<strong>相对导入</strong>取得 <code>Message</code>？
     </div>
     <div class="quiz-options">
       <button data-answer="correct">from .schemas import Message</button>
@@ -650,39 +638,40 @@ __all__ = ["create_response", "Message"]
 
   <div class="card">
     <h3>练习：构建多模块 Agent 项目</h3>
-    <p>在 L01 创建的项目基础上，把它拆分为多个模块，练习 import 机制。<strong>先自己做，再看答案。</strong></p>
+    <p>仓库中的起步项目位于 <code>code/phase1-python/part-a-basics/agent-hello</code>。如果沿用 L01 自己建的项目，在副本中把单文件入口拆成下列模块；如果读仓库里的成品，直接核对各文件的职责和导入方向，不必再创建一套。</p>
 
-    <h4>任务清单</h4>
-    <ol>
-      <li>创建以下目录结构：
-        <pre><code>agent-hello/
+    <h4 id="agent-hello-project">真实起步项目目录</h4>
+    <pre data-lang="text"><code>agent-hello/
+├── .gitignore
+├── .python-version
+├── README.md
+├── pyproject.toml
+├── uv.lock
+├── main.py            # 根目录的程序入口
 ├── agent/
-│   ├── __init__.py
-│   ├── core.py        # 主逻辑
-│   ├── schemas.py     # 数据模型
-│   └── config.py      # 配置管理
-├── main.py
+│   ├── __init__.py    # 公开 Message、create_response
+│   ├── core.py        # 生成回复，相对导入 .schemas
+│   ├── schemas.py     # 普通 Python 类 Message
+│   └── config.py      # 空占位，无配置读取逻辑
 └── tests/
-    └── test_core.py</code></pre>
-      </li>
-      <li>复制下方给定的 <code>Message</code> 脚手架到 <code>schemas.py</code>（本课不要求从零设计类）</li>
-      <li>在 <code>core.py</code> 中用包内相对导入使用 Message</li>
-      <li>在 <code>__init__.py</code> 中导出 <code>create_response</code> 和 <code>Message</code>，定义 <code>__all__</code></li>
-      <li>在 <code>main.py</code> 中使用 <code>__name__ == "__main__"</code></li>
-      <li>运行并验证</li>
+    └── test_core.py   # 测试回复内容与 repr</code></pre>
+    <p>目录树不列本地 <code>.env</code>、<code>.venv</code> 或缓存；本课入口不读取它们。项目现有结构不包含 <code>tools.py</code>。</p>
+    <ol>
+      <li>在 <code>schemas.py</code> 定义 <code>Message</code>（本课不要求从零设计类）；<code>core.py</code> 相对导入它并创建回复。</li>
+      <li>在 <code>__init__.py</code> 精确再导出两个公开名称；<code>main.py</code> 通过包入口使用 <code>create_response</code>。</li>
+      <li>从项目根运行入口；再从课程仓库根运行<a href="#l02-starter-check">起步包自检</a>，验证静默导入与输出。</li>
     </ol>
 
     <div class="card" style="border-left: 4px solid var(--accent);">
       <strong>💡 提示：</strong>
-      <p>这节课只考模块系统（怎么拆文件、怎么 import、<code>__init__.py</code> 怎么 re-export），不考你能不能从零写出一个类。下面参考答案已经把 <code>schemas.py</code> 和 <code>core.py</code> 的完整代码给你了，直接复制粘贴，重点练习"文件放对位置 + import 语句写对 + <code>__init__.py</code> re-export 正确"。</p>
+      <p>这节课只练模块系统。先画出 <code>main → agent → core → schemas</code> 的主要依赖方向，再用参考答案核对。<code>Message</code> 类和 pytest 的写法不是本课考点。</p>
     </div>
 
     <details>
       <summary>💡 点击查看参考答案</summary>
 
-      <h4>步骤 1：创建目录结构</h4>
-      <pre><code>mkdir -p agent-hello/agent agent-hello/tests
-touch agent-hello/agent/__init__.py</code></pre>
+      <h4>步骤 1：核对目录和占位文件</h4>
+      <p>现有项目直接打开上述目录；自己练习时在项目副本内建立 <code>agent/</code>、<code>tests/</code>，并建空的 <code>agent/config.py</code> 预留配置位置。</p>
 
       <h4>步骤 2：schemas.py</h4>
       <pre><code># agent/schemas.py
@@ -692,7 +681,7 @@ class Message:
         self.content = content
 
     def __repr__(self):
-        return f"Message(role='{self.role}', content='{self.content}')"</code></pre>
+        return f"Message(role={self.role!r}, content={self.content!r})"</code></pre>
 
       <h4>步骤 3：core.py</h4>
       <pre><code># agent/core.py
@@ -709,19 +698,11 @@ from .schemas import Message
 __all__ = ["Message", "create_response"]</code></pre>
 
       <h4>步骤 5：main.py</h4>
-      <pre><code># main.py
-from agent import create_response
-
-def run():
-    msg = create_response("Hello Agent!")
-    print(msg)
-
-if __name__ == "__main__":
-    run()</code></pre>
+      <p>使用上文给出的<a href="#l02-starter-main">真实入口代码</a>。<code>main.run()</code> 调用包入口的 <code>create_response</code> 并打印返回的 <code>Message</code>。</p>
 
       <h4>步骤 6：运行验证</h4>
-      <pre><code>$ python main.py
-# 输出: Message(role='assistant', content='你说的是：Hello Agent!')</code></pre>
+      <pre data-lang="shell"><code class="language-bash">python -X utf8 main.py</code></pre>
+      <p>输出应为 <code>Message(role='assistant', content='你说的是：Hello Agent!')</code>。若在自己建的副本中做练习，可从仓库的同名项目复制 <code>tests/test_core.py</code>。在已准备好 pytest 的项目环境从项目根运行 <code>python -m pytest -q</code>，不要直接执行测试文件。</p>
 
       <h4>思考题</h4>
       <p style="font-size:0.9rem;color:var(--muted);margin-bottom:0.6rem;">先自己想，再点开对答案。答案均在真实 <code>agent-hello</code> 项目里跑过验证。</p>
@@ -742,7 +723,7 @@ if __name__ == "__main__":
         <div class="think-q-answer">
           <p><strong>Python 按 <code>sys.path</code> 从前到后逐个目录找名叫 <code>agent</code> 的包，找到就停。</strong></p>
           <p>导入 <code>agent.core</code> 时，Python 遍历 <code>sys.path</code>（一个目录列表），在每个目录下找 <code>agent/</code> 这个带 <code>__init__.py</code> 的包；命中后再进去找 <code>core.py</code>。实测命中的是<strong>项目根</strong> <code>agent-hello/</code> 下的 <code>agent/core.py</code>——<strong>前提是项目根必须在 <code>sys.path</code> 里</strong>。</p>
-          <p>关键就在这个前提：<code>sys.path[0]</code> 取决于你怎么启动。<code>python tests/test_core.py</code> 会把 <code>sys.path[0]</code> 设成脚本目录 <code>tests/</code>（那里没有 <code>agent/</code>）→ 报 <code>ModuleNotFoundError: No module named 'agent'</code>。让项目根进 <code>sys.path</code> 的正确做法：在项目根用 <code>python -m tests.test_core</code>，或 <code>pytest</code> 配 <code>pythonpath=["."]</code>。</p>
+          <p><code>sys.path[0]</code> 取决于启动方式。<code>python tests/test_core.py</code> 在普通启动时会把脚本目录 <code>tests/</code> 放在最前，可能找不到 <code>agent</code>，也不会自动调用测试函数。用已准备好的解释器从项目根运行 <code>python -m pytest -q</code>；本项目的 <code>pyproject.toml</code> 也为 pytest 配置了 <code>pythonpath = ["."]</code>。</p>
           <p><strong>一句话：</strong>能不能找到，不看文件在哪，看<strong>项目根在不在 <code>sys.path</code> 里</strong>。（这正是你刚踩的 <code>ModuleNotFoundError</code> 那个坑，详见 <a href="../qa/phase1-qa.html#L02">L02 答疑</a>。）</p>
         </div>
       </details>
@@ -772,7 +753,7 @@ if __name__ == "__main__":
       <p>为现有 <code>agent-hello</code> 产出一份可审计的离线模块验收证据，证明文件结构、公开接口、静默导入、稳定消费者入口、单向依赖和现有测试彼此一致。</p>
     </div>
     <div class="practice-acceptance-grid">
-      <div><h3>操作清单</h3><p>展开课末自检，整段运行；按右侧标准核对结果。</p><details class="bp-check"><summary><strong>课末自检：运行完整 L02 验收</strong></summary><pre><code>set -euo pipefail
+      <div><h3>操作清单</h3><p>从课程仓库根目录的 Bash 终端运行。完整验收使用项目已有的 uv 环境与 pytest；若只核对标准库入口，运行上面的起步包自检即可。</p><details class="bp-check"><summary><strong>课末自检：运行完整 L02 验收</strong></summary><pre><code>set -euo pipefail
 cd code/phase1-python/part-a-basics/agent-hello
 project_evidence="l02-evidence.tmp"
 saved_evidence="${TMPDIR:-/tmp}/agent-hello-l02-evidence.txt"
@@ -1171,8 +1152,8 @@ __name__ 机制
 
 import 机制
 ├── 查找顺序：sys.modules 缓存 → 内置模块（极少）→ sys.path（标准库/第三方/项目）
-├── 绝对导入：from agent.core import run（推荐）
-├── 相对导入：from .core import run（包内使用）
+├── 绝对导入：main.py 的 from agent import create_response
+├── 相对导入：agent/core.py 的 from .schemas import Message
 ├── import / from-import 都可放顶层，延迟导入取决于循环依赖/启动成本/可选依赖
 └── 虚拟环境改变 sys.path 优先级
 
@@ -1201,7 +1182,7 @@ import 机制
     <p><strong>答：</strong>两个模块互相导入就形成循环，但循环不一定失败；若初始化期间过早访问对方尚未绑定的名称或属性，依导入形式可能报 <code>ImportError</code> 或 <code>AttributeError</code>。解决方法：1）提取公共模块（首选，根治耦合）；2）延迟导入（函数内部 import，常见但只是局部解法）；3）使用 <code>TYPE_CHECKING</code> 条件导入（仅用于类型注解；运行时解析注解仍需名称可解析）。</p>
 
     <h3>Q5：import 的查找顺序是什么？</h3>
-    <p><strong>答：</strong>1）sys.modules 缓存（已导入的模块）；2）真正的内置模块（数量很少，如 sys）；3）sys.path 上的模块（当前目录/项目根、PYTHONPATH、标准库如 json、site-packages 第三方包）。虚拟环境会改变 sys.path 的优先级。</p>
+    <p><strong>答：</strong>先看 <code>sys.modules</code>；未命中时由 finder 查找，文件系统查找会看 <code>sys.path</code>。例如在 <code>agent-hello</code> 中直接跑 <code>python tests/test_core.py</code>，脚本目录是 <code>tests/</code>，项目根默认不在开头，可能找不到 <code>agent</code>。从项目根用 <code>python -m pytest</code> 运行；若仍不确定，打印 <code>sys.executable</code>、<code>sys.path</code> 或模块的 <code>__file__</code> 核对解释器和实际来源，不先改全局 <code>PYTHONPATH</code>。</p>
 
     <h3>Q6：<code>__all__</code> 的作用是什么？</h3>
     <p><strong>答：</strong>定义包的公开接口，控制 <code>from package import *</code> 的行为。只有在 __all__ 列表中的名字才会被导出。显式导入（from package import name）不受影响。</p>

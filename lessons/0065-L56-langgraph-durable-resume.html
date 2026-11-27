@@ -10,7 +10,7 @@
 <body>
 <main>
 <div class="section"><div class="lesson-header">
-  <div class="lesson-meta-row"><span class="lesson-phase-tag">第六阶段 · LangGraph 与 MCP</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第六阶段 · LangGraph 与 MCP</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div>
   <h1>LangGraph 中断、持久恢复与重放</h1><p class="subtitle">恢复的是下一步，不是执行权限</p>
 </div></div>
 <div class="section"><h2>为什么这课重要？</h2><p><a href="0064-L55-langgraph-state-graph.html">L55</a> 的图从起点一路跑到终点。真实草稿会等人批准，等待期间进程可能退出；获准写入后也可能在返回前失败。两种情况下都要恢复原来的任务，却不能把「恢复」理解成重新生成草稿或照旧再写一条。</p><h3>学习目标</h3><p>用状态快照找到待办节点，区分中断恢复与故障重放，并为两者写出相反的业务写入断言。</p></div>
@@ -26,7 +26,8 @@
 <div class="section"><h2>2. 带着第 2 版工单走一次暂停和恢复</h2>
   <p><code>review</code> 先核对业务检查点的绑定，再用任务名和修订版调用 <code>interrupt</code>。默认调用形式把中断对象放在 <code>__interrupt__</code>；宿主另查匹配的业务检查点来展示预览，不保持数据库事务等待人。旧进程退出后，新进程用同一线程读到 <code>next=("review",)</code>，并独立读回原标题、正文、来源 ID 和修订版。绑定不符时不拿新版冒充原预览。</p>
   <p>无匹配决定不恢复；有匹配决定时，宿主用 <code>Command(resume="review_recorded")</code> 发送唤醒信号，不传批准。节点从头再跑，这次 <code>interrupt</code> 返回该信号。中断前只核对检查点，不插入草稿。进入 <code>apply_review</code> 才重新读取决定并调用 Phase 5 的保存口。</p>
-  <p>若业务事务已提交但节点尚未返回，业务库已有草稿，图却仍待 <code>apply_review</code>。该故障的恢复不再用审批 <code>Command</code>：宿主使用 <code>invoke(None, snapshot.config, durability="sync")</code> 重跑当前快照中已安排的节点，不跳回任意历史审批。通过业务保存口读取原回执和原草稿，而非再次插入。</p>
+  <p>若业务事务已提交但节点尚未返回，业务库已有草稿，图却仍待 <code>apply_review</code>。这里不用审批 <code>Command</code>。在单写者演练中先读该线程的当前快照，再用 <code>invoke(None, snapshot.config, durability="sync")</code> 固定这份快照并重跑待执行节点；业务保存口应取原回执和原稿，不再插入。</p>
+  <p><code>snapshot.config</code> 可带 <code>checkpoint_id</code>，指定的是一个停点，不是「执行时的最新线程」。本例没有在读取与推进之间另起写者，因此重放的是刚读到的停止点；不能把较早快照用于生产续跑。<a href="0098-L85-versioned-graph-state.html">L85</a> 对照只传 <code>thread_id</code> 的最新续跑：旧 ID 用来读历史，不用来推进。两者都不以线程 ID 代替审批或业务去重。</p>
 </div>
 <div class="section"><h2>3. 区分安全重跑与已经提交的效果</h2>
   <p>从第 2 版的内容摘要和作用域得到同一业务操作身份。Phase 5 在一个业务事务里写草稿与可核对结果，后来者读原记录，不再发起插入。图的 <code>durability="sync"</code> 约束图先持久化步骤再推进，不会把两个数据库自动变成一个事务。如果确认不了业务回执，停下来核对，不因为图还 pending 就生成新的操作标识。外部服务超时和真正的进程强杀是若干不同故障，不由本地异常替身替代。</p>

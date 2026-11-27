@@ -308,7 +308,80 @@ print("L30 ACCEPTED")</code></pre>
       <p>若只用滑动窗口，同样整轮丢弃并复算；若最近完整轮次本身已超限，就转向结果筛选与外部存储，而不是拆掉请求/结果关联。</p>
     </details>
   </div>
+  <div class="best-practice-point" id="bp-l30">
+    <h3>决策卡：缩小工具清单后，按实际发送的整包复算</h3>
+    <p class="bp-scenario"><strong>适用：</strong>展厅助手只需回答开放时间，最近一轮已收齐结果，本轮用不到语音导览工具。如果后续确实依赖该工具，就不能为了省空间把它移除。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">只在计数时省掉工具</span><p>同一份开放时间请求，计数时只算时段工具，发送时仍带上语音导览工具；纸面上刚好够，实际包超了。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">只发送经过计数的清单</span><p>应用先筛掉无关定义，再用同一份消息和工具清单计数、发送；系统规则和已闭合的工具交互都原样保留。还放不下就不发。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>少发定义能腾出空间，却也少给模型一个本轮选项。筛选清单不等于变更执行权限，也不能拿缩短输出预留来掩盖输入超限。</p>
+  </div>
+  <details class="think-q">
+    <summary><span class="think-q-tag">追问</span>这次还必须查询语音导览，工具和现有证据一起已超限，还能先留工具结果、删掉对应请求吗？</summary>
+    <div class="think-q-answer"><p>不能拆开已闭合的请求和结果。可以在来源侧筛减冗余字段、外置大段资料并保留可回查引用，或拆分任务；按实际新请求复算。若下一步必须逐字引用且引用无法取回，即使包能装下，也不能把摘要当作原文证据。</p></div>
+  </details>
 </div>
+
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立练习：展厅请求刚好放得下吗？</h2>
+  <p>这次没有旧轮次可摘要。在固定输出预留和安全余量下，实现 <code>try_send(tool_defs, window)</code>：让 <code>manage_context</code> 检查准备发送的整包，只在通过后把消息和工具清单记入本地发送记录。先预测：发完整清单、只发必需清单但窗口小一个单位、只发必需清单且刚好够，三次分别是否写入记录？起点单跑只检查输入，不打印。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l30-transfer-starter">import json
+
+messages = [
+    {"role": "system", "content": "回答需标注资料来源。"},
+    {"role": "user", "content": "展厅周二开门吗？"},
+    {"role": "assistant", "content": None, "tool_calls": [
+        {"id": "hours-1", "type": "function",
+         "function": {"name": "hours", "arguments": "{}"}},
+    ]},
+    {"role": "tool", "tool_call_id": "hours-1", "content": "周二开放，来源 H-2"},
+]
+
+
+def tool_def(name):
+    return {"type": "function", "function": {
+        "name": name, "parameters": {"type": "object"},
+    }}
+
+
+required = [tool_def("hours")]
+full = [*required, tool_def("audio_guide")]
+reserve, margin = 48, 12
+
+
+def count_chars(messages, tools):
+    return len(json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False))
+
+
+window = count_chars(messages, required) + reserve + margin
+assert count_chars(messages, full) + reserve + margin &gt; window
+# TODO：用同一份 tool_defs 检查与记录；超限时不产生发送记录。</code></pre>
+  <details class="bp-check"><summary>展开参考与断言（接在核心块和起点后）</summary><pre data-lang="python"><code class="language-python" id="l30-transfer-check">sent = []
+
+
+def no_summary(_old):
+    raise AssertionError("没有可摘要的旧轮次")
+
+
+def try_send(tool_defs, window):
+    try:
+        ready = manage_context(messages, tool_defs, window=window,
+                               output_reserve=reserve, safety_margin=margin,
+                               count_input=count_chars, summarize=no_summary)
+    except ContextTooLarge:
+        return False
+    sent.append((ready, tool_defs))  # 本地记录，不发真实请求
+    return True
+
+
+assert not try_send(full, window) and not sent, "完整清单超限"
+assert not try_send(required, window - 1) and not sent, "少一单位也不能发送"
+assert try_send(required, window), "等于上限应放行"
+assert sent == [(messages, required)], "必须发送验过的消息与工具清单"
+print("L30 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>新文件依次复制 <a href="#l30-context-core"><code>l30-context-core</code></a>、<code>l30-transfer-starter</code>、<code>l30-transfer-check</code>，不加 <code>l30-context-check</code>。用 <code>python -I 文件名.py</code> 运行（不用 <code>-O</code>），应只见 <code>L30 TRANSFER PASSED</code>。完整清单被放行就查是否漏算了实际工具定义；少一个单位仍放行就查输出预留和安全余量；刚好等于上限却被拦则查边界比较。序列化字符数只是本地预算夹具，不代表任何模型的 token 数。</p>
+</section>
 
 <div class="section">
   <h2>速查卡</h2>

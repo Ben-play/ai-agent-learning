@@ -46,7 +46,7 @@ def exercise(case, *, variant="baseline") -> Observation:
         raise ValueError("unknown fixture variant or workflow path")
     citations, writes, events = [], [], []
     checkpoint, same_receipt, payload = None, None, None
-    replay_writes = 0
+    recoveries = replay_writes = 0
     actor, job = HARNESS["Actor"]("support", "mei"), "engineering-fixture"
     with RAG["open_demo"]() as evidence:
         if path in {"answer", "missing", "save", "replay"}:
@@ -119,7 +119,8 @@ def exercise(case, *, variant="baseline") -> Observation:
             checkpoint = final.status if final else None
             if path == "replay" and final is not None:
                 before = len(writes)
-                events.append("recover")  # At the recovery call, not inferred from the case ID.
+                events.append("recover")
+                recoveries += 1  # Count recovery entries independently of timing events.
                 replay = reopened.resume(actor, job, staged.binding, HARNESS["Review"].APPROVE)
                 status = replay.status
                 replay_writes = len(writes) - before
@@ -139,7 +140,7 @@ def exercise(case, *, variant="baseline") -> Observation:
         if path == "replay" and payload is None:
             same_receipt = False
     return Observation(case["id"], status, checkpoint, tuple(citations), payload,
-                       len(authority.dispatches), events.count("recover"), len(writes), saved_rows,
+                       len(authority.dispatches), recoveries, len(writes), saved_rows,
                        replay_writes, same_receipt, authority.extra_proposals, tuple(events))
 
 

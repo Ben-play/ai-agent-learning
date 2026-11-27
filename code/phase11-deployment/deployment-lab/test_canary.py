@@ -82,22 +82,25 @@ class CanaryTests(unittest.TestCase):
         self.assertEqual(report["reasons"], ["recovery_probe_failed"])
         self.assertEqual(report["fault_fixture"], [])
 
-    def test_recovery_mismatch_still_hard_stops_if_events_are_unknown(self):
+    def test_recovery_mismatch_still_hard_stops_without_valid_timing(self):
         exercise = canary.GATE["exercise"]
+        for events in (("retrieve", "stage", "approved_call"), ("recover-unmetered",)):
+            with self.subTest(events=events):
+                def wrong_receipt(case, **kwargs):
+                    row = exercise(case, **kwargs)
+                    if case["id"] == "lost-reply":
+                        return replace(row, same_receipt=False, events=events)
+                    return row
 
-        def wrong_receipt(case, **kwargs):
-            row = exercise(case, **kwargs)
-            if case["id"] == "lost-reply":
-                return replace(row, same_receipt=False, events=("recover-unmetered",))
-            return row
-
-        with patch.dict(canary.GATE, {"exercise": wrong_receipt}):
-            report = canary.run()
-        row = report["control"]["rows"][-1]
-        self.assertEqual((row["case_id"], row["simulated_ms"]), ("lost-reply", None))
-        self.assertEqual(report["decision"], "STOP_AND_ROLLBACK")
-        self.assertEqual(report["reasons"], ["recovery_probe_failed"])
-        self.assertEqual(report["candidate"]["n"], 3)
+                with patch.dict(canary.GATE, {"exercise": wrong_receipt}):
+                    report = canary.run()
+                row = report["control"]["rows"][-1]
+                self.assertEqual((row["case_id"], row["simulated_ms"]), ("lost-reply", None))
+                self.assertEqual(row["hard_signals"], ["recovery_probe_failed"])
+                self.assertEqual(report["decision"], "STOP_AND_ROLLBACK")
+                self.assertEqual(report["reasons"], ["recovery_probe_failed"])
+                self.assertEqual(report["fault_fixture"], [])
+                self.assertEqual((report["control"]["n"], report["candidate"]["n"]), (4, 3))
 
     def test_unavailable_authority_readback_fails_closed_without_timing(self):
         with patch.dict(canary.GATE, {"exercise": Mock(side_effect=AssertionError("readback missing"))}):
@@ -126,6 +129,40 @@ class CanaryTests(unittest.TestCase):
                     self.assertIsNone(side["p95_ms"])
                     self.assertIsNone(side["rows"][2]["simulated_ms"])
                     self.assertEqual(side["rows"][2]["hard_signals"], [])
+
+    def test_inexact_recovery_trace_holds_even_when_recovery_succeeds(self):
+        exercise = canary.GATE["exercise"]
+        traces = {
+            "missing": ("retrieve", "stage", "approved_call"),
+            "duplicate": ("retrieve", "stage", "approved_call", "recover", "recover"),
+            "out_of_order": ("retrieve", "stage", "recover", "approved_call"),
+        }
+        for fault, events in traces.items():
+            with self.subTest(fault=fault):
+                def change_trace(case, **kwargs):
+                    row = exercise(case, **kwargs)
+                    return replace(row, events=events) if case["id"] == "lost-reply" else row
+
+                with patch.dict(canary.GATE, {"exercise": change_trace}):
+                    report = canary.run()
+                self.assertEqual((report["decision"], report["reasons"]), ("HOLD", ["incomplete_cohort"]))
+                self.assertFalse(report["complete"])
+                self.assertEqual(report["fault_fixture"], [])
+                for arm in ("control", "candidate"):
+                    side = report[arm]
+                    self.assertEqual((side["n"], side["timed"], side["successes"], side["errors"]), (6, 5, 6, 0))
+                    self.assertIsNone(side["p95_ms"])
+                    row = side["rows"][3]
+                    self.assertEqual((row["case_id"], row["status"], row["checkpoint"]),
+                                     ("lost-reply", "replayed", "saved"))
+                    self.assertEqual((row["dispatches"], row["recoveries"], row["writes"], row["saved_rows"],
+                                      row["replay_writes"]), (1, 1, 1, 1, 0))
+                    self.assertIs(row["same_receipt"], True)
+                    self.assertTrue(row["passed"])
+                    self.assertEqual(row["mismatches"], [])
+                    self.assertEqual(row["hard_signals"], [])
+                    self.assertEqual(row["events"], list(events))
+                    self.assertIsNone(row["simulated_ms"])
 
     def test_missing_timing_alone_does_not_make_a_critical_probe_fail(self):
         exercise = canary.GATE["exercise"]
@@ -226,12 +263,16 @@ class CanaryTests(unittest.TestCase):
 
     def test_gold_labels_reject_identical_wrong_runtime_observations(self):
         exercise = canary.GATE["exercise"]
+        answer = exercise({"id": "policy-retention", "path": "answer"})
 
         def contradict(case, **kwargs):
-            if case["id"] in {"policy-retention", "no-evidence"}:
-                opposite = "missing" if case["id"] == "policy-retention" else "answer"
-                return exercise({**case, "path": opposite}, **kwargs)
-            return exercise(case, **kwargs)
+            row = exercise(case, **kwargs)
+            # Swap the outcome projections in both arms, not the timed paths.
+            if case["id"] == "policy-retention":
+                return replace(row, status="needs_evidence", citations=(), payload=None)
+            if case["id"] == "no-evidence":
+                return replace(row, status=answer.status, citations=answer.citations, payload=answer.payload)
+            return row
 
         with patch.dict(canary.GATE, {"exercise": contradict}):
             report = canary.run()
@@ -239,8 +280,9 @@ class CanaryTests(unittest.TestCase):
         self.assertTrue(report["complete"])
         for arm in ("control", "candidate"):
             side = report[arm]
-            self.assertEqual((side["successes"], side["errors"], side["n"]), (4, 2, 6))
-            self.assertEqual(side["rows"][1]["mismatches"], ["status", "citations", "payload"])
+            self.assertEqual((side["successes"], side["errors"], side["n"], side["timed"]), (4, 2, 6, 6))
+            for row in side["rows"][1:3]:
+                self.assertEqual(row["mismatches"], ["status", "citations", "payload"])
         self.assertEqual(report["control"]["rows"], report["candidate"]["rows"])
         self.assertEqual(report["decision"], "HOLD")
         self.assertEqual(report["reasons"], ["control_not_healthy"])

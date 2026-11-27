@@ -184,6 +184,16 @@ print("L51 ACCEPTED")</code></pre></details>
   <h2>本课最佳实践验收：馆际调拨先登记标签，再交接打包</h2>
   <p><strong>任务：</strong>工作人员为一册待调拨图书登记转运标签。实现三个独立查询：恢复时按任务找下一步；按操作键查标签回执；查看备注里的对话。先在纸上填出「待审、仅有聊天声称批准、旧版审批、正确审批、再次恢复」的下一步、标签和回执行数，并说明为何「有标签」不代表打包已完成。</p>
   <p>每次 <code>step</code> 启动新 Python 进程并等待它退出，只传固定程序、同一数据库路径与合成任务身份，不传状态、正文或决定；主程序用独立连接扮演可信审批源并核对业务表。只换数据库连接是持久化检查，不是进程隔离测试。</p>
+  <p><strong>可运行起点：</strong>两份合成检查点的备注都声称事情已办。用 <code>python -I 文件名.py</code> 单跑起点，查看每个任务自己的操作键与备注；再加两列「下一步 / 在该操作键下查到的标签」。分别应是 <code>pack / TAG-77</code> 和 <code>awaiting_review / None</code>。起点只核对查询来源；下面的跨进程参考另存运行。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l51-transfer-starter">checkpoints = {
+    "transfer-77": {"next_step": "pack", "op": "label-77"},
+    "transfer-78": {"next_step": "awaiting_review", "op": "label-78"},
+}
+receipts = {"label-77": "TAG-77", "label-79": "TAG-79"}
+notes = {"transfer-77": "已打包", "transfer-78": "已批准"}
+for job, checkpoint in checkpoints.items():
+    print(job, checkpoint["op"], notes[job])
+    # TODO：按检查点取下一步、按 op 查回执；不能用备注或其他任务的标签推断。</code></pre>
   <details class="bp-check"><summary>展开参考程序（Python 3.11+，标准库、离线）</summary><pre><code class="language-python" id="l51-transfer-check">import json
 import sqlite3
 import subprocess

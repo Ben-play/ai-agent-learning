@@ -346,7 +346,68 @@ print("L36 ACCEPTED")</code></pre>
     </div>
     <div class="quiz-explanation">注册提高可维护性，但不是权限系统。生成阶段的 Schema 与执行阶段的校验共享模型，dispatch 仍需本轮允许集；流式完成只代表可以准备解析，不证明参数合法。</div>
   </div>
+  <div class="best-practice-point" id="bp-l36">
+    <h3>决策卡：流式参数按调用拼齐，完成后仍走同一个守卫</h3>
+    <p class="bp-scenario"><strong>适用：</strong>展馆助手收到交错的天气与搜索请求片段，但本轮只授权天气。若适配器已交付完整请求，无需再拼接；应用侧授权和参数校验仍不可省。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">片段可解析就执行</span><p>同一批片段里，搜索的 JSON 提前拼齐。若把可解析当完成或按注册表直接调用，断流和越权都可能产生执行。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">按索引收齐，再逐个分发</span><p>等适配器确认完成并检查调用身份，再用宿主的允许集逐个 dispatch，按各自 ID 回填。中断时零执行；完成时只执行参数正确的天气请求，仍拒绝非法参数和越权搜索。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>等待完成会推迟工具启动并占用缓冲空间，换来不会按半截参数执行；线上还要限制缓冲量，不能把连接关闭当作完成事件。</p>
+  </div>
 </div>
+
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立练习：两路交错，只有天气获授权</h2>
+  <p>写一个 <code>finish(parts, completed)</code>：先按索引拼接每个调用，只有归一化完成信号为真且身份字段齐全时，才经同一个 dispatch 和 <code>tool_message</code> 回填。用同一批片段比较中断和完成，核对 <code>EXECUTIONS</code>，不要用核心块里的默认允许集。起点可单跑，不打印；夹具不含身份冲突，真实适配器还需处理。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l36-transfer-starter"># (索引, 调用 ID, 工具名, 参数片段)；None 表示该事件未重传身份字段
+parts = [
+    (0, "weather-7", "get_weather", '{"city":"'),
+    (1, "search-7", "web_search", '{"query":"展馆"}'),
+    (0, None, None, '苏州"}'),
+]
+allowed_here = frozenset({"get_weather"})  # 应用夹具，不从片段推断
+assert [p[0] for p in parts] == [0, 1, 0]  # 两个调用的片段交错到达
+# TODO：分别拼接；中断不分发；完成后用 allowed_here 进入守卫。</code></pre>
+  <details class="bp-check"><summary>展开参考与断言（接在三个核心块和起点后）</summary><pre data-lang="python"><code class="language-python" id="l36-transfer-check">def finish(parts, completed):
+    if not completed:
+        return []
+    buffers = {}
+    for index, call_id, name, fragment in parts:
+        buf = buffers.setdefault(index, {"id": None, "name": None, "args": []})
+        if call_id is not None:
+            buf["id"] = call_id
+        if name is not None:
+            buf["name"] = name
+        buf["args"].append(fragment)
+    if any(not b["id"] or not b["name"] for b in buffers.values()):
+        raise ValueError("missing call identity")
+    return [tool_message(b["id"], dispatch(b["name"], "".join(b["args"]),
+                                          allowed=allowed_here))
+            for b in buffers.values()]
+
+
+assert finish(parts, completed=False) == [] and not EXECUTIONS
+try:
+    finish([*parts, (2, None, None, "{}")], completed=True)
+except ValueError as exc:
+    assert str(exc) == "missing call identity" and not EXECUTIONS
+else:
+    raise AssertionError("身份缺失时整批不应执行")
+invalid = finish([*parts[:-1], (0, None, None, '"}')], completed=True)
+assert invalid[0]["tool_call_id"] == "weather-7"
+assert json.loads(invalid[0]["content"])["error"]["code"] == "invalid_arguments"
+assert not EXECUTIONS, "空城市参数和越权搜索都不能执行"
+
+messages = finish(parts, completed=True)
+assert [m["tool_call_id"] for m in messages] == ["weather-7", "search-7"]
+weather, search = [json.loads(m["content"]) for m in messages]
+assert weather["ok"] and weather["data"]["city"] == "苏州"
+assert search["ok"] is False and search["error"]["code"] == "forbidden_tool"
+assert EXECUTIONS == ["get_weather"]
+print("L36 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>新文件依次复制 <a href="#l36-args-core"><code>l36-args-core</code></a>、<a href="#l36-registry-core"><code>l36-registry-core</code></a>、<a href="#l36-dispatch-core"><code>l36-dispatch-core</code></a>、<code>l36-transfer-starter</code>、<code>l36-transfer-check</code>。不加 <code>l36-stream-example</code> 或 <code>l36-registry-check</code>。用本机已有 Pydantic 2 环境运行 <code>python -I 文件名.py</code>（不用 <code>-O</code>），应只见 <code>L36 TRANSFER PASSED</code>。中断仍执行就查完成闸门；苏州参数损坏就查按索引拼接；空城市或越权搜索被放行就查是否绕过了 dispatch。这不是厂商流式事件或真实工具服务验收。</p>
+</section>
 
 <div class="section">
   <h2>速查卡</h2>

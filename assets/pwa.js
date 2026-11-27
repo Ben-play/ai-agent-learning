@@ -16,6 +16,9 @@
   var TOP_THRESHOLD = 120;
   var SAVE_DELAY = 700;
   var CATALOG_RETRIES = 100;
+  var CACHE_VISIT_LIMIT = 4;
+  var CACHE_VISIT_ACK_TIMEOUT = 20000; // 给 Worker 的网络超时留出余量。
+  var CACHE_VISIT_RETRY_DELAY = 4000;
   var script = document.currentScript;
   var scriptUrl = script && script.src;
   var siteRoot = null;
@@ -29,6 +32,8 @@
   var state;
   var catalog = null;
   var lessons = [];
+  var requiredLessons = [];
+  var hasRequiredRoute = false;
   var context = null;
   var visitRecorded = false;
   var saveTimer = null;
@@ -40,8 +45,9 @@
   var reloadTriggered = false;
   var updateRecoveryTimer = null;
   var hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
-  var initiallyControlled = hadController;
-  var cacheVisitPending = false;
+  var cacheVisitDone = hadController;
+  var cacheVisitAttempts = 0;
+  var pendingCacheVisit = null;
   var cacheVisitTimer = null;
 
   function installManifestLink() {
@@ -617,9 +623,14 @@
     }, 80);
   }
 
-  function completedCount() {
+  function isRequired(lesson) {
+    /* 目录缺少完整选修元数据时，保留旧版全目录导航，不猜必修。 */
+    return !hasRequiredRoute || lesson.elective === false;
+  }
+
+  function completedCount(items) {
     var count = 0;
-    lessons.forEach(function (lesson) {
+    items.forEach(function (lesson) {
       if (state.completed[lesson.lessonId]) count += 1;
     });
     return count;
@@ -636,90 +647,63 @@
     }
   }
 
-  function continueTarget() {
-    var lastIndex = -1;
-    var target = null;
-
-    if (!lessons.length) return null;
-    if (state.lastVisited === null && completedCount() === 0) {
-      return {
-        href: siteRoot ? new URL('lessons/0001-ai-agent-learning-path-overview.html', siteRoot).href : '',
-        title: '学习路径总览',
-        lessonId: null,
-        complete: true
-      };
+  function continueTarget(count) {
+    var overview = siteRoot ? new URL('lessons/0001-ai-agent-learning-path-overview.html', siteRoot).href : '';
+    if (state.lastVisited === null && count === 0) {
+      return { href: overview, label: '打开学习路径总览' };
     }
-    lessons.some(function (lesson, index) {
-      if (lesson.lessonId === state.lastVisited) {
-        lastIndex = index;
-        return true;
-      }
-      return false;
+
+    function isIncompleteRequired(lesson) {
+      return isRequired(lesson) && !state.completed[lesson.lessonId];
+    }
+    var lastIndex = lessons.findIndex(function (lesson) {
+      return lesson.lessonId === state.lastVisited;
     });
-
-    if (lastIndex !== -1 && !state.completed[lessons[lastIndex].lessonId]) {
-      target = lessons[lastIndex];
-    }
-    if (!target && lastIndex !== -1) {
-      lessons.slice(lastIndex + 1).some(function (lesson) {
-        if (!state.completed[lesson.lessonId]) {
-          target = lesson;
-          return true;
-        }
-        return false;
-      });
-    }
-    if (!target) {
-      lessons.some(function (lesson) {
-        if (!state.completed[lesson.lessonId]) {
-          target = lesson;
-          return true;
-        }
-        return false;
-      });
-    }
+    var target = (lastIndex !== -1 && lessons.slice(lastIndex).find(isIncompleteRequired)) ||
+      requiredLessons.find(isIncompleteRequired);
 
     if (target) {
       return {
         href: lessonHref(target),
-        title: target.title,
         lessonId: target.lessonId,
-        complete: false
+        label: '继续学习 · ' + target.lessonId + ' ' + target.title
       };
     }
-    return {
-      href: siteRoot ? new URL('lessons/0001-ai-agent-learning-path-overview.html', siteRoot).href : '',
-      title: '学习路径总览',
-      lessonId: null,
-      complete: true
-    };
+    return { href: overview, label: hasRequiredRoute ? '必修已完成 · 查看学习路径总览' : '查看学习路径总览', complete: true };
   }
 
-  function updateLearningProgress(count, total) {
-    var percent = total ? Math.round(count / total * 100) : 0;
+  function updateLearningProgress(count, total, requiredCount, requiredTotal) {
     var nodes = document.querySelectorAll('[data-learning-progress]');
     Array.prototype.forEach.call(nodes, function (node) {
       var mode = node.getAttribute('data-learning-progress') || 'label';
+      if (mode === 'required' && !hasRequiredRoute) {
+        node.textContent = '必修进度暂不可用';
+        return;
+      }
+      var completed = mode === 'required' ? requiredCount : count;
+      var length = mode === 'required' ? requiredTotal : total;
+      var scope = mode === 'required' ? '必修' : (mode === 'all' ? '全课程（含选修）' : '');
+      var label = (scope ? scope + ' · ' : '') + '已完成 ' + completed + ' / ' + length + ' 课';
+      var percent = length ? Math.round(completed / length * 100) : 0;
       var strong = node.querySelector('strong');
       var detail = node.querySelector('span');
-      node.setAttribute('data-completed', String(count));
-      node.setAttribute('data-total', String(total));
-      node.setAttribute('aria-label', '已完成 ' + count + '/' + total + ' 课');
+      node.setAttribute('data-completed', String(completed));
+      node.setAttribute('data-total', String(length));
+      node.setAttribute('aria-label', label);
       if (node.tagName === 'PROGRESS') {
-        node.max = total;
-        node.value = count;
+        node.max = length;
+        node.value = completed;
       } else if (strong && detail) {
         strong.textContent = percent + '%';
-        detail.textContent = count === 0 ? '尚未记录已完成课程' :
-          '已完成 ' + count + ' / ' + total + ' 课';
+        detail.textContent = label;
       } else if (mode === 'completed' || mode === 'count') {
-        node.textContent = String(count);
+        node.textContent = String(completed);
       } else if (mode === 'percent') {
         node.textContent = percent + '%';
       } else if (mode === 'fraction') {
-        node.textContent = count + '/' + total;
+        node.textContent = completed + '/' + length;
       } else {
-        node.textContent = '已完成 ' + count + ' / ' + total + ' 课';
+        node.textContent = label;
       }
     });
   }
@@ -753,17 +737,14 @@
     });
   }
 
-  function updateContinueLearning() {
-    var target = continueTarget();
-    var nodes;
-    if (!target) return;
-    nodes = document.querySelectorAll('[data-continue-learning]');
+  function updateContinueLearning(count) {
+    var target = continueTarget(count);
+    var nodes = document.querySelectorAll('[data-continue-learning]');
     Array.prototype.forEach.call(nodes, function (node) {
       var link = node.tagName === 'A' ? node : node.querySelector('a');
       var titleNode = node.querySelector('[data-continue-learning-title]');
       var mode = node.getAttribute('data-continue-learning') || 'label';
-      var label = target.complete ? '查看学习路径总览' :
-        '继续学习 · ' + target.lessonId + ' ' + target.title;
+      var label = target.label;
 
       if (link) {
         link.href = target.href;
@@ -789,7 +770,7 @@
       }
       Array.prototype.forEach.call(node.children, function (child) {
         if (child !== link && child.hasAttribute('aria-hidden')) {
-          child.textContent = target.lessonId || '✓';
+          child.textContent = target.lessonId || (target.complete ? '✓' : 'L00');
         }
       });
     });
@@ -849,16 +830,13 @@
   }
 
   function renderLearningUi() {
-    var total;
-    var count;
     if (!catalog || !lessons.length) return;
     ensureCompletionButton();
     updateCompletionButton();
-    total = lessons.length;
-    count = completedCount();
-    updateLearningProgress(count, total);
-    updateCourseBar(count, total);
-    updateContinueLearning();
+    var count = completedCount(lessons);
+    updateLearningProgress(count, lessons.length, completedCount(requiredLessons), requiredLessons.length);
+    updateCourseBar(count, lessons.length);
+    updateContinueLearning(count);
   }
 
   function recordLessonVisit() {
@@ -879,6 +857,8 @@
           typeof available.lessons === 'function') {
         lessons = available.lessons();
         if (Array.isArray(lessons) && lessons.length) {
+          hasRequiredRoute = lessons.every(function (lesson) { return typeof lesson.elective === 'boolean'; });
+          requiredLessons = hasRequiredRoute ? lessons.filter(isRequired) : lessons;
           catalog = available;
           context = catalog.context(window.location.pathname);
           recordLessonVisit();
@@ -991,26 +971,40 @@
     var hostname = window.location.hostname;
     var trustworthy = window.location.protocol === 'https:' || hostname === 'localhost' ||
       hostname === '127.0.0.1' || hostname === '[::1]';
-    return BUILT_SITE && !!siteRoot && 'serviceWorker' in navigator && trustworthy;
+    var sharedRoot = appScopePath === '/' && /(?:^|\.)github\.io$/i.test(hostname);
+    return BUILT_SITE && !!siteRoot && 'serviceWorker' in navigator && trustworthy && !sharedRoot;
+  }
+
+  function finishCacheVisit(retry) {
+    clearTimeout(cacheVisitTimer);
+    cacheVisitTimer = null;
+    pendingCacheVisit = null;
+    cacheVisitDone = !retry || cacheVisitAttempts >= CACHE_VISIT_LIMIT;
+    if (cacheVisitDone) return;
+    cacheVisitTimer = window.setTimeout(function () {
+      cacheVisitTimer = null;
+      postCacheVisitedPage(registration);
+    }, CACHE_VISIT_RETRY_DELAY);
   }
 
   function postCacheVisitedPage(reg) {
-    var worker;
-    var page;
     /* 已受控导航由 Service Worker 的 fetch 路径缓存；消息只补首次未受控页面。 */
-    if (initiallyControlled || cacheVisitPending) return;
-    worker = navigator.serviceWorker.controller || (reg && reg.active);
+    if (cacheVisitDone || cacheVisitTimer !== null || pendingCacheVisit) return;
+    var worker = navigator.serviceWorker.controller || (reg && reg.active);
     if (!worker) return;
-    page = new URL(window.location.href);
+    var page = new URL(window.location.href);
     page.hash = '';
     page.search = '';
-    cacheVisitPending = true;
-    worker.postMessage({ type: 'CACHE_VISITED_PAGE', url: page.href });
-    clearTimeout(cacheVisitTimer);
+    var id = String(++cacheVisitAttempts); // 回复只发送给发起请求的 Client。
+    pendingCacheVisit = { id: id, worker: worker };
     cacheVisitTimer = window.setTimeout(function () {
-      cacheVisitPending = false;
-      postCacheVisitedPage(registration);
-    }, 4000);
+      finishCacheVisit(true);
+    }, CACHE_VISIT_ACK_TIMEOUT);
+    try {
+      worker.postMessage({ type: 'CACHE_VISITED_PAGE', url: page.href, id: id });
+    } catch (error) {
+      finishCacheVisit(true);
+    }
   }
 
   function offerUpdate(worker) {
@@ -1068,17 +1062,13 @@
     workerUrl = new URL('service-worker.js', siteRoot);
 
     navigator.serviceWorker.addEventListener('message', function (event) {
-      if (!event.data || event.data.type !== 'CACHE_VISITED_PAGE_RESULT') return;
-      clearTimeout(cacheVisitTimer);
-      cacheVisitPending = false;
-      if (event.data.ok === true) {
-        initiallyControlled = true;
-        return;
-      }
-      /* 临时网络或 Cache Storage 失败后继续补缓存，不把失败确认当作成功。 */
-      cacheVisitTimer = window.setTimeout(function () {
-        postCacheVisitedPage(registration);
-      }, 4000);
+      var reply = event.data;
+      if (!pendingCacheVisit || !reply || reply.type !== 'CACHE_VISITED_PAGE_RESULT' ||
+          typeof reply.ok !== 'boolean') return;
+      if (event.source && event.source !== pendingCacheVisit.worker) return;
+      if ('id' in reply && reply.id !== pendingCacheVisit.id) return;
+      /* 旧 Worker 不返回 id 或 retryable；false 仍消耗有限的重试次数。 */
+      finishCacheVisit(!reply.ok && (!('id' in reply) || reply.retryable !== false));
     });
 
     navigator.serviceWorker.addEventListener('controllerchange', function () {

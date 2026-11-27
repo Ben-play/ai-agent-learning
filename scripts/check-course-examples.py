@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Run explicitly allowlisted, offline course acceptance blocks in subprocesses.
 
-Uses only the standard library to run explicit allowlists. The default suite needs
-Pydantic v2 for L36 and uses loopback HTTP for L58/L59; it never calls external
-services. The separate LangGraph suite needs the graph-lab dependencies. The
-Phase 7–10 use local synthetic inputs; L75 reuses the loopback MCP checkpoint and
-L82 runs a fixed Node.js controller check. Phase 10's actual LangGraph rehearsal
-is separate from its standard-library checks. This script installs nothing.
+The `foundations` suite covers selected early lessons on the standard library.
+The `pydantic` suite checks L34/L36 using an existing Pydantic v2 environment.
+The default suite includes both and uses loopback HTTP for L58/L59/L75 and Node.js
+for L82. The separate LangGraph suite needs graph-lab dependencies; Phase 10's
+actual LangGraph rehearsal is separate from its standard-library checks.
+The runner installs nothing and calls no external services.
 """
 
 from __future__ import annotations
@@ -18,15 +18,25 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+EARLY_CASES = (
+    ("0005-L02-python-runtime-and-modules.html", ("l02-starter-check",), "L02 STARTER PASSED"),
+    ("0022-L18-tokenization.html", ("l18-batch-check",), "L18 ACCEPTED"),
+    ("0022-L18-tokenization.html", ("l18-request-contract-check",), "P2 CHECKPOINT REQUEST-CONTRACT PASSED"),
+    ("0028-L24-phase2-capstone.html", ("l24-report", "l24-report-check"), "L24 ACCEPTED"),
+)
 CASES = (
     ("0030-L25-llm-api-basics.html", ("l25-adapter-check",), "L25 ACCEPTED"),
     ("0031-L26-streaming.html", ("l26-terminal-check",), "L26 ACCEPTED"),
+    ("0031-L26-streaming.html", ("l26-chat-core", "l26-responses-core", "l26-messages-core", "l26-provider-check"), "L26 PROVIDERS PASSED"),
     ("0032-L27-function-calling.html", ("l27-tool-core", "l27-tool-check"), "L27 ACCEPTED"),
-    ("0033-L28-structured-outputs.html", ("l28-contract-check",), "L28 ACCEPTED"),
-    ("0034-L29-multimodal-api.html", ("l29-multimodal-check",), "L29 ACCEPTED"),
+    ("0033-L28-structured-outputs.html", ("l28-contract-core", "l28-contract-check"), "L28 ACCEPTED"),
+    ("0034-L29-multimodal-api.html", ("l29-output-core", "l29-multimodal-check"), "L29 ACCEPTED"),
     ("0035-L30-context-window-management.html", ("l30-context-core", "l30-context-check"), "L30 ACCEPTED"),
     ("0036-L31-error-handling-retry.html", ("l31-idempotency-check",), "L31 ACCEPTED"),
+    ("0036-L31-error-handling-retry.html", ("l31-deadline-check",), "L31 DEADLINE PASSED"),
+    ("0037-L32-routing-fallback-gateway.html", ("l32-route-core", "l32-route-check"), "L32 ACCEPTED"),
     ("0038-L33-observability.html", ("l33-telemetry-check",), "L33 ACCEPTED"),
+    ("0039-L34-tool-schema-design.html", ("l34-schema-core", "l34-schema-check"), "L34 ACCEPTED"),
     ("0040-L35-function-calling-loop.html", ("l35-loop-core", "l35-loop-check"), "L35 ACCEPTED"),
     ("0041-L36-tool-robustness-registry.html", ("l36-args-core", "l36-registry-core", "l36-dispatch-core", "l36-registry-check"), "L36 ACCEPTED"),
     ("0042-L37-cost-engineering.html", ("l37-cost-check",), "L37 ACCEPTED"),
@@ -171,7 +181,27 @@ DEPLOYMENT_CASES = tuple(
     ("0111-L97-rollback-pending-approvals.html", ("l97-stage-check",), "P11 LOCAL ROLLBACK PASSED"),
     ("0112-L98-incident-evaluation-iteration.html", ("l98-stage-check",), "P11 LOCAL HANDOFF PASSED"),
 )
-ALL_CASES = (CASES + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
+PHASE3_PRACTICE = (
+    ("0030-L25-llm-api-basics.html", ("l25-transfer-starter", "l25-transfer-check"), "L25 TRANSFER PASSED"),
+    ("0031-L26-streaming.html", ("l26-chat-core", "l26-transfer-starter", "l26-transfer-check"), "L26 TRANSFER PASSED"),
+    ("0032-L27-function-calling.html", ("l27-transfer-starter", "l27-transfer-check"), "L27 TRANSFER PASSED"),
+    ("0033-L28-structured-outputs.html", ("l28-transfer-starter", "l28-transfer-check"), "L28 TRANSFER PASSED"),
+    ("0034-L29-multimodal-api.html", ("l29-output-core", "l29-transfer-starter", "l29-transfer-check"), "L29 TRANSFER PASSED"),
+    ("0035-L30-context-window-management.html", ("l30-context-core", "l30-transfer-starter", "l30-transfer-check"), "L30 TRANSFER PASSED"),
+    ("0036-L31-error-handling-retry.html", ("l31-transfer-check",), "L31 TRANSFER PASSED"),
+    ("0037-L32-routing-fallback-gateway.html", ("l32-route-core", "l32-transfer-check"), "L32 TRANSFER PASSED"),
+    ("0038-L33-observability.html", ("l33-transfer-starter", "l33-transfer-check"), "L33 TRANSFER PASSED"),
+    ("0039-L34-tool-schema-design.html", ("l34-transfer-check",), "L34 TRANSFER PASSED"),
+    ("0040-L35-function-calling-loop.html", ("l35-loop-core", "l35-transfer-starter", "l35-transfer-check"), "L35 TRANSFER PASSED"),
+    ("0041-L36-tool-robustness-registry.html", ("l36-args-core", "l36-registry-core", "l36-dispatch-core", "l36-transfer-starter", "l36-transfer-check"), "L36 TRANSFER PASSED"),
+    ("0042-L37-cost-engineering.html", ("l37-transfer-starter", "l37-transfer-check"), "L37 TRANSFER PASSED"),
+    ("0043-L38-phase3-capstone.html", ("l38-core", "l38-transfer-check"), "L38 TRANSFER PASSED"),
+)
+PHASE3_CASES = tuple(case for case in (*CASES, *PHASE3_PRACTICE)
+                     if 25 <= int(case[2].split()[0][1:]) <= 38)
+PYDANTIC_CASES = tuple(case for case in PHASE3_CASES if case[2].split()[0] in {"L34", "L36"})
+FOUNDATION_CASES = EARLY_CASES + tuple(case for case in PHASE3_CASES if case not in PYDANTIC_CASES)
+ALL_CASES = (EARLY_CASES + CASES + PHASE3_PRACTICE + PRACTICE_CASES + CHECKPOINT_CASES + WALKTHROUGH_CASES
              + PHASE6_LOCAL_CASES + RAG_CASES + ENGINEERING_CASES + ADVANCED_CASES + EVOLUTION_CASES + DEPLOYMENT_CASES)
 
 
@@ -200,7 +230,8 @@ class CodeBlocks(HTMLParser):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    suites = {"local": ALL_CASES, "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES,
+    suites = {"local": ALL_CASES, "foundations": FOUNDATION_CASES, "pydantic": PYDANTIC_CASES,
+              "langgraph": LANGGRAPH_CASES, "rag": RAG_CASES,
               "engineering": ENGINEERING_CASES, "advanced": ADVANCED_CASES,
               "evolution": EVOLUTION_CASES, "deployment": DEPLOYMENT_CASES}
     parser.add_argument("--suite", choices=tuple(suites), default="local")
@@ -214,7 +245,7 @@ def main() -> int:
             source = "\n\n".join(parser.blocks[block_id] for block_id in ids)
             compile(source, filename, "exec")
             result = subprocess.run(
-                [sys.executable, "-I", "-X", "utf8", "-c", source],
+                [sys.executable, "-I", "-B", "-X", "utf8", "-c", source],
                 cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
                 timeout=120 if expected == "L56 ACCEPTED" else 30,
                 check=False,

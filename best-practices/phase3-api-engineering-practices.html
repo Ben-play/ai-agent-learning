@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F8F6F1">
+  <title>Phase 3 · LLM API 工程实践复盘</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<h1>Phase 3 · LLM API 工程实践复盘</h1>
+<p>这不是新课。先做各课独立变式，再用下面四项复核 L38 的交接。不重抄示例代码，也不以离线校验代替真实模型集成。</p>
+<section class="section"><h2>1. 输出何时才可用？</h2>
+<p>按原生协议保留终态和上下文。候选文字、成功终态与合法结构是不同证据；流断、截断、拒绝不能交给业务解析或当最终答复。完整 JSON 也不能证明事实与权限。</p>
+<p><a href="../lessons/0031-L26-streaming.html">L26 流终态</a> · <a href="../lessons/0033-L28-structured-outputs.html">L28 结构合同</a> · <a href="../lessons/0034-L29-multimodal-api.html">L29 按输出类型验收</a></p></section>
+<section class="section"><h2>2. 失败后留在原路、换路，还是停止？</h2>
+<p>分开单次超时、重试安排与任务截止。备用必须满足能力、数据范围和重放条件；未知写入先核对原回执。比较同批负载的成功结果、费用和时间，缺测保留未知。</p>
+<p><a href="../lessons/0036-L31-error-handling-retry.html#bp-l31">L31 截止与重放</a> · <a href="../lessons/0037-L32-routing-fallback-gateway.html#bp-l32">L32 合格路线</a> · <a href="../lessons/0042-L37-cost-engineering.html">L37 成本取舍</a></p></section>
+<section class="section"><h2>3. 有调用意图，真的能执行吗？</h2>
+<p>校验实际 Schema、参数与宿主授权；可空不是可省略。发工具前还要留回传预算，并核整批 ID。保留完整交互组和结果关联；协议 ID 不是跨进程业务幂等键。</p>
+<p><a href="../lessons/0039-L34-tool-schema-design.html#bp-l34">L34 导出检查</a> · <a href="../lessons/0040-L35-function-calling-loop.html">L35 原生循环</a> · <a href="../lessons/0041-L36-tool-robustness-registry.html">L36 分派边界</a></p></section>
+<section class="section"><h2>4. 如何交接，而不是只报自检通过？</h2>
+<p>随 <a href="../lessons/0043-L38-phase3-capstone.html#lesson-best-practices">L38 独立验收</a>保留输入、预期、观察到的终态、模型尝试数、实际工具效果与缺失记录。对坏输入至少证明一次「有模型尝试、没分派工具」；说明真实 SDK、缓存、成本与业务结果哪些尚未验证。下一阶段用同样证据纪律定义客服问答与草稿任务。</p></section>
+<nav class="card" aria-label="阶段导航"><a href="../lessons/0044-phase3-api-engineering-outline.html">← Phase 3 大纲</a> · <a href="../qa/phase3-qa.html">第三阶段疑难解答</a> · <a href="../lessons/0045-phase4-prompt-context-outline.html">进入 Phase 4 →</a></nav>
+</main>
+<script src="../assets/content-tools.js"></script>
+<script src="../assets/theme-toggle.js"></script>
+<script src="../assets/back-to-top.js"></script>
+<script src="../assets/pwa.js"></script>
+</body>
+</html>

@@ -20,7 +20,7 @@
       <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>错误处理、退避与幂等</h1>
-    <p class="subtitle">生产 Agent 必须假设"调用会失败"——退避 + 抖动 + 幂等，是 demo 与上线的分水岭</p>
+    <p class="subtitle">调用会失败：先判断能否安全重放，再用退避、抖动和截止时间约束尝试</p>
     <div class="lesson-progress"><div class="lesson-progress-fill" style="width:50%"></div></div>
   </div>
 </div>
@@ -29,7 +29,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>前面几课你学会了把 LLM 调起来、流式输出、管理 Context。但那些都是"顺风局"。真实生产里，<strong>调用一定会失败</strong>：限流(429)、服务端崩(5xx)、超时、网络抖动。一个 Agent 完成一次任务要发几十次 API / 工具调用——<strong>任何一次都可能失败</strong>。</p>
-    <p><a href="0014-L10-exceptions-logging-context.html">L10</a> 已经教过你 <code>tenacity</code> 做指数退避重试——那是地基。这一课往上盖两根<strong>生产级的承重柱</strong>：<strong>抖动(jitter)</strong>打散重试，避免一群客户端同时重试把服务端二次打垮；<strong>幂等键(idempotency key)</strong>标识同一次业务操作，配合服务端的幂等契约，才能安全重放有副作用的请求。</p>
+    <p><a href="0014-L10-exceptions-logging-context.html">L10</a> 介绍了用 <code>tenacity</code> 做指数退避。这里再做三个决定：用<strong>抖动（jitter）</strong>打散重试；在<strong>截止时间</strong>前判断等不等、发不发、单次最多等多久；用<strong>幂等键（idempotency key）</strong>标识同一操作，只有可信契约支持时才自动重放有副作用的请求。</p>
   </div>
 </div>
 
@@ -39,10 +39,10 @@
     <p>完成本课后，你将能够：</p>
     <ul>
       <li>区分<strong>可能值得重试</strong>的临时错误（429/5xx/超时）与<strong>不可重试</strong>的错误（400/401）</li>
-      <li>理解指数退避为何不够，必须加<strong>抖动（full jitter）</strong>防"重试风暴"</li>
-      <li>设置<strong>重试预算</strong>（最大次数 + 总时间上限），到点 fail fast</li>
+      <li>理解确定性的指数退避为何会同步重试，以及怎样用<strong>抖动（full jitter）</strong>打散请求</li>
+      <li>区分<strong>尝试次数上限、重试停止策略和调用方截止时间</strong>，用剩余时间限制每次尝试</li>
       <li>用<strong>作用域内稳定的操作键 + 请求身份</strong>识别重试，验证同库原子提交，并判断外部结果未知时何时该停下来核对</li>
-      <li>说清楚这套机制为什么是 Agent"能上生产"的门槛</li>
+      <li>让同一调用链只有一个重试负责人，并说明离线验证不能证明什么</li>
     </ul>
   </div>
 </div>
@@ -53,7 +53,7 @@
     <p>生产 Agent 的第一条心法：<strong>不要假设调用会成功</strong>。常见失败有四类：</p>
     <ul>
       <li><strong>429 限流（rate limit）</strong>：你发太快 / 超了配额，服务端让你"稍后再来"。</li>
-      <li><strong>5xx 服务端错误</strong>：500 / 502 / 503，是对方的问题，通常是临时的。</li>
+      <li><strong>5xx 服务端错误</strong>：如 500 / 502 / 503；部分是临时故障，是否值得重试看服务契约。</li>
       <li><strong>超时</strong>：请求发出去但迟迟没回，可能网络慢、也可能对方在排队。</li>
       <li><strong>网络抖动</strong>：连接被重置、DNS 抽风等瞬时故障。</li>
     </ul>
@@ -85,17 +85,17 @@
 <div class="section">
   <h2>2. 指数退避：给服务端喘息的空间</h2>
   <div class="card">
-    <p>失败后<strong>立刻重试</strong>是最糟的做法——服务端正忙不过来，你还猛捶它。正确姿势是<strong>指数退避（exponential backoff）</strong>：每失败一次，等待时间翻倍。</p>
+    <p>上游正忙时，立刻重试会增加负载。若确认能安全重放并且预算允许，<strong>指数退避（exponential backoff）</strong>会随失败次数拉长等待。下面是未加抖动、未套次数上限的序列：</p>
     <pre><code>第 1 次失败 → 等 1s → 重试
 第 2 次失败 → 等 2s → 重试
 第 3 次失败 → 等 4s → 重试
 第 4 次失败 → 等 8s → 重试
        等待 = base × 2 ** attempt   （指数增长）</code></pre>
-    <p>越等越久，给对方留出恢复时间。<strong>原理你要懂，但生产别自己造轮子</strong>——正如 <a href="0014-L10-exceptions-logging-context.html">L10</a> 讲过的，<code>tenacity</code> 内置了这一切。下面的片段只演示等待和停止策略；实际使用还要限定可重试的错误和可安全重放的操作。</p>
-    <pre><code>from tenacity import retry, stop_after_attempt, wait_exponential
+    <p>越等越久，给对方留出恢复时间。<a href="0014-L10-exceptions-logging-context.html">L10</a> 介绍的 <code>tenacity</code> 已提供退避策略。下面的片段只演示等待和次数限制；实际使用还要限定可重试的错误和可安全重放的操作。</p>
+    <pre data-lang="python"><code class="language-python">from tenacity import retry, stop_after_attempt, wait_exponential
 
-@retry(stop=stop_after_attempt(4),
-       wait=wait_exponential(multiplier=1, min=1, max=8))  # 约 1→2→4→8s（封顶 8s，实际序列以 tenacity 为准）
+@retry(stop=stop_after_attempt(4),  # 共 4 次尝试，含首次；持续失败时只等 1、2、4 秒
+       wait=wait_exponential(multiplier=1, min=1, max=8))
 def call_llm(prompt):
     return client.chat.completions.create(...)   # 失败自动退避重试</code></pre>
     <p>但纯指数退避有个<strong>致命缺陷</strong>——它在"很多客户端同时失败"时会自己制造灾难。这正是下一节的主角。</p>
@@ -112,24 +112,22 @@ t=3s   → 1000 个客户端【一起】重试   💥 再垮一次
 t=7s   → 1000 个客户端【一起】重试   💥 …死循环</code></pre>
     <p>因为大家的退避节奏<strong>完全同步</strong>，重试请求会聚成一波又一波的"脉冲"，反复砸向刚要恢复的服务端。这就是<strong>重试风暴 / 惊群效应（thundering herd）</strong>——退避不但没救服务端，反而亲手把它按死。</p>
     <p><strong>解法：加随机抖动（jitter）</strong>。核心思想是<strong>把重试时间打散</strong>，让 1000 个客户端不再"齐步走"。业界最推荐的是 <strong>full jitter</strong>——等待时间在 <code>[0, backoff]</code> 区间里<strong>随机取</strong>：</p>
-    <pre><code>import random
+    <pre data-lang="python"><code class="language-python">import random
 
-# ❌ 纯指数退避：所有客户端等待时间【一模一样】→ 同步重试
-wait = base * 2 ** attempt
-
-# ✅ full jitter：在 [0, backoff] 里随机 → 重试时间被打散
-wait = random.uniform(0, base * 2 ** attempt)
-#         ↑ 每个客户端随机落在 0~backoff 之间，波峰被抹平</code></pre>
+# attempt 从 0 开始；未抖动的等待上限
+backoff = base * 2 ** attempt
+# full jitter：在 [0, backoff] 内抽取本轮计划等待
+wait = random.uniform(0, backoff)</code></pre>
     <p>加了 jitter 后，那 1000 个客户端会均匀地散布在 0~1s、0~2s…里陆续重试，服务端面对的是<strong>平缓的涓流</strong>而非"脉冲海啸"，得以真正恢复。AWS 的经典模拟证明：<strong>full jitter 显著降低服务端负载、缩短整体恢复时间</strong>（见本课 primary source）。</p>
     <div class="card" style="border-left: 4px solid var(--accent-bright); margin-top:1rem;">
       <strong>🔑 好消息：tenacity 内置抖动，一行开启</strong>
-      <pre><code>from tenacity import retry, stop_after_attempt, wait_random_exponential
+      <pre data-lang="python"><code class="language-python">from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-@retry(stop=stop_after_attempt(5),
-       wait=wait_random_exponential(min=1, max=30))   # 指数退避 + 随机抖动
+@retry(stop=stop_after_attempt(5),  # 总尝试数含首次
+       wait=wait_random_exponential(min=0, max=30))  # 指数退避 + full jitter
 def call_llm(prompt):
     return client.chat.completions.create(...)</code></pre>
-      <p><code>wait_random_exponential</code> 就是"指数退避 + full jitter"的开箱即用版。<strong>别手写</strong>——你只需知道背后为什么要这么做。</p>
+      <p><code>wait_random_exponential</code> 可复用，但只负责算等待；上面的片段没有设置安全重放条件或截止时间。</p>
     </div>
     <p><strong>Agent 关联</strong>：生产 Agent 往往是"一群实例并发跑"。一旦上游 LLM 网关抖动，<strong>没有 jitter，你的整个 Agent 集群就会自发形成重试风暴</strong>，把本可自愈的小故障放大成雪崩。</p>
   </div>
@@ -147,26 +145,168 @@ def call_llm(prompt):
 </div>
 
 <div class="section">
-  <h2>4. 重试预算：别无限重试</h2>
+  <h2>4. 重试预算：尝试次数、等待排程与截止时间</h2>
   <div class="card">
-    <p>退避 + 抖动解决了"怎么重试"，但还有个问题：<strong>重试几次才放弃？</strong> 答案绝不是"一直重试"。如果服务端真的挂了，无限重试只会让请求<strong>越堆越多</strong>，最终连你自己的进程都被拖垮。</p>
-    <p>要给重试设<strong>预算（retry budget）</strong>——两条硬上限，任一触顶就<strong>fail fast</strong>（立即认输、把错误抛给上层）：</p>
-    <pre><code>【重试预算 = 两条上限】
-  ① 最大次数：最多重试 N 次（如 5 次）
-  ② 总时间上限：整个重试过程不超过 T 秒（如 30s）
-
-  任一触顶 → 立即抛错，别再堆请求</code></pre>
-    <pre><code>from tenacity import retry, stop_after_attempt, stop_after_delay, wait_random_exponential
-
-@retry(
-    stop=(stop_after_attempt(5) | stop_after_delay(30)),  # 5 次 或 30s，先到先停
-    wait=wait_random_exponential(min=1, max=15),
-    reraise=True,                                          # 到点抛出真实异常
-)
-def call_llm(prompt):
-    return client.chat.completions.create(...)</code></pre>
-    <p><strong>fail fast 好过慢慢拖死</strong>：与其让用户等 5 分钟最后还是失败，不如及时报错，让上层对可安全重放的调用走 <a href="0037-L32-routing-fallback-gateway.html">L32 的 fallback（换模型/换供应商）</a>或友好降级。若外部副作用结果未知，不自动换路，按第 5 节先核对。</p>
+    <p>退避和抖动决定怎么等，不决定该不该再试。Tenacity 的停止策略是在一次失败被判定可重试后决定<strong>是否再排一次</strong>；下面的已用时间从这轮重试调用开始算：</p>
+    <ul>
+      <li><code>stop_after_attempt(5)</code>：最多 <strong>5 次尝试，含首次</strong>；若一直失败，最多再重试 4 次。</li>
+      <li><code>stop_after_delay(30)</code>：只看截至该次失败的已用时间，不把<strong>即将发生的等待</strong>算进去。若第 29 秒失败、已算出的等待为 2 秒、次数还有余量，它仍允许等到第 31 秒再尝试。</li>
+      <li><code>stop_before_delay(30)</code>：把本轮计划等待也算进去，<strong>已用时间 + 下一次等待 ≥ 30 秒</strong>就不排；因此会拒绝上面的 <strong>29 + 2 秒</strong>，也会拒绝 29 + 1 秒。</li>
+    </ul>
+    <p>若只想限制<strong>重试排程</strong>，可用 <code>stop_after_attempt(5) | stop_before_delay(30)</code>。两种时间停止策略都<strong>不会取消正在执行的调用</strong>，也不会限制下一次调用本身的耗时。即使排程时算出能在第 29 秒发起，实际醒来可能已经迟了；首次尝试也不是由这些停止条件拦住的。</p>
+    <p><strong>调用方截止时间</strong>是另一个边界：为整次操作设一个单调时钟上的绝对截止时间，排等待前拒绝会到达或越过截止的等待；每次发起前（包括首次和等待醒来后）重新测剩余时间，剩余时间不为正就不发，其他情况把单次超时设为<strong>单次上限与剩余时间的较小值</strong>。</p>
+    <p>这些检查不会强行中断任意同步函数。示例的传输替身按约定在给定时间内返回或报告超时；真实客户端要核对超时是覆盖整次尝试还是只约束某个 I/O 阶段，以及它支持什么取消方式。即便客户端不再等待，也不能断言外部操作已取消或未写入。</p>
   </div>
+  <div class="best-practice-point" id="bp-l31">
+    <h3>决策卡：工单超时后，不把下一次尝试排到截止之外</h3>
+    <p class="bp-scenario"><strong>同一场景：</strong>创建一张外部工单，截止为第 30 秒。第 29 秒才发现没收到响应，本轮退避是 2 秒，尝试次数还有余量；以下先假定供应商允许按原键安全重放。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：停止策略就是截止时间</span><p>只设 <code>stop_after_delay(30)</code>，按第 29 秒的已用时间放行等待，可能到第 31 秒才发第二次请求。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：按剩余时间决定等、发和等多久</span><p>同一请求不排这 2 秒；若等待能排下，醒来仍先验截止，再把剩余时间传给单次传输。未拿到业务结论就保留原引用以核对。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>宁可少一次重试，也不在预算外发请求。若没有可信重放契约，即使时间和次数都够，也先核对。这里只由调用方重试；接入 SDK 或网关时关闭同一链路的其他自动重试，避免底层次数被放大。</p>
+    <p class="bp-result"><strong>结果诊断：</strong>第 29 秒应只有一次传输、没有等待。若还安排了等待，检查是否只看已用时间；若醒来后仍越界发起，查发起前的时钟检查；若单次仍拿到固定超时，查是否取了单次上限与剩余时间的较小值。若收到「结果未知」，去核对原操作，不触发自动换路。</p>
+  </div>
+  <p>以下脚本只模拟超时，不载入 Tenacity 或 SDK，不用网络或真实睡眠。固定等待代表本轮抖动结果；每次 <code>send</code> 只尝试一次，不模拟远端是否提交。<code>replay_safe</code> 由用例给定；真实外部写入须在每次重放前确认原参数、作用域和保留期仍有效。</p>
+  <p>发起前就没预算会报 <code>BudgetExhausted</code>；发过写请求但最终没收到结果则报 <code>OutcomeUnknown</code>，带回原操作引用和停止原因，交给第 5 节的核对流程。</p>
+  <details class="bp-check"><summary>展开离线时钟与截止时间验收</summary>
+    <pre data-lang="python" data-label="Python · 标准库离线验收"><code class="language-python" id="l31-deadline-check">class BudgetExhausted(Exception):
+    pass
+
+
+class OutcomeUnknown(Exception):
+    pass
+
+
+class FakeClock:
+    def __init__(self, start=0, *, wakeup_lag=0):
+        self.now = start
+        self.wakeup_lag = wakeup_lag
+        self.waits = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, delay):
+        self.waits.append(delay)
+        self.now += delay + self.wakeup_lag
+
+
+class FakeTransport:
+    def __init__(self, clock, steps):
+        self.clock = clock
+        self.steps = iter(steps)
+        self.calls = []
+
+    def send(self, reference, *, timeout):
+        self.calls.append((reference, self.clock.monotonic(), timeout))
+        response_in, result = next(self.steps)
+        if response_in &gt;= timeout:
+            self.clock.now += timeout
+            raise TimeoutError("response not observed")
+        self.clock.now += response_in
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def call_with_budget(send, clock, reference, *, deadline, per_attempt,
+                     max_attempts, wait, replay_safe):
+    if max_attempts &lt; 1:
+        raise BudgetExhausted("attempts")
+    last_timeout = None
+    for attempt in range(1, max_attempts + 1):
+        remaining = deadline - clock.monotonic()  # 首次或醒来后，发起前重测
+        if remaining &lt;= 0:
+            if last_timeout is not None:
+                raise OutcomeUnknown(reference, "deadline") from last_timeout
+            raise BudgetExhausted("deadline")  # 尚未发过请求
+        try:
+            return send(reference, timeout=min(per_attempt, remaining))
+        except TimeoutError as error:
+            if not replay_safe:
+                raise OutcomeUnknown(reference, "not_replay_safe") from error
+            if attempt == max_attempts:
+                raise OutcomeUnknown(reference, "attempts") from error
+            remaining = deadline - clock.monotonic()
+            if wait &gt;= remaining:
+                raise OutcomeUnknown(reference, "deadline") from error
+            last_timeout = error
+            clock.sleep(wait)
+
+
+def expect_error(kind, fn, *args, **kwargs):
+    try:
+        fn(*args, **kwargs)
+    except kind as error:
+        return error
+    raise AssertionError(f"expected {kind.__name__}")
+
+
+def run(clock, transport, *, deadline=5, per_attempt=4, wait=2,
+        max_attempts=3, replay_safe=True):
+    return call_with_budget(transport.send, clock, "op-42", deadline=deadline,
+                            per_attempt=per_attempt, max_attempts=max_attempts,
+                            wait=wait, replay_safe=replay_safe)
+
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+# 截止时间已到：连首次尝试也不能交给传输层。
+clock = FakeClock(start=5)
+transport = FakeTransport(clock, [])
+assert str(expect_error(BudgetExhausted, run, clock, transport)) == "deadline"
+assert transport.calls == [] and clock.waits == []
+
+# 离截止还剩 2 秒：传输只拿到 2 秒，不是默认的 4 秒。
+clock = FakeClock(start=3)
+transport = FakeTransport(clock, [(1, "T-7")])
+assert run(clock, transport) == "T-7"
+assert transport.calls == [("op-42", 3, 2)] and clock.monotonic() == 4
+
+# 从 t=0 开始，第 29 秒超时；等 1 秒到截止，等 2 秒越过，都不排等待。
+for proposed_wait in (1, 2):
+    clock = FakeClock()
+    transport = FakeTransport(clock, [(35, "T-7")])
+    unknown = expect_error(OutcomeUnknown, run, clock, transport,
+                           deadline=30, per_attempt=29, wait=proposed_wait)
+    assert unknown.args == ("op-42", "deadline")
+    assert transport.calls == [("op-42", 0, 29)] and clock.waits == []
+    assert clock.monotonic() == 29
+
+# t=3 超时，等 1 秒后还有 1 秒；第二次仍使用同一操作引用。
+clock = FakeClock()
+transport = FakeTransport(clock, [(3, TimeoutError("response lost")), (0, "T-7")])
+assert run(clock, transport, wait=1, max_attempts=2) == "T-7"
+assert transport.calls == [("op-42", 0, 4), ("op-42", 4, 1)] and clock.waits == [1]
+
+# t=3 计划等 1 秒，但实际醒在 t=6：重新看时钟，不发第二次请求。
+clock = FakeClock(wakeup_lag=2)
+transport = FakeTransport(clock, [(3, TimeoutError("response lost")), (0, "T-7")])
+unknown = expect_error(OutcomeUnknown, run, clock, transport, wait=1)
+assert unknown.args == ("op-42", "deadline")
+assert transport.calls == [("op-42", 0, 4)] and clock.waits == [1]
+assert clock.monotonic() == 6
+
+# 最大尝试数为 1：即使还有时间，也只允许首次调用。
+clock = FakeClock()
+transport = FakeTransport(clock, [(2, TimeoutError("response lost")), (0, "T-7")])
+unknown = expect_error(OutcomeUnknown, run, clock, transport, max_attempts=1)
+assert unknown.args == ("op-42", "attempts") and isinstance(unknown.__cause__, TimeoutError)
+assert transport.calls == [("op-42", 0, 4)] and clock.waits == []
+
+# 外部写入没有可信重放契约：有预算也不能自动重发，保留查询所需引用。
+clock = FakeClock()
+transport = FakeTransport(clock, [(2, TimeoutError("response lost")), (0, "T-7")])
+unknown = expect_error(OutcomeUnknown, run, clock, transport, replay_safe=False)
+assert unknown.args == ("op-42", "not_replay_safe")
+assert isinstance(unknown.__cause__, TimeoutError)
+assert transport.calls == [("op-42", 0, 4)] and clock.waits == []
+
+print("L31 DEADLINE PASSED")</code></pre>
+  </details>
+  <p><strong>通过标准：</strong>单独复制折叠块，用 <code>python -I 文件名.py</code> 运行，唯一输出应为 <code>L31 DEADLINE PASSED</code>。这里验的是排程、发起次数、传输超时和未知结果，不是线上延迟、远端取消或供应商幂等。</p>
 </div>
 
 <div class="section">
@@ -286,16 +426,16 @@ print("L31 ACCEPTED")</code></pre></details>
 </div>
 
 <div class="section">
-  <h2>6. 拼起来：这就是"能上生产"的分水岭</h2>
+  <h2>6. 拼起来：用同一份预算做重试决定</h2>
   <div class="card">
-    <p>把错误分类、重放判断、退避、抖动和预算拼起来：</p>
+    <p>整条调用链只有一个重试负责人（<a href="0019-L15-httpx.html#bp-l15-single-transport-policy">L15</a>）。由调用方执行本课策略时，关闭 SDK、传输和网关的其他自动重试，不在外层再套一层。首次及每次尝试前都按同一截止时间限制传输：</p>
     <pre><code>一次 Agent 工具/API 调用失败时：
   参数或鉴权错误 → 不重试，立即报错
   临时错误（如 429/503/超时）→ 先判断能否安全重放
-    ├─ 无副作用，或有可信幂等契约 → 按契约重放（有键则复用）
-    │    用指数退避 + full jitter；预算耗尽则停止自动重试
+    ├─ 无副作用，或有可信幂等契约 → 仅在作用域、有效期和预算内重放
+    │    复用原键；退避加抖动；若等待会触及截止，不排下一次
     └─ 外部副作用结果未知且无可信重放契约 → 停止重放，查询或人工核对</code></pre>
-    <p>退避、抖动和预算决定<strong>何时重试、何时停</strong>，不能让本来不安全的重试变安全。预算用完时也不能把未知结果当作未执行，再交给 L32 自动换路。</p>
+    <p>退避、抖动和预算不能让不安全的重试变安全。预算用完时可以对安全调用友好降级；不能把未知写入当作未执行，再交给 <a href="0037-L32-routing-fallback-gateway.html">L32</a> 自动换路。</p>
   </div>
 
   <div class="card" style="margin-top:1rem;">
@@ -306,7 +446,7 @@ print("L31 ACCEPTED")</code></pre></details>
         <summary>点击查看参考答案</summary>
         <div style="margin-top:.6rem;">
           <ul>
-            <li><strong>① 可以按契约重放：</strong>在预算内，用首次保存的键和相同参数重发到同一作用域，并按对方契约解读返回结果。如果首次已提交且结果保留，应读到原结果；不能假定重试总会成功。</li>
+            <li><strong>① 可以按契约重放：</strong>在预算和契约有效期内，用首次保存的键和相同参数重发到同一作用域，并按对方契约解读返回结果。如果预算已用完、仍没收到业务结论，则保留原引用核对，不换路重发。</li>
             <li><strong>② 不能盲目重放：</strong>保留“结果未知”，用业务引用核对外部状态或回执。确认已有工单则记录原编号，确认首个请求没创建工单且不会再生效才考虑补做；无法确认就交人工。自己在本地保存一个键，不能让对方去重。</li>
           </ul>
         </div>
@@ -316,13 +456,54 @@ print("L31 ACCEPTED")</code></pre></details>
 
   <div class="tip" style="margin-top:1rem;">
     <strong>🎤 面试高频①："如何处理速率限制（429）？"</strong>
-    <p>答：① <strong>指数退避</strong>——失败后等待时间翻倍，给服务端喘息；② 加 <strong>full jitter</strong>——把重试时间随机打散到 <code>[0, backoff]</code>，<strong>防止大量客户端同步重试引发重试风暴（thundering herd）</strong>；③ 设<strong>重试预算</strong>——最大次数 + 总时间上限，超了 fail fast；④ <strong>先确认能否安全重放</strong>（429/5xx/超时是重试候选，400/401 别重试）。工程上用 <code>tenacity</code> 的 <code>wait_random_exponential</code>，别手写。</p>
+    <p>答：先确认能安全重放，再由唯一重试负责人用指数退避和 <strong>full jitter</strong> 打散重试；若契约要求 <code>Retry-After</code>，遵守其最短等待。次数用完或等待排不进截止时间就不再试；每次发起前重算单次超时。Tenacity 提供退避策略，但停止策略不替传输层兑现超时。</p>
   </div>
 
   <div class="tip" style="margin-top:1rem;">
     <strong>🎤 面试高频②："有副作用的工具调用怎么安全重试？"</strong>
     <p>答：首次尝试前保存操作键，重试时复用；在同一作用域内核对请求参数。同库内把业务变更和操作记录、结果<strong>原子提交</strong>，重放返回保存的结果，同键不同参数直接拒绝。外部副作用只能按供应商明确的作用域及保留期重放；没有可信契约且结果未知，就核对状态，不盲重试。</p>
   </div>
+  <div class="quiz" data-quiz="q4">
+    <div class="quiz-question"><span class="quiz-q">Q</span> 第 29 秒遇到可重放的失败，次数尚有余量，计划等 2 秒。两种 30 秒停止策略会怎么做？</div>
+    <div class="quiz-options">
+      <button data-answer="wrong">两者都保证整次调用在第 30 秒前返回</button>
+      <button data-answer="correct">stop_after_delay 允许排等待；stop_before_delay 不排，但不会中断执行中的调用</button>
+      <button data-answer="wrong">两者都把等待截短到 1 秒再发</button>
+      <button data-answer="wrong">stop_before_delay 允许等到第 31 秒；stop_after_delay 不允许</button>
+    </div>
+    <div class="quiz-explanation"><code>stop_after_delay</code> 只看已用的 29 秒；<code>stop_before_delay</code> 还计入计划的 2 秒。调用方若要约束实际发起与每次尝试的时长，要在发起前重新测剩余预算，并让传输层兑现适用的超时。</div>
+  </div>
+</div>
+
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立练习：上游要求等一等，重试还排得下吗？</h2>
+  <p>换成<strong>只读的工单状态查询</strong>。上游返回 429，契约要求重试前至少等待已解析的 <code>Retry-After</code> 秒数（这里只给非负整数秒，不解析 HTTP 日期）。重试负责层也已经算出本轮本地抖动的等待值。实现 <code>retry_wait(now, deadline, local_wait, retry_after)</code>：返回应排的等待秒数；排不下就返回 <code>None</code>，不要把等待截短来抢一次重试。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l31-transfer-starter"># (现在, 截止, 本地等待, 上游最小等待) → 预期等待秒数或 None
+cases = [
+    ((3, 5, 1, 2), None),  # 等到边界
+    ((3, 5, 1, 3), None),  # 等过边界
+    ((1, 5, 1, 2), 2),     # 上游要求更长，但还来得及
+    ((1, 5, 3, 1), 3),     # 本地退避更长，也不能缩短
+]
+# TODO: 实现 retry_wait；先算等待，再判断是否还有发起尝试的余量。</code></pre>
+  <p>起点可单独用于练习，不需要上面的实现。即使等待排得下，醒来后仍要重新检查单调时钟，并把单次超时限制在实际剩余时间内。</p>
+  <details class="bp-check"><summary>展开独立参考与断言（无需起点或前面的代码）</summary>
+    <pre data-lang="python" data-label="Python · 独立迁移验收"><code class="language-python" id="l31-transfer-check">def retry_wait(now, deadline, local_wait, retry_after):
+    wait = max(local_wait, retry_after)
+    return wait if now + wait &lt; deadline else None
+
+
+if not __debug__:
+    raise RuntimeError("run without -O")
+
+assert retry_wait(3, 5, 1, 2) is None  # 刚好到截止
+assert retry_wait(3, 5, 1, 3) is None  # 越过截止
+assert retry_wait(1, 5, 1, 2) == 2    # 服从上游下限
+assert retry_wait(1, 5, 3, 1) == 3    # 保留更长的本地等待
+assert retry_wait(5, 5, 0, 0) is None
+print("L31 TRANSFER PASSED")</code></pre>
+  </details>
+  <p class="bp-result">单独用 <code>python -I 文件名.py</code> 运行折叠参考，唯一输出应为 <code>L31 TRANSFER PASSED</code>。若第一组还排了重试，检查是否允许等到截止时刻、或把上游的最短等待截短了。</p>
 </div>
 
 <div class="section">
@@ -342,15 +523,18 @@ print("L31 ACCEPTED")</code></pre></details>
         把重试时间打散，波峰抹平
   tenacity: wait_random_exponential（退避+抖动，一行搞定）
 
-【重试预算】retry budget
-  ① 最大次数(N)  ② 总时间上限(T)  任一触顶 → fail fast
-  tenacity: stop_after_attempt(N) | stop_after_delay(T)
+【重试预算】整条调用链只设一个重试负责人
+  stop_after_attempt(N)：最多 N 次尝试，含首次
+  stop_after_delay(T)：只看已用时间；stop_before_delay(T)：还计入下一次等待
+  两种时间停止策略都不取消执行中的调用
+  调用方截止：不排触及截止的等待；发起前重算剩余，无余量则不发
+  单次超时 = min(单次上限, 剩余时间)，由传输执行
 
 【幂等键】idempotency key
   同一业务操作 → 同一作用域、复用首次保存的键、核对参数
   同库 → 业务写入与操作记录、结果原子提交；重放返回保存的结果
   外部 → 只在供应商支持的作用域和保留期内按契约重放
-  无可信契约且结果未知 → 查状态或交人工；不盲重发或换路
+  预算耗尽或不能安全重放时，未知写入须核对；不盲重发或换路
 
 【Agent 分水岭】一次任务几十次调用，任何一次都可能失败
   先判能不能重放，再决定怎么退避、何时停止。</code></pre>
@@ -361,6 +545,7 @@ print("L31 ACCEPTED")</code></pre></details>
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <ul>
+      <li><a href="https://tenacity.readthedocs.io/en/latest/api.html#stop-functions" target="_blank"><strong>Tenacity: Stop Functions</strong></a> — 对照含首次的尝试次数、只看已用时间的停止策略，以及计入下一次等待的停止策略。</li>
       <li><a href="https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/" target="_blank"><strong>AWS Architecture Blog: Exponential Backoff And Jitter</strong></a>（Marc Brooker）— 第 3 节的模拟对比：full jitter 如何降低负载和重试次数。</li>
       <li><a href="https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/" target="_blank"><strong>AWS Builders’ Library: Making retries safe with idempotent APIs</strong></a> — 调用方指定操作键、原子记录与业务变更，以及同键不同参数和迟到请求的处理。</li>
       <li><a href="https://docs.stripe.com/api/idempotent_requests" target="_blank"><strong>Stripe: Idempotent Requests</strong></a> — 只阅读契约：文档说明如何比较参数、何时保存或返回结果（包括已保存的 <code>500</code>），以及键保留至少 24 小时后可能被清除。清除后复用键可能变成新请求，不要把该期限或行为套用到其他服务。</li>
@@ -381,7 +566,7 @@ print("L31 ACCEPTED")</code></pre></details>
     <ul>
       <li>· <a href="0035-L30-context-window-management.html">上一课 L30 · Context 管理</a> — 顺风局的最后一课，接下来直面失败</li>
       <li>· <a href="0037-L32-routing-fallback-gateway.html">下一课 L32 · 路由与 Fallback</a> — 对能安全重放的调用，怎么换模型/供应商降级</li>
-      <li>· <a href="0014-L10-exceptions-logging-context.html">L10 · tenacity 重试</a> — 本课的地基（别造轮子，退避/抖动/预算都内置）</li>
+      <li>· <a href="0014-L10-exceptions-logging-context.html">L10 · tenacity 重试</a> — 复用退避和停止策略，不把它们当成传输超时</li>
       <li>· <a href="0020-L16-async-concurrency.html">L16 · 并发调用要限流</a> — 从源头少触发 429，与退避互补</li>
     </ul>
   </div>
@@ -396,13 +581,13 @@ print("L31 ACCEPTED")</code></pre></details>
       <li>生产 Agent 必须假设<strong>调用会失败</strong>；临时错误是重试候选，还要判断是否能安全重放</li>
       <li><strong>指数退避</strong>给服务端喘息（1s→2s→4s→8s），原理懂即可，用 tenacity</li>
       <li><strong>抖动(full jitter)</strong>是灵魂：纯退避会让客户端<strong>同步重试→重试风暴</strong>，随机打散才能救场</li>
-      <li><strong>重试预算</strong>（最大次数 + 总时间）到点 <strong>fail fast</strong>，别把请求堆死</li>
+      <li><strong>单一重试负责人</strong>限制总尝试数（含首次）。停止策略只管排程；调用方在截止前核对等待和发起时机，传输用剩余时间限制单次尝试。</li>
       <li><strong>幂等键</strong>在首次尝试前保存，在同一作用域内重试复用并核对参数；同库把业务写入和操作记录、结果原子提交</li>
-      <li><strong>外部副作用</strong>只按供应商支持的作用域和保留期重放；没有可信契约且结果未知时先核对，不盲重试</li>
+      <li><strong>外部副作用</strong>只按供应商支持的作用域和保留期重放；不能重放或预算已尽时，保留未知结果和原引用以便核对。</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    想额外练习，可以给一个本地模拟调用套上 <code>tenacity</code> 的 <code>wait_random_exponential</code> + <code>stop_after_attempt | stop_after_delay</code>，观察退避、抖动和预算。不用发真实 API 请求。下一课 <a href="0037-L32-routing-fallback-gateway.html">L32</a>：对能安全重放的调用，如何用路由与 Fallback 换路。
+    用本课的<a href="#lesson-best-practices">独立练习</a>验证上游最短等待是否排得下，无需发请求。下一课 <a href="0037-L32-routing-fallback-gateway.html">L32</a>：对能安全重放的调用，如何用路由与 Fallback 换路。
   </div>
 </div>
 

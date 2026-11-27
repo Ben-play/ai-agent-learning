@@ -69,6 +69,15 @@ CRITICAL_PROBES = {"review-denied": "authority_probe_failed", "review-pending": 
                    "lost-reply": "recovery_probe_failed"}
 READBACK_ERRORS = (AssertionError, AttributeError, KeyError, OSError, RuntimeError, TypeError,
                    ValueError, SQLiteError)
+# The timing contract is independent of observed events and business readback.
+EXPECTED_TIMING_EVENTS = {
+    "review-denied": ("stage", "deny"),
+    "policy-retention": ("retrieve", "render_answer"),
+    "no-evidence": ("retrieve",),
+    "lost-reply": ("retrieve", "stage", "approved_call", "recover"),
+    "review-pending": ("stage",),
+    "draft-committed": ("retrieve", "stage", "approved_call"),
+}
 SIMULATED_MS = {"retrieve": 24, "render_answer": 21, "stage": 12, "deny": 18,
                 "approved_call": 24, "recover": 40}
 MIN_SAMPLE = 6
@@ -103,7 +112,8 @@ def event_timing(row, case, arm):
         return [], None
     if not isinstance(events, (tuple, list)) or not all(isinstance(event, str) for event in events):
         return [], None
-    if not events or any(event not in SIMULATED_MS for event in events):
+    if (tuple(events) != EXPECTED_TIMING_EVENTS[case.case_id]
+            or any(event not in SIMULATED_MS for event in events)):
         return list(events), None
     elapsed = sum(SIMULATED_MS[event] for event in events)
     # A simulated response delay cannot turn unknown timing into a valid measurement.

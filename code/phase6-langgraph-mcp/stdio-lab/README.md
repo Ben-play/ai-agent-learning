@@ -21,6 +21,6 @@ python -I -X utf8 code/phase6-langgraph-mcp/stdio-lab/test_lab.py -v
 
 按 MCP `2026-07-28` [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio)、[版本规则](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)、[元数据](https://modelcontextprotocol.io/specification/2026-07-28/basic/index#_meta)、[发现](https://modelcontextprotocol.io/specification/2026-07-28/server/discover)和[工具](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)构造示例。请求逐条使用 `params._meta`；不混用 `2025-11-25` 的 [`initialize` / `notifications/initialized`](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)。官方 Python SDK [v2.3.0 稳定发布](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.3.0)的[版本支持说明](https://github.com/modelcontextprotocol/python-sdk/blob/v2.3.0/docs/protocol-versions.md)确认支持现代版本与旧握手模式；本环境不允许安装外部 SDK 验证 Windows 实跑，实验选用已实测的标准库教学子集，不是通用 SDK，也不作完整合规声明。
 
-**此前已测：** Windows 11 / Python 3.14，真实子进程，UTF-8、发现、列表、调用、错误分层、读取审计和作用域负例。本轮缓存字段及对应断言未复跑。模拟请求未送达可观察父端读超时和 EOF 后正常回收；模拟没有发出 EOF 可观察逾时终止和回收。
+**本地实测：** Windows 11 / Python 3.11.15，7 项标准库测试通过。覆盖真实子进程、UTF-8、发现与列表的 `ttlMs` / `cacheScope`、调用、错误分层、读取审计、作用域和协议版本负例。请求未送达时观察父端读超时及 EOF 后的回收；未发出 EOF 时观察逾时终止与回收。
 
 **未覆盖：** SDK 或第三方服务互操作、其他操作系统实跑、终止后再强杀的升级分支、旧版降级、并发、通知或请求级取消、分页、完整 JSON Schema 解释器、资源／提示、HTTP／远端授权或真实身份、模型回答质量。分区只是合成任务范围；不认证调用者，不充当 OS 沙箱。运行无外网、模型、秘密和上传。

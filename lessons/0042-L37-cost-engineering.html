@@ -332,7 +332,65 @@ print("L37 ACCEPTED")</code></pre>
     <strong>面试回答：一个 Agent 每月 10k，如何尝试降到 5k？</strong>
     先确认流量、任务难度、质量门槛和延迟 SLO；按完整任务追踪全部尝试及工具费用，算成功任务成本并看 p95。根据 trace 选择实验：若无效循环或结果 / 输出量主导，就测试减少这些浪费；若共同前缀复用高，就核对目标模型 / API 的缓存契约与写读账；若可延后交付，就评估 Batch；再按证据测试 effort、路由、压缩或蒸馏。语义缓存只复用同租户 / 权限范围、有效版本下的可复用知识答案，不复用动作结果。各方案须通过同一验收集与灰度回归，组合后重新算净收益；无法满足预算时说明差距，不保证砍半。前缀缓存省重复输入且仍生成新答案，语义缓存满足约束后才可跳过生成，两者不能混为一谈。
   </div>
+  <div class="best-practice-point" id="bp-l37">
+    <h3>决策卡：关键用例单独过门，再比较每次成功的成本</h3>
+    <p class="bp-scenario"><strong>适用：</strong>访客问答对无障碍入口另有硬性准确要求，先在同一任务集标出这类关键用例。不要把这个小样本的全对要求照搬为所有业务的上线门槛。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">总体过门就选低价</span><p>同一批访客问题中，便宜方案答对三题，只答错无障碍入口；总体达标且成本更低，却没通过关键用例。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">关键子集也作为门槛</span><p>同一批任务只在总体质量、关键用例和 p95 都达标的方案中比较成本；若加严截止时间后一个也不合格，就不选。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>给少数关键问题加核验会多花费用和时间。先约定哪些错误不可接受，再用独立样本复测代价，而不是看完结果才把失败归为不重要。</p>
+  </div>
+  <details class="think-q">
+    <summary><span class="think-q-tag">追问</span>无障碍问题占比很小，能只把这些请求送到带核验的路径吗？</summary>
+    <div class="think-q-answer"><p>可以提为实验，但要验证路由是否会漏掉不同表述的无障碍问题。用同一验收集保留误路由反例，把路由、核验、回退的费用和延迟都计入整项任务，再判是否过门。</p></div>
+  </details>
 </div>
+
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立练习：便宜方案总分够，却答错了无障碍入口</h2>
+  <p>同一批四题，总体成功率至少 3/4，无障碍入口必须通过，端到端 p95 不超过 600 ms。先计算两种方案全部尝试的花费、成功任务成本和 p95，再实现先筛后选；只把 p95 上限改为 500 ms，重新判断。四条记录的 nearest-rank p95 恰好是最大值。起点可单跑，只检查任务集一致，不打印。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l37-transfer-starter">from fractions import Fraction
+from math import ceil
+
+tasks = {"开门", "收费", "出口", "无障碍入口"}
+critical = {"无障碍入口"}
+quality_floor = Fraction(3, 4)
+# 任务: (最终是否通过, 所有尝试费用, 端到端毫秒)；结果与费用均为虚构。
+plans = {
+    "cheap": {"开门": (True, (1,), 160), "收费": (True, (1,), 170),
+              "出口": (True, (1,), 180), "无障碍入口": (False, (1,), 355)},
+    "verified": {"开门": (True, (3,), 180), "收费": (True, (3,), 220),
+                 "出口": (True, (3,), 240), "无障碍入口": (True, (2, 5), 520)},
+}
+assert all(rows.keys() == tasks for rows in plans.values()), "候选必须覆盖同一批任务"
+# TODO：先用通过状态和耗时过门，再按全成本 / 成功数排序。</code></pre>
+  <details class="bp-check"><summary>展开参考与断言（接在起点后）</summary><pre data-lang="python"><code class="language-python" id="l37-transfer-check">def measure_plan(rows):
+    passed = {task for task, (ok, _, _) in rows.items() if ok}
+    total = sum(sum(costs) for _, costs, _ in rows.values())
+    times = sorted(ms for _, _, ms in rows.values())
+    p95 = times[ceil(Fraction(95, 100) * len(times)) - 1]
+    return (Fraction(len(passed), len(rows)),
+            Fraction(total, len(passed)) if passed else None,
+            p95, critical &lt;= passed)
+
+
+stats = {name: measure_plan(rows) for name, rows in plans.items()}
+
+
+def choose(limit_ms):
+    eligible = {name: cost for name, (rate, cost, p95, critical_ok) in stats.items()
+                if rate &gt;= quality_floor and critical_ok and p95 &lt;= limit_ms}
+    return min(eligible, key=eligible.get) if eligible else None
+
+
+assert stats["cheap"] == (Fraction(3, 4), Fraction(4, 3), 355, False)
+assert stats["verified"] == (Fraction(1), Fraction(4), 520, True)
+assert choose(600) == "verified", "总体达标不能抵消关键用例失败"
+assert choose(500) is None, "门槛内没有合格候选"
+print("L37 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>新文件只复制 <code>l37-transfer-starter</code>、<code>l37-transfer-check</code>，用 <code>python -I 文件名.py</code> 运行（不用 <code>-O</code>），应只见 <code>L37 TRANSFER PASSED</code>。两种方案分别花 4、16 个单位。若选了 cheap，查是不是漏掉关键用例的门槛；若 verified 的成功任务成本不是 4，查是否累计了前一次尝试；500 ms 时仍有候选，查是否先筛延迟再比较成本。不需要第 5 节的块，也不代表真实流量的成功率、p95 或账单。</p>
+</section>
 
 <div class="section">
   <h2>速查卡：决策证据，不是优先级口诀</h2>

@@ -228,11 +228,11 @@
     <div class="home-grid">
       <section class="home-panel" aria-labelledby="continue-heading">
         <h2 id="continue-heading">继续学习</h2>
-        <p>学习记录保存在当前设备中。首次访问时从总览开始。</p>
+        <p>首次访问从总览开始，之后默认继续必修。学习记录保存在当前设备。</p>
         <div class="continue-slot" data-continue-learning>
           <div>
             <a href="lessons/0001-ai-agent-learning-path-overview.html">打开学习路径总览</a>
-            <small>浏览器未启用 JavaScript 时仍可正常进入课程。</small>
+            <small>总览中可浏览必修与选修的全部课程。</small>
           </div>
           <span aria-hidden="true">L00</span>
         </div>
@@ -240,9 +240,12 @@
 
       <section class="home-panel" aria-labelledby="progress-heading">
         <h2 id="progress-heading">学习进度</h2>
-        <p>完成课程后，这里会汇总本机进度。</p>
-        <div class="progress-slot" data-learning-progress role="status" aria-live="polite">
-          <div><strong>0%</strong><span>尚未记录已完成课程</span></div>
+        <p>在课程页手动标记完成；选修不计入必修进度。</p>
+        <div class="progress-slot" role="status" aria-live="polite">
+          <div>
+            <div data-learning-progress="required"><strong>0%</strong><span>必修 · 已完成 0 / 89 课</span></div>
+            <span data-learning-progress="all">全课程（含选修） · 已完成 0 / 98 课</span>
+          </div>
         </div>
       </section>
     </div>

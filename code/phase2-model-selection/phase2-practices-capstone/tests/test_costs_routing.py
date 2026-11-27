@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import replace
-
 import pytest
 
 from phase2_practices import AssessmentReport, build_offline_lab
-from phase2_practices.assessment import _rank_qualified, _recommend_route
+from phase2_practices.assessment import _TrialOutcome, _rank_qualified, _recommend_route
 from phase2_practices.contracts import (
     CandidateAssessment,
     CostBreakdown,
@@ -125,38 +123,15 @@ def test_route_is_separate_minimum_total_expected_cost_optimization() -> None:
 
 
 def test_optimizer_enumerates_farther_cheaper_stronger_fallback() -> None:
-    metrics = QualityMetrics(1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0)
-
-    def candidate(candidate_id: str, cost: float) -> CandidateAssessment:
-        return CandidateAssessment(
-            task="counterexample",
-            candidate_id=candidate_id,
-            provider="Virtual",
-            expected_observations=1,
-            observed_observations=1,
-            dev_observations=0,
-            holdout_observations=1,
-            dev_metrics=None,
-            metrics=metrics,
-            dev_costs=None,
-            costs=simple_cost(cost),
-            preflight_rejections=(),
-            failed_holdout_runs=(),
-            holdout_escalation_probability=0.5,
-            qualified=True,
-            gate_failures=(),
-            normalized_score=1.0,
-        )
-
-    candidates = (
-        candidate("tier-1", 1.0),
-        candidate("tier-2-expensive", 100.0),
-        candidate("tier-3-cheap", 2.0),
-    )
+    outcomes = {
+        "tier-1": {("case", 1): _TrialOutcome(False, 0.5), ("case", 2): _TrialOutcome(True, 0.5)},
+        "tier-2-expensive": {("case", 1): _TrialOutcome(True, 100.0), ("case", 2): _TrialOutcome(False, 100.0)},
+        "tier-3-cheap": {("case", 1): _TrialOutcome(True, 2.0), ("case", 2): _TrialOutcome(False, 2.0)},
+    }
     route = _recommend_route(
         "counterexample",
-        tuple(item.candidate_id for item in candidates),
-        candidates,
+        tuple(outcomes),
+        outcomes,
         {"tier-1": 1, "tier-2-expensive": 2, "tier-3-cheap": 3},
         10.0,
     )
@@ -175,35 +150,14 @@ def test_optimizer_enumerates_farther_cheaper_stronger_fallback() -> None:
 
 
 def test_failing_primary_and_fallback_preserve_chained_residual_risk() -> None:
-    metrics = QualityMetrics(1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0)
-
-    def candidate(candidate_id: str, cost: float) -> CandidateAssessment:
-        return CandidateAssessment(
-            task="chain-failure",
-            candidate_id=candidate_id,
-            provider="Virtual",
-            expected_observations=1,
-            observed_observations=1,
-            dev_observations=0,
-            holdout_observations=1,
-            dev_metrics=None,
-            metrics=metrics,
-            dev_costs=None,
-            costs=simple_cost(cost),
-            preflight_rejections=(),
-            failed_holdout_runs=(),
-            holdout_escalation_probability=1.0,
-            qualified=True,
-            gate_failures=(),
-            normalized_score=1.0,
-        )
-
-    primary = candidate("primary", 1.0)
-    cheap_fallback = candidate("cheap-fallback", 0.1)
+    outcomes = {
+        "primary": {("case", 1): _TrialOutcome(True, 1.0)},
+        "cheap-fallback": {("case", 1): _TrialOutcome(True, 0.1)},
+    }
     route = _recommend_route(
         "chain-failure",
         ("primary", "cheap-fallback"),
-        (primary, cheap_fallback),
+        outcomes,
         {"primary": 1, "cheap-fallback": 2},
         10.0,
     )
@@ -220,11 +174,10 @@ def test_failing_primary_and_fallback_preserve_chained_residual_risk() -> None:
     assert strategy.manual_review_cost == pytest.approx(10.0)
     assert strategy.total_expected_cost == pytest.approx(11.1)
     # A safe route is preferred once manual review is priced.
-    safe = replace(cheap_fallback, holdout_escalation_probability=0.0)
     safe_route = _recommend_route(
         "chain-failure",
         ("primary", "cheap-fallback"),
-        (primary, safe),
+        {**outcomes, "cheap-fallback": {("case", 1): _TrialOutcome(False, 0.1)}},
         {"primary": 1, "cheap-fallback": 2},
         10.0,
     )
@@ -275,30 +228,11 @@ def test_huge_cost_values_with_real_differences_are_normalized() -> None:
 
 
 def test_no_stronger_fallback_reports_residual_manual_review_risk() -> None:
-    metrics = QualityMetrics(1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0)
-    candidate = CandidateAssessment(
-        task="residual",
-        candidate_id="top-tier",
-        provider="Virtual",
-        expected_observations=5,
-        observed_observations=5,
-        dev_observations=0,
-        holdout_observations=5,
-        dev_metrics=None,
-        metrics=metrics,
-        dev_costs=None,
-        costs=simple_cost(1.0),
-        preflight_rejections=(),
-        failed_holdout_runs=(),
-        holdout_escalation_probability=0.2,
-        qualified=True,
-        gate_failures=(),
-        normalized_score=1.0,
-    )
+    outcomes = {("case", repeat): _TrialOutcome(repeat == 1, 1.0) for repeat in range(1, 6)}
     route = _recommend_route(
         "residual",
         ("top-tier",),
-        (candidate,),
+        {"top-tier": outcomes},
         {"top-tier": 5},
         10.0,
     )
