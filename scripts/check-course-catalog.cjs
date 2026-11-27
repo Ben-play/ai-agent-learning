@@ -24,6 +24,11 @@ const total = 98;
 assert.equal(current.lessons().length, total, 'Outlines and planning pages must not count as lessons');
 assert.equal(current.lessons()[0].lessonId, 'L01');
 assert.equal(current.lessons().at(-1).lessonId, 'L98');
+assert.deepEqual(Array.from(current.lessons().filter(item => item.elective), item => item.lessonId),
+  ['L80', 'L81', 'L82', 'L83', 'L84', 'L89', 'L90', 'L91', 'L92']);
+assert.equal(current.lessons().filter(item => !item.elective).length, 89);
+assert.equal(current.context('/lessons/0102-L89-bounded-worker-delegation.html').current.elective, true);
+assert.equal(current.context('/lessons/0101-L88-architecture-decision.html').next.lessonId, 'L89');
 assert.equal(current.context('/lessons/0112-L98-incident-evaluation-iteration.html').next, null);
 assert.equal(current.context('/lessons/0043-L38-phase3-capstone.html').next.file, phase4Outline);
 assert.equal(current.context(`/lessons/${phase4Outline}`).isLesson, false);
@@ -85,4 +90,4 @@ assert.equal(future.lessonId, 'L100');
 assert.equal(future.phaseNumber, 11);
 assert.equal(future.total, total + 1);
 assert.equal(futureCatalog.context('/lessons/0004-L01-dev-environment-setup.html').lessonId, 'L01');
-console.log('Course catalog: published count and L100 compatibility passed');
+console.log('Course catalog: 89 required / 98 total, full navigation, and L100 compatibility passed');

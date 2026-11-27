@@ -62,7 +62,7 @@
 <div class="lesson-header">
   <div class="lesson-meta-row">
     <span class="lesson-phase-tag">第一阶段 · Python 基础</span>
-    <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">55</span><span class="lesson-time-unit">分钟</span></span>
+    <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">60</span><span class="lesson-time-unit">分钟</span></span>
   </div>
   <h1>开发环境搭建</h1>
   <p class="subtitle">工欲善其事，必先利其器 — 搭建专业级 Python 开发环境</p>
@@ -75,16 +75,16 @@
 
 <div class="card" style="border-left: 4px solid var(--accent-bright);">
   <strong>💡 为什么这课重要？</strong>
-  <p>写 Agent 之前，得先有一套趁手的工具。这一课不讲编程，讲的是<strong>把地基打平</strong>：装对 Python 版本、用现代包管理器（uv）、把每个项目的依赖隔离开、把 API Key 安全地存起来。这些看似琐碎，但少了任何一环，后面调 LLM API 时就会卡在"包装不上""key 泄露""版本冲突"这类和业务无关的坑里。花 15 分钟把环境理顺，是为后面 15 节课省下无数个抓狂的小时。</p>
+  <p>写 Agent 前，先把运行环境搭稳：选择项目所需的 Python 版本、让每个项目用自己的依赖、把 API Key 与源码分开。先配好工具并确认解释器，再跑 <code>agent-hello</code> 和课末环境检查点。这样遇到导入失败、版本冲突或配置错误时，就能先排除环境问题，而不用猜业务代码哪里写错了。</p>
 </div>
 
 <h2>本课目标</h2>
 <ul>
   <li>✅ 确认 Python 3.11+ 已安装</li>
-  <li>✅ 配置 uv 包管理工具（比 pip 快 10-100 倍）</li>
-  <li>✅ 搭建 VS Code Python 开发环境</li>
-  <li>✅ 掌握虚拟环境的创建和使用</li>
-  <li>✅ 完成第一个实战小项目</li>
+  <li>✅ 用 uv 管理课程项目，知道何时用 <code>venv</code> + <code>pip</code></li>
+  <li>✅ 让编辑器和终端使用同一个项目解释器</li>
+  <li>✅ 区分虚拟环境、依赖锁文件和本地 <code>.env</code></li>
+  <li>✅ 完成实战小项目和环境检查点</li>
 </ul>
 
 <!-- Step 1 -->
@@ -108,20 +108,12 @@ python3 --version</code></pre>
     <tr><th>结果</th><th>操作</th></tr>
     <tr><td>3.11 或更高</td><td>✅ 跳到下一步</td></tr>
     <tr><td>3.10 或更低</td><td>⬇️ 需要升级</td></tr>
-    <tr><td>Windows：<code>py</code>/<code>python</code> 均无输出</td><td>⬇️ 还没装 Python，需要安装（注意 Windows 通常没有 <code>python3</code> 命令，看到 <code>python3</code> 报错不代表没装 Python）</td></tr>
-    <tr><td>macOS/Linux：<code>python3</code> 提示 command not found</td><td>⬇️ 需要安装</td></tr>
+    <tr><td>Windows：<code>py</code>/<code>python</code> 均无法显示版本</td><td>先确认是否已安装及终端能否找到解释器；仅 <code>python3</code> 不可用不代表没装</td></tr>
+    <tr><td>macOS/Linux：<code>python3</code> 提示 command not found</td><td>先确认解释器是否在当前 PATH；确实没有再安装</td></tr>
   </table>
 
-  <p><strong>安装/升级 Python：</strong></p>
-  <p>全平台最稳的路径是官网安装包：从 <a href="https://www.python.org/downloads/" target="_blank">python.org/downloads</a> 下载安装，Windows 安装时务必勾选 "Add python.exe to PATH"。</p>
-  <p>macOS / Linux 上如果想同时管理多个 Python 版本，可以选用 <code>pyenv</code>（可选，非必需）：</p>
-  <pre><code># macOS / Linux 可选：用 pyenv 管理多版本
-curl https://pyenv.run | bash
-# 安装脚本结束后会打印 PATH 配置提示——按提示改好 shell 配置文件后
-# 重新打开一个新终端窗口，让配置生效，再继续下面的命令
-pyenv install 3.12
-pyenv global 3.12</code></pre>
-  <p>（pyenv 的 shell 初始化细节不在本课展开，跟着安装脚本输出的提示操作即可。）</p>
+  <p><strong>安装/升级 Python：</strong>如果已有符合课程要求的解释器，不用重装。没有时可从 <a href="https://www.python.org/downloads/" target="_blank">Python 官网</a>选择适合系统的安装方式；Windows 上若想直接用 <code>python</code> 命令，按安装方式确认 PATH 或应用执行别名已配置。</p>
+  <p><strong>何时需要版本管理器？</strong>一份符合项目要求的 Python 就能开始。如果旧项目必须用 3.11、新项目需要 3.12，<code>uv</code> 可按项目选择 Python；macOS/Linux 团队已有 <code>pyenv</code> 也可沿用。版本管理器解决“用哪个 Python”，虚拟环境解决“此项目装哪些包”，两者不是一回事。不必为课程同时安装两个版本管理器。</p>
 
   <p>安装后重新检查版本：</p>
   <pre><code># Windows PowerShell
@@ -138,7 +130,8 @@ python3 --version
     <div class="step-title">安装 uv 包管理工具</div>
   </div>
 
-  <p><code>uv</code> 是 2024-2025 年 Python 生态最重要的工具之一，比 pip 快 10-100 倍。Agent 开发中你会频繁安装依赖，uv 能节省大量时间。</p>
+  <p><strong>为什么课程用 uv？</strong><code>uv add</code> 把直接依赖写进 <code>pyproject.toml</code>，并更新 <code>uv.lock</code>（记录解析出的版本，包括间接依赖）；<code>uv run</code> 按项目环境执行。这样换机器时有可审查的安装输入，不必猜同事装过哪些包。速度会受缓存、机器和项目影响，不是选择它的唯一理由。</p>
+  <p><strong>什么时候保留别的工具？</strong>一次性练习可用标准库 <code>venv</code> 加 <code>python -m pip</code>；团队若已用 Poetry、Conda 或其他工具锁定并同步依赖，沿用团队流程即可。本课采用 uv 是为了统一后面的运行和验收命令，不是说 pip 不能用。</p>
 
   <pre><code># Mac / Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -171,7 +164,7 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code></pre>
     <div class="step-title">配置 VS Code</div>
   </div>
 
-  <p>VS Code 是 Agent 开发最主流的编辑器。安装以下扩展：</p>
+  <p><strong>为什么用 VS Code？</strong>课件用它演示如何选择解释器、运行代码和断点调试。PyCharm 或其他熟悉的编辑器也可以；关键是编辑器和终端指向同一个项目解释器，装了扩展并不代表选对了 Python。在 VS Code 中安装以下扩展：</p>
 
   <pre><code># 用命令行安装扩展（如果已安装 VS Code CLI）
 code --install-extension ms-python.python
@@ -221,7 +214,7 @@ code --install-extension ms-python.debugpy</code></pre>
     <div class="step-title">创建第一个项目 & 虚拟环境</div>
   </div>
 
-  <p>虚拟环境让每个项目的依赖互相隔离，避免版本冲突。这是 Python 开发的<strong>基本纪律</strong>。</p>
+  <p><strong>为什么不把包都装到全局？</strong>如果项目 A 需要 <code>httpx 0.24</code>，项目 B 需要 <code>0.28</code>，它们共用一处安装目录时，给 B 升级就可能弄坏 A。每个项目的 <code>.venv</code> 有自己的解释器入口和 <code>site-packages</code>，可各用所需版本；它是根据依赖输入重建的本地产物，不是锁文件，也不是系统安全沙箱。只跑不依赖第三方库的一次性脚本时，单独建虚拟环境并非必需。</p>
 
   <pre><code>mkdir my-first-agent
 cd my-first-agent
@@ -273,7 +266,7 @@ uv run python -c "from pathlib import Path; import sys; root=Path.cwd().resolve(
     <div class="step-title">安装常用依赖</div>
   </div>
 
-  <p>Agent 开发最常用的几个包，先装上：</p>
+  <p>课程练习提前准备三个包：<code>httpx</code> 负责 HTTP 请求（L15），<code>pydantic</code> 在运行时验证外部数据（L14），<code>python-dotenv</code> 只负责把本地 <code>.env</code> 加载进进程，不加密文件。它们各解决一类问题；不必为脚本预装没有用到的包。</p>
 
   <pre><code># 核心依赖
 uv add httpx           # 异步 HTTP 客户端（调 LLM API 用）
@@ -299,7 +292,7 @@ uv add --dev mypy      # 类型检查</code></pre>
       <div class="bp-right"><span class="bp-compare-label">✅ 检查版本化输入</span><pre><code>uv lock --check --offline
 git ls-files --error-unmatch pyproject.toml uv.lock</code></pre><p>验证锁一致性，并确认两个真值文件已被 Git 跟踪。</p></div>
     </div>
-    <p class="bp-rationale"><strong>为什么更优：</strong>版本化的 <code>pyproject.toml</code> 与 <code>uv.lock</code> 是团队能够审查、比较和重放的依赖输入；<code>.venv</code> 是本地产物。这里不运行同步，因此不会宣称“什么都不安装”，也不把一次本地检查夸大成跨平台可复现性证明。</p>
+    <p class="bp-rationale"><strong>为什么更优：</strong><code>pyproject.toml</code> 说明直接需要哪些包及允许的版本范围，<code>uv.lock</code> 记录实际解析出的版本，包含包依赖的其他包。只共享清单可能让同事解析出另一套版本；只复制 <code>.venv</code> 则拿不到可审查的依赖输入。这一自检只查清单和锁文件，不运行同步，也不是跨平台重建成功的证明。</p>
     <ol class="bp-steps"><li>用 <code>uv add</code> 或 <code>uv remove</code> 有意修改依赖。</li><li>审核清单与锁文件的差异，并将两者纳入版本控制。</li><li>忽略且不跟踪 <code>.venv</code>；需要构建环境时再用锁文件同步。</li></ol>
     <details class="bp-check">
       <summary>动手自检：检查锁一致性、真值文件与本地环境状态</summary>
@@ -321,7 +314,7 @@ printf '%s\n' 'manifest-lock: PASS' 'venv-git-state: PASS'</code></pre>
     <div class="step-title">配置环境变量（API Key）</div>
   </div>
 
-  <p>LLM API 需要 API Key。我们用 <code>.env</code> 文件管理，<strong>永远不要把 key 写在代码里</strong>。</p>
+  <p><strong>为什么不把 API Key 写进代码？</strong>源码会被共享、提交和保留在历史里；把值硬编码进去会扩大泄露范围，轮换时还要改源码。程序应从环境变量读 Key；本地开发可让 <code>python-dotenv</code> 把已忽略的 <code>.env</code> 文件加载到进程中。<code>.env</code> 是明文，不是密码库；部署时由平台的秘密管理服务注入，不复制本地文件。本课只需占位变量，不需要任何真实 Key。</p>
 
   <pre><code># Windows PowerShell
 New-Item .env -ItemType File</code></pre>
@@ -329,10 +322,9 @@ New-Item .env -ItemType File</code></pre>
 touch .env</code></pre>
   <p>也可以直接在 VS Code 资源管理器里右键 → New File，新建一个名为 <code>.env</code> 的文件。</p>
 
-  <p>在 <code>.env</code> 中添加（后续课程会用到）：</p>
-  <pre><code># .env（不要提交到 Git！）
-OPENAI_API_KEY=sk-xxx
-ANTHROPIC_API_KEY=sk-ant-xxx</code></pre>
+  <p>本课在 <code>.env</code> 中只放占位变量（后续真的调用 API 时才需要其服务的 Key）：</p>
+  <pre><code># .env（不要提交到 Git）
+L01_PLACEHOLDER=local-demo</code></pre>
 
   <p>在 <code>.gitignore</code> 中添加：</p>
   <pre><code># .gitignore
@@ -369,14 +361,13 @@ trap - EXIT</code></pre>
     <p class="bp-result"><strong>怎么看结果：</strong>唯一的密钥状态应为 <code>secret-loaded: True</code>，它表示加载值与本检查写入的精确占位值一致；错误值或环境中的同名旧值都会让检查停止。输出不得出现占位值本身或任何真实密钥前缀。忽略或未跟踪检查失败时，按精确错误修复。历史泄露或截图无法由这些命令排除，必须轮换。</p>
   </div>
 
-  <p>在 Python 中使用：</p>
-  <pre><code>from dotenv import load_dotenv
-import os
+  <p>在项目根用 Python 验证占位配置（只输出布尔状态）：</p>
+  <pre data-lang="python"><code class="language-python">import os
 
-load_dotenv()  # 加载 .env 文件
+from dotenv import load_dotenv
 
-api_key = os.getenv("OPENAI_API_KEY")
-print("Key loaded:", bool(api_key))  # 只输出 True / False</code></pre>
+load_dotenv(dotenv_path=".env", override=True)
+print("placeholder loaded:", os.getenv("L01_PLACEHOLDER") == "local-demo")</code></pre>
 </div>
 
 <!-- Quiz -->
@@ -385,27 +376,29 @@ print("Key loaded:", bool(api_key))  # 只输出 True / False</code></pre>
 <div class="quiz" data-quiz="q1">
   <div class="quiz-question">
     <span class="quiz-q">Q1:</span>
-    虚拟环境的作用是什么？
+    项目 A 和 B 需要不同版本的 httpx；创建各自的 .venv 能解决什么？
   </div>
   <div class="quiz-options">
-    <button data-answer="wrong">让 Python 运行更快</button>
-    <button data-answer="correct">隔离项目依赖，避免版本冲突</button>
-    <button data-answer="wrong">自动生成 requirements.txt</button>
-    <button data-answer="wrong">提供在线编程环境</button>
+    <button data-answer="wrong">自动替各项目更新 Python</button>
+    <button data-answer="correct">让各项目独立安装所需版本</button>
+    <button data-answer="wrong">为所有项目共享同一个包目录</button>
+    <button data-answer="wrong">替团队记录跨机器的依赖版本</button>
   </div>
+  <div class="quiz-explanation">各项目拥有独立的 <code>site-packages</code>，升级 B 不会覆盖 A 的安装。解释器版本由项目选择；可重建环境的依赖版本由锁文件记录。</div>
 </div>
 
 <div class="quiz" data-quiz="q2">
   <div class="quiz-question">
     <span class="quiz-q">Q2:</span>
-    为什么 API Key 不能写在代码里？
+    真实 API Key 已经进入共享的 Git 历史，应该怎么办？
   </div>
   <div class="quiz-options">
-    <button data-answer="wrong">代码会变长</button>
-    <button data-answer="wrong">Python 不支持</button>
-    <button data-answer="correct">提交到 Git 后别人能看到，造成安全风险</button>
-    <button data-answer="wrong">会影响代码运行速度</button>
+    <button data-answer="wrong">把密钥移到 .env 就够了</button>
+    <button data-answer="wrong">将 .env 加入忽略规则就够了</button>
+    <button data-answer="wrong">删除代码里的值后继续用旧 Key</button>
+    <button data-answer="correct">在服务端撤销并轮换 Key</button>
   </div>
+  <div class="quiz-explanation">删除源码里的值或加忽略规则挡不住已泄露的旧 Key；撤销使其失效，轮换得到新的 Key。本地诊断仍只输出布尔状态。</div>
 </div>
 
 <div class="quiz" data-quiz="q3">
@@ -414,11 +407,12 @@ print("Key loaded:", bool(api_key))  # 只输出 True / False</code></pre>
     <code>uv add --dev pytest</code> 中的 <code>--dev</code> 表示什么？
   </div>
   <div class="quiz-options">
-    <button data-answer="wrong">记录到测试依赖组，普通同步时会自动排除</button>
-    <button data-answer="correct">记录到开发依赖组，生产同步时可显式排除</button>
-    <button data-answer="wrong">记录到全局依赖组，所有项目中都会自动同步</button>
-    <button data-answer="wrong">记录到系统依赖组，虚拟环境中不会进行同步</button>
+    <button data-answer="correct">写入 dev 组，普通同步仍包含它</button>
+    <button data-answer="wrong">写入 dev 组，普通同步自动跳过它</button>
+    <button data-answer="wrong">写入默认依赖，生产同步自动排除它</button>
+    <button data-answer="wrong">只改本地环境，不写入项目依赖清单</button>
   </div>
+  <div class="quiz-explanation"><code>--dev</code> 指定的是依赖归属；默认同步仍包含 dev 组，部署时可用 <code>--no-dev</code> 显式排除。</div>
 </div>
 
 <!-- Task -->
@@ -639,11 +633,12 @@ printf '%s\n' 'P1 CHECKPOINT ENVIRONMENT PASSED'</code></pre>
 <table>
   <tr><th>工具</th><th>作用</th><th>为什么选它</th></tr>
   <tr><td>Python 3.11+</td><td>编程语言</td><td>课程要求 3.11 或更高（用当时的稳定版即可）</td></tr>
-  <tr><td>uv</td><td>包管理</td><td>比 pip 快 10-100 倍，2025 标准</td></tr>
-  <tr><td>VS Code</td><td>编辑器</td><td>生态最好，Python 支持最强</td></tr>
-  <tr><td>pydantic</td><td>数据验证</td><td>Agent 工具定义的核心</td></tr>
-  <tr><td>httpx</td><td>HTTP 客户端</td><td>异步支持，调 LLM API 用</td></tr>
-  <tr><td>.env</td><td>环境变量</td><td>安全管理 API Key</td></tr>
+  <tr><td>uv</td><td>项目和包管理</td><td>一起维护依赖清单、锁文件和项目环境</td></tr>
+  <tr><td>VS Code</td><td>编辑器</td><td>课程用它演示解释器选择和调试，也可用其他编辑器</td></tr>
+  <tr><td>.venv</td><td>虚拟环境</td><td>隔离每个项目安装的包</td></tr>
+  <tr><td>pydantic</td><td>数据验证</td><td>在运行时验证消息和工具参数</td></tr>
+  <tr><td>httpx</td><td>HTTP 客户端</td><td>同步、异步请求都支持</td></tr>
+  <tr><td>.env</td><td>本地配置文件</td><td>通过环境变量向进程提供配置，但不是密码库</td></tr>
 </table>
 
 <div class="source">

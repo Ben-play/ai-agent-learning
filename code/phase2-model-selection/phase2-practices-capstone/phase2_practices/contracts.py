@@ -216,6 +216,19 @@ class RouteRecommendation:
 
 
 @dataclass(frozen=True, slots=True)
+class HoldoutTrial:
+    """Validated replay evidence and observed cost for one qualified candidate run."""
+
+    candidate_id: str
+    case_id: str
+    repeat: int
+    answer: str
+    abstained: bool
+    evidence_ids: tuple[str, ...]
+    cost: float
+
+
+@dataclass(frozen=True, slots=True)
 class TaskAssessment:
     task: str
     policy_id: str
@@ -225,6 +238,7 @@ class TaskAssessment:
     candidates: tuple[CandidateAssessment, ...]
     qualified_ranking: tuple[str, ...]
     route: RouteRecommendation
+    holdout_trials: tuple[HoldoutTrial, ...]
 
 
 @dataclass(frozen=True, slots=True)

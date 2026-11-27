@@ -15,7 +15,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>完整 Function Calling 循环</h1>
     <p class="subtitle">在 Responses 上实现有界的请求、授权执行、回填和退出</p>
@@ -183,7 +183,79 @@ print("L35 ACCEPTED")</code></pre></details>
     <div class="quiz-options"><button data-answer="wrong">只回填第一项</button><button data-answer="correct">分别校验回填</button><button data-answer="wrong">强制并发执行</button><button data-answer="wrong">按工具名合并</button></div>
     <div class="quiz-explanation">调用请求可能共享工具名，但各有独立 ID。全部处理并不要求并发；校验失败时也要按原 ID 给出受控结果。</div>
   </div>
+  <div class="best-practice-point" id="bp-l35">
+    <h3>决策卡：依赖上次结果的工具要分轮，并给最终回答留轮次</h3>
+    <p class="bp-scenario"><strong>适用：</strong>查到展厅编号后才能查开放时间。若两个只读查询互不依赖，才考虑同轮提出；应用是否并发执行是另一项决策。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">按工具次数估算模型预算</span><p>同一场展览要查两次，就给两个模型轮次。在最后一轮收到第二个调用仍去执行，之后已不能回填并取得最终回答。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">为结果回填预算</span><p>同一任务留三轮：先查编号并按原 ID 回填，再拿编号查时段并回填，最后取文本。若只给两轮，保留已发生的第一次查询，但不要启动第二次。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>多轮换来基于前一步证据作决定，但增加延迟和费用；若业务并不需要模型来选下一步，可改为应用内的固定读流程。本地分发替身不授予真实工具权限。</p>
+  </div>
+  <details class="think-q">
+    <summary><span class="think-q-tag">追问</span>若第二个工具改成写入预留，写入后、回填前进程退出；恢复时看到同一个 <code>call_id</code> 就重做吗？</summary>
+    <div class="think-q-answer"><p>不盲重做。<code>call_id</code> 只关联协议结果；用稳定的业务操作键和持久回执核对是否已提交。此处离线循环没有崩溃或恢复测试，未知结果下的重放见 <a href="0060-L52-idempotent-draft-replay.html">L52</a>。</p></div>
+  </details>
 </div>
+
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立练习：定位展厅，再查开放时间</h2>
+  <p>与第 2 节的同轮双调用不同，这次要从第一条工具回填拿到展厅编号，才能发出第二个调用。用固定响应器和本地分发记录验收：三轮完成两次查询并返回文字，换个展厅编号结果也跟着变；只给两轮则应结束，不启动第二次查询。记录实际执行顺序，不能只查最终状态。起点可单跑，不打印。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l35-transfer-starter">from types import SimpleNamespace as Item
+
+
+def reply(*items, text=""):
+    return Item(status="completed", output=list(items), output_text=text)
+
+
+locate = Item(type="function_call", id="item-A", call_id="A",
+              name="locate_exhibit", arguments='{"name":"风筝展"}')
+task = "先找到风筝展的展厅，再查开放时间。"
+assert reply(locate).output[0].call_id == "A"
+# TODO：从第一条实际回填取得 room，把它传入第二个工具调用。</code></pre>
+  <details class="bp-check"><summary>展开参考与断言（接在核心块和起点后）</summary><pre data-lang="python"><code class="language-python" id="l35-transfer-check">def unpack(output, call_id):
+    assert output["type"] == "function_call_output" and output["call_id"] == call_id
+    return json.loads(output["output"])
+
+
+def trial(max_rounds, room):
+    requests, executed = [], []
+
+    def request(items):
+        requests.append(list(items))
+        if len(requests) == 1:
+            return reply(locate)
+        assert items[1] is locate
+        location = unpack(items[2], "A")
+        if len(requests) == 2:
+            assert len(items) == 3
+            return reply(Item(type="function_call", id="item-B", call_id="B",
+                              name="lookup_hours", arguments=json.dumps(location)))
+        assert len(requests) == 3 and len(items) == 5 and items[3].id == "item-B"
+        hours = unpack(items[4], "B")
+        return reply(text=f'{location["room"]} 于 {hours["opens"]} 开放。')
+
+    def dispatch(name, raw):
+        executed.append(name)
+        if name == "locate_exhibit":
+            assert json.loads(raw) == {"name": "风筝展"}
+            return {"room": room}
+        assert name == "lookup_hours" and json.loads(raw) == {"room": room}
+        return {"opens": "10:00"}
+
+    try:
+        outcome = run_loop(request, dispatch, task, max_rounds=max_rounds)
+    except RuntimeError as exc:
+        outcome = str(exc)
+    return outcome, len(requests), executed
+
+
+for room in ("E7", "D3"):
+    assert trial(3, room) == (f"{room} 于 10:00 开放。", 3, ["locate_exhibit", "lookup_hours"])
+assert trial(2, "E7") == ("model round budget exhausted", 2, ["locate_exhibit"])
+print("L35 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>新文件依次复制 <a href="#l35-loop-core"><code>l35-loop-core</code></a>、<code>l35-transfer-starter</code>、<code>l35-transfer-check</code>，不加 <code>l35-loop-check</code> 或在线片段。用 <code>python -I 文件名.py</code> 运行（不用 <code>-O</code>），应只见 <code>L35 TRANSFER PASSED</code>。第二轮找不到展厅就查上一轮 Item 和 <code>call_id</code> 是否原样衔接；两轮下仍有第二条执行记录就查预算判断是否晚于 dispatch。这里验的是应用循环，不是模型会自行选对工具。</p>
+</section>
 
 <div class="section">
   <h2>4. 可选在线接入与兼容对照</h2>

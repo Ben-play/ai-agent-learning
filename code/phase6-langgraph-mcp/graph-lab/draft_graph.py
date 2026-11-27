@@ -151,7 +151,8 @@ def run_step(directory, command, *, on_write=None, lose_reply=False):
                 return {"status": "pending"}  # Orchestration state; the save API was not called.
             output = graph.invoke(Command(resume="review_recorded"), CONFIG, durability="sync")
         elif command == "recover" and snapshot.next == ("apply_review",):
-            # Replay the saved graph step, not a new task. Business storage de-duplicates.
+            # Pin the snapshot just read in this single-writer rehearsal. L85's
+            # latest-thread continuation deliberately uses no checkpoint_id.
             output = graph.invoke(None, snapshot.config, durability="sync")
         else:
             return {"status": "not_runnable"}

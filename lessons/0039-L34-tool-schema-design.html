@@ -17,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Tool Schema 设计</h1>
     <p class="subtitle">工具定义就是模型的"说明书"——写好 Tool Schema 是 Agent 基本功</p>
@@ -41,7 +41,7 @@
       <li>说清"工具定义 = 模型的说明书"：模型只凭 name/description/参数 schema 做决策</li>
       <li>用 <strong>Pydantic</strong> 定义参数、<code>model_json_schema()</code> 一键导出工具 schema</li>
       <li>写出<strong>好的 description</strong>——让模型知道"何时用、参数填什么"</li>
-      <li>用 <strong>enum / Literal</strong> 约束取值、用 <strong>strict mode</strong> 保证格式严格符合 schema</li>
+      <li>用 <strong>enum / Literal</strong> 限制取值，并验证实际导出的 strict 工具参数</li>
       <li>控制工具数量与描述长度，<strong>省 input token</strong></li>
     </ul>
   </div>
@@ -55,11 +55,11 @@
     # ...真实实现：查数据库、调物流 API...
     return {...}</code></pre>
     <p>但<strong>模型看不到这段实现</strong>。传给模型的、模型唯一能读到的，只有一份"工具定义"——一段 JSON：</p>
-    <pre><code>{
+    <pre data-lang="json"><code class="language-json">{
   "type": "function",
-  "name": "get_order_status",        # ← 模型据此决定"调不调"
-  "description": "查询用户订单的当前物流状态。", # ← 模型据此决定"什么时候调"
-  "parameters": {                    # ← 模型据此决定"参数填什么"
+  "name": "get_order_status",
+  "description": "查询用户订单的当前物流状态。",
+  "parameters": {
     "type": "object",
     "properties": {
       "order_id": {"type": "string", "description": "订单号，如 'ORD-2026-0007'"}
@@ -78,14 +78,14 @@
       <button data-answer="wrong">运行工具看看结果</button>
       <button data-answer="wrong">凭模型的先验知识猜</button>
     </div>
-    <div class="quiz-explanation">模型<strong>看不到函数实现</strong>，也不会预先运行工具。它唯一的依据是你传入的<strong>工具定义（name + description + 参数 schema）</strong>。这几行字就是模型的全部信息——所以描述质量直接决定模型选得对不对、填得准不准。这正是本课的灵魂。</div>
+    <div class="quiz-explanation">模型<strong>看不到函数实现</strong>，也不会预先运行工具。模型根据任务上下文和<strong>工具定义（name + description + 参数 schema）</strong>选择和填写工具。描述是引导，不是正确选择的保证。</div>
   </div>
 </div>
 
 <div class="section">
   <h2>2. 用 Pydantic / JSON Schema 定义参数</h2>
   <div class="card">
-    <p>手写 <code>parameters</code> 那坨 JSON 又累又容易错。<strong>业界标准做法：用 Pydantic 定义参数，再 <code>model_json_schema()</code> 一键导出</strong>（呼应 <a href="0018-L14-pydantic.html">L14</a>——LangChain、OpenAI SDK、Pydantic AI 内部都这么做）。</p>
+    <p>可以手写，也可以用 <a href="0018-L14-pydantic.html">L14 的 Pydantic</a> 定义参数，再导出通用 JSON Schema。下方只演示普通工具定义，不等于满足第 4 节的 strict 合同。</p>
     <pre><code>from pydantic import BaseModel, Field
 
 class GetOrderStatus(BaseModel):
@@ -142,8 +142,8 @@ class QueryOrders(BaseModel):
         ..., description="要筛选的订单状态"
     )
 # 导出的 schema 里 status 会带 "enum": ["pending","shipped","delivered","cancelled"]
-# → 模型只会从这 4 个里选，不会瞎编 "in_transit" 这种你代码里没有的值</code></pre>
-    <p><code>Literal</code> 导出成 JSON Schema 的 <code>enum</code>，模型只能在你给的选项里挑——从源头杜绝"编一个不存在的枚举值"。</p>
+# 本地校验不接受未列出的 in_transit</code></pre>
+    <p><code>Literal</code> 导出为 <code>enum</code>，给模型明确选项，并让宿主拒绝未列出的值。非严格端点的生成结果仍可能越界。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
@@ -161,7 +161,7 @@ class QueryOrders(BaseModel):
 <div class="section">
   <h2>4. strict mode：让参数严格符合 schema</h2>
   <div class="card">
-    <p>就算 description 完美，模型偶尔还是会<strong>漏字段、填错类型、多塞个你没定义的参数</strong>。<strong>strict mode（约束解码）</strong>从机制上根治这点——开启后，模型的输出被<strong>约束到只能生成符合 schema 的参数</strong>，而不是"尽力而为"。</p>
+    <p>普通工具建议可能缺键、类型不对或多出字段。对支持工具 strict 的 OpenAI Responses 模型和端点，<strong>受支持的 Schema 子集 + 正常完成的工具调用</strong>才有结构约束。模型仍可能不调用、拒绝或截断；形状正确也不代表订单存在或当前用户有权查看。宿主仍要在执行前校验参数与权限。</p>
     <pre><code>tool = {
     "type": "function",
     "name": "get_order_status",
@@ -174,7 +174,7 @@ class QueryOrders(BaseModel):
         "additionalProperties": False,           # strict 要求：禁止多余字段
     },
 }</code></pre>
-    <p>OpenAI 官方原话：strict 让 function call <em>"reliably adhere to the function schema, instead of being best effort"</em>，并<strong>建议始终开启</strong>。注意它的两条要求：所有对象要 <code>additionalProperties: false</code>、<code>properties</code> 里的字段都要列进 <code>required</code>（可选字段用"允许 null"来表达）。</p>
+    <p>OpenAI 官方原话：strict 让 function call <em>"reliably adhere to the function schema, instead of being best effort"</em>，并<strong>建议始终开启</strong>。注意它的两条要求：所有对象要 <code>additionalProperties: false</code>、<code>properties</code> 里的字段都要列进 <code>required</code>。<strong>可空不是可省略：</strong><code>{"detail_level": null}</code> 表示没有业务偏好，<code>{}</code> 表示缺键。宿主收到显式 <code>null</code>、校验通过后才采用摘要；线上字段不声明默认值。</p>
   </div>
   <div class="tip">
     <strong>同源机制</strong>：strict mode <em>"works by leveraging our structured outputs feature"</em>——它和你在 <a href="0033-L28-structured-outputs.html">L28 Structured Outputs</a> 学的<strong>约束解码是同一套底层技术</strong>。L28 用它保证"输出的 JSON 符合 schema"，这里用它保证"工具参数符合 schema"。一个机制，两处开花。来源：<a href="https://developers.openai.com/api/docs/guides/function-calling" target="_blank">OpenAI · Function calling（strict mode）</a>。
@@ -213,9 +213,9 @@ class QueryOrders(BaseModel):
       <tr><th>原则</th><th>怎么做</th></tr>
       <tr><td><strong>名字动词化</strong></td><td><code>get_order_status</code> / <code>search_docs</code>——动词开头，一看就知道"做什么"</td></tr>
       <tr><td><strong>description 讲清用途和边界</strong></td><td>写"<strong>什么时候用</strong>"，不只写"是什么"；多工具靠它区分</td></tr>
-      <tr><td><strong>参数最少化</strong></td><td>只留必要参数；能有默认值的给默认值，减少模型要填的空</td></tr>
+      <tr><td><strong>参数最少化</strong></td><td>只留必要参数；线上必填键不可省略，业务默认值由宿主落实</td></tr>
       <tr><td><strong>用 enum 约束</strong></td><td>取值有限就用 <code>Literal</code>/enum，杜绝模型编不存在的值</td></tr>
-      <tr><td><strong>开 strict mode</strong></td><td>约束解码保证参数严格符合 schema</td></tr>
+      <tr><td><strong>开 strict mode</strong></td><td>支持时约束正常完成调用的形状，不作业务授权</td></tr>
       <tr><td><strong>错误信息友好</strong></td><td>参数非法时返回<strong>模型读得懂</strong>的报错，让它能据此重试（埋点 <a href="0041-L36-tool-robustness-registry.html">L36</a>）</td></tr>
     </table>
     <p style="margin-top:.6rem;">最后一条尤其重要：工具报错不该是给人看的堆栈，而该是<strong>给模型看的、能指导它下一步怎么改</strong>的一句话（如"order_id 格式应为 ORD-年份-序号"）。这为 L36 的"工具健壮性 + 让模型自我纠错"铺路。</p>
@@ -235,33 +235,22 @@ class QueryOrders(BaseModel):
 </div>
 
 <div class="section">
-  <h2>实战练习</h2>
+  <h2>跟做：给查订单工具增加可空参数</h2>
   <div class="card">
-    <h3>练习：设计"查订单状态"工具的 Schema</h3>
-    <p>给你一个工具需求：<strong>查询订单状态</strong>。用 Pydantic 写出参数 schema，重点练<strong>好的 description</strong> 和 <strong>Literal 约束</strong>。要求：</p>
-    <ol>
-      <li>参数 <code>order_id</code>：必填，写清格式并给示例</li>
-      <li>参数 <code>detail_level</code>：可选，只能是 <code>"summary"</code> 或 <code>"full"</code>，默认 <code>"summary"</code>（用 Literal 约束）</li>
-      <li>工具的顶层 description 要说清"<strong>什么时候用</strong>它"</li>
-      <li>调 <code>model_json_schema()</code> 导出，拼成完整工具定义</li>
-    </ol>
-    <p><strong>先自己写，再看答案。</strong></p>
-    <details>
-      <summary>💡 点击查看参考答案</summary>
-      <pre><code>from typing import Literal
-from pydantic import BaseModel, Field
+    <p>订单号必填；用户选了摘要或完整轨迹就传相应枚举，未选则传 <code>null</code>。使用已有的 <strong>Pydantic v2</strong>，将下面两段按顺序放在同一个 Python 文件里，不发 API 请求。</p>
+    <pre data-lang="python"><code class="language-python" id="l34-schema-core">from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
 
 class GetOrderStatus(BaseModel):
-    """当用户询问某个订单的物流/发货状态时调用，返回该订单的当前状态。
-    需要用户提供订单号；查询多个订单请多次调用。"""   # ← 讲清"何时用 + 边界"
+    """查询用户给出的一笔订单的当前物流状态。"""
 
+    model_config = ConfigDict(strict=True, extra="forbid")
     order_id: str = Field(
         ...,
         description="订单号，用户提供的完整编号，格式为 'ORD-年份-序号'，如 'ORD-2026-0007'",
     )
     detail_level: Literal["summary", "full"] | None = Field(
-        None,
-        description="返回详细程度（可选）：summary=只给当前状态；full=含完整物流轨迹；不填默认按 summary 处理",
+        description="summary 只给当前状态；full 含轨迹；用户未指定时传 null",
     )
 
 # 导出参数 schema（detail_level 会带 enum: ["summary","full"]）
@@ -276,18 +265,80 @@ tool = {
     "parameters": params,
 }
 
-# —— 校验演示：模型返回的参数进来先过一遍 Pydantic ——
-GetOrderStatus(order_id="ORD-2026-0007")              # ✅ detail_level 默认 summary
-GetOrderStatus(order_id="X", detail_level="verbose")  # ❌ ValidationError：不是合法枚举值</code></pre>
-      <h4>为什么这样写好？</h4>
-      <ul>
-        <li>顶层 description 讲了<strong>何时用</strong>（用户问订单状态）和<strong>边界</strong>（多订单要多次调），模型不会误用。</li>
-        <li><code>order_id</code> 给了<strong>格式 + 示例</strong>，模型不会填个乱七八糟的值。</li>
-        <li><code>detail_level</code> 用 <code>Literal</code> 锁死取值，模型编不出 <code>"verbose"</code>；设成"允许 null"（<code>| None</code>）表达"可选"，这才是 strict 模式下表达可选字段的正确姿势（strict 要求所有字段都在 <code>required</code> 里，用 null 表达"不填"）。</li>
-        <li>顺手拿同一个模型<strong>校验入参</strong>——脏参数在进函数前就被 Pydantic 拦下。</li>
-      </ul>
+# 网络接口接收的参数应先过 Pydantic，不用默认值替缺键。
+def order_request(raw):
+    args = GetOrderStatus.model_validate(raw)
+    return args.order_id, "summary" if args.detail_level is None else args.detail_level</code></pre>
+    <p><code>extra="forbid"</code> 既让导出的对象拒绝额外属性，也让宿主拒绝多余键。不写字段默认值才会把 <code>detail_level</code> 放进 <code>required</code>。描述中的示例提示填写格式，不会校验订单号格式或归属。</p>
+    <details><summary>展开实际导出与入参自检</summary>
+      <pre data-lang="python"><code class="language-python" id="l34-schema-check">from pydantic import ValidationError
+
+schema = tool["parameters"]
+assert tool["strict"] is True and schema["type"] == "object"
+assert set(schema["required"]) == set(schema["properties"]) == {"order_id", "detail_level"}
+assert schema["additionalProperties"] is False
+level = schema["properties"]["detail_level"]
+assert "default" not in level
+assert {part["type"] for part in level["anyOf"]} == {"string", "null"}
+assert next(part["enum"] for part in level["anyOf"] if part["type"] == "string") == ["summary", "full"]
+order_id = "ORD-2026-0007"
+assert order_request({"order_id": order_id, "detail_level": None}) == (order_id, "summary")
+assert order_request({"order_id": order_id, "detail_level": "full"}) == (order_id, "full")
+for raw in ({"order_id": order_id}, {"order_id": order_id, "detail_level": "verbose"},
+            {"order_id": 7, "detail_level": None},
+            {"order_id": order_id, "detail_level": "full", "extra": False}):
+    try:
+        order_request(raw)
+    except ValidationError:
+        continue
+    raise AssertionError(f"意外接受：{raw}")
+print("L34 ACCEPTED")</code></pre>
     </details>
   </div>
+  <div class="best-practice-point" id="bp-l34"><h3>决策卡：先验导出，再映射业务默认值</h3>
+    <p class="bp-scenario"><strong>适用：</strong>端点支持 strict，自定义工具需要用户未指定时的默认行为。<strong>不适用：</strong>兼容端点不支持该子集时，改用已验证的原生协议或宿主校验，不靠 strict 标签宣称已启用。</p>
+    <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">只开开关</span><p>在同一个订单工具上写 <code>= None</code>；导出的键可省略，开关不会补齐 Schema。</p></div><div class="bp-right"><span class="bp-compare-label">结构与业务分开</span><p>导出必填的可空字段；在执行前拦缺键和多字段，只有显式 <code>null</code> 才走摘要。</p></div></div>
+    <p class="bp-rationale"><strong>取舍：</strong>客户端多传一个键，但缺字段不会再被误当成用户选择。若不需要多档详情，直接删掉该参数。</p>
+    <ol class="bp-steps"><li>检查实际的 <code>required</code>、可空枚举和 <code>additionalProperties</code>。</li><li>分别传显式空值与缺键，再核当前主体的订单权限，最后才查询。</li></ol>
+    <p class="bp-result">缺键却通过时查字段默认值；多键通过时查对象是否关闭。结构正确但租户不符仍拒绝执行。</p>
+  </div>
+</div>
+
+<div class="section best-practice-lesson" id="lesson-best-practices"><h2>独立练习：让发票工具区分「没选」与「漏传」</h2>
+  <p>为发票查询写严格参数模型：必填 <code>invoice_id</code> 与可空 <code>view</code>，后者只接收 <code>brief</code>、<code>lines</code> 或 <code>null</code>。只在校验通过后计算默认视图。</p>
+  <pre data-lang="python"><code class="language-python" id="l34-transfer-starter">from typing import Literal
+from pydantic import BaseModel, ConfigDict
+
+cases = [{"invoice_id": "INV-7", "view": None},
+         {"invoice_id": "INV-7"},
+         {"invoice_id": "INV-7", "view": "lines"}]
+print(cases)
+# TODO: 定义严格对象；比较导出的必填键与三份入参的验证结果。</code></pre>
+  <p><strong>通过：</strong>三份输入依次得到 <code>brief</code>、校验错误、<code>lines</code>；多传未知键也要失败。</p>
+  <details><summary>展开独立参考</summary><pre data-lang="python"><code class="language-python" id="l34-transfer-check">from typing import Literal
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+class InvoiceArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    invoice_id: str
+    view: Literal["brief", "lines"] | None
+
+def view_for(raw):
+    view = InvoiceArgs.model_validate(raw).view
+    return "brief" if view is None else view
+
+schema = InvoiceArgs.model_json_schema()
+assert set(schema["required"]) == {"invoice_id", "view"}
+assert schema["additionalProperties"] is False
+assert view_for({"invoice_id": "INV-7", "view": None}) == "brief"
+assert view_for({"invoice_id": "INV-7", "view": "lines"}) == "lines"
+for raw in ({"invoice_id": "INV-7"}, {"invoice_id": "INV-7", "view": "lines", "extra": True}):
+    try:
+        view_for(raw)
+    except ValidationError:
+        continue
+    raise AssertionError("不应接受缺键或多键")
+print("L34 TRANSFER PASSED")</code></pre></details>
 </div>
 
 <div class="section">
@@ -312,7 +363,7 @@ GetOrderStatus(order_id="X", detail_level="verbose")  # ❌ ValidationError：�
 
 【strict mode】约束解码，参数严格符合 schema（非尽力而为）
   strict:True + additionalProperties:false + 字段进 required
-  与 L28 Structured Outputs 同源机制，官方建议始终开
+  仅用于支持的端点、Schema 子集和完整调用；拒答/截断另处理
 
 【Token 成本】所有工具定义每轮都占 input（L23）
   工具越多越长越贵，还会降准确率 → 只给当前任务相关的一小撮
@@ -360,13 +411,13 @@ GetOrderStatus(order_id="X", detail_level="verbose")  # ❌ ValidationError：�
       <li><strong>description 质量直接决定模型用得对不对</strong>——这是本课的灵魂</li>
       <li>用 <strong>Pydantic + <code>model_json_schema()</code></strong> 定义并导出 schema，同一模型还能校验入参</li>
       <li>description 三层：工具级讲"何时用"、参数级讲"填什么+格式+示例"、用 <strong>Literal/enum</strong> 约束取值</li>
-      <li><strong>strict mode</strong>（与 L28 同源）保证参数严格符合 schema，官方建议始终开</li>
+      <li><strong>strict mode</strong>（与 L28 同源）约束受支持端点上完整调用的参数结构，不替代宿主校验</li>
       <li>工具定义占 <strong>input token</strong>：工具最少化、描述精炼、只给相关工具</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    <strong>💼 面试高频：「如何设计好的 Tool Schema？」</strong><br>
-    答：核心是<strong>清晰的 description</strong>（讲清何时用、每个参数填什么、给示例）——它直接决定模型选得对不对；工程上用 <strong>Pydantic / JSON Schema</strong> 定义并导出，<strong>enum / Literal</strong> 约束取值，<strong>strict mode</strong> 保证格式严格符合 schema；再做<strong>参数最少化</strong>和<strong>控制工具数量</strong>来省 token、提准确率。一句话收尾：<strong>工具描述是 Agent 能力的天花板，再强的模型也用不好一份烂 schema。</strong>下一课我们把工具接进完整的 Function Calling 循环。有疑问随时问我。
+    <strong>💼 面试自查：参数形状正确，发票却读错了租户</strong>
+    <p>先复核宿主认证后的主体、发票归属与执行前权限判定，不能把 strict 当授权。<strong>追问：</strong>如果备用端点只兼容 Chat 请求形状、没有验证工具 strict 呢？<strong>要点：</strong>禁用未经验证的能力，保留本地入参和权限检查；不因为兼容入口好用就复制整套定义。</p>
   </div>
 </div>
 

@@ -17,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Streaming 流式输出</h1>
     <p class="subtitle">让回复像 ChatGPT 一样逐字往外蹦，而不是干等一大段</p>
@@ -29,7 +29,7 @@
   <div class="card" style="border-left: 4px solid var(--accent-bright);">
     <strong>💡 为什么这课重要？</strong>
     <p>上一课（<a href="0030-L25-llm-api-basics.html">L25</a>）你学会了发一串 <code>messages</code>、收一条回复。但你有没有发现一个体验问题：如果模型要写 500 字，你得<strong>干等到整段生成完</strong>才看到第一个字——短则两三秒，长则十几秒，界面一直转圈，用户以为卡死了。</p>
-    <p>ChatGPT 为什么感觉"快"？因为它<strong>不等全部写完</strong>——字是一个一个往外蹦的。这就是<strong>流式输出（Streaming）</strong>：模型每生成一小块就立刻推给你，用户几乎<strong>立刻看到第一个字</strong>（首字延迟 TTFT 大幅降低）。这一课我们讲清它的原理（SSE）、两家 SDK 的正确写法（已核对 openai 2.x），以及工程上真正会踩的坑。对 Agent 来说，"打字机效果"和"边生成边解析"都靠它。</p>
+    <p>流式输出（Streaming）把回复分块发送，不必等整段写完才给用户看。这样可以降低首字延迟（TTFT），但<strong>先看到字不代表已经得到可交付结果</strong>。本课会对照三种接口的增量、用量和成功终态。</p>
   </div>
 </div>
 
@@ -40,8 +40,8 @@
     <ul>
       <li>说清<strong>流式 vs 非流式</strong>的差别，以及为什么流式能降低<strong>首字延迟（TTFT）</strong></li>
       <li>理解流式底层是 <strong>SSE（Server-Sent Events）</strong>：服务端把回复切成一串 chunk 推过来</li>
-      <li>用 openai SDK 开启 <code>stream=True</code>，正确从 <code>chunk.choices[0].delta.content</code> 取增量并<strong>判空</strong></li>
-      <li>知道 Anthropic 的流式写法（<code>messages.stream</code> + <code>text_stream</code>），理解两家形状不同、概念一致</li>
+      <li>用 Chat Completions 开启 <code>stream=True</code>，区分<strong>有候选的增量块</strong>和只带用量的尾块</li>
+      <li>区分 Responses、Chat Completions 与 Messages 的增量和终态，知道何时才能交付正文</li>
       <li>避开三个工程坑：<strong>usage 统计、流式 Function Calling、中途断流</strong></li>
     </ul>
   </div>
@@ -70,12 +70,12 @@
        <── data: {chunk 1}      "写"
        <── data: {chunk 2}      "一首"
        <── data: {chunk 3}      "短诗"
-       <── data: [DONE]         结束（OpenAI 用 [DONE]；Anthropic 用 message_stop 事件）
+       <── data: [DONE]         Chat Completions 的 SSE 结束标记；不是 Responses 的完成事件。
        （同一条连接，事件一个一个流过来）</code></pre>
     <p>这正好呼应你前面学过的两块基础：</p>
     <ul>
       <li><a href="0019-L15-httpx.html">L15 · httpx SSE</a>——SSE 就是<strong>流式的传输层</strong>。当你不用高层 SDK、直接打 HTTP 时，收到的就是一行行 <code>data: {...}</code> 的事件流，需要自己逐行解析。SDK 只是帮你把这层封装好了。</li>
-      <li><a href="0016-L12-generators-streaming.html">L12 · 生成器</a>——生成器<strong>天然适合逐块 yield</strong>。所以各家 SDK 的流式返回值都是一个<strong>可迭代对象</strong>：你用 <code>for chunk in stream:</code> 一块一块地取，取一块处理一块，内存里从不驻留整段回复。语言基础和 API 设计在这里完美对上了。</li>
+      <li><a href="0016-L12-generators-streaming.html">L12 · 生成器</a>——用 <code>for chunk in stream:</code> 逐块消费。是否累积整段回复取决于消费代码和 SDK：只预览可以逐块处理，要求验收后一次交付则可以先缓冲。</li>
     </ul>
     <p>一句话：<strong>SSE 负责"怎么把 chunk 推过来"，生成器负责"怎么在 Python 里一块块拿出来"</strong>。</p>
   </div>
@@ -93,30 +93,49 @@
 </div>
 
 <div class="section">
-  <h2>3. OpenAI 流式：一个 <code>stream=True</code> 搞定</h2>
+  <h2>3. Chat Completions：读取增量、用量和终止原因</h2>
   <div class="card">
-    <p>把 <a href="0030-L25-llm-api-basics.html">L25</a> 的非流式调用改成流式，<strong>只加一个参数、把取值方式换一下</strong>（已核对 openai 2.x 写法）：</p>
-    <pre><code>from openai import OpenAI
+    <p>把 <a href="0030-L25-llm-api-basics.html">L25</a> 的单候选纯文本 Chat 调用改为 <code>stream=True</code>。下面的消费函数可以离线测试；可选联网片段接在它后面运行，需要凭证和预算。只有预览分支会逐块显示；正式正文在验收后一次返回。</p>
+    <pre><code class="language-python" id="l26-chat-core">def collect_chat(chunks, *, preview=None):
+    parts, finish_reason, usage = [], None, None
+    refused = False
+    for chunk in chunks:
+        if chunk.usage is not None:
+            usage = chunk.usage
+        if not chunk.choices:                  # 仅带 usage 的尾块没有候选
+            continue
+        choice = chunk.choices[0]              # 本例只有一个候选
+        if choice.delta.refusal:
+            refused = True
+        delta = choice.delta.content
+        if delta and not refused:
+            parts.append(delta)
+            if preview is not None:           # 仅用于标成临时的界面预览
+                preview(delta)
+        if choice.finish_reason is not None:
+            finish_reason = choice.finish_reason
+    if refused:
+        raise ValueError("Chat 拒答")
+    if finish_reason != "stop" or not parts:
+        raise ValueError(f"Chat 无完整文本: {finish_reason}")
+    return "".join(parts), usage</code></pre>
+    <pre><code class="language-python">import os
+from openai import OpenAI
 
-client = OpenAI()   # 仍然读 OPENAI_API_KEY，别硬编码（L25 铁律）
-
-stream = client.chat.completions.create(
-    model="gpt-5.5",                          # 型号以官网为准，别写死
+client = OpenAI()
+with client.chat.completions.create(
+    model=os.environ["OPENAI_MODEL"],
     messages=[{"role": "user", "content": "写一首短诗"}],
-    stream=True,                              # ← 开启流式，返回值变成可迭代
-)
-
-for chunk in stream:                          # 逐块取（生成器，L12）
-    delta = chunk.choices[0].delta.content    # ← 增量片段，可能是 None
-    if delta:                                 # ← 必须判空，否则会拼进 "None"
-        print(delta, end="", flush=True)      # 逐块打印，别换行、立刻刷新</code></pre>
-    <p><strong>三个必须记住的点：</strong></p>
+    stream=True, stream_options={"include_usage": True},
+) as stream:
+    text, usage = collect_chat(stream)
+print(text)
+print(usage)</code></pre>
     <ul>
-      <li><strong>正文在 <code>chunk.choices[0].delta.content</code></strong>——注意是 <code>delta</code>（<em>增量</em>），不是非流式的 <code>message</code>。每个 chunk 只带<strong>这一小块新增</strong>的文字，你要自己把它们首尾相接。</li>
-      <li><strong><code>delta.content</code> 可能是 <code>None</code></strong>——比如第一个 chunk 常常只带角色信息、末尾 chunk 带结束原因，正文是空的。所以<strong>一定要 <code>if delta:</code> 判空</strong>，否则 <code>print</code> 会把字符串 <code>"None"</code> 也拼进去。这是新手最常见的 bug。</li>
-      <li><strong><code>print(delta, end="", flush=True)</code></strong>——<code>end=""</code> 保证不换行（否则每块一行就乱了）；<code>flush=True</code> 强制立刻输出到终端，才有"逐字蹦"的效果，不然会被缓冲攒着。</li>
+      <li>先读用量，再检查 <code>choices</code> 是否为空；单独的用量块不是成功终态。</li>
+      <li>正文是 <code>delta.content</code>，不是 <code>message.content</code>；角色块和结束块的正文可能是 <code>None</code>。</li>
+      <li>只有 <code>finish_reason == "stop"</code> 且未拒答才交付正文。纯展示可用 <code>preview</code> 降低感知等待，见第 6 节；它不能写入正式历史或触发动作。</li>
     </ul>
-    <p>要拿到完整文本？边打印边 <code>full += delta</code> 累积即可。<strong>流式的本质就是：把一次"大返回"拆成 for 循环里的一串"小增量"，你负责拼。</strong></p>
   </div>
   <div class="tip">
     📖 上面是 Chat Completions 的兼容接口示例，不要把它的 <code>choices[0].delta</code> 套到 Responses。<a href="https://developers.openai.com/api/docs/guides/streaming-responses" target="_blank">官方流式指南</a>按事件类型分别定义文本增量、完成与失败；只有收到正常终态，才能把临时显示的文本当成完整结果。
@@ -126,32 +145,40 @@ for chunk in stream:                          # 逐块取（生成器，L12）
 <div class="section">
   <h2>3.1 Responses 实践：按类型消费，按终态验收</h2>
   <div class="card">
-    <p>延续 L25 的 OpenAI 主线。以下为会联网计费的可选实践；设置 <code>OPENAI_MODEL</code>，依赖由项目锁文件管理。文本 delta 只是临时片段，不能证明整个响应成功。</p>
+    <p>延续 L25 的 OpenAI 主线。增量只在本地缓冲，不预览；只有收到 <code>response.completed</code>、状态为 <code>completed</code>，且没有拒答，才返回正文和用量。即使已经收到正文增量，也要检查结束对象里<strong>所有</strong>消息 Item 的内容块。</p>
+    <pre><code class="language-python" id="l26-responses-core">def collect_responses(events):
+    parts = []
+    for event in events:
+        if event.type == "response.output_text.delta" and event.delta:
+            parts.append(event.delta)
+        elif event.type in {"response.failed", "response.incomplete", "error"}:
+            raise ValueError(f"Responses 流未完成: {event.type}")
+        elif event.type in {"response.refusal.delta", "response.refusal.done"}:
+            raise ValueError("Responses 拒答")
+        elif event.type == "response.completed":
+            response = event.response
+            if response.status != "completed":
+                raise ValueError(f"Responses 流未完成: {response.status}")
+            if any(part.type == "refusal" for item in response.output
+                   if item.type == "message" for part in item.content):
+                raise ValueError("Responses 拒答")
+            if not parts:
+                raise ValueError("Responses 无正文增量")
+            return "".join(parts), response.usage
+    raise ValueError("Responses 缺少完成事件")</code></pre>
+    <p>可选联网片段接在消费函数后运行，需按 L25 设置 <code>OPENAI_MODEL</code> 和凭证，并确认计费预算：</p>
     <pre><code class="language-python" id="l26-responses">import os
 from openai import OpenAI
 
 client = OpenAI()
-parts = []
-completed = False
 with client.responses.create(
     model=os.environ["OPENAI_MODEL"], input="用一句话介绍 SSE。",
     store=False, stream=True,
 ) as stream:
-    for event in stream:
-        if event.type == "response.output_text.delta":
-            parts.append(event.delta)
-            print(event.delta, end="", flush=True)
-        elif event.type == "response.completed":
-            completed = True
-            usage = event.response.usage
-        elif event.type in {"response.failed", "response.incomplete", "error"}:
-            raise RuntimeError(f"流未完成: {event.type}")
-if not completed or not parts:
-    raise RuntimeError("没有可消费的完整文本；需检查拒答或连接中断")
-text = "".join(parts)
-print()
+    text, usage = collect_responses(stream)
+print(text)
 print(usage)</code></pre>
-    <p>这个纯文本示例不处理工具事件。<strong>不要自动重放已展示片段或已执行动作：</strong>断流恢复需要应用自己的事件去重与副作用边界。使用 <code>with</code> 关闭资源，<code>usage</code> 以终态为准；提前断开时不能伪造完整用量。</p>
+    <p>此例不处理工具事件。若 SDK 迭代时直接抛出 API 或连接异常，异常同样阻止返回正文；提前断开不能伪造完整用量。不要自动重放已经预览的片段或已经执行的动作。</p>
     <details><summary>离线验收：有增量不等于成功（可独立运行）</summary>
     <pre><code class="language-python" id="l26-terminal-check">def collect(events):
     parts = []
@@ -173,42 +200,52 @@ for events in [[("delta", "半句")], [("delta", "半句"), ("error", None)]]:
     else:
         raise AssertionError("未完成的流不应验收成功")
 print("L26 ACCEPTED")</code></pre></details>
-    <p>该 fixture 只测试客户端终态分支，不模拟服务端计费或重连协议。下一节对比 Claude 的原生流式接口。</p>
+    <p>上面只用简化的元组演示终态。第 5 节另用与消费函数同形状的对象，直接测试三种流的接收门槛。</p>
   </div>
 </div>
 
 <div class="section">
   <h2>4. Anthropic 流式：形状不同，概念一致</h2>
   <div class="card">
-    <p>Claude 的流式写法长得不太一样，但你会发现<strong>内核完全相同</strong>：还是"逐块取增量、自己拼"。它用一个<strong>上下文管理器</strong>，并贴心地提供了一个只吐文本的迭代器 <code>text_stream</code>：</p>
-    <pre><code>from anthropic import Anthropic
+    <p>Claude 的 <code>text_stream</code> 只提供文本增量，适合临时预览，不能据此确认成功。这里迭代完整事件流，用 <code>message_stop</code> 确认消息到达末尾，再通过 SDK 的 <code>get_final_message()</code> 检查停止原因，得到可交付的正文和用量。</p>
+    <pre><code class="language-python" id="l26-messages-core">def collect_messages(stream):
+    saw_stop = False
+    for event in stream:
+        if event.type == "message_stop":
+            saw_stop = True
+    if not saw_stop:
+        raise ValueError("Messages 缺少 message_stop")
+    message = stream.get_final_message()
+    if message.stop_reason != "end_turn":
+        raise ValueError(f"Messages 未正常结束: {message.stop_reason}")
+    text = "".join(block.text for block in message.content if block.type == "text")
+    if not text:
+        raise ValueError("Messages 无正文")
+    return text, message.usage</code></pre>
+    <p>可选联网片段接在函数后运行，沿用 <a href="0030-L25-llm-api-basics.html">L25</a> 的凭证、<code>ANTHROPIC_MODEL</code> 和预算约定：</p>
+    <pre><code class="language-python">import os
+from anthropic import Anthropic
 
-client = Anthropic()   # 读 ANTHROPIC_API_KEY
-
-with client.messages.stream(                  # ← 用 stream()，配 with 上下文
-    model="claude-sonnet-4-6",                # 型号以官网为准
-    max_tokens=1024,                          # Anthropic 必填（L25 差异①）
+client = Anthropic()
+with client.messages.stream(
+    model=os.environ["ANTHROPIC_MODEL"], max_tokens=1024,
     messages=[{"role": "user", "content": "写一首短诗"}],
 ) as stream:
-    for text in stream.text_stream:           # ← 直接拿到文本增量，无需判空
-        print(text, end="", flush=True)</code></pre>
-    <p>对比一下两家，你就抓住了流式的"不变量"与"可变量"：</p>
-    <ul>
-      <li><strong>不变（概念）</strong>：都是 SSE 推 chunk、都用 <code>for</code> 循环<strong>逐块取增量、增量拼接</strong>、都能立刻显示。</li>
-      <li><strong>可变（形状）</strong>：OpenAI 是 <code>stream=True</code> + 直接迭代 + 手动取 <code>delta.content</code> 并判空；Anthropic 是 <code>messages.stream(...)</code> + <code>with</code> 上下文 + <code>text_stream</code> 直接给文本。</li>
-    </ul>
-    <p>所以别去死记两套 API——记住<strong>「逐块取增量 → 拼接 → 立刻显示」</strong>这一条心法，换任何厂商都只是查一下"增量字段叫什么、要不要判空"而已。</p>
+    text, usage = collect_messages(stream)
+print(text)
+print(usage)</code></pre>
+    <p>共同规则是<strong>增量不等于成功</strong>，但各家用不同事件和字段表达完成。Messages 即使有 <code>message_stop</code>，<code>max_tokens</code> 和 <code>refusal</code> 也不会在本例中交付正文。</p>
   </div>
 
   <div class="quiz" data-quiz="q2">
-    <div class="quiz-question"><span class="quiz-q">Q</span> OpenAI 流式里，每个 chunk 的正文增量该从哪取、要注意什么？</div>
+    <div class="quiz-question"><span class="quiz-q">Q</span> Chat Completions 流式里，应怎样读取正文增量？</div>
     <div class="quiz-options">
-      <button data-answer="wrong">从 message.content 直接取</button>
-      <button data-answer="correct">取 delta.content 并判空</button>
-      <button data-answer="wrong">取 choices 的完整文本</button>
-      <button data-answer="wrong">末尾 chunk 一次性取</button>
+      <button data-answer="wrong">遍历候选并拼接 message.content</button>
+      <button data-answer="correct">先验候选，再取非空 delta.content</button>
+      <button data-answer="wrong">从尾块的 usage 字段取全文</button>
+      <button data-answer="wrong">直接拼接所有块的 delta.content</button>
     </div>
-    <div class="quiz-explanation">流式下正文在 <code>chunk.choices[0].delta.content</code>——是 <strong>delta（增量）</strong>，不是非流式的 <code>message.content</code>，每块只带新增的一小段。而且它<strong>可能是 None</strong>（首块带角色、末块带结束原因，正文为空），所以必须 <code>if delta:</code> 判空后再拼接/打印，否则会把字符串 "None" 混进结果。这是流式最经典的坑。</div>
+    <div class="quiz-explanation">先确认 <code>choices</code> 非空，再取 <code>choices[0].delta.content</code>。角色块和结束块的增量可能为 <code>None</code>；只带用量的尾块则连候选也没有。</div>
   </div>
 </div>
 
@@ -217,12 +254,107 @@ with client.messages.stream(                  # ← 用 stream()，配 with 上�
   <div class="card">
     <p>流式体验好，但工程上有三件事和非流式不一样，提前知道能少踩坑：</p>
     <ul>
-      <li><strong>① Token 用量（usage）统计变了</strong>。非流式一返回就有 <code>usage</code>；流式下正文一路是 <code>delta</code>，<strong>用量通常出现在<em>最后一个 chunk</em>，或需要单独开启</strong>（OpenAI 要传 <code>stream_options={"include_usage": True}</code> 才会在末尾多推一个带 usage 的 chunk）。别在循环中途读 usage——那时它还没来。这直接影响你按 <a href="0027-L23-token-economics.html">L23</a> 算成本。</li>
+      <li><strong>① Token 用量（usage）</strong>。Chat Completions 的 <code>stream_options={"include_usage": True}</code> 请求末尾的用量块；它的 <code>choices</code> 为空，不是正文，也不是成功终态。Responses 和 Messages 分别从完成事件、最终消息读用量；断流时可能拿不到完整统计。这直接影响你按 <a href="0027-L23-token-economics.html">L23</a> 算成本。</li>
       <li><strong>② 流式里做 Function Calling 更麻烦</strong>。工具调用的参数（一段 JSON）也是<strong>切成 delta 一块块推</strong>的，你得把这些 <code>tool_calls</code> 的增量片段<strong>按 index 拼起来</strong>，拼完整才能解析成参数。这个细节在 <a href="0032-L27-function-calling.html">L27 Function Calling</a> 起步、到 <a href="0041-L36-tool-robustness-registry.html">L36 工具健壮性</a>里会真正用到——这里先埋个点，知道"流式 + 工具调用要增量拼参数"即可。</li>
-      <li><strong>③ 出错处理：流到一半断了怎么办？</strong> 非流式是"要么全拿到、要么整个失败"；流式则可能<strong>已经收了半段、连接突然断了</strong>。你手里是<strong>部分结果</strong>——要考虑：是把已收到的展示出来，还是重试？重试又可能重复。健壮的流式要包 <code>try/except</code>、设超时、想清楚<strong>部分结果 + 重试</strong>的策略。这属于容错话题，<a href="0036-L31-error-handling-retry.html">L31 重试/超时/退避</a>会系统讲。</li>
+      <li><strong>③ 出错处理：流到一半断了怎么办？</strong> 非流式也可能返回截断结果，但流式还有一个问题：连接断开时，界面可能早已展示了半句。标记预览失败、避免写入半成品，并考虑超时和重试去重，见 <a href="0036-L31-error-handling-retry.html">L31 重试/超时/退避</a>。</li>
     </ul>
     <p>一句话总结这三坑：<strong>usage 挪到了末尾、工具参数要拼、断流要有兜底</strong>。它们不难，但不知道就会在生产里被咬一口。</p>
   </div>
+
+  <div class="best-practice-point" id="bp-l26">
+    <h3>决策卡：可以预览，不等于可以入库</h3>
+    <p class="bp-scenario"><strong>适用：</strong>同一条工单摘要既供人预览，又要写入正式记录。<strong>不适用：</strong>无人等待的批处理不必做逐字预览，直接用非流式终态验收更简单。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">误判：收到字就逐块保存</span><p>工单摘要已收到半句，连接却断了。保存增量会留下不完整记录，重试还可能写重复。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">对照：预览和正式记录分两条路</span><p>同一断流可让临时预览标为中断；不写正式记录。只有正常终态且未拒答，才交付一次完整摘要。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>临时预览换首字体验；缓冲增加内存和交付等待，换来可检验的完整性。若连预览也不应出现，像本课 Responses 示例一样等终态再显示。</p>
+    <ol class="bp-steps"><li>运行下方验收，先给增量配正常终态。</li><li>保留相同增量，改成断流、截断或后置拒答，比较返回值和预览。</li></ol>
+    <p class="bp-result"><strong>结果诊断：</strong>正常流只交付一次正文；失败流无正文返回。有字仍入库，先查是否把预览或 EOF 当成了完成信号。</p>
+  </div>
+  <details class="bp-check"><summary>离线对照：运行三种流的消费函数</summary>
+    <p>按顺序复制第 3 节的 <code>collect_chat</code>、第 3.1 节的 <code>collect_responses</code>、第 4 节的 <code>collect_messages</code> 和下段，用 <code>python -I 文件名.py</code> 运行，应只输出 <code>L26 PROVIDERS PASSED</code>。替身只提供代码所读的事件和属性；不运行 SDK，也不验证服务端用量或重连。</p>
+    <pre><code class="language-python" id="l26-provider-check">from types import SimpleNamespace as Record
+
+
+def reject(run, expected):
+    try:
+        run()
+    except ValueError as exc:
+        assert str(exc) == expected, exc
+    else:
+        raise AssertionError(f"不应交付正文: {expected}")
+
+
+usage = Record(input_tokens=9, output_tokens=2)
+delta = Record(type="response.output_text.delta", delta="摘")
+more = Record(type="response.output_text.delta", delta="要")
+text_item = Record(type="message", content=[Record(type="output_text", text="摘要")])
+refusal_item = Record(type="message", content=[Record(type="refusal", refusal="未提供答案")])
+
+
+def terminal(kind, status, output):
+    return Record(type=kind, response=Record(status=status, output=output, usage=usage))
+
+
+finished = terminal("response.completed", "completed", [Record(type="reasoning"), text_item])
+assert collect_responses(iter([delta, more, finished])) == ("摘要", usage)
+reject(lambda: collect_responses(iter([delta])), "Responses 缺少完成事件")
+for kind in ("response.failed", "response.incomplete", "error"):
+    reject(lambda: collect_responses(iter([delta, Record(type=kind)])), f"Responses 流未完成: {kind}")
+not_done = terminal("response.completed", "incomplete", [text_item])
+reject(lambda: collect_responses(iter([delta, not_done])), "Responses 流未完成: incomplete")
+late_refusal = terminal("response.completed", "completed", [text_item, refusal_item])
+reject(lambda: collect_responses(iter([delta, late_refusal])), "Responses 拒答")
+for kind in ("response.refusal.delta", "response.refusal.done"):
+    reject(lambda: collect_responses(iter([delta, Record(type=kind), finished])), "Responses 拒答")
+reject(lambda: collect_responses(iter([finished])), "Responses 无正文增量")
+
+
+def chunk(text=None, *, finish=None, refusal=None):
+    choice = Record(delta=Record(content=text, refusal=refusal), finish_reason=finish)
+    return Record(choices=[choice], usage=None)
+
+
+chat_usage = Record(choices=[], usage=Record(prompt_tokens=9, completion_tokens=2))
+preview = []
+chat_ok = [chunk(), chunk("摘要"), chunk(finish="stop"), chat_usage]
+assert collect_chat(iter(chat_ok), preview=preview.append) == ("摘要", chat_usage.usage)
+assert preview == ["摘要"]
+reject(lambda: collect_chat(iter([chunk("摘要"), chat_usage])), "Chat 无完整文本: None")
+reject(lambda: collect_chat(iter([chunk("摘要"), chunk(finish="length"), chat_usage])),
+       "Chat 无完整文本: length")
+preview = []
+chat_refused = [chunk("摘要"), chunk("不应再预览", refusal="未提供答案"), chunk(finish="stop")]
+reject(lambda: collect_chat(iter(chat_refused), preview=preview.append), "Chat 拒答")
+assert preview == ["摘要"]  # 已经显示的临时片段仍不得成为正式结果
+
+
+class MessagesFixture:
+    def __init__(self, stop_reason, *, stopped=True):
+        self.events = [
+            Record(type="content_block_delta", delta=Record(type="text_delta", text="摘要")),
+            Record(type="message_delta", delta=Record(stop_reason=stop_reason)),
+        ]
+        if stopped:
+            self.events.append(Record(type="message_stop"))
+        self.message = Record(stop_reason=stop_reason, usage=usage, content=[
+            Record(type="thinking"), Record(type="text", text="摘要"),
+        ])
+
+    def __iter__(self):
+        return iter(self.events)
+
+    def get_final_message(self):
+        return self.message
+
+
+assert collect_messages(MessagesFixture("end_turn")) == ("摘要", usage)
+reject(lambda: collect_messages(MessagesFixture("end_turn", stopped=False)), "Messages 缺少 message_stop")
+for reason in ("max_tokens", "refusal"):
+    reject(lambda: collect_messages(MessagesFixture(reason)), f"Messages 未正常结束: {reason}")
+print("L26 PROVIDERS PASSED")</code></pre>
+  </details>
 
   <div class="quiz" data-quiz="q3">
     <div class="quiz-question"><span class="quiz-q">Q</span> 关于流式模式下的 Token 用量（usage），下面哪种说法对？</div>
@@ -232,7 +364,7 @@ with client.messages.stream(                  # ← 用 stream()，配 with 上�
       <button data-answer="wrong">每个 chunk 都带用量</button>
       <button data-answer="wrong">用量在首个 chunk 里</button>
     </div>
-    <div class="quiz-explanation">流式下正文是一路 <code>delta</code>，<strong>用量通常出现在最后一个 chunk，或需要单独开启</strong>（OpenAI 需传 <code>stream_options={"include_usage": True}</code>，才会在流末尾多推一个带 usage 的 chunk）。所以它<strong>能</strong>拿到，只是不像非流式那样一返回就有；也不是每块都带、更不在首块。算成本（L23）时要注意等到流结束再读。</div>
+    <div class="quiz-explanation">Chat Completions 用 <code>stream_options={"include_usage": True}</code> 请求仅带用量的尾块，<code>choices</code> 为空。Responses 和 Messages 在各自的终态附近提供用量；断流可能没有完整统计，不能用尾块来推断文本成功。</div>
   </div>
 </div>
 
@@ -241,87 +373,102 @@ with client.messages.stream(                  # ← 用 stream()，配 with 上�
   <div class="card">
     <p>你可能觉得流式只是"好看"，但对 Agent 它有两层实打实的价值：</p>
     <ul>
-      <li><strong>打字机效果（给人看）</strong>：Agent 常要输出长回复、展示"正在思考"的过程。流式让用户<strong>立刻看到进展</strong>，而不是盯着转圈——交互式 Agent、聊天助手几乎都开流式。</li>
-      <li><strong>边生成边解析（给程序用）</strong>：更进阶的玩法是<strong>不等模型说完就开始处理</strong>——比如流式解析模型正在吐的结构化输出（JSON），或在工具调用参数刚拼够时就<strong>提前准备执行</strong>。这让 Agent 的响应链路更短、更灵敏。它依赖的正是"增量到达、增量处理"这个流式本质。</li>
+      <li><strong>临时预览（给人看）</strong>：长回复可以边收边显示，降低感知等待。中断时标明预览不完整，不把它写进正式历史。</li>
+      <li><strong>增量准备（给程序用）</strong>：可以先缓存文本或按索引拼工具参数；即使片段看起来已是合法 JSON，也要等正常终态，再验结构和权限后才执行工具或写入。</li>
     </ul>
-    <p>所以流式不只是 UI 糖：它是 Agent <strong>"能被人看见"</strong>（打字机）和 <strong>"能被程序边收边用"</strong>（流式解析）的共同前提。学完这一课，你已经具备把 <a href="0030-L25-llm-api-basics.html">L25</a> 的普通调用升级成"活的、会蹦字的"调用的能力。</p>
+    <p>有进展和交付成功是两件事。预览能否提前显示由任务规则决定；正式记录始终单独验收。</p>
   </div>
 
   <details style="margin-top:1rem;">
     <summary style="cursor:pointer; font-weight:600;">🛠️ 动手练习：把一个非流式调用改成流式逐字打印（点开看任务，答案折叠在最后）</summary>
     <div class="card" style="margin-top:.8rem;">
-      <p><strong>任务</strong>：下面是一段<strong>非流式</strong>的 OpenAI 调用，请你把它改成<strong>流式</strong>，并让回复<strong>逐字打印</strong>在终端上（要有"打字机"效果）。同时把完整回复<strong>累积到一个字符串 <code>full</code></strong> 里，循环结束后打印它的字数。</p>
-      <pre><code># 改造前（非流式）
+      <p><strong>任务</strong>：把下面的非流式调用改成带临时预览的流式调用，并在确认完整回复后打印字数。此练习为可选联网实践。</p>
+      <pre><code class="language-python"># 改造前（非流式）
+import os
 from openai import OpenAI
 client = OpenAI()
 
 resp = client.chat.completions.create(
-    model="gpt-5.5",
+    model=os.environ["OPENAI_MODEL"],
     messages=[{"role": "user", "content": "用三句话介绍一下向量数据库"}],
 )
-print(resp.choices[0].message.content)</code></pre>
-      <p><strong>要求</strong>：① 开启流式；② 逐块取增量并<strong>判空</strong>；③ 逐字打印（不换行、立刻刷新）；④ 累积到 <code>full</code> 并在最后 <code>print(len(full))</code>。</p>
+choice = resp.choices[0]
+if choice.finish_reason == "stop" and not choice.message.refusal:
+    print(choice.message.content)</code></pre>
+      <p><strong>要求：</strong>开启流式，把增量显示为<strong>临时预览</strong>；只有成功拿到 <code>full</code> 后才打印字数。参考片段接在第 3 节 <code>collect_chat</code> 定义及客户端初始化后，不必先发非流式请求。</p>
       <details style="margin-top:.6rem;">
         <summary style="cursor:pointer; font-weight:600;">✅ 参考答案（先自己写，再对照）</summary>
-        <pre><code>from openai import OpenAI
-client = OpenAI()
-
-stream = client.chat.completions.create(
-    model="gpt-5.5",
-    messages=[{"role": "user", "content": "用三句话介绍一下向量数据库"}],
-    stream=True,                                   # ① 开启流式
-)
-
-full = ""
-for chunk in stream:
-    delta = chunk.choices[0].delta.content         # ② 取增量
-    if delta:                                      #    判空（可能是 None）
-        print(delta, end="", flush=True)           # ③ 逐字打印，不换行、立刻刷新
-        full += delta                              # ④ 累积完整回复
-
-print()                                            # 收尾换个行
-print(f"共 {len(full)} 字")</code></pre>
-        <p style="margin-top:.5rem;">核心就三步：<code>stream=True</code> 开启、<code>delta.content</code> 判空后取、<code>end="" flush=True</code> 逐字打印。想在 Anthropic 上做？把中间换成 <code>with client.messages.stream(...) as stream: for text in stream.text_stream:</code> 即可——心法不变。</p>
+        <pre><code class="language-python">print("临时预览：", end="", flush=True)
+try:
+    with client.chat.completions.create(
+        model=os.environ["OPENAI_MODEL"], stream=True,
+        messages=[{"role": "user", "content": "用三句话介绍一下向量数据库"}],
+    ) as stream:
+        full, _ = collect_chat(stream, preview=lambda part: print(part, end="", flush=True))
+except ValueError as exc:
+    print(f"\n预览未通过验收：{exc}")
+else:
+    print(f"\n已完成，共 {len(full)} 字")</code></pre>
+        <p style="margin-top:.5rem;">此片段只演示消费函数的失败分支；连接或 API 异常会向上抛，界面也应把这次预览标为失败，而不是写入正式历史。</p>
       </details>
     </div>
   </details>
 
   <div class="tip" style="margin-top:1rem;">
-    🎤 <strong>面试高频：「Streaming 的好处是什么？」</strong> 标准答法：<strong>① 降低首字延迟（TTFT）</strong>，用户几乎立刻看到第一个字；<strong>② 改善长回复体验</strong>，把"干等整段"变成"边看边等"；<strong>③ 支持边生成边处理</strong>（如流式解析结构化输出 / 工具调用参数）。本质上它是把回复经 <strong>SSE 逐块推送</strong>、客户端增量拼接——总生成时间没变，但<em>感知等待</em>大幅下降。
+    🎤 <strong>面试高频：「Streaming 的好处是什么？」</strong> 标准答法：<strong>① 降低首字延迟（TTFT）</strong>，用户更早看到第一个字；<strong>② 改善长回复体验</strong>，把等待变成可见进展；<strong>③ 支持边收边准备</strong>，如拼接工具参数。SSE 逐块推送，但不保证更短的总生成时间。<br><strong>变式追问：</strong>如果要求模型拒答或断流时一个字也不能显示，还能用打字机预览吗？不能；可以继续流式接收并缓冲，正常完成后才显示，代价是用户看不到生成中的字。
   </div>
+</div>
+
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：柜台通知被截断时，预览不能进公告</h2>
+  <p>同一公告第一次遇到 <code>length</code>，虽有用量尾块，也只能留下临时预览；第二次正常完成才允许写一次公告。用第 3 节 <code>collect_chat</code> 作为消费函数，接上可复制的起点，实现 <code>deliver(chunks, preview, posted)</code>：两份列表分别记录预览增量与已发布全文，返回是否发布。全程离线，没有 SDK 或真实公告系统。</p>
+  <pre data-label="独立练习起点"><code class="language-python" id="l26-transfer-starter">from types import SimpleNamespace as Record
+
+
+def chunk(text=None, *, finish=None):
+    choice = Record(delta=Record(content=text, refusal=None), finish_reason=finish)
+    return Record(choices=[choice], usage=None)
+
+
+usage_only = Record(choices=[], usage=Record(total_tokens=15))
+cut_off = [chunk("东门柜台"), chunk(finish="length"), usage_only]
+complete = [chunk("东门柜台"), chunk("恢复服务。"), chunk(finish="stop"), usage_only]
+# TODO: deliver(chunks, preview, posted)；只在 collect_chat 返回全文后发布。</code></pre>
+  <details class="bp-check"><summary>展开独立参考与断言（接在起点后运行）</summary><pre><code class="language-python" id="l26-transfer-check">def deliver(chunks, preview, posted):
+    try:
+        text, _ = collect_chat(iter(chunks), preview=preview.append)
+    except ValueError:
+        return False
+    posted.append(text)
+    return True
+
+
+preview, posted = [], []
+assert not deliver(cut_off, preview, posted)
+assert preview == ["东门柜台"] and posted == [], (preview, posted)
+preview = []  # 显式重试时，新预览不拼接上一次的片段。
+assert deliver(complete, preview, posted)
+assert preview == ["东门柜台", "恢复服务。"], preview
+assert posted == ["东门柜台恢复服务。"], posted
+print("L26 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">依次复制第 3 节 <code>collect_chat</code>、起点、参考，执行 <code>python -I 文件名.py</code>。唯一输出应为 <code>L26 TRANSFER PASSED</code>。首次发布列表非空时，检查是否把预览或用量当成终态；第二次正文重复时，检查是否沿用了失败的缓冲区。</p>
 </div>
 
 <div class="section">
   <h2>🎯 速查卡：流式输出</h2>
   <div class="card">
-    <pre><code>【是什么】逐 token 边生成边返回，用户立刻看到字往外蹦（像 ChatGPT）
-  核心收益：首字延迟 TTFT ↓↓（总时长不变，感知等待暴降）
+    <pre><code>【SSE】一次请求，逐块推送；临时预览可降低首字延迟（TTFT）。
 
-【底层】SSE（Server-Sent Events）
-  一次请求 → 服务端把回复切成一串 chunk 事件推过来
-  客户端逐个收、增量拼接（传输层=L15 httpx SSE，取块=L12 生成器）
+【Chat Completions】先取 usage；choices 为空就跳过候选读取。
+  非空 delta.content 才拼接；纯文本验 finish_reason == "stop" 且无拒答。
 
-【OpenAI · Chat Completions】
-  stream = client.chat.completions.create(..., stream=True)
-  for chunk in stream:
-      delta = chunk.choices[0].delta.content   # 增量，可能是 None
-      if delta:                                # ★ 必须判空
-          print(delta, end="", flush=True)     # 逐字，不换行、立刻刷新
+【Responses】缓冲 response.output_text.delta；等 response.completed。
+  验状态 completed、遍历消息排除 refusal；失败、截断或缺终态不交付。
 
-【Anthropic · Messages】
-  with client.messages.stream(..., max_tokens=必填) as stream:
-      for text in stream.text_stream:          # 直接给文本增量
-          print(text, end="", flush=True)
+【Messages】text_stream 可供预览；验收看 message_stop 和最终 stop_reason。
+  纯文本只接受 end_turn；max_tokens 或 refusal 不交付。
 
-【心法（换厂商都通用）】逐块取增量 → 增量拼接 → 立刻显示
-
-【三个工程坑】
-  ① usage：常在最后一个 chunk / 需单开
-     (OpenAI: stream_options={"include_usage": True})
-  ② 流式 Function Calling：tool_call 参数按 index 增量拼 → L27/L36
-  ③ 断流：手里是部分结果，要 try/except + 兜底重试 → L31
-
-【面试题】Streaming 好处？TTFT↓ + 长回复体验 + 边生成边处理，本质 SSE 逐块推</code></pre>
+【三个工程坑】用量不等于完成；工具参数按索引拼；断流重试避免重复副作用。</code></pre>
   </div>
 </div>
 
@@ -329,7 +476,7 @@ print(f"共 {len(full)} 字")</code></pre>
   <h2>📚 primary source（最推荐精读）</h2>
   <div class="card">
     <p><a href="https://developers.openai.com/api/docs/guides/streaming-responses" target="_blank"><strong>OpenAI · Streaming responses</strong></a></p>
-    <p>官方最权威的流式指南：<code>stream=True</code> 的完整写法、每个 chunk 的结构、<code>delta</code> 增量与判空、以及 Responses API 的流式事件模型。读完你会明白——所有厂商的流式都是同一个心法（取 delta、拼接、立刻显示），只是字段名各异。配 <a href="0019-L15-httpx.html">L15 httpx SSE</a> 一起看，你还能理解"不用 SDK、直接读 <code>data:</code> 事件流"是怎么回事。</p>
+    <p>对照 Responses 的文本增量、完成、拒答和错误事件，区分传输结束与应用验收。配 <a href="0019-L15-httpx.html">L15 httpx SSE</a> 阅读，可以看到 SDK 封装前的 <code>data:</code> 事件流。</p>
   </div>
 </div>
 
@@ -360,14 +507,13 @@ print(f"共 {len(full)} 字")</code></pre>
     <ul>
       <li>流式 = <strong>逐 token 边生成边返回</strong>，用户立刻看到字往外蹦，<strong>首字延迟（TTFT）</strong>大幅降低</li>
       <li>底层是 <strong>SSE</strong>：服务端把回复切成一串 chunk 推过来，客户端<strong>逐块收、增量拼接</strong>（呼应 L15/L12）</li>
-      <li>OpenAI：加 <code>stream=True</code>，从 <code>chunk.choices[0].delta.content</code> 取增量，<strong>必须判空</strong>，<code>print(..., end="", flush=True)</code></li>
-      <li>Anthropic：<code>with client.messages.stream(...) as stream: for text in stream.text_stream:</code>——形状不同、<strong>心法一致</strong></li>
-      <li>三个工程坑：<strong>usage 常在末块/需单开、流式工具调用要拼参数、断流要有兜底</strong></li>
-      <li>对 Agent：流式支撑<strong>打字机效果</strong>（给人看）和<strong>边生成边解析</strong>（给程序用）</li>
+      <li>Chat 的仅用量块没有候选；先判候选和增量非空，再确认 <code>stop</code> 且未拒答。</li>
+      <li>Responses 检查完成事件、响应状态和拒答；Messages 检查 <code>message_stop</code> 和最终 <code>end_turn</code>。</li>
+      <li>先拼增量，正常终态后才交付；临时预览、用量统计和实际副作用分别处理。</li>
     </ul>
   </div>
   <div class="tip" style="margin-top:1rem;">
-    有 key 的话，把本课"练习"里的非流式调用真正改成流式跑一遍——亲眼看着字往外蹦，你会对 <code>delta</code> 增量和"判空"这个坑印象极深。没 key 也不急，后面 <a href="0043-L38-phase3-capstone.html">L38 综合实战</a>会带你把流式接进完整链路。任何地方卡住，随时问我。下一课：<a href="0032-L27-function-calling.html">Function Calling</a>——让模型学会"调用工具"。
+    先离线练习如何区分预览和正式结果；有凭证和预算时，再选做第 6 节的流式预览。下一课 <a href="0032-L27-function-calling.html">L27 · Function Calling</a>：模型提出工具请求后，由应用决定是否执行。
   </div>
 </div>
 

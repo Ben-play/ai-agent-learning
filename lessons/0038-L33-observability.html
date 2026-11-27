@@ -17,7 +17,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>LLM 可观测性</h1>
     <p class="subtitle">用 OpenTelemetry GenAI 语义约定，看清 Agent 慢在哪、错在哪、哪些费用算得出来</p>
@@ -265,7 +265,49 @@ assert zero["ledger"] == {"usage": (0, 0), "cost": 0}
 assert "PRIVATE-" not in json.dumps([known, missing, no_price, zero])
 print("L33 ACCEPTED")</code></pre>
   </div>
+  <div class="best-practice-point" id="bp-l33">
+    <h3>决策卡：首输出块计时既不从重试重置，也不停在元数据上</h3>
+    <p class="bp-scenario"><strong>适用：</strong>流式展馆助手用首输出块指标定位用户等待。只关心整次调用耗时时，查推理耗时指标；首块也不是首 Token。</p>
+    <div class="bp-compare">
+      <div class="bp-wrong"><span class="bp-compare-label">见首个事件就记值</span><p>这条流先收元数据，失败重试后才收工具参数块。见元数据就报 20 ms，会把等待算短；最终没收到输出也不能记 0。</p></div>
+      <div class="bp-right"><span class="bp-compare-label">在收到非空新输出时停表</span><p>同一条流从首次认证前计时，包含失败和等待；首个非空工具块也是新输出。若始终没有新输出，就没有首块样本。</p></div>
+    </div>
+    <p class="bp-rationale"><strong>取舍：</strong>适配器必须区分事件内容并保留同一次推理的起点；多做这层归一化，才能比较等待时长。发出耗时样本不需要上传片段正文。</p>
+  </div>
 </div>
+
+<section class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>独立练习：重试后第一个工具块算不算输出？</h2>
+  <p>对两条合成流实现 <code>first_chunk_sample(start_ms, events)</code>，只返回首块指标的名字、秒单位和值，没收到非空新输出时返回空字典。输入是归类后的事件，元数据和空片段不算；先预测两条记录各会发什么。起点可单跑，只检查时间顺序，不打印。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l33-transfer-starter">start_ms = 100  # 认证与首次尝试前，同一时钟
+common = [
+    (120, "metadata", "fixture-header"),
+    (180, "retry", ""),
+    (420, "text_delta", ""),
+]
+streams = {
+    "tool_first": [*common, (500, "tool_delta", '{"exhibit":"E7"}'),
+                   (560, "text_delta", "已找到展厅")],
+    "no_output": [*common, (520, "end", "")],
+}
+assert all([t for t, _, _ in events] == sorted(t for t, _, _ in events)
+           for events in streams.values())
+# TODO：找最早的非空输出块；不要把元数据、空片段或正文发作遥测。</code></pre>
+  <details class="bp-check"><summary>展开参考与断言（接在起点后）</summary><pre data-lang="python"><code class="language-python" id="l33-transfer-check">def first_chunk_sample(start_ms, events):
+    for arrived_ms, kind, fragment in events:
+        if kind in {"text_delta", "tool_delta"} and fragment:
+            return {"gen_ai.client.inference.time_to_first_chunk":
+                    ("s", (arrived_ms - start_ms) / 1000)}
+    return {}
+
+
+assert first_chunk_sample(start_ms, streams["tool_first"]) == {
+    "gen_ai.client.inference.time_to_first_chunk": ("s", 0.4),
+}, "首个非空工具块距初始起点 400 ms，只发耗时"
+assert first_chunk_sample(start_ms, streams["no_output"]) == {}, "缺失不是零"
+print("L33 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result"><strong>运行与诊断：</strong>新文件只复制 <code>l33-transfer-starter</code>、<code>l33-transfer-check</code>，用 <code>python -I 文件名.py</code> 运行（不用 <code>-O</code>），应只见 <code>L33 TRANSFER PASSED</code>。如果得到 0.02 秒，查是不是把元数据算成了首块；若得到 0.46 秒，查是不是漏算了工具块；无输出却有样本则查是否填了默认零。本地时间戳和事件类型不验证真实 SDK、OTLP 或后端映射。</p>
+</section>
 
 <div class="section">
   <h2>🎯 速查卡</h2>

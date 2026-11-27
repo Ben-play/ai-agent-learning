@@ -57,7 +57,14 @@
 
 ## 快速开始
 
-- 本地预览：在仓库根目录运行 `python -m http.server 8000`，再访问 `http://localhost:8000/`；也可直接打开 HTML 进行只读浏览，但不同 `file://` 页面之间不保证共享学习记录。
+- 本地预览：在仓库根目录用 Python 3.11+ 构建到**仓库外专用目录**，只在回环地址服务白名单产物，不发布整个仓库：
+
+  ```bash
+  python scripts/build-pages.py --output ../ai-agent-learning-preview
+  python -m http.server 8000 --bind 127.0.0.1 --directory ../ai-agent-learning-preview
+  ```
+
+  打开 `http://127.0.0.1:8000/`。要预览 `/ai-agent-learning/`，构建到专用父目录下的 `ai-agent-learning` 子目录，指定 `--site-root /ai-agent-learning/`，再用上面的回环命令服务该专用父目录。也可直接打开 HTML 阅读；`file://` 不支持 PWA，不保证共享学习记录。
 - GitHub Pages：推送到 `main` 后，由 `.github/workflows/pages.yml` 构建白名单站点并部署；首次使用需在仓库 Settings → Pages 中将 Source 设为 **GitHub Actions**。
 - 移动端：通过 Pages 地址访问后，可使用浏览器“添加到主屏幕”；访问过的课程可在网络不可用时继续打开。
 
@@ -72,6 +79,7 @@
 - 🏋️ **实战练习** — 从可见输入或骨架开始，先完成一小步、核对预期，再展开参考
 - 📋 **单课级最佳实践** — 用可操作验收任务收束本课执行纪律
 - 🧭 **阶段实践检查点与最终复盘** — 学完相关知识后立即完成跨课检查点，避免拖到阶段末遗忘；Phase 1 的 8 个检查点分布在 L01/L02/L04/L07/L11/L12/L14/L16，[Phase 1 复盘页](best-practices/phase1-python-engineering-practices.html)用于最终索引与验收；Phase 2 的 5 个检查点分布在 L18/L19/L21/L22/L23，[Phase 2 复盘页](best-practices/phase2-model-selection-practices.html)汇总模型评测与选型决策
+  - Phase 3：[阶段复盘](best-practices/phase3-api-engineering-practices.html)，用 L38 核对模型终态、实际分派和成本账本。
   - Phase 4：L43 跨课检查点，[阶段复盘](best-practices/phase4-prompt-context-practices.html)。Phase 5：L48、L52 跨课检查点，[阶段复盘](best-practices/phase5-agent-harness-practices.html)。Phase 6：[L59 取证与授权检查点](lessons/0068-L59-mcp-skill-authority.html#stage-practice-skill-and-authority)，[阶段复盘](best-practices/phase6-langgraph-mcp-practices.html)。
   - Phase 7：L66 做检索、重排与变更检查；L69 做检索与生成分层交接，[阶段复盘](best-practices/phase7-data-rag-practices.html)。
   - Phase 8：L74 核对分层评估；L79 做门禁退化、恢复与工程交接，[阶段复盘](best-practices/phase8-agent-engineering-practices.html)。
@@ -81,9 +89,11 @@
 - 💼 **面试自查** — 情境判断、工程取舍、验证方法；先答主问题，再用追问检验条件变化
 - 📚 **参考资源** — 延伸阅读
 
-## 第三至第十一阶段本地验收
+## 本地验收
 
-在仓库根目录执行 `python -I -X utf8 scripts/check-course-examples.py`，只执行白名单内的自检。L36 需要 Pydantic v2，可使用课程项目已有虚拟环境；L58/L59 与 L75 的 MCP 对照仅连接本机回环地址，L82 的课程自检需要 Node.js。不请求外部服务，不用 `-O` 禁用断言。LangGraph 的三个框架相关块单独用 `--suite langgraph` 运行；先见[项目依赖与验证状态](code/phase6-langgraph-mcp/graph-lab/README.md)。
+在仓库根目录执行 `python -I -B -X utf8 scripts/check-course-examples.py --suite foundations`，只跑 L02、L18、L24 和 Phase 3 的指定标准库示例。L34/L36 的真实 Pydantic v2 检查单独用 `--suite pydantic`，从课程项目已有的虚拟环境运行，不在 PR 标准库步骤里替换成模拟 Schema。Phase 2 综合项目与配对反例在[项目指南](code/phase2-model-selection/phase2-practices-capstone/README.md)中单独验收。
+
+不传 `--suite` 会跑较广的离线白名单，不是所有课件代码。默认套件也需要 Pydantic v2；L58/L59 和 L75 仅连接本机回环地址，L82 需要 Node.js。不请求外部服务，不用 `-O` 禁用断言。框架相关块单独用 `--suite langgraph`，先见[项目依赖与验证状态](code/phase6-langgraph-mcp/graph-lab/README.md)。
 
 Phase 7 可单独执行 `python -I -X utf8 scripts/check-course-examples.py --suite rag`，仅用标准库和合成语料，详见[证据问答实验](code/phase7-data-rag/rag-lab/README.md)。
 
@@ -103,7 +113,7 @@ Phase 11 可单独执行 `python -I -X utf8 scripts/check-course-examples.py --s
 
 - 🌓 **深色/浅色模式** — 右下角切换，自动跟随系统偏好
 - 📍 **课程导航** — 顶部粘性导航栏 + 底部卡片式切换
-- 📊 **学习进度** — 手动标记完成课程，首页与顶部进度条同步显示完成度
+- 📊 **学习进度** — 手动标记完成；首页区分 89 节必修和 98 节全目录，默认续学不进入选修。课程顶栏保留全目录进度。
 - 📱 **响应式设计** — 移动端友好
 - 🖨️ **打印友好** — 支持打印为 PDF
 

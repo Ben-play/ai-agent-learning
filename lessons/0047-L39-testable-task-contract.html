@@ -11,7 +11,7 @@
 <body>
 <main>
 <div class="section"><div class="lesson-header">
-  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第四阶段 · Prompt 与 Context 工程</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">30</span><span class="lesson-time-unit">分钟</span></span></div>
   <h1>把请求写成可判定任务</h1>
   <p class="subtitle">先定答复、缺证据与草稿的通过条件，再写 Prompt</p>
 </div></div>
@@ -89,6 +89,15 @@ print("L39 ACCEPTED")</code></pre></details>
 <div class="section best-practice-lesson" id="lesson-best-practices">
   <h2>本课最佳实践验收：会议室能留物过夜吗？</h2>
   <p>同一问题先只给开放时间，再给「不可留物过夜」的规定。为两次分别写状态、引用和禁止出现的字段。正确答复不必照抄原文，但结论必须由相关证据支持。</p>
+  <p><strong>可运行起点：</strong>用两份证据快照验证同一候选答复。先用 <code>python -I 文件名.py</code> 查看案例 ID、当轮证据 ID、候选状态和引用 ID，再补断言：只有材料里有留物规定时，这个带引用的答复才应过关。另写一条材料不足的合法返回。起点与折叠参考各自运行，不必拼接。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l39-transfer-starter">hours = {"source_id": "ROOM-01", "quote": "会议室开放至 21:00。"}
+policy = {"source_id": "ROOM-02", "quote": "会议室内不得留物过夜。"}
+reply = dict(status="answered", answer="不能留物过夜。", citations=[policy], draft=None)
+cases = {"hours_only": [hours], "with_policy": [hours, policy]}
+cited = [doc["source_id"] for doc in reply["citations"]]
+for case_id, evidence in cases.items():
+    print(case_id, [doc["source_id"] for doc in evidence], reply["status"], cited)
+# TODO：核对预期状态、引用是否在当轮证据中，以及不得出现的字段。</code></pre>
   <details class="bp-check"><summary>展开独立参考：检查答复与拒答边界</summary><pre><code class="language-python" id="l39-transfer-check">policy = {"source_id": "ROOM-02", "quote": "会议室内不得留物过夜。"}
 
 

@@ -20,6 +20,7 @@ from .contracts import (
     CandidateRunSpec,
     CostBreakdown,
     HardGates,
+    HoldoutTrial,
     QualityMetrics,
     RankingWeights,
     RouteRecommendation,
@@ -123,6 +124,20 @@ def _validate_run_spec(spec: AssessmentRunSpec) -> None:
     _check(spec.decision_split == "holdout", "decision split is not holdout")
     _unique_nonempty(spec.candidate_config_ids, "candidate config IDs")
     _unique_nonempty(spec.task_policy_ids, "task policy IDs")
+    policy_tasks = tuple(policy.task for policy in spec.task_policies)
+    _unique_nonempty(policy_tasks, "run spec policy tasks")
+    _check(
+        set(policy_tasks) == {case.task for case in spec.cases},
+        "run spec policy tasks do not cover cases",
+    )
+    _check(
+        tuple(sorted(policy.policy_id for policy in spec.task_policies)) == spec.task_policy_ids,
+        "run spec policies do not match task policy IDs",
+    )
+    for policy in spec.task_policies:
+        _check(type(policy.require_every_holdout_run) is bool, "invalid joint holdout policy")
+        if policy.task in {"high_stakes_reasoning", "impossible_safety"}:
+            _check(policy.require_every_holdout_run, "registered task must require every holdout run")
     candidate_ids = tuple(item.candidate_id for item in spec.candidate_configs)
     config_ids = tuple(item.config_id for item in spec.candidate_configs)
     _unique_nonempty(candidate_ids, "candidate manifest IDs")
@@ -262,6 +277,14 @@ def _validate_task(task: TaskAssessment, spec: AssessmentRunSpec) -> None:
         and task.manual_review_unit_cost > 0,
         "manual review unit cost must be finite and strictly positive",
     )
+    policy = next(item for item in spec.task_policies if item.task == task.task)
+    _check(
+        task.policy_id == policy.policy_id
+        and task.hard_gates == policy.hard_gates
+        and task.ranking_weights == policy.ranking_weights
+        and task.manual_review_unit_cost == policy.manual_review_unit_cost,
+        "task policy does not match run spec",
+    )
     candidate_ids = [candidate.candidate_id for candidate in task.candidates]
     _unique_nonempty(tuple(candidate_ids), f"candidate IDs for {task.task}")
     expected_by_candidate = {
@@ -309,9 +332,9 @@ def _validate_task(task: TaskAssessment, spec: AssessmentRunSpec) -> None:
         "qualified ranking does not exactly cover qualified candidates",
     )
     ranked = [_candidate(task, candidate_id) for candidate_id in task.qualified_ranking]
+    failures, costs = _audit_holdout_trials(task, spec, ranked, policy.require_every_holdout_run)
     if not ranked:
-        _check(not qualified_ids, "empty ranking has qualified candidates")
-        _validate_route(task.route, task, manifest_by_id)
+        _validate_route(task.route, task, manifest_by_id, failures, costs)
         return
     recomputed_scores = _recompute_normalized_scores(ranked, task.ranking_weights)
     _check(
@@ -335,7 +358,91 @@ def _validate_task(task: TaskAssessment, spec: AssessmentRunSpec) -> None:
         )
     )
     _check(task.qualified_ranking == expected_order, "qualified ranking order is invalid")
-    _validate_route(task.route, task, manifest_by_id)
+    _validate_route(task.route, task, manifest_by_id, failures, costs)
+
+
+_TrialKey = tuple[str, int]
+
+
+def _audit_holdout_trials(
+    task: TaskAssessment,
+    spec: AssessmentRunSpec,
+    qualified: list[CandidateAssessment],
+    require_every_run: bool,
+) -> tuple[dict[str, set[_TrialKey]], dict[str, dict[_TrialKey, float]]]:
+    holdout_cases = {
+        case.case_id: case for case in spec.cases
+        if case.task == task.task and case.split == spec.decision_split
+    }
+    expected_keys = {
+        (case_id, repeat)
+        for case_id, case in holdout_cases.items()
+        for repeat in range(1, case.repeats + 1)
+    }
+    rows: dict[str, dict[_TrialKey, float]] = {candidate.candidate_id: {} for candidate in qualified}
+    failed: dict[str, set[_TrialKey]] = {candidate_id: set() for candidate_id in rows}
+    wrong_answers: Counter[tuple[str, str]] = Counter()
+    _check(isinstance(task.holdout_trials, tuple), "holdout trial ledger must be a tuple")
+    for trial in task.holdout_trials:
+        _check(isinstance(trial, HoldoutTrial), "invalid holdout trial row")
+        _check(trial.candidate_id in rows, "holdout trial candidate is not qualified")
+        key = (trial.case_id, trial.repeat)
+        _check(_nonnegative_int(trial.repeat) and key in expected_keys, "unexpected holdout trial key")
+        candidate_rows = rows[trial.candidate_id]
+        _check(key not in candidate_rows, "duplicate holdout trial key")
+        _check(
+            not isinstance(trial.cost, bool) and math.isfinite(trial.cost) and trial.cost >= 0,
+            "holdout trial cost must be finite and nonnegative",
+        )
+        candidate_rows[key] = trial.cost
+
+        case = holdout_cases[trial.case_id]
+        _check(
+            isinstance(trial.evidence_ids, tuple)
+            and len(set(trial.evidence_ids)) == len(trial.evidence_ids)
+            and set(trial.evidence_ids) <= set(case.allowed_evidence_ids),
+            "holdout trial evidence does not match case allowlist",
+        )
+        answer = trial.answer.strip().casefold().rstrip(".!?").strip()
+        expected_answer = case.expected_answer.strip().casefold().rstrip(".!?").strip()
+        _check(
+            type(trial.abstained) is bool and trial.abstained == (answer == "abstain"),
+            "holdout trial abstention does not match answer",
+        )
+        answer_wrong = answer != expected_answer
+        wrong_answers[(trial.candidate_id, trial.case_id)] += answer_wrong
+        if answer_wrong or (
+            require_every_run and (
+                trial.abstained != case.should_abstain
+                or not set(case.required_evidence_ids).issubset(trial.evidence_ids)
+            )
+        ):
+            failed[trial.candidate_id].add(key)
+
+    for candidate in qualified:
+        candidate_id = candidate.candidate_id
+        _check(
+            bool(expected_keys) and rows[candidate_id].keys() == expected_keys
+            and candidate.holdout_observations == len(expected_keys),
+            "holdout trial coverage does not match the expected holdout runs",
+        )
+        _check(
+            candidate.costs is not None and _close(sum(rows[candidate_id].values()), candidate.costs.total),
+            "holdout trial costs do not reconcile to candidate holdout spend",
+        )
+        _check(not require_every_run or not failed[candidate_id], "qualified candidate has failed holdout trials")
+        _check(
+            _close(candidate.holdout_escalation_probability, len(failed[candidate_id]) / len(expected_keys)),
+            "candidate escalation probability does not match holdout trials",
+        )
+        factual_error = sum(
+            wrong_answers[(candidate_id, case.case_id)] / case.repeats for case in holdout_cases.values()
+        ) / len(holdout_cases)
+        _check(
+            candidate.metrics is not None and _close(candidate.metrics.factual_error_rate, factual_error),
+            "candidate factual error does not match holdout trials",
+        )
+    return failed, rows
 
 
 def _recompute_normalized_scores(
@@ -529,9 +636,11 @@ def _validate_route(
     route: RouteRecommendation,
     task: TaskAssessment,
     manifest_by_id: dict[str, CandidateRunSpec],
+    failures: dict[str, set[_TrialKey]],
+    costs: dict[str, dict[_TrialKey, float]],
 ) -> None:
-    qualified = {candidate.candidate_id: candidate for candidate in task.candidates if candidate.qualified}
-    if not qualified:
+    _check(route.task == task.task, "route task does not match containing task")
+    if not costs:
         _check(route.primary_candidate is None and route.escalation_candidate is None, "no-route IDs must be None")
         _check(
             route.escalation_probability == 0
@@ -546,22 +655,16 @@ def _validate_route(
         _check(route.evaluated_strategies == (), "no-route strategies must be empty")
         _check(route.reason == "no candidate passed every hard gate", "no-route reason is invalid")
         return
-    _check(route.primary_candidate in qualified, "route primary is not qualified")
+    _check(route.primary_candidate in costs, "route primary is not qualified")
     _check(bool(route.evaluated_strategies), "qualified route has no evaluated strategies")
-    capability_tiers = {
-        candidate_id: manifest_by_id[candidate_id].capability_tier
-        for candidate_id in qualified
-    }
     expected_strategy_keys = {
         (primary_id, fallback_id)
-        for primary_id in qualified
+        for primary_id in costs
         for fallback_id in (
             tuple(
-                sorted(
-                    candidate_id
-                    for candidate_id in qualified
-                    if capability_tiers[candidate_id] > capability_tiers[primary_id]
-                )
+                candidate_id
+                for candidate_id in costs
+                if manifest_by_id[candidate_id].capability_tier > manifest_by_id[primary_id].capability_tier
             )
             or (None,)
         )
@@ -574,20 +677,23 @@ def _validate_route(
         actual_strategy_keys == expected_strategy_keys,
         "route strategies do not enumerate every eligible primary/fallback",
     )
-    seen: set[tuple[str, str | None]] = set()
+    audited_totals: dict[tuple[str, str | None], float] = {}
     for strategy in route.evaluated_strategies:
         key = (strategy.primary_candidate, strategy.escalation_candidate)
-        _check(key not in seen, "duplicate route strategy")
-        seen.add(key)
-        _validate_strategy(strategy, qualified, task.manual_review_unit_cost)
-    expected = min(
-        route.evaluated_strategies,
-        key=lambda item: (
-            item.total_expected_cost,
-            item.primary_candidate,
-            item.escalation_candidate or "",
-        ),
+        _check(key not in audited_totals, "duplicate route strategy")
+        audited_totals[key] = _audit_strategy(strategy, failures, costs, task.manual_review_unit_cost)
+
+    ordered = tuple(
+        sorted(
+            route.evaluated_strategies,
+            key=lambda item: (
+                audited_totals[(item.primary_candidate, item.escalation_candidate)],
+                item.primary_candidate,
+                item.escalation_candidate or "",
+            ),
+        )
     )
+    expected = ordered[0]
     selected = RouteStrategy(
         primary_candidate=route.primary_candidate or "",
         escalation_candidate=route.escalation_candidate,
@@ -600,93 +706,48 @@ def _validate_route(
         residual_failure_handling=route.residual_failure_handling,
     )
     _check(selected == expected, "chosen route is not the true minimum strategy")
+    _check(route.evaluated_strategies == ordered, "evaluated strategy order is invalid")
     _check(route.reason == "lowest total expected cost among holdout-qualified strategies", "route reason is invalid")
 
 
-def _validate_strategy(
+def _audit_strategy(
     strategy: RouteStrategy,
-    qualified: dict[str, CandidateAssessment],
+    failures: dict[str, set[_TrialKey]],
+    costs: dict[str, dict[_TrialKey, float]],
     manual_review_unit_cost: float,
-) -> None:
-    _check(strategy.primary_candidate in qualified, "strategy primary is not qualified")
-    _check(strategy.escalation_candidate is None or strategy.escalation_candidate in qualified, "strategy escalation is not qualified")
-    _check(math.isfinite(strategy.escalation_probability) and 0 <= strategy.escalation_probability <= 1, "strategy probability must be in [0, 1]")
-    primary = qualified[strategy.primary_candidate]
-    _check(primary.costs is not None, "strategy primary lacks costs")
-    if primary.costs is not None:
-        _check(math.isclose(strategy.primary_cost, primary.costs.total, abs_tol=1e-12, rel_tol=1e-12), "strategy primary cost mismatch")
-    expected_escalation = 0.0
-    if strategy.escalation_candidate is not None:
-        _check(
-            math.isclose(
-                strategy.escalation_probability,
-                primary.holdout_escalation_probability,
-                abs_tol=1e-12,
-                rel_tol=1e-12,
-            ),
-            "strategy escalation probability differs from primary calibration",
-        )
-        escalation = qualified[strategy.escalation_candidate]
-        _check(escalation.costs is not None, "strategy escalation lacks costs")
-        if escalation.costs is not None:
-            expected_escalation = escalation.costs.total * strategy.escalation_probability
-        expected_residual = (
-            primary.holdout_escalation_probability
-            * escalation.holdout_escalation_probability
-        )
-        _check(
-            math.isclose(
-                strategy.residual_failure_probability,
-                expected_residual,
-                abs_tol=1e-12,
-                rel_tol=1e-12,
-            ),
-            "automated fallback residual probability mismatch",
-        )
-        expected_handling = "manual_review" if expected_residual > 0 else None
-        _check(
-            strategy.residual_failure_handling == expected_handling,
-            "automated fallback residual handling mismatch",
-        )
-    else:
-        _check(strategy.escalation_probability == 0, "strategy without fallback has probability")
-        _check(
-            math.isclose(
-                strategy.residual_failure_probability,
-                primary.holdout_escalation_probability,
-                abs_tol=1e-12,
-                rel_tol=1e-12,
-            ),
-            "strategy residual probability mismatch",
-        )
-        expected_handling = (
-            "manual_review" if strategy.residual_failure_probability > 0 else None
-        )
-        _check(strategy.residual_failure_handling == expected_handling, "strategy residual handling mismatch")
-    expected_manual_review = (
-        strategy.residual_failure_probability * manual_review_unit_cost
+) -> float:
+    primary_costs = costs[strategy.primary_candidate]
+    primary_failures = failures[strategy.primary_candidate]
+    n_trials = len(primary_costs)
+    fallback_id = strategy.escalation_candidate
+    triggered = primary_failures if fallback_id is not None else set()
+    unresolved = primary_failures if fallback_id is None else primary_failures & failures[fallback_id]
+    primary_cost = math.fsum(primary_costs.values()) / n_trials
+    fallback_cost = (
+        math.fsum(costs[fallback_id][key] for key in triggered) / n_trials
+        if fallback_id is not None else 0.0
     )
+    residual = len(unresolved) / n_trials
+    review_cost = residual * manual_review_unit_cost
+    total = primary_cost + fallback_cost + review_cost
+    for observed, expected, label in (
+        (strategy.primary_cost, primary_cost, "primary cost"),
+        (strategy.escalation_probability, len(triggered) / n_trials, "escalation probability"),
+        (strategy.escalation_cost, fallback_cost, "escalation cost"),
+        (strategy.residual_failure_probability, residual, "residual probability"),
+        (strategy.manual_review_cost, review_cost, "manual review cost"),
+        (strategy.total_expected_cost, total, "total expected cost"),
+    ):
+        _check(math.isfinite(observed) and observed >= 0 and _close(observed, expected), f"strategy {label} mismatch")
     _check(
-        math.isclose(
-            strategy.manual_review_cost,
-            expected_manual_review,
-            abs_tol=1e-12,
-            rel_tol=1e-12,
-        ),
-        "strategy manual review cost mismatch",
+        strategy.residual_failure_handling == ("manual_review" if unresolved else None),
+        "strategy residual handling mismatch",
     )
-    _check(math.isclose(strategy.escalation_cost, expected_escalation, abs_tol=1e-12, rel_tol=1e-12), "strategy escalation cost mismatch")
-    _check(
-        math.isclose(
-            strategy.total_expected_cost,
-            strategy.primary_cost
-            + strategy.escalation_cost
-            + strategy.manual_review_cost,
-            abs_tol=1e-12,
-            rel_tol=1e-12,
-        ),
-        "strategy total expected cost mismatch",
-    )
+    return total
+
+
+def _close(observed: float, expected: float) -> bool:
+    return math.isclose(observed, expected, abs_tol=1e-12, rel_tol=1e-12)
 
 
 def _metric_gate_failures(metrics: QualityMetrics, gates: HardGates) -> bool:

@@ -34,7 +34,7 @@
 
 <!-- ==================== Part A ==================== -->
 <h2 class="part-header" id="part-1">Part A · Python 基础快速复习</h2>
-<p>你有基础，这部分快速查漏补缺。每课 20-30 分钟，重点看不熟悉的部分。</p>
+<p>这部分用于查漏补缺。按各课的时长徽章安排学习与实操；熟悉的内容可以略读，实战练习和标出的阶段实践检查点仍要完成。</p>
 
 <!-- Module 1.1 -->
 <div class="module">
@@ -44,11 +44,11 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L01</span><span class="lesson-num-time">55min</span>
+      <span class="lesson-num">L01</span><span class="lesson-num-time">60min</span>
       <div>
         <div class="lesson-title"><a href="0004-L01-dev-environment-setup.html">开发环境搭建</a> <span class="badge-basic">基础</span></div>
-        <div class="lesson-desc">Python 安装与版本管理（pyenv）、包管理工具（uv）、VS Code 配置、虚拟环境（venv）、.env 环境变量管理</div>
-        <div class="exercise">创建 agent-hello 项目 — 按照生产级结构组织（schemas.py / tools.py / config.py / main.py），运行后打印项目结构图</div>
+        <div class="lesson-desc">Python 安装与版本选择（pyenv 可选）、uv 项目与依赖管理、VS Code 解释器配置、虚拟环境（venv）、.env 本地配置</div>
+        <div class="exercise">搭建 agent-hello，运行入口检查依赖和本地占位变量，再完成环境检查点</div>
       </div>
     </div>
     <div class="lesson-item">
@@ -56,7 +56,7 @@
       <div>
         <div class="lesson-title"><a href="0005-L02-python-runtime-and-modules.html">Python 运行机制与模块系统</a> <span class="badge-basic">基础</span></div>
         <div class="lesson-desc">解释型语言特点、Python 执行流程、__name__ == "__main__"、模块与包、import 机制、相对导入 vs 绝对导入</div>
-        <div class="exercise">将 L01 的项目拆分为多个模块，练习 import 机制和包结构</div>
+        <div class="exercise">用真实 agent-hello 核对模块、公开入口与导入行为，再用临时迷你包完成重构检查点</div>
       </div>
     </div>
   </div>
@@ -278,7 +278,7 @@
 
 <h2>学习建议</h2>
 <div class="tip">
-  <strong>Part A 查漏补缺</strong>——按每课徽章安排时间；含阶段检查点的 L01/L02/L04 需要 55–65 分钟，其他课程以当前标注为准，不要把必做实践压缩成略读。<br>
+  <strong>Part A 查漏补缺</strong>——以各课徽章为准；L01、L02、L04 可分成知识点与实操两段学习，但阶段检查点应在本课完成。<br>
   <strong>Part B 是重点</strong>——装饰器、@dataclass、JSON 操作是 Agent 框架的底层；课程时长约 20–50 分钟，L07/L11 的阶段检查点要独立完成后再看参考验收。<br>
   <strong>Part C 是核心</strong>——生成器/Streaming、类型提示、Pydantic、<strong>httpx 网络请求</strong>、异步并发直接对应 Agent 开发；课程时长约 20–45 分钟，以徽章为准，并在 L12/L14/L16 立即完成跨课检查点。<br><br>
   <strong>练习方式：</strong>每课结束后完成实战练习；遇到“阶段实践检查点”时立即完成跨课任务，不要留到 L16。检查点代码会复用此前课程知识，最终总结页只负责复盘和综合验收。

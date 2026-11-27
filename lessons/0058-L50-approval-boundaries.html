@@ -11,7 +11,7 @@
 <body>
 <main>
 <div class="section"><div class="lesson-header">
-  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">45</span><span class="lesson-time-unit">分钟</span></span></div>
+  <div class="lesson-meta-row"><span class="lesson-phase-tag">第五阶段 · Agent 核心架构</span><span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">40</span><span class="lesson-time-unit">分钟</span></span></div>
   <h1>人工审批与明确禁止的动作</h1><p class="subtitle">用户审批的是刚看过的这一版草稿，不是以后所有改动</p>
 </div></div>
 <div class="section"><h2>为什么这课重要？</h2><p>客服助手把导出问答整理成工单草稿。用户看过并同意保存，草稿却在保存前被修改了。若应用只查「是否点过同意」，就会保存用户没看过的内容。</p><h3>学习目标</h3><p>区分草稿、授权与人工审批，并用业务状态证明拒绝、撤回和版本变化都不会产生写入。</p></div>
@@ -121,6 +121,19 @@ print("L50 ACCEPTED")</code></pre></details>
   <h2>本课最佳实践验收：实验室设备时段预留</h2>
   <p><strong>任务：</strong>成员可以预留设备时段，不能启用设备。审批绑定机构、成员、动作、申请 ID 及确切的设备和时段快照（含版本）。先画出有资格且获批、批准后改时段、批准后撤权三条路径；再交换「撤回决定」与「写入预留」的顺序，预言两次调用的状态和实际预留条数。</p>
   <p>时间由测试传入，批准只在 <code>now &lt; expires_at</code> 时有效。先撤回则不写；写入后撤回只阻止后续执行，不会撤销已提交的预留，取消应走独立流程。身份、当前资格和人工决定均为可信宿主夹具；这是逐条排列的事件顺序，不是并发压测。真实应用要在写入边界处理有效期，并给撤回、撤权与写入明确的先后关系。</p>
+  <p><strong>可运行起点：</strong>同一份光谱仪预留，申请人与审批快照匹配且资格未变，只改变到达写入边界的时间。用 <code>python -I 文件名.py</code> 单跑起点，先看到两次 <code>TODO / 0</code>。补完后核对时间 7 是 <code>reserved / 1</code>，时间 8 是 <code>expired / 0</code>。折叠参考另存运行。</p>
+  <pre data-lang="python" data-label="Python · 独立练习起点"><code class="language-python" id="l50-transfer-starter">snapshot = ("lab-c", "member-4", "reserve_slot", "req-4", "spectrometer", 16, 1)
+review = {"binding": snapshot, "status": "approved", "expires_at": 8}
+
+
+def attempt(snapshot, review, now, reservations):
+    # TODO：只补有效期判断；有效时才向 reservations 追加 snapshot。
+    return "TODO"
+
+
+for now in (7, 8):
+    reservations = []  # 两次都是首次尝试
+    print(now, attempt(snapshot, review, now, reservations), "/", len(reservations))</code></pre>
   <details class="bp-check"><summary>展开参考程序（Python 3.11+，标准库、离线）</summary><pre><code class="language-python" id="l50-transfer-check">from dataclasses import dataclass, replace
 
 RESERVE = "reserve_slot"

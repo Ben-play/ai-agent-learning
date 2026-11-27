@@ -24,7 +24,7 @@
       <span class="hero-stat-label">学习阶段</span>
     </div>
     <div class="hero-stat">
-      <span class="hero-stat-num">38</span>
+      <span class="hero-stat-num">98</span>
       <span class="hero-stat-label">已编写正式课</span>
     </div>
     <div class="hero-stat">
@@ -176,7 +176,7 @@
       <strong>Module 3.3 · 工程实践与边界：</strong><br>
       · <strong>Context Window 管理</strong> — 按完整工具交互组重组上下文，计入工具定义、多模态与输出预留；压缩后重新计数，仍超限则降级或退出<br>
       · <strong>错误处理与重试策略</strong> — 速率限制（429）、指数退避 + <strong>抖动（full jitter，防重试风暴）</strong>、重试预算、<strong>幂等键与业务去重（需执行端支持并验证，不能靠加请求头获得保证）</strong><br>
-      · <strong>模型路由与 Fallback</strong> — 主备模型策略、AI Gateway 模式（LiteLLM）<br>
+      · <strong>模型路由与 Fallback</strong> — 按能力与数据策略筛路线，只有可安全重放且有预算才换；网关是可选的共享治理层<br>
       · <strong>LLM 可观测性基础</strong> — 区分调用日志、span、用量指标与应用成本账本；OpenTelemetry GenAI 独立版 v0.1.0 仍为 Development，记录埋点版本并单独核对后端映射<br><br>
       <strong>Module 3.4 · 工具工程与 Function Calling（v7 新增 · P0 实战必修）：</strong><br>
       · <strong>Tool Schema 设计</strong> — 用 Pydantic / JSON Schema 定义工具、strict mode、参数描述如何影响模型选择<br>
@@ -188,6 +188,7 @@
       <div class="interview-box">"Streaming 好处" / "Function Calling 原理" / "如何设计好的 Tool Schema" / "并行工具调用怎么处理" / "Structured Outputs 与 JSON mode 区别" / "Context Window 超限" / "如何处理速率限制（退避+抖动）" / "有副作用的工具调用如何安全重试（幂等）" / "主模型挂了怎么办" / "Prompt Caching 与语义缓存的区别" / "怎样按负载与质量门槛优化成功任务成本" — 共 14+ 道高频题</div><br>
       <strong>综合项目与验收目标：</strong>构建可验收的 Agent 客户端 — 工具循环、结构化输出、流式、重试、fallback 和累计 usage；离线覆盖成功、非法输入、拒答、截断、工具异常和预算耗尽。原生接口/缓存接入需单独验证；离线 fixture 只证明本地契约，不能证明真实模型能力、线上缓存命中或生产就绪。<br><br>
       <a href="0044-phase3-api-engineering-outline.html" style="font-weight:600;">📋 查看 Phase 3 详细大纲（L25–L38）→</a><br>
+      <a href="../best-practices/phase3-api-engineering-practices.html" style="font-weight:600;">✓ Phase 3 工程实践复盘（不计为新课）→</a><br>
       <a href="../qa/phase3-qa.html" style="font-weight:600;">❓ Phase 3 疑难解答 Q&amp;A →</a>
     </div>
   </div>
@@ -432,7 +433,7 @@
 
 <h2>可靠性更新 · 2026-11-06</h2>
 <ul>
-  <li>保留 11 阶段与 L01–L38；明确已编写内容、后续规划和离线验收的证据边界。</li>
+  <li>当时保留 11 阶段规划及已编写的 L01–L38；此处为历史记录，当前进度以上方课程范围为准。</li>
   <li>Responses / 原生 adapter、按负载优化成本、小型 Agent eval；将持久恢复、审批重启和幂等提前至 Phase 5/6。</li>
   <li>新增 Skills 参考小单元；补 RAG 与记忆生命周期，以单 Agent 和一个深学框架为基线。</li>
   <li>MCP 固定 2026-07-28 规范；修订旧版握手、session、通知流、授权与 Tasks 定位。</li>

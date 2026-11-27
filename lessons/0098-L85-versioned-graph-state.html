@@ -28,7 +28,7 @@
 <div class="card"><h3>另一路：Phase 6 原图实际写的是什么？</h3>
 <p>独立入口直接用 Phase 6 的 <code>draft_graph.py</code>：<code>run_step(..., "stage")</code> 留下人工中断；原 <code>open_graph</code> 用公开的 <code>interrupt_before=["apply_review"]</code> 停在获批未执行；再推进原图并捕获 Phase 6 的 <code>LostReply</code>，由业务全表读回判断是否确已提交。待批只初始化空的审批表。</p>
 <p>旧图的顶层通道是 <code>revision</code>、<code>digest</code>、<code>status</code> 和可选的 <code>op_id</code>，没有 Phase 10 的 <code>schema</code>／<code>binding</code>。候选图保留旧通道、节点和中断顺序；固定宿主身份在内存补齐绑定，不能从 <code>thread_id</code> 推断批准。原审批库没有来源表；当前来源由固定合成宿主另行校验，不把新表当成原始证据。</p>
-<p>原图和候选只推进从封存输入复制出的独立副本，不重建旧任务、不写 saver 私表。继续获批步骤时，<code>invoke(None, ...)</code> 仅传目标线程，不带快照里的 <code>checkpoint_id</code>。用公开接口核对最新 ID、一个可区分的旧快照及推进后的父链，旧 ID 只作对照；是否保存或重放仍由原稿、全表和持久回执证明。</p>
+<p>原图和候选只推进从封存输入复制出的独立副本，不重建旧任务、不写 saver 私表。继续获批步骤时，<code>invoke(None, ...)</code> 仅传目标线程，不带快照里的 <code>checkpoint_id</code>。用公开接口核对最新 ID、一个可区分的旧快照及推进后的父链，旧 ID 只作对照。<a href="0065-L56-langgraph-durable-resume.html">L56</a> 使用刚读到的 <code>snapshot.config</code> 固定单写者停点；借用这份配置去继续一个可能已推进的线程，就会选错起点。是否保存或重放仍由原稿、全表和持久回执证明。</p>
 <p><strong>本课不执行真实 SDK。</strong>在已有获准且依赖锁定的 Phase 6 环境，可从 <code>checkpoints/</code> 用该解释器运行 <code>python -B -X utf8 langgraph_rehearsal.py --native-only</code>；不带参数则另跑 Phase 10 应用图夹具。后者不是 Phase 6 快照。本环境只做静态检查，真实演练仍待验。</p></div>
 </section>
 <section class="section"><h2>2. 给完成态加分支，不搬动旧中断</h2>

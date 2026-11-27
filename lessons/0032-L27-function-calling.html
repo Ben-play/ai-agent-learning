@@ -15,7 +15,7 @@
   <div class="lesson-header">
     <div class="lesson-meta-row">
       <span class="lesson-phase-tag">第三阶段 · LLM API 工程实践</span>
-      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">25</span><span class="lesson-time-unit">分钟</span></span>
+      <span class="lesson-time"><span class="lesson-time-clock"></span><span class="lesson-time-num">35</span><span class="lesson-time-unit">分钟</span></span>
     </div>
     <h1>Function Calling 原理</h1>
     <p class="subtitle">用 Responses 跑通一次自定义工具调用：模型提出请求，应用决定是否执行</p>
@@ -98,6 +98,17 @@ def weather_output(call, *, allowed):
   <h2>3. 离线验收：正确配对，错误不执行</h2>
   <div class="card">
     <p>先独立完成：让一条合法调用返回虚构天气，并让损坏参数、未授权工具得到错误结果。把第 2 节代码和以下断言存进同一个 Python 文件，用 <code>python -I 文件名.py</code> 运行。不读取密钥或访问网络；所有断言通过才打印 <code>L27 ACCEPTED</code>。</p>
+    <div class="best-practice-point" id="bp-l27">
+      <h3>决策卡：用调用 ID 配对，不用工具名或列表下标</h3>
+      <p class="bp-scenario"><strong>适用：</strong>应用执行自定义工具并回填结果，即使首版只允许一项调用。<strong>不适用：</strong>普通文本响应没有自定义调用，不造回填 Item。</p>
+      <div class="bp-compare">
+        <div class="bp-wrong"><span class="bp-compare-label">误判：同名就视为同一次</span><p>一轮两次查天气，一条成功、一条参数非法。按 <code>get_weather</code> 存结果会覆盖其中一条；按顺序回填也可能串到另一条。</p></div>
+        <div class="bp-right"><span class="bp-compare-label">对照：成功和错误各归其位</span><p>同两条查询，校验后用各自的 <code>call_id</code> 回填天气或受控错误；交换结果顺序也不改变对应关系。</p></div>
+      </div>
+      <p class="bp-rationale"><strong>取舍：</strong>要保留原调用和关联 ID，但不再依赖同名调用的到达顺序；ID 只负责关联，不赋予工具执行权限。</p>
+      <ol class="bp-steps"><li>运行下面的天气验收，对照 <code>id</code> 和 <code>call_id</code>。</li><li>再做课末变式，把同名结果按相反顺序回填。</li></ol>
+      <p class="bp-result"><strong>结果诊断：</strong>正例和错误都应保留各自的 <code>call_id</code>；如果覆盖或配串，先查是否用工具名、Item ID 或索引当了关联键。</p>
+    </div>
     <details><summary>展开本地调用和断言</summary><pre><code class="language-python" id="l27-tool-check">from types import SimpleNamespace
 
 call = SimpleNamespace(id="fc_123", call_id="call_abc", name="get_weather",
@@ -159,6 +170,58 @@ print(follow_up.status, [item.type for item in follow_up.output])</code></pre></
       </tbody>
     </table>
   </div>
+</div>
+
+<div class="section best-practice-lesson" id="lesson-best-practices">
+  <h2>本课最佳实践验收：展馆查询倒序回填</h2>
+  <p>同一轮提出两次展馆开放时间查询。JSON 都可解码，但一次参数合法、一次不合法。复制起点，实现 <code>run_calls(calls, allowed)</code>：先查名单，再验参数是仅含已知 <code>room</code> 的对象；错误分别记为 <code>tool_unavailable</code> 或 <code>invalid_arguments</code>。倒序回填时，西厅的错误应排在前面，但读取记录里只能有东厅；不用前面的天气代码。</p>
+  <pre data-label="独立练习起点"><code class="language-python" id="l27-transfer-starter">import json
+from types import SimpleNamespace
+
+hours = {"东厅": "10:00–16:00"}
+reads = []
+
+
+def read_hours(room):
+    reads.append(room)
+    return hours[room]
+
+
+calls = [
+    SimpleNamespace(id="fc_a", call_id="call_east", name="room_hours", arguments='{"room":"东厅"}'),
+    SimpleNamespace(id="fc_b", call_id="call_west", name="room_hours", arguments='{"room":7}'),
+]
+# TODO: 实现 run_calls(calls, allowed)。检查后才调用 read_hours。</code></pre>
+  <details class="bp-check"><summary>展开独立参考与断言（接在起点后运行）</summary><pre><code class="language-python" id="l27-transfer-check">def run_calls(calls, allowed):
+    results = []
+    for call in reversed(calls):
+        if call.name != "room_hours" or call.name not in allowed:
+            result = {"error": "tool_unavailable"}
+        else:
+            args = json.loads(call.arguments)  # 起点中的 JSON 均可解码
+            room = args.get("room") if isinstance(args, dict) and set(args) == {"room"} else None
+            if not isinstance(room, str) or room not in hours:
+                result = {"error": "invalid_arguments"}
+            else:
+                result = {"hours": read_hours(room)}
+        results.append({"type": "function_call_output", "call_id": call.call_id,
+                        "output": json.dumps(result, ensure_ascii=False)})
+    return results
+
+
+results = run_calls(calls, {"room_hours"})
+assert [row["call_id"] for row in results] == ["call_west", "call_east"], results
+assert all(row["type"] == "function_call_output" for row in results)
+assert {row["call_id"]: json.loads(row["output"]) for row in results} == {
+    "call_east": {"hours": "10:00–16:00"}, "call_west": {"error": "invalid_arguments"},
+}
+assert reads == ["东厅"], reads
+blocked, = run_calls(calls[:1], set())
+assert blocked["call_id"] == "call_east"
+assert json.loads(blocked["output"]) == {"error": "tool_unavailable"}
+assert reads == ["东厅"], reads
+print("L27 TRANSFER PASSED")</code></pre></details>
+  <p class="bp-result">用 <code>python -I 文件名.py</code> 运行起点加参考，唯一输出应为 <code>L27 TRANSFER PASSED</code>。若结果串位，检查是否按 <code>call_id</code> 对照；若拒绝时仍新增读取记录，检查权限和参数是否在执行前校验。</p>
 </div>
 
 <div class="section">

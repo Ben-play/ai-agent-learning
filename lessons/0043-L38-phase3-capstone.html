@@ -42,7 +42,7 @@
 </div></div>
 
 <div class="section"><h2>2. 完整离线骨架：一份代码，一种消息表示</h2><div class="card">
-  <p>下面整块保存为 <code>agent_lab.py</code>，再接上下一节自检；仅用 Python 标准库。先看三条不变量：<strong>每次底层尝试入账、工具先授权再执行、每个请求 ID 都有结果</strong>。价格是虚构计价单位，不是美元报价。</p>
+  <p>把下面整块保存为 <code>agent_lab.py</code>；只用标准库。先分清两种限额：<code>max_turns</code> 是模型轮数，含最终回答；<code>max_calls</code> 是实际模型尝试数，重试和切路也占，工具分派不占这个计数。调用工具前至少要留一轮、一次模型尝试来回传结果；这不是下一次网络调用一定成功的承诺。只有整批调用 ID 合格并通过宿主检查才分派；每次模型尝试仍入账。价格是虚构计价单位。</p>
   <pre><code class="language-python" id="l38-core">from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
@@ -188,8 +188,8 @@ class AgentClient:
                 except TransientError as exc:
                     self.ledger.record(name, None, "transient_error")
                     last = exc
-                    if attempt == 0:
-                        self.wait(random.uniform(0, 0.1))  # full jitter；自检注入不等待
+                    if attempt == 0 and len(self.ledger.rows) &lt; self.max_calls:
+                        self.wait(random.uniform(0, 0.1))  # 有下一次尝试才等待
                     continue
                 except Exception:
                     # 只记未知用量并原样抛出；不是可重试异常，不切厂商。
@@ -204,15 +204,22 @@ class AgentClient:
             raise ValueError("unknown output mode")
         self.ledger = Ledger()  # 每个任务一份账本；重用实例不混账
         self.history = [{"role": "user", "content": prompt}]
-        for _ in range(self.max_turns):
+        seen_ids = set()  # 只在当前任务、当前本地协议命名空间内去重
+        for turn in range(1, self.max_turns + 1):
             reply = self._call(self.history, output)
             if reply.status != "completed":
                 # 拒答或截断不靠切厂商绕过去，也不执行半截工具参数。
                 raise ValueError(f"not completed: {reply.status}")
             if reply.calls:
+                if turn == self.max_turns:
+                    raise BudgetExceeded("no model round for tool results")
+                if len(self.ledger.rows) &gt;= self.max_calls:
+                    raise BudgetExceeded("no model attempt for tool results")
                 ids = [call.id for call in reply.calls]
-                if any(not i for i in ids) or len(ids) != len(set(ids)):
-                    raise ValueError("invalid tool call ids")
+                if (any(not isinstance(i, str) or not i.strip() for i in ids)
+                        or len(ids) != len(set(ids)) or seen_ids.intersection(ids)):
+                    raise ValueError("invalid or duplicate tool call ids")
+                seen_ids.update(ids)  # 先整批验 ID，再追加历史或触发执行
                 self.history.append({"role": "assistant", "calls": reply.calls})
                 for call in reply.calls:
                     result = self.tools.dispatch(call, allowed)
@@ -312,10 +319,41 @@ assert client.ledger.report() == {
 }
 assert client.tools.executed == []  # 不重试、不切backup、不产生工具动作
 
-client = make(max_calls=1)
-must_fail(lambda: client.generate("查天气"), BudgetExceeded)
-assert client.ledger.report()["attempts"] == 1
-must_fail(lambda: make(max_turns=1).generate("查天气"), BudgetExceeded)
+class ObservedTools(Tools):
+    def __init__(self):
+        super().__init__()
+        self.dispatched = []
+
+    def dispatch(self, call, allowed):
+        self.dispatched.append(call.id)
+        return super().dispatch(call, allowed)
+
+
+for budget in ({"max_calls": 1}, {"max_turns": 1}):
+    tools = ObservedTools()
+    client = AgentClient([("fixture-a", FixtureAdapter())], tools, **budget)
+    must_fail(lambda: client.generate("查天气"), BudgetExceeded)
+    assert client.ledger.report()["attempts"] == 1
+    assert tools.dispatched == [] and tools.executed == []
+    assert [m["role"] for m in client.history] == ["user"]
+
+client = make(max_calls=2, max_turns=2)
+assert client.generate("查天气") == "北京现在22°C。"
+assert client.ledger.report()["attempts"] == 2
+assert client.tools.executed == [("get_weather", "北京")]
+
+first = ToolCall("c1", "get_weather", '{"city":"北京"}')
+fresh = ToolCall("c2", "get_weather", '{"city":"上海"}')
+usage = Usage(fresh=120, output=30)
+replies = iter([Reply(calls=(first,), usage=usage),
+                Reply(calls=(fresh, first), usage=usage),
+                Reply(content="不应到达", usage=usage)])
+tools = ObservedTools()
+client = AgentClient([("fixture", lambda *_: next(replies))], tools)
+must_fail(lambda: client.generate("查两个城市"), ValueError)
+assert tools.dispatched == ["c1"] and tools.executed == [("get_weather", "北京")]
+assert client.ledger.report()["attempts"] == 2
+assert [m["call_id"] for m in client.history if m["role"] == "tool"] == ["c1"]
 
 # 计费字段的算法对照，不证明真实缓存生效。
 ledger = Ledger()
@@ -353,9 +391,50 @@ print("L38 ACCEPTED")</code></pre></details>
 <button data-answer="wrong">直接认定该次费用为零</button><button data-answer="wrong">删除失败调用避免统计</button><button data-answer="wrong">按上次用量猜本次账单</button><button data-answer="correct">保留未知并另做账单核</button>
 </div><div class="quiz-explanation">已知成本只是小计；未知不等于免费。生产需结合provider可用的请求标识和账单数据对账。</div></div></div>
 
+<div class="section" id="bp-l38"><h2>决策卡：给回传留一格预算，再让工具执行</h2><div class="best-practice-point">
+  <p class="bp-scenario"><strong>适用：</strong>工具结果必须回到模型形成答复。<strong>不适用：</strong>结果直接用确定性模板返回的流程，不必为不存在的模型轮次预留额度。</p>
+  <div class="bp-compare"><div class="bp-wrong"><span class="bp-compare-label">先查再发现用完</span><p>最后一轮拿到天气调用就分派；下一次模型请求因限额失败，模型从未看到结果。</p></div><div class="bp-right"><span class="bp-compare-label">先验能否回传</span><p>同一任务只剩一轮时不分派，有一格才验证整批 ID 并走宿主工具边界，最后一轮可以直接返回文本。</p></div></div>
+  <p class="bp-rationale"><strong>取舍：</strong>宁可提前停止也不给不可回填的调用制造效果；对短任务可改为固定流程直接返工具结果。协议 ID 只关联本任务，对远端写操作仍要独立幂等与结果核对。</p>
+  <ol class="bp-steps"><li>固定只剩一轮和刚好两轮两个样本，分别数模型尝试、分派和历史结果。</li><li>第二批先放新 ID 再放旧 ID，核对整批没有追加一次工具结果。</li></ol>
+  <p class="bp-result">报预算错误但执行计数大于零，检查守卫是否在 <code>dispatch</code> 之后。次轮出现重复 ID 而仍有新调用落地，说明校验没有覆盖整批。</p>
+</div></div>
+<div class="section best-practice-lesson" id="lesson-best-practices"><h2>独立练习：重试吃掉了回传预算</h2>
+  <p>将下块接在第 2 节骨架后（不用加载第 3 节自检）。第 1 次传输失败，第 2 次返回一项天气意图；<code>max_turns=3</code> 尚有轮数，但只有 2 次模型尝试。补断言，再把尝试限额改成 3，确认刚好可回传。</p>
+  <pre data-lang="python"><code class="language-python" id="l38-transfer-starter">def check_limit(max_calls):
+    tools = Tools()
+    client = AgentClient([("fixture", FixtureAdapter(failures=1))], tools,
+                         max_calls=max_calls, max_turns=3, wait=lambda _: None)
+    try:
+        reply = client.generate("请查今日天气")
+    except BudgetExceeded:
+        reply = None
+    return reply, tools.executed, client.ledger.report()
+
+print(check_limit(2))
+# TODO: 断言两次尝试没有工具效果；增加一格后取得文本和一项工具效果。</code></pre>
+  <p><strong>通过：</strong>限制为 2 时有两次模型尝试、一次用量未知、零工具执行；限制为 3 时得到答复，并记录一次工具执行和三次模型尝试。</p>
+  <details><summary>展开独立参考（接在第 2 节骨架后）</summary><pre data-lang="python"><code class="language-python" id="l38-transfer-check">def trial(attempts):
+    tools = Tools()
+    client = AgentClient([("fixture", FixtureAdapter(failures=1))], tools,
+                         max_calls=attempts, max_turns=3, wait=lambda _: None)
+    try:
+        reply = client.generate("请查今日天气")
+    except BudgetExceeded:
+        reply = None
+    return reply, tools.executed, client.ledger.report()
+
+reply, executed, ledger = trial(2)
+assert (reply, executed) == (None, [])
+assert (ledger["attempts"], ledger["unknown_usage"]) == (2, 1)
+reply, executed, ledger = trial(3)
+assert (reply, executed) == ("北京现在22°C。", [("get_weather", "北京")])
+assert (ledger["attempts"], ledger["unknown_usage"]) == (3, 1)
+print("L38 TRANSFER PASSED")</code></pre></details>
+</div>
+
 <div class="section"><h2>总结与下一阶段</h2><div class="card">
   <p>本课交付的是<strong>可复测的调用与执行骨架</strong>，不是通用厂商SDK、持久工作流引擎或生产网关。你可以证明消息配对、失败零执行、预算和成本记录；真实模型还需要另一层证据。</p>
-  <p>下一阶段是 <a href="0045-phase4-prompt-context-outline.html"><strong>Phase 4 · Prompt 与 Context Engineering（L39–L44）</strong></a>。用离线起始项目把本课的固定响应、终态和预算检查迁到「证据问答＋工单草稿」；先把目标、信息选择和渐进披露做好，再在 Phase 5 构建可靠的单 Agent。需要时阅读 <a href="../reference/0004-agent-skills.html">Agent Skills 速查</a>。</p>
+  <p>先用<a href="../best-practices/phase3-api-engineering-practices.html">Phase 3 阶段复盘</a>检查返回终态、分派和账本的证据。下一阶段是 <a href="0045-phase4-prompt-context-outline.html"><strong>Phase 4 · Prompt 与 Context Engineering（L39–L44）</strong></a>。用离线起始项目把本课的固定响应、终态和预算检查迁到「证据问答＋工单草稿」；先把目标、信息选择和渐进披露做好，再在 Phase 5 构建可靠的单 Agent。需要时阅读 <a href="../reference/0004-agent-skills.html">Agent Skills 速查</a>。</p>
   <p>有疑问随时向教学代理提问；通过验收后，再把“做过”与“隔日能独立重建”分别记录。</p>
   <a class="lesson-qa-link" href="../qa/phase3-qa.html#L38">L38 疑难解答 →</a>
 </div></div>

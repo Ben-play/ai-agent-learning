@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import html
+import json
 import os
 import re
 import shutil
@@ -58,7 +59,23 @@ README_FILES = (
     "code/phase11-deployment/deployment-lab/README.md",
 )
 GENERATED_README_FILES = tuple(name.removesuffix(".md") + ".html" for name in README_FILES)
+# Exact (source guide, raw Markdown destination) pairs, not a local path resolver.
+SIBLING_GUIDE_LINKS = {
+    "code/phase5-agent-harness/harness-lab/README.md": (
+        "../../phase4-prompt-context/README.md",
+        "code/phase4-prompt-context/README.html",
+    ),
+    "code/phase10-framework-evolution/evolution-lab/README.md": (
+        "../../phase6-langgraph-mcp/graph-lab/README.md",
+        "code/phase6-langgraph-mcp/graph-lab/README.html",
+    ),
+    "code/phase11-deployment/deployment-lab/README.md": (
+        "../../phase8-agent-engineering/engineering-lab/README.md",
+        "code/phase8-agent-engineering/engineering-lab/README.html",
+    ),
+}
 BUILD_VERSION_PLACEHOLDER = "__BUILD_VERSION__"
+PUBLISHED_PATHS_PLACEHOLDER = "'__PUBLISHED_PATHS__'"
 PWA_BUILD_PLACEHOLDER = "__PWA_BUILT__"
 SITE_ROOT_PLACEHOLDER = "__SITE_ROOT__"
 BUILD_MARKER = ".pages-artifact"
@@ -287,7 +304,7 @@ def ensure_safe_output(root: Path, output: Path) -> Path:
     return resolved
 
 
-def inline_markdown(text: str) -> str:
+def inline_markdown(text: str, sibling_link: tuple[str, str] | None) -> str:
     """Render a deliberately small, escaped Markdown inline subset."""
     placeholders: list[str] = []
 
@@ -303,17 +320,18 @@ def inline_markdown(text: str) -> str:
     )
     def link(match: re.Match[str]) -> str:
         url = match.group(2)
+        if sibling_link and url == sibling_link[0]:
+            url = sibling_link[1]
         rel = ' rel="noopener noreferrer"' if url.startswith(("http://", "https://")) else ""
         return hold(f'<a href="{html.escape(url, quote=True)}"{rel}>'
                     f"{html.escape(match.group(1))}</a>")
 
-    # The local subset is limited to relative lesson back-links; the staged
-    # artifact validator still checks that each target is a published file.
-    protected = re.sub(
-        r"\[([^\]]+)\]\((https?://[^\s)]+|(?:\.\./)+lessons/[\w.-]+\.html(?:#[\w.-]+)?)\)",
-        link,
-        protected,
-    )
+    # Only lesson back-links and the exact, per-source sibling link are local.
+    # The staged artifact validator checks the resulting HTML targets as usual.
+    destinations = r"https?://[^\s)]+|(?:\.\./)+lessons/[\w.-]+\.html(?:#[\w.-]+)?"
+    if sibling_link:
+        destinations += "|" + re.escape(sibling_link[0])
+    protected = re.sub(r"\[([^\]]+)\]\((" + destinations + r")\)", link, protected)
     escaped = html.escape(protected, quote=True)
     escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
     escaped = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", escaped)
@@ -322,7 +340,9 @@ def inline_markdown(text: str) -> str:
     return escaped
 
 
-def render_markdown_document(source: Path, asset_prefix: str) -> str:
+def render_markdown_document(
+    source: Path, asset_prefix: str, sibling_link: tuple[str, str] | None
+) -> str:
     """Render a published README with assets relative to its site depth."""
     lines = source.read_text(encoding="utf-8").splitlines()
     output: list[str] = []
@@ -332,9 +352,12 @@ def render_markdown_document(source: Path, asset_prefix: str) -> str:
     code_language = ""
     in_code = False
 
+    def inline(text: str) -> str:
+        return inline_markdown(text, sibling_link)
+
     def flush_paragraph() -> None:
         if paragraph:
-            output.append(f"<p>{inline_markdown(' '.join(paragraph))}</p>")
+            output.append(f"<p>{inline(' '.join(paragraph))}</p>")
             paragraph.clear()
 
     def close_list() -> None:
@@ -376,7 +399,7 @@ def render_markdown_document(source: Path, asset_prefix: str) -> str:
             flush_paragraph()
             close_list()
             level = len(heading.group(1))
-            output.append(f"<h{level}>{inline_markdown(heading.group(2))}</h{level}>")
+            output.append(f"<h{level}>{inline(heading.group(2))}</h{level}>")
             continue
         item = re.match(r"^[-*+]\s+(.+)$", stripped)
         ordered = re.match(r"^\d+\.\s+(.+)$", stripped)
@@ -388,7 +411,7 @@ def render_markdown_document(source: Path, asset_prefix: str) -> str:
                 output.append(f"<{wanted}>")
                 list_tag = wanted
             value = (item or ordered).group(1)
-            output.append(f"<li>{inline_markdown(value)}</li>")
+            output.append(f"<li>{inline(value)}</li>")
             continue
         flush_paragraph() if list_tag else None
         close_list()
@@ -397,7 +420,7 @@ def render_markdown_document(source: Path, asset_prefix: str) -> str:
             output.append("<hr>")
         elif stripped.startswith("> "):
             flush_paragraph()
-            output.append(f"<blockquote>{inline_markdown(stripped[2:])}</blockquote>")
+            output.append(f"<blockquote>{inline(stripped[2:])}</blockquote>")
         else:
             paragraph.append(stripped)
 
@@ -509,7 +532,15 @@ def finalize_generated_files(stage: Path, site_root: str) -> None:
         source = stage.joinpath(*PurePosixPath(source_name).parts)
         target = stage.joinpath(*PurePosixPath(generated_name).parts)
         asset_prefix = "../" * len(target.relative_to(stage).parent.parts)
-        target.write_text(render_markdown_document(source, asset_prefix), encoding="utf-8", newline="")
+        sibling_link = None
+        if source_name in SIBLING_GUIDE_LINKS:
+            raw, guide = SIBLING_GUIDE_LINKS[source_name]
+            if guide not in GENERATED_README_FILES:
+                raise BuildError(f"sibling guide destination must be a published guide: {guide}")
+            sibling_link = (raw, site_root + guide)
+        target.write_text(
+            render_markdown_document(source, asset_prefix, sibling_link), encoding="utf-8", newline=""
+        )
         source.unlink()
     rewrite_readme_links(stage)
     (stage / BUILD_MARKER).write_text(
@@ -520,6 +551,15 @@ def finalize_generated_files(stage: Path, site_root: str) -> None:
     worker_text = worker.read_text(encoding="utf-8")
     if worker_text.count(BUILD_VERSION_PLACEHOLDER) != 1:
         raise BuildError("service-worker.js must contain exactly one build-version placeholder")
+    if worker_text.count(PUBLISHED_PATHS_PLACEHOLDER) != 1:
+        raise BuildError("service-worker.js must contain exactly one published-paths placeholder")
+    published_paths = {
+        "pages": sorted(path.as_posix() for path in list_output_files(stage) if path.suffix == ".html"),
+        "static": sorted((*ASSET_FILES, "manifest.webmanifest")),
+    }
+    worker_text = worker_text.replace(
+        PUBLISHED_PATHS_PLACEHOLDER, json.dumps(published_paths, separators=(",", ":"))
+    )
     digest = hashlib.sha256()
     for path in sorted(stage.rglob("*"), key=lambda item: item.as_posix()):
         if not path.is_file():

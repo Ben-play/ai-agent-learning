@@ -91,24 +91,28 @@
 <div class="section">
   <h2>3. 计数工具要和模型匹配：tiktoken vs Claude count_tokens</h2>
   <div class="card">
-    <p>猜 Token 数会算错成本，但计数工具必须和目标模型匹配。<a href="https://github.com/openai/tiktoken" target="_blank"><code>tiktoken</code></a> 是 OpenAI 官方分词器，能在<strong>本地、发请求前</strong>对匹配的 OpenAI 编码精确计数；拿它估算 Claude / Gemini 只能得到近似值：</p>
-    <pre><code>pip install tiktoken   # 或 uv pip install tiktoken
+    <p>猜 Token 数会算错成本，但计数工具必须和目标模型匹配。<a href="https://github.com/openai/tiktoken" target="_blank"><code>tiktoken</code></a> 对匹配 OpenAI 编码的<strong>文本</strong>精确计数，不包括完整聊天请求的包装开销；不能用它精确计算 Claude / Gemini 的 Token。</p>
+    <p><strong>选做：本地分词。</strong>需先在终端为练习环境安装依赖，再单独运行下面的 Python 块。第一次加载某个编码（例如 <code>o200k_base</code>）且缓存未命中时，<code>get_encoding()</code> 可能联网下载词表；词表已缓存后，文本编码可离线完成。严格离线且未预备缓存时，直接看下节实测数据并做标准库自检即可。</p>
+    <pre data-lang="shell"><code class="language-bash">python -m pip install tiktoken</code></pre>
+    <pre data-lang="python"><code class="language-python">import tiktoken
 
-import tiktoken
-
-# 按编码名取（cl100k_base=GPT-4 系；o200k_base=GPT-4o/较新系）
+# 选择与目标模型匹配的编码
 enc = tiktoken.get_encoding("o200k_base")
 
 text = "我喜欢学习语言。"
 tokens = enc.encode(text)
 print(len(tokens))          # → 5
 print(tokens)               # 底层是一串整数 id
-print([enc.decode([t]) for t in tokens])  # 还原每个 token 的样子
+print([enc.decode([t]) for t in tokens])  # 单个 token 可能不含完整 UTF-8 字符
 
 # 也可以按模型名自动选编码：
 # enc = tiktoken.encoding_for_model("gpt-4o")</code></pre>
-    <p>OpenAI 示例见 <a href="https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken" target="_blank">OpenAI Cookbook: How to count tokens with tiktoken</a>。对 Claude，应把同一份请求结构交给官方计数端点：</p>
-    <pre><code>import anthropic
+    <p>OpenAI 示例见 <a href="https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken" target="_blank">OpenAI Cookbook: How to count tokens with tiktoken</a>。</p>
+    <details>
+      <summary><strong>选读：Claude 远程计数（不属于离线验收）</strong></summary>
+      <p>将同一份请求结构交给官方计数端点。下面的示例需要另装 Anthropic SDK、有有效的 API 凭据并联网；本课离线练习不需要安装 SDK 或运行此段。</p>
+      <pre data-lang="shell"><code class="language-bash">python -m pip install anthropic</code></pre>
+      <pre data-lang="python"><code class="language-python">import anthropic
 
 client = anthropic.Anthropic()
 count = client.messages.count_tokens(
@@ -117,6 +121,7 @@ count = client.messages.count_tokens(
     messages=[{"role": "user", "content": "解释什么是 Token。"}],
 )
 print(count.input_tokens)</code></pre>
+    </details>
     <p><strong>怎么区分：</strong><code>tiktoken</code> 是本地 OpenAI tokenizer；<code>messages.count_tokens</code> 会按你指定的 Claude 模型和完整消息结构估算输入 Token。官方也提醒计数结果仍可能与真正创建消息时的计费量有小幅差异，因此请求前用它做预算，调用后再以 <code>response.usage</code> 作为该次调用的权威用量记录。若 provider 把缓存输入拆为独立字段，总输入应组装为 <code>input_tokens + cache_creation_input_tokens + cache_read_input_tokens</code>；不要只读 <code>input_tokens</code>，也不要拿一个厂商的 tokenizer 冒充所有模型的精确账单。</p>
   </div>
 
@@ -213,7 +218,7 @@ assert total_input_tokens({"input_tokens": 1, "cache_creation_input_tokens": 2, 
       <button data-answer="wrong">只能数英文字符</button>
       <button data-answer="correct">匹配编码时本地算</button>
     </div>
-    <div class="quiz-explanation"><code>tiktoken</code> 能在<strong>本地、发请求前</strong>计算 Token，但只有目标模型使用匹配的 OpenAI 编码时才是精确计数；对 Claude / Gemini 只能近似。Claude 应使用官方 <code>messages.count_tokens</code> 估算完整请求，调用后再看 <code>response.usage</code> 对账。</div>
+    <div class="quiz-explanation">匹配编码且词表已缓存时，<code>tiktoken</code> 可离线精确计算文本 Token；缓存未命中时初始化可能下载词表。Claude 应使用官方 <code>messages.count_tokens</code> 估算完整请求，调用后再看 <code>response.usage</code> 对账。</div>
   </div>
 </div>
 
@@ -295,8 +300,8 @@ assert total_input_tokens({"input_tokens": 1, "cache_creation_input_tokens": 2, 
   中文字若未完整合并，可能 byte fallback 成碎片
 
 【计数工具要匹配模型】
-  OpenAI 匹配编码：tiktoken 本地计数
-  Claude：client.messages.count_tokens(...) 请求前估算
+  OpenAI 匹配编码：词表已缓存时用 tiktoken 离线计算文本 Token
+  Claude：client.messages.count_tokens(...) 远程估算请求输入
          response.usage 调用后权威对账（缓存输入分量相加）
   跨厂商拿 tiktoken 一把尺子量 → 只能粗估，不能冒充账单
 
@@ -323,7 +328,7 @@ assert total_input_tokens({"input_tokens": 1, "cache_creation_input_tokens": 2, 
     <div><h3>操作清单</h3><ol><li>构造收货、库存和退货三项仓库导入请求，每项都携带可审计的 tool definition。</li><li>为两个 provider 注入不同的原生 counter / model 身份，并记录 counter 收到的最终请求。</li><li>在任何 send 发生前完成整批 estimate 与累计预算预约；剩余预算不足的成员标记为拒绝。</li><li>只发送已预约成员，分别用含缓存和不含缓存的 response usage 计算 actual 与 delta。</li><li>按 provider 形成账本，证明相同 estimate 可以来自不同 counter，且 request digest、counter ID、发送次数都可追查。</li></ol></div>
     <div class="practice-pass"><h3>通过标准</h3><ul><li>两个 batch plan 完成时发送记录仍为空；第三个成员虽单项小于总预算，也因累计余额不足而未发送。</li><li>每个 counter 依次收到该 provider 的三份完整请求；plan 与 ledger 都保留 counter ID 和稳定 request digest。</li><li>两个 provider 对首项都估算为 12 不会被当成身份冲突；身份由 counter 与精确请求证明。</li><li>已发送项满足 <code>actual = input + cache creation + cache read</code> 与 <code>delta = actual - estimated</code>；拒绝项不进入账本。</li><li>程序离线、纯标准库、确定性运行；标准输出只有最终标记。</li></ul></div>
   </div>
-  <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>import hashlib
+  <details class="bp-check"><summary><strong>课末近迁移参考程序（独立完成后展开，纯标准库）：</strong></summary><pre data-lang="python"><code id="l18-batch-check" class="language-python">import hashlib
 import json
 
 
@@ -559,7 +564,7 @@ print("L18 ACCEPTED")</code></pre></details>
     <div class="practice-pass"><h3>通过标准</h3><ul><li>同一活动、同一 prompt、同一接口下公平比较。</li><li>能力映射发生在计数之前；counter identity 与精确计数 payload 都可验证。</li><li>未发送项没有 actual / delta 且不增加 send 次数；已发送项保留 estimate、总 actual 与 delta。</li><li>标准输出只有检查点标记。</li></ul></div>
   </div>
   <p class="bp-term"><strong>先独立完成：</strong>只使用 L17 的能力档案 / 可审计请求思想与 L18 的原生计数 / usage 对账；不要引入后续课的幻觉或 effort 质量门。</p>
-  <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre><code>def total_input_tokens(usage):
+  <details class="bp-check"><summary><strong>参考验收程序（独立完成后展开，纯标准库）：</strong></summary><pre data-lang="python"><code id="l18-request-contract-check" class="language-python">def total_input_tokens(usage):
     return sum(
         usage.get(field, 0)
         for field in (
@@ -688,7 +693,7 @@ print("P2 CHECKPOINT REQUEST-CONTRACT PASSED")</code></pre></details>
     <ul>
       <li>Token 是<strong>子词片段</strong>，不是字/词/字母；必须用分词器实际数，不能靠数字数</li>
       <li><strong>BPE</strong> 是常见 tokenizer 家族；byte-level BPE 学习高频合并规则，中文可能回退成字节碎片</li>
-      <li><code>tiktoken</code> 对匹配 OpenAI 编码本地计数；Claude 请求前用 <code>messages.count_tokens</code>，请求后以 <code>response.usage</code> 为权威记录，缓存输入分量需相加</li>
+      <li>词表已缓存时，<code>tiktoken</code> 可离线计算匹配 OpenAI 编码的文本；Claude 请求前用远程 <code>messages.count_tokens</code>，请求后以 <code>response.usage</code> 为权威记录，缓存输入分量需相加</li>
       <li>"中文更费 Token"<strong>取决于分词器</strong>——同句中文 cl100k 要 11、o200k 只要 5</li>
       <li>成本 = 输入输出<strong>分开</strong>按目标模型当前单价计算；历史与 system prompt 会累加计费</li>
     </ul>

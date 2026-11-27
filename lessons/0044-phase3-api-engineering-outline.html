@@ -18,19 +18,19 @@
 <p>从调通 API 到可验收的调用与执行骨架：<strong>原生接口、工具边界、终态、评估与负载驱动成本决策</strong>。离线通过不等于生产准入。</p>
 
 <div class="total-bar">
-  <span>📚 共 5 个模块 · 14 课</span>
+  <span>📚 共 5 个模块 · 14 课 · 605 分钟</span>
   <span>⏱ 预计 3 周完成</span>
 </div>
 
 <div class="tip">
   <strong>为什么这是分水岭阶段？</strong><br>
   "调通一次 API" 谁都会；但 Agent 在生产环境要面对：<br>
-  · 模型会限流、会超时、会挂 → 不会<strong>退避+抖动+Fallback</strong>，一上量就崩<br>
-  · 工具调用会重复执行 → 不会<strong>幂等</strong>，"扣款"重试一次就是真金白银损失<br>
-  · 输出格式不可靠 → 不会<strong>Structured Outputs</strong>，下游代码天天崩<br>
-  · 成本失控 → 不会<strong>缓存分层 + 路由</strong>，月账单翻几倍<br>
-  · 线上出问题查不出 → 没有<strong>可观测性</strong>，Agent 上线即失控<br>
-  <strong>这一阶段就是把这些"生产级"能力一个个补上。</strong>每课以可操作验收收束，不凭“生产级”标签代替验证。
+  · 模型限流与超时 → 区分单次等待、任务截止、安全重试和合格回退<br>
+  · 工具可能重复执行 → 先核对审批、操作身份和真实持久效果<br>
+  · 响应形状不可靠 → 用终态守卫、Schema 和宿主验证分层处理<br>
+  · 成本或延迟上升 → 比较同批成功任务和完整账本，再采用缓存或路由<br>
+  · 出错难定位 → 用受控追踪定位请求、分派和终态，不采无关正文<br>
+  <strong>每课以可操作验收收束。</strong>本地通过不代替线上验证。
 </div>
 
 <!-- ==================== Module 3.1 ==================== -->
@@ -52,7 +52,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L26</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L26</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0031-L26-streaming.html">Streaming 流式输出</a> <span class="badge-llm">API</span></div>
         <div class="lesson-desc">区分 Chat delta、Responses typed events、Messages内容块；文本临时显示≠成功完成，按终态/异常验收、关闭流资源并处理未知用量</div>
@@ -73,7 +73,7 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L27</span><span class="lesson-num-time">25min</span>
+      <span class="lesson-num">L27</span><span class="lesson-num-time">35min</span>
       <div>
         <div class="lesson-title"><a href="0032-L27-function-calling.html">Function Calling 原理</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">以 Responses 自定义函数为主：模型提出调用，应用授权、校验并执行，按 <code>call_id</code> 回填；Chat Completions 只作兼容对照。</div>
@@ -81,7 +81,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L28</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L28</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0033-L28-structured-outputs.html">Structured Outputs（约束解码）</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc"><strong>面试高频区分题</strong>：纯 prompt < JSON mode（只保证合法 JSON）< <strong>Structured Outputs（strict / 约束解码，在受支持Schema、正常完成且无拒答/截断时约束结构）</strong>；约束解码原理、配合 Pydantic（呼应 L14）、无法保证时的验证+重试兜底、refusal 处理。<strong>Structured Outputs ≠ JSON mode</strong></div>
@@ -89,7 +89,7 @@
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L29</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L29</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0034-L29-multimodal-api.html">多模态 API</a> <span class="badge-llm">API</span></div>
         <div class="lesson-desc">Responses 的 <code>input_image</code> / <code>input_file</code>；直接读 PDF 不等于 RAG。保留文件转录，实时语音为选读；按模型和 detail 核算图像费用。</div>
@@ -121,20 +121,20 @@
       <span class="lesson-num">L31</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0036-L31-error-handling-retry.html">错误处理、退避与幂等</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">区分瞬态错误和安全重试、指数退避、抖动和重试预算。稳定的操作键必须由执行端兑现：本地事务原子提交，外部结果未知时按契约查证。</div>
-        <div class="exercise">用 SQLite 验证提交前失败回滚、提交后响应丢失仍可安全重放、同键不同请求被拒绝。</div>
+        <div class="lesson-desc">区分安全重试与瞬态错误、退避与抖动、单次超时和整项截止。稳定操作键由执行端兑现；外部结果未知时先查证。</div>
+        <div class="exercise">用假时钟核对各次剩余预算，用 SQLite 验证提交前回滚、提交后读回及同键不同请求被拒绝。</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L32</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L32</span><span class="lesson-num-time">30min</span>
       <div>
         <div class="lesson-title"><a href="0037-L32-routing-fallback-gateway.html">路由、Fallback 与 AI Gateway</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
-        <div class="lesson-desc">单点故障 → Fallback（主备模型自动切换）、Model Routing（便宜模型兜底、贵模型接难题，呼应 L23）、<strong>AI Gateway 模式</strong>（LiteLLM 自托管 / OpenRouter 托管 / Portkey 治理，统一成 OpenAI 格式，底层即 L25 兼容原理）、为什么用网关而非自己写</div>
-        <div class="exercise">给"主模型突然 100% 返回 429"的场景，设计 Fallback + 路由策略</div>
+        <div class="lesson-desc">先筛工具能力、数据范围与共享依赖，再按成本路由；临时失败后仅切换可安全重放的合格路线，网关按复用和治理需求采用</div>
+        <div class="exercise">用离线调用轨迹验证合格切换、无路线及未知写入；独立判断共享配额的备选是否值得保留</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L33</span><span class="lesson-num-time">40min</span>
+      <span class="lesson-num">L33</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0038-L33-observability.html">LLM 可观测性</a> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">区分 trace、metric 和 log；以 OpenTelemetry GenAI 独立版 v0.1.0（Development）核对字段与单位，默认只采元数据。成本从 usage 和费率推导，不把未知记作零。</div>
@@ -155,15 +155,15 @@
   </div>
   <div class="card">
     <div class="lesson-item">
-      <span class="lesson-num">L34</span><span class="lesson-num-time">35min</span>
+      <span class="lesson-num">L34</span><span class="lesson-num-time">45min</span>
       <div>
         <div class="lesson-title"><a href="0039-L34-tool-schema-design.html">Tool Schema 设计</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">工具定义 = 模型的"说明书"，<strong>description 质量直接决定模型选不选得对、填不填得对</strong>；用 Pydantic/JSON Schema 定义、好 vs 坏 description 对比、enum/Literal 约束取值、strict mode（同 L28 约束解码机制）、工具定义的 Token 开销、设计原则清单</div>
-        <div class="exercise">给"查订单状态"工具，用 Pydantic 写出参数 schema + 清晰的 Field description + Literal 约束</div>
+        <div class="exercise">导出真实 Pydantic v2 Schema，对照必填、可空与宿主默认，并验证缺键、多键、错类型不会进入工具。</div>
       </div>
     </div>
     <div class="lesson-item">
-      <span class="lesson-num">L35</span><span class="lesson-num-time">30min</span>
+      <span class="lesson-num">L35</span><span class="lesson-num-time">40min</span>
       <div>
         <div class="lesson-title"><a href="0040-L35-function-calling-loop.html">完整 Function Calling 循环</a> <span class="badge-agent">Agent 核心</span> <span class="badge-interview">面试</span></div>
         <div class="lesson-desc">用 Responses 实现有界循环：先检查终态和预算，逐个执行并按 <code>call_id</code> 回填全部结果。区分一轮多调用、多轮依赖和应用并发执行。</div>
@@ -213,9 +213,9 @@
 <h2>学习建议</h2>
 <div class="tip">
   <strong>Module 3.1–3.2 打基础</strong>——先把 API 调通、流式、Function Calling、Structured Outputs 拿下，这是后面一切的地基。Structured Outputs 与 JSON mode 的区别务必讲清（面试必问）。<br>
-  <strong>Module 3.3 是生产分水岭</strong>——退避+抖动、幂等、Fallback、可观测性，每一条都是"demo 能跑"和"敢上生产"的差距。幂等和抖动是资深护城河。<br>
+  <strong>Module 3.3 核对可靠性边界</strong>——分开重试调度、单次超时和任务截止；有合格备用且可安全重放才换路，未知写入先核对。<br>
   <strong>Module 3.4 是 Agent 命脉</strong>——Tool Schema 设计 + FC 循环（Agent Loop 骨架）+ 工具注册，学完你能看懂 LangChain 等框架 @tool 的底层。<br>
-  <strong>Module 3.5 收尾</strong>——按负载做成本决策，L38验证执行不变量和失败分支。以task/trial/trace/outcome区分程序自检与真实Agent评估，不用一次漂亮答案代替环境结果。<br><br>
+  <strong>Module 3.5 收尾</strong>——按负载做成本决策，L38 验证执行不变量和失败分支。完成后用 <a href="../best-practices/phase3-api-engineering-practices.html">Phase 3 工程实践复盘</a>检查交付证据，不以一次漂亮答案代替环境结果。<br><br>
   <strong>关于版本号：</strong>模型型号、价格、缓存折扣迭代极快，本阶段刻意<strong>不写死具体数字</strong>，一律以各厂商<strong>当时官方文档</strong>为准；重点是工程模式与决策方法。
 </div>
 
@@ -227,7 +227,7 @@
   · <a href="https://developers.openai.com/api/docs/guides/structured-outputs" target="_blank">OpenAI: Structured Outputs</a> — 约束解码保证 schema<br>
   · <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic: Prompt Caching</a> — 按模型/API/TTL核验缓存写读费率<br>
   · <a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/" target="_blank">OpenTelemetry: GenAI Semantic Conventions</a> — 可观测性厂商无关标准<br>
-  · <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a> — AI Gateway / 统一 100+ 模型<br>
+  · <a href="https://github.com/BerriAI/litellm" target="_blank">LiteLLM</a> — 可选网关；按端点核对支持能力与数据去向<br>
 </div>
 
 <a class="lesson-qa-link" href="../qa/phase3-qa.html" style="margin-bottom:1.5rem;">
