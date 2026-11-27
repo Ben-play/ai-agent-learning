@@ -44,6 +44,17 @@ const guideLinks = [
 ];
 const hrefs = html => [...html.matchAll(/<a\s+[^>]*\bhref="([^"]+)"[^>]*>([^<]*)<\/a>/g)];
 
+test('Pages upload and deployment use the same attempt-specific artifact name', () => {
+  const workflow = read(repo, '.github/workflows/pages.yml');
+  const upload = workflow.match(/- name: Upload Pages artifact\n([\s\S]*?)(?=\n      - name:|$)/)?.[1];
+  const deploy = workflow.match(/- name: Deploy to GitHub Pages\n([\s\S]*?)(?=\n      - name:|$)/)?.[1];
+  assert.ok(upload);
+  assert.ok(deploy);
+  const name = 'github-pages-${{ github.run_attempt }}';
+  assert.ok(upload.split('\n').includes(`          name: ${name}`));
+  assert.ok(deploy.split('\n').includes(`          artifact_name: ${name}`));
+});
+
 function build(source, name, siteRoot) {
   const output = path.join(temp, name);
   const result = spawnSync(process.env.PYTHON || 'python', ['-I', '-B', '-X', 'utf8',
